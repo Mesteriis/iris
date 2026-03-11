@@ -197,12 +197,14 @@ Primary endpoints:
 The frontend uses these endpoints to show:
 
 - active patterns
+- feature flag state
 - priority-ranked signals
 - cluster membership
 - market regime
 - cycle phase
 - sector rotation
 - pattern history
+- discovery candidates for manual review
 
 ## Performance notes
 

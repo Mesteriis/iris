@@ -9,8 +9,10 @@ import {
   type CoinRegime,
   type CoinCreatePayload,
   type CoinMetrics,
+  type DiscoveredPattern,
   type MarketCycle,
   type PatternDescriptor,
+  type PatternFeature,
   type PriceHistoryPoint,
   type Sector,
   type SectorMetric,
@@ -26,6 +28,8 @@ export const useCoinStore = defineStore("coins", () => {
   const signals = ref<Signal[]>([]);
   const topSignals = ref<Signal[]>([]);
   const patterns = ref<PatternDescriptor[]>([]);
+  const patternFeatures = ref<PatternFeature[]>([]);
+  const discoveredPatterns = ref<DiscoveredPattern[]>([]);
   const sectors = ref<Sector[]>([]);
   const sectorMetrics = ref<SectorMetric[]>([]);
   const sectorNarratives = ref<SectorNarrative[]>([]);
@@ -121,6 +125,7 @@ export const useCoinStore = defineStore("coins", () => {
     marketCycles.value.filter((item) => item.symbol.toUpperCase() === activeSymbol.value),
   );
   const topSectorMetrics = computed(() => sectorMetrics.value.slice(0, 6));
+  const enabledPatternFeatures = computed(() => patternFeatures.value.filter((item) => item.enabled));
   const bullishShare = computed(() => {
     if (metrics.value.length === 0) {
       return 0;
@@ -232,12 +237,26 @@ export const useCoinStore = defineStore("coins", () => {
     isBootstrapping.value = true;
     dashboardError.value = "";
     try {
-      const [coinRows, metricRows, signalRows, topSignalRows, patternRows, sectorRows, sectorPayload, cycleRows, systemState] = await Promise.all([
+      const [
+        coinRows,
+        metricRows,
+        signalRows,
+        topSignalRows,
+        patternRows,
+        patternFeatureRows,
+        discoveredPatternRows,
+        sectorRows,
+        sectorPayload,
+        cycleRows,
+        systemState,
+      ] = await Promise.all([
         irisApi.listCoins(),
         irisApi.listCoinMetrics(),
         irisApi.listSignals(40),
         irisApi.listTopSignals(12),
         irisApi.listPatterns(),
+        irisApi.listPatternFeatures(),
+        irisApi.listDiscoveredPatterns(24),
         irisApi.listSectors(),
         irisApi.listSectorMetrics(),
         irisApi.listMarketCycles(),
@@ -249,6 +268,8 @@ export const useCoinStore = defineStore("coins", () => {
       signals.value = signalRows;
       topSignals.value = topSignalRows;
       patterns.value = patternRows;
+      patternFeatures.value = patternFeatureRows;
+      discoveredPatterns.value = discoveredPatternRows;
       sectors.value = sectorRows;
       sectorMetrics.value = sectorPayload.items;
       sectorNarratives.value = sectorPayload.narratives;
@@ -390,6 +411,9 @@ export const useCoinStore = defineStore("coins", () => {
     marketCycles,
     metrics,
     metricsBySymbol,
+    discoveredPatterns,
+    enabledPatternFeatures,
+    patternFeatures,
     patterns,
     recentSignals,
     refreshDashboard,

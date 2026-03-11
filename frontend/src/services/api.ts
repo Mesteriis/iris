@@ -116,6 +116,21 @@ export interface PatternDescriptor {
   statistics: PatternStatistic[];
 }
 
+export interface PatternFeature {
+  feature_slug: string;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface DiscoveredPattern {
+  structure_hash: string;
+  timeframe: number;
+  sample_size: number;
+  avg_return: number;
+  avg_drawdown: number;
+  confidence: number;
+}
+
 export interface RegimeSnapshot {
   timeframe: number;
   regime: string;
@@ -243,6 +258,16 @@ export const irisApi = {
   },
   async listPatterns(): Promise<PatternDescriptor[]> {
     const response = await api.get<PatternDescriptor[]>("/patterns");
+    return response.data;
+  },
+  async listPatternFeatures(): Promise<PatternFeature[]> {
+    const response = await api.get<PatternFeature[]>("/patterns/features");
+    return response.data;
+  },
+  async listDiscoveredPatterns(limit = 40): Promise<DiscoveredPattern[]> {
+    const response = await api.get<DiscoveredPattern[]>("/patterns/discovered", {
+      params: { limit },
+    });
     return response.data;
   },
   async listCoinPatterns(symbol: string, limit = 120): Promise<Signal[]> {

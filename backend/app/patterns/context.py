@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,7 +13,7 @@ from app.models.pattern_statistic import PatternStatistic
 from app.models.sector_metric import SectorMetric
 from app.models.signal import Signal
 from app.patterns.semantics import is_cluster_signal, is_pattern_signal, pattern_bias, slug_from_signal_type
-from app.services.market_data import ensure_utc
+from app.services.market_data import ensure_utc, utc_now
 
 
 def calculate_priority_score(
@@ -113,6 +114,7 @@ def enrich_signal_context(
     coin_id: int,
     timeframe: int,
     candle_timestamp: object | None = None,
+    commit: bool = True,
 ) -> dict[str, object]:
     stmt = select(Signal).where(Signal.coin_id == coin_id, Signal.timeframe == timeframe)
     if candle_timestamp is not None:
@@ -158,10 +160,37 @@ def enrich_signal_context(
             volatility_alignment=volatility_alignment * cluster_bonus * sector_alignment * cycle_alignment,
             liquidity_score=liquidity_score,
         )
-    db.commit()
+    if commit:
+        db.commit()
     return {
         "status": "ok",
         "coin_id": coin_id,
         "timeframe": timeframe,
         "signals": len(signals),
     }
+
+
+def refresh_recent_signal_contexts(
+    db: Session,
+    *,
+    lookback_days: int = 30,
+) -> dict[str, object]:
+    recent_cutoff = utc_now() - timedelta(days=max(lookback_days, 1))
+    rows = db.execute(
+        select(Signal.coin_id, Signal.timeframe, Signal.candle_timestamp)
+        .where(Signal.candle_timestamp >= recent_cutoff)
+        .distinct()
+        .order_by(Signal.coin_id.asc(), Signal.timeframe.asc(), Signal.candle_timestamp.asc())
+    ).all()
+    updated = 0
+    for row in rows:
+        result = enrich_signal_context(
+            db,
+            coin_id=int(row.coin_id),
+            timeframe=int(row.timeframe),
+            candle_timestamp=row.candle_timestamp,
+            commit=False,
+        )
+        updated += int(result.get("signals", 0))
+    db.commit()
+    return {"status": "ok", "signals": updated, "groups": len(rows)}

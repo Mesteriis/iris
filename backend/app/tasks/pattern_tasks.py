@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.db.session import SessionLocal
-from app.patterns.context import enrich_signal_context
+from app.patterns.context import enrich_signal_context, refresh_recent_signal_contexts
 from app.patterns.cycle import refresh_market_cycles
 from app.patterns.discovery import refresh_discovered_patterns
 from app.patterns.engine import PatternEngine
@@ -60,7 +60,9 @@ def update_pattern_statistics() -> dict[str, object]:
 
         db = SessionLocal()
         try:
-            return refresh_pattern_statistics(db)
+            statistics_result = refresh_pattern_statistics(db)
+            context_result = refresh_recent_signal_contexts(db, lookback_days=30)
+            return {"status": "ok", "statistics": statistics_result, "context": context_result}
         finally:
             db.close()
 
@@ -96,7 +98,8 @@ def refresh_market_structure() -> dict[str, object]:
         try:
             sector_result = refresh_sector_metrics(db)
             cycle_result = refresh_market_cycles(db)
-            return {"status": "ok", "sectors": sector_result, "cycles": cycle_result}
+            context_result = refresh_recent_signal_contexts(db, lookback_days=30)
+            return {"status": "ok", "sectors": sector_result, "cycles": cycle_result, "context": context_result}
         finally:
             db.close()
 

@@ -432,6 +432,58 @@ async function runCoinJob(symbol: string) {
       </ul>
     </section>
 
+    <section class="detail-grid__row">
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Feature flags</p>
+            <h3>Subsystem switches</h3>
+          </div>
+          <p>{{ coinStore.enabledPatternFeatures.length }} enabled</p>
+        </div>
+
+        <ul class="detail-signal-list">
+          <li v-for="feature in coinStore.patternFeatures" :key="feature.feature_slug">
+            <div>
+              <strong>{{ formatSignalType(feature.feature_slug) }}</strong>
+              <p>{{ formatDateTime(feature.created_at) }}</p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span>{{ feature.enabled ? "enabled" : "disabled" }}</span>
+            </div>
+          </li>
+        </ul>
+      </article>
+
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Discovery</p>
+            <h3>Review candidates</h3>
+          </div>
+          <p>{{ coinStore.discoveredPatterns.length }} candidates</p>
+        </div>
+
+        <ul v-if="coinStore.discoveredPatterns.length > 0" class="detail-signal-list">
+          <li v-for="candidate in coinStore.discoveredPatterns.slice(0, 10)" :key="`${candidate.structure_hash}-${candidate.timeframe}`">
+            <div>
+              <strong>{{ candidate.structure_hash.slice(0, 12) }}</strong>
+              <p>{{ timeframeToLabel(candidate.timeframe) }} / sample {{ candidate.sample_size }}</p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span>{{ candidate.confidence.toFixed(3) }}</span>
+              <small>
+                ret {{ formatPercent(candidate.avg_return * 100, 2) }} / dd {{ formatPercent(candidate.avg_drawdown * 100, 2) }}
+              </small>
+            </div>
+          </li>
+        </ul>
+        <div v-else class="surface-state">
+          Discovery engine has not produced review candidates yet.
+        </div>
+      </article>
+    </section>
+
     <section class="surface-card">
       <div class="section-head">
         <div>
