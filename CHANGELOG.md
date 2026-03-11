@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Pattern cluster builder, hierarchy builder and contextual signal enrichment with priority scoring inside the existing analytics flow.
 - Market regime engine with `bull_trend`, `bear_trend`, `sideways_range`, `high_volatility` and `low_volatility` outputs wired back into `coin_metrics.market_regime`.
 - Market Narrative engine for sectors plus Market Cycle engine with stored phase/confidence per coin and timeframe.
+- Pattern Discovery engine that clusters rolling window shapes, hashes candidate structures and stores review-only rows in `discovered_patterns`.
 
 ### Changed
 - Extended `signals` with `priority_score`, `context_score` and `regime_alignment`.
@@ -23,3 +24,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Existing analytics event handling now runs pattern detection on the latest 200 candles whenever a new candle closes.
 - Added ranged candle fetch helpers so statistics and context jobs can evaluate historical outcomes without rescanning full tables during normal operation.
 - Context scoring now incorporates regime, sector strength and market cycle alignment, and the backend schedules periodic market structure refresh inside the embedded TaskIQ runtime.
+- Embedded TaskIQ runtime now also schedules periodic discovery refreshes without introducing any new worker container.

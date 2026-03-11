@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.db.session import SessionLocal
 from app.patterns.context import enrich_signal_context
 from app.patterns.cycle import refresh_market_cycles
+from app.patterns.discovery import refresh_discovered_patterns
 from app.patterns.engine import PatternEngine
 from app.patterns.narrative import refresh_sector_metrics
 from app.patterns.statistics import refresh_pattern_statistics
@@ -13,6 +14,7 @@ from app.taskiq.locks import redis_task_lock
 PATTERN_BOOTSTRAP_LOCK_TIMEOUT_SECONDS = 7200
 PATTERN_STATISTICS_LOCK_TIMEOUT_SECONDS = 7200
 MARKET_STRUCTURE_LOCK_TIMEOUT_SECONDS = 7200
+PATTERN_DISCOVERY_LOCK_TIMEOUT_SECONDS = 14400
 _ENGINE = PatternEngine()
 
 
@@ -95,5 +97,21 @@ def refresh_market_structure() -> dict[str, object]:
             sector_result = refresh_sector_metrics(db)
             cycle_result = refresh_market_cycles(db)
             return {"status": "ok", "sectors": sector_result, "cycles": cycle_result}
+        finally:
+            db.close()
+
+
+@broker.task
+def run_pattern_discovery() -> dict[str, object]:
+    with redis_task_lock(
+        "iris:tasklock:pattern_discovery_refresh",
+        timeout=PATTERN_DISCOVERY_LOCK_TIMEOUT_SECONDS,
+    ) as acquired:
+        if not acquired:
+            return {"status": "skipped", "reason": "pattern_discovery_refresh_in_progress"}
+
+        db = SessionLocal()
+        try:
+            return refresh_discovered_patterns(db)
         finally:
             db.close()

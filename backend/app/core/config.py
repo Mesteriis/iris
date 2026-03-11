@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     taskiq_analytics_event_interval_seconds: int = 900
     taskiq_pattern_statistics_interval_seconds: int = 86400
     taskiq_market_structure_interval_seconds: int = 3600
+    taskiq_pattern_discovery_interval_seconds: int = 21600
     bootstrap_history_on_startup: bool = True
     database_connect_retries: int = 30
     database_connect_retry_delay: float = 1.0
