@@ -155,6 +155,8 @@ Workers use Redis Streams consumer groups:
 
 Each worker only ACKs after processing. Stale pending messages are reclaimed with `XAUTOCLAIM`, so crash recovery does not lose events.
 
+There is no parallel legacy analytics trigger path. Runtime candle analytics now enters the system only through `iris_events`.
+
 ### Incremental path
 
 1. New closed candle is written into `candles` by polling.

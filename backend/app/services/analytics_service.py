@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Sequence
 
@@ -28,11 +29,7 @@ from app.patterns.scheduler import (
     analysis_priority_for_bucket,
     assign_activity_bucket,
     calculate_activity_score,
-    get_activity_snapshot,
-    mark_analysis_requested,
-    should_request_analysis,
 )
-from app.services.analytics_events import NewCandleEvent, clear_new_candle_event_if_unchanged, list_new_candle_events
 from app.services.candles_service import (
     AGGREGATE_VIEW_BY_TIMEFRAME,
     BASE_TIMEFRAME_MINUTES,
@@ -79,6 +76,13 @@ SIGNAL_TYPES = {
     "rsi_overbought",
 }
 PATTERN_ENGINE = PatternEngine()
+
+
+@dataclass(slots=True, frozen=True)
+class CandleAnalyticsEvent:
+    coin_id: int
+    timeframe: int
+    timestamp: datetime
 
 
 @dataclass(slots=True, frozen=True)
@@ -224,69 +228,14 @@ def list_signals(
     return [dict(row._mapping) for row in rows]
 
 
-def list_repair_new_candle_events(db: Session) -> list[NewCandleEvent]:
-    latest_indicator_per_coin = (
-        select(
-            IndicatorCache.coin_id,
-            IndicatorCache.timeframe,
-            func.max(IndicatorCache.timestamp).label("last_indicator_timestamp"),
-        )
-        .where(
-            IndicatorCache.indicator == "price_current",
-            IndicatorCache.indicator_version == INDICATOR_VERSION,
-        )
-        .group_by(IndicatorCache.coin_id, IndicatorCache.timeframe)
-        .subquery()
-    )
-    repair_rows = db.execute(
-        select(
-            Candle.coin_id.label("coin_id"),
-            Candle.timeframe.label("timeframe"),
-            func.max(Candle.timestamp).label("latest_timestamp"),
-            latest_indicator_per_coin.c.last_indicator_timestamp,
-        )
-        .join(Coin, Coin.id == Candle.coin_id)
-        .outerjoin(
-            latest_indicator_per_coin,
-            and_(
-                latest_indicator_per_coin.c.coin_id == Candle.coin_id,
-                latest_indicator_per_coin.c.timeframe == Candle.timeframe,
-            ),
-        )
-        .where(Coin.deleted_at.is_(None))
-        .group_by(Candle.coin_id, Candle.timeframe, latest_indicator_per_coin.c.last_indicator_timestamp)
-    ).all()
-    events: list[NewCandleEvent] = []
-    for row in repair_rows:
-        if row.latest_timestamp is None:
-            continue
-        latest_timestamp = ensure_utc(row.latest_timestamp)
-        last_indicator_timestamp = ensure_utc(row.last_indicator_timestamp) if row.last_indicator_timestamp is not None else None
-        if last_indicator_timestamp is None or latest_timestamp > last_indicator_timestamp:
-            events.append(NewCandleEvent(coin_id=int(row.coin_id), timeframe=int(row.timeframe), timestamp=latest_timestamp))
-    return events
-
-
-def list_pending_new_candle_events(db: Session) -> list[NewCandleEvent]:
-    events: dict[tuple[int, int], NewCandleEvent] = {}
-    for event in list_new_candle_events():
-        events[(event.coin_id, event.timeframe)] = event
-    for event in list_repair_new_candle_events(db):
-        key = (event.coin_id, event.timeframe)
-        existing = events.get(key)
-        if existing is None or event.timestamp > existing.timestamp:
-            events[key] = event
-    return sorted(events.values(), key=lambda item: (item.timestamp, item.coin_id, item.timeframe))
-
-
-def determine_affected_timeframes(event: NewCandleEvent) -> list[int]:
-    affected = [event.timeframe]
-    close_time = candle_close_timestamp(event.timestamp, event.timeframe)
-    if event.timeframe < 60 and close_time.minute == 0:
+def determine_affected_timeframes(*, timeframe: int, timestamp: datetime) -> list[int]:
+    affected = [timeframe]
+    close_time = candle_close_timestamp(timestamp, timeframe)
+    if timeframe < 60 and close_time.minute == 0:
         affected.append(60)
-    if event.timeframe < 240 and close_time.minute == 0 and close_time.hour % 4 == 0:
+    if timeframe < 240 and close_time.minute == 0 and close_time.hour % 4 == 0:
         affected.append(240)
-    if event.timeframe < 1440 and close_time.minute == 0 and close_time.hour == 0:
+    if timeframe < 1440 and close_time.minute == 0 and close_time.hour == 0:
         affected.append(1440)
     return affected
 
@@ -784,7 +733,7 @@ def process_indicator_event(
     timeframe: int,
     timestamp: datetime,
 ) -> dict[str, Any]:
-    event = NewCandleEvent(
+    event = CandleAnalyticsEvent(
         coin_id=int(coin_id),
         timeframe=int(timeframe),
         timestamp=ensure_utc(timestamp),
@@ -801,7 +750,10 @@ def process_indicator_event(
             if not aggregate_has_rows(db, coin.id, aggregate_timeframe):
                 refresh_continuous_aggregate_range(db, aggregate_timeframe, base_window_start, base_window_end)
 
-    affected_timeframes = determine_affected_timeframes(event)
+    affected_timeframes = determine_affected_timeframes(
+        timeframe=event.timeframe,
+        timestamp=event.timestamp,
+    )
     for affected_timeframe in affected_timeframes:
         if affected_timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
             refresh_continuous_aggregate_window(db, affected_timeframe, event.timestamp)
@@ -894,104 +846,6 @@ def process_indicator_event(
                 ),
             }
         )
-    return {
-        "status": "ok",
-        "coin_id": coin.id,
-        "symbol": coin.symbol,
-        "affected_timeframes": affected_timeframes,
-        "items": items,
-        "snapshots": snapshots,
-        "indicator_version": INDICATOR_VERSION,
-    }
-
-
-def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any]:
-    coin = db.get(Coin, event.coin_id)
-    if coin is None or coin.deleted_at is not None:
-        clear_new_candle_event_if_unchanged(event)
-        return {"status": "skipped", "reason": "coin_not_found", "coin_id": event.coin_id}
-
-    indicator_result = process_indicator_event(
-        db,
-        coin_id=event.coin_id,
-        timeframe=event.timeframe,
-        timestamp=event.timestamp,
-    )
-    affected_timeframes = list(indicator_result.get("affected_timeframes", []))
-    activity_metrics = get_activity_snapshot(db, coin_id=coin.id)
-    snapshots = dict(indicator_result.get("snapshots", {}))
-    for timeframe in affected_timeframes:
-        snapshot = snapshots.get(timeframe)
-        if snapshot is None:
-            continue
-        activity_bucket = activity_metrics.activity_bucket if activity_metrics is not None else None
-        last_analysis_at = activity_metrics.last_analysis_at if activity_metrics is not None else None
-        if not should_request_analysis(
-            timeframe=timeframe,
-            timestamp=snapshot.candle_close_timestamp,
-            activity_bucket=activity_bucket,
-            last_analysis_at=last_analysis_at,
-        ):
-            continue
-        mark_analysis_requested(
-            db,
-            coin_id=coin.id,
-            analysis_timestamp=snapshot.candle_close_timestamp,
-        )
-        PATTERN_ENGINE.detect_incremental(db, coin_id=coin.id, timeframe=timeframe, lookback=200)
-        build_pattern_clusters(
-            db,
-            coin_id=coin.id,
-            timeframe=timeframe,
-            candle_timestamp=snapshot.candle_close_timestamp,
-        )
-        build_hierarchy_signals(
-            db,
-            coin_id=coin.id,
-            timeframe=timeframe,
-            candle_timestamp=snapshot.candle_close_timestamp,
-        )
-        update_market_cycle(
-            db,
-            coin_id=coin.id,
-            timeframe=timeframe,
-        )
-        enrich_signal_context(
-            db,
-            coin_id=coin.id,
-            timeframe=timeframe,
-            candle_timestamp=snapshot.candle_close_timestamp,
-        )
-        evaluate_investment_decision(
-            db,
-            coin_id=coin.id,
-            timeframe=timeframe,
-            emit_event=True,
-        )
-        evaluate_final_signal(
-            db,
-            coin_id=coin.id,
-            timeframe=timeframe,
-            emit_event=True,
-        )
-        refresh_recent_signal_history(
-            db,
-            coin_id=coin.id,
-            timeframe=timeframe,
-            commit=True,
-        )
-        capture_feature_snapshot(
-            db,
-            coin_id=coin.id,
-            timeframe=timeframe,
-            timestamp=snapshot.candle_close_timestamp,
-            price_current=snapshot.price_current,
-            rsi_14=snapshot.rsi_14,
-            macd=snapshot.macd,
-            commit=True,
-        )
-
-    clear_new_candle_event_if_unchanged(event)
     return {
         "status": "ok",
         "coin_id": coin.id,

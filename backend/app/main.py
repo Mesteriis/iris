@@ -22,7 +22,7 @@ from app.services.market_sources import get_market_source_carousel
 from app.taskiq.broker import broker
 from app.taskiq.dispatcher import dispatch_task_locally
 from app.taskiq.locks import close_task_lock_client, wait_for_redis
-from app.tasks import analytics_tasks, history_tasks  # noqa: F401
+from app.tasks import history_tasks  # noqa: F401
 import app.tasks.pattern_tasks as pattern_tasks_module  # noqa: F401
 from app.services.market_data import utc_now
 

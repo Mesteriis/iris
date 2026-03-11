@@ -29,10 +29,7 @@ from app.patterns.hierarchy import build_hierarchy_signals
 from app.patterns.narrative import refresh_sector_metrics
 from app.patterns.risk import evaluate_final_signal
 from app.patterns.scheduler import get_activity_snapshot, mark_analysis_requested, should_request_analysis
-from app.services.analytics_service import (
-    determine_affected_timeframes,
-    process_indicator_event,
-)
+from app.services.analytics_service import process_indicator_event
 from app.services.feature_snapshots_service import capture_feature_snapshot
 from app.services.regime_cache import cache_regime_snapshot, read_cached_regime
 from app.services.signal_history_service import refresh_recent_signal_history
