@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Redis Streams event pipeline foundation with `iris_events`, async publisher and consumer-group worker base.
+- Integration tests for Redis Stream pipeline, worker ACK/retry and multi-worker distribution using BTC/ETH/SOL candle fixtures.
 - TimescaleDB tuning for `candles`: 30-day chunks, hash partitioning by `coin_id` and 90-day compression policy.
 - `signal_history` outcome store for evaluated signal returns and drawdowns.
 - `feature_snapshots` wide feature-vector table for ML and historical context training.
