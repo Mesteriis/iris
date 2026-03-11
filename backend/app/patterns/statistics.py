@@ -160,7 +160,6 @@ def refresh_pattern_statistics(db: Session) -> dict[str, object]:
         lifecycle_updates.append(
             {
                 "slug": entry.slug,
-                "enabled": next_state != PatternLifecycleState.DISABLED,
                 "lifecycle_state": next_state.value,
             }
         )
@@ -184,7 +183,6 @@ def refresh_pattern_statistics(db: Session) -> dict[str, object]:
         registry_row = db.get(PatternRegistry, update["slug"])
         if registry_row is None:
             continue
-        registry_row.enabled = bool(update["enabled"])
         registry_row.lifecycle_state = str(update["lifecycle_state"])
     db.commit()
     return {

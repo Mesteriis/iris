@@ -184,6 +184,10 @@ Primary endpoints:
 - `GET /signals`
 - `GET /signals/top`
 - `GET /patterns`
+- `GET /patterns/features`
+- `PATCH /patterns/features/{feature_slug}`
+- `PATCH /patterns/{slug}`
+- `GET /patterns/discovered`
 - `GET /coins/{symbol}/patterns`
 - `GET /coins/{symbol}/regime`
 - `GET /sectors`

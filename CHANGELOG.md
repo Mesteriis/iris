@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Market Narrative engine for sectors plus Market Cycle engine with stored phase/confidence per coin and timeframe.
 - Pattern Discovery engine that clusters rolling window shapes, hashes candidate structures and stores review-only rows in `discovered_patterns`.
 - New API surfaces for patterns, per-coin regimes, sector metrics, market cycles and top-ranked signals, plus dashboard/detail page updates for pattern intelligence.
+- Manual feature-flag and pattern lifecycle management via API, plus discovery review endpoint for `discovered_patterns`.
 
 ### Changed
 - Extended `signals` with `priority_score`, `context_score` and `regime_alignment`.
@@ -27,3 +28,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Context scoring now incorporates regime, sector strength and market cycle alignment, and the backend schedules periodic market structure refresh inside the embedded TaskIQ runtime.
 - Embedded TaskIQ runtime now also schedules periodic discovery refreshes without introducing any new worker container.
 - README now documents the full pattern intelligence architecture, database usage, TaskIQ jobs and frontend/API surface.
+- Nightly lifecycle refresh now updates `lifecycle_state` without overriding manual `enabled=false` switches.

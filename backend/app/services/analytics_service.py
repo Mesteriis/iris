@@ -21,6 +21,7 @@ from app.patterns.cycle import update_market_cycle
 from app.patterns.engine import PatternEngine
 from app.patterns.hierarchy import build_hierarchy_signals
 from app.patterns.regime import calculate_regime_map, primary_regime
+from app.patterns.registry import feature_enabled
 from app.services.analytics_events import NewCandleEvent, clear_new_candle_event_if_unchanged, list_new_candle_events
 from app.services.candles_service import (
     AGGREGATE_VIEW_BY_TIMEFRAME,
@@ -691,7 +692,7 @@ def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any
     snapshot_priority = [1440, 240, 60, 15]
     primary = next((snapshots[timeframe] for timeframe in snapshot_priority if timeframe in snapshots), None)
     base_snapshot = snapshots.get(base_timeframe)
-    regime_map = calculate_regime_map(snapshots, volatility=volatility)
+    regime_map = calculate_regime_map(snapshots, volatility=volatility) if feature_enabled(db, "market_regime_engine") else {}
     _upsert_coin_metrics(
         db,
         coin,

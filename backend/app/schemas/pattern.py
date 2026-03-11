@@ -29,6 +29,35 @@ class PatternRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PatternFeatureRead(BaseModel):
+    feature_slug: str
+    enabled: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PatternFeatureUpdate(BaseModel):
+    enabled: bool
+
+
+class PatternUpdate(BaseModel):
+    enabled: bool | None = None
+    lifecycle_state: str | None = None
+    cpu_cost: int | None = None
+
+
+class DiscoveredPatternRead(BaseModel):
+    structure_hash: str
+    timeframe: int
+    sample_size: int
+    avg_return: float
+    avg_drawdown: float
+    confidence: float
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class RegimeTimeframeRead(BaseModel):
     timeframe: int
     regime: str

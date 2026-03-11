@@ -8,14 +8,18 @@ from sqlalchemy.orm import Session
 
 from app.models.coin import Coin
 from app.models.coin_metrics import CoinMetrics
+from app.models.discovered_pattern import DiscoveredPattern
 from app.models.market_cycle import MarketCycle
+from app.models.pattern_feature import PatternFeature
 from app.models.pattern_registry import PatternRegistry
 from app.models.pattern_statistic import PatternStatistic
 from app.models.sector import Sector
 from app.models.sector_metric import SectorMetric
 from app.models.signal import Signal
+from app.patterns.lifecycle import PatternLifecycleState
 from app.patterns.narrative import build_sector_narratives
 from app.patterns.regime import compute_live_regimes
+from app.patterns.registry import feature_enabled
 from app.services.history_loader import get_coin_by_symbol
 
 
@@ -46,6 +50,104 @@ def list_patterns(db: Session) -> Sequence[dict[str, Any]]:
             "lifecycle_state": row.lifecycle_state,
             "created_at": row.created_at,
             "statistics": stats_by_slug.get(row.slug, []),
+        }
+        for row in rows
+    ]
+
+
+def get_pattern(db: Session, slug: str) -> dict[str, Any] | None:
+    row = db.get(PatternRegistry, slug)
+    if row is None:
+        return None
+    stats = db.scalars(
+        select(PatternStatistic)
+        .where(PatternStatistic.pattern_slug == slug)
+        .order_by(PatternStatistic.timeframe.asc())
+    ).all()
+    return {
+        "slug": row.slug,
+        "category": row.category,
+        "enabled": row.enabled,
+        "cpu_cost": row.cpu_cost,
+        "lifecycle_state": row.lifecycle_state,
+        "created_at": row.created_at,
+        "statistics": [
+            {
+                "timeframe": stat.timeframe,
+                "sample_size": stat.sample_size,
+                "success_rate": stat.success_rate,
+                "avg_return": stat.avg_return,
+                "avg_drawdown": stat.avg_drawdown,
+                "temperature": stat.temperature,
+                "updated_at": stat.updated_at,
+            }
+            for stat in stats
+        ],
+    }
+
+
+def list_pattern_features(db: Session) -> Sequence[dict[str, Any]]:
+    rows = db.scalars(select(PatternFeature).order_by(PatternFeature.feature_slug.asc())).all()
+    return [
+        {
+            "feature_slug": row.feature_slug,
+            "enabled": row.enabled,
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]
+
+
+def update_pattern_feature(db: Session, feature_slug: str, *, enabled: bool) -> dict[str, Any] | None:
+    row = db.get(PatternFeature, feature_slug)
+    if row is None:
+        return None
+    row.enabled = enabled
+    db.commit()
+    db.refresh(row)
+    return {
+        "feature_slug": row.feature_slug,
+        "enabled": row.enabled,
+        "created_at": row.created_at,
+    }
+
+
+def update_pattern(db: Session, slug: str, *, enabled: bool | None, lifecycle_state: str | None, cpu_cost: int | None) -> dict[str, Any] | None:
+    row = db.get(PatternRegistry, slug)
+    if row is None:
+        return None
+    if enabled is not None:
+        row.enabled = enabled
+        if not enabled:
+            row.lifecycle_state = PatternLifecycleState.DISABLED.value
+    if lifecycle_state is not None:
+        normalized_state = lifecycle_state.strip().upper()
+        if normalized_state not in {item.value for item in PatternLifecycleState}:
+            raise ValueError(f"Unsupported lifecycle state '{lifecycle_state}'.")
+        row.lifecycle_state = normalized_state
+    if cpu_cost is not None:
+        row.cpu_cost = max(cpu_cost, 1)
+    db.commit()
+    return get_pattern(db, slug)
+
+
+def list_discovered_patterns(db: Session, *, timeframe: int | None = None, limit: int = 200) -> Sequence[dict[str, Any]]:
+    stmt = (
+        select(DiscoveredPattern)
+        .order_by(DiscoveredPattern.confidence.desc(), DiscoveredPattern.sample_size.desc())
+        .limit(max(limit, 1))
+    )
+    if timeframe is not None:
+        stmt = stmt.where(DiscoveredPattern.timeframe == timeframe)
+    rows = db.scalars(stmt).all()
+    return [
+        {
+            "structure_hash": row.structure_hash,
+            "timeframe": row.timeframe,
+            "sample_size": row.sample_size,
+            "avg_return": row.avg_return,
+            "avg_drawdown": row.avg_drawdown,
+            "confidence": row.confidence,
         }
         for row in rows
     ]
@@ -171,11 +273,12 @@ def get_coin_regimes(db: Session, symbol: str) -> dict[str, Any] | None:
     if coin is None:
         return None
     metrics = db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin.id))
-    items = compute_live_regimes(db, coin.id)
+    regime_enabled = feature_enabled(db, "market_regime_engine")
+    items = compute_live_regimes(db, coin.id) if regime_enabled else []
     return {
         "coin_id": coin.id,
         "symbol": coin.symbol,
-        "canonical_regime": metrics.market_regime if metrics is not None else None,
+        "canonical_regime": metrics.market_regime if metrics is not None and regime_enabled else None,
         "items": [
             {
                 "timeframe": item.timeframe,

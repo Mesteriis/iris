@@ -23,7 +23,7 @@ def calculate_priority_score(
     volatility_alignment: float,
     liquidity_score: float,
 ) -> float:
-    return confidence * pattern_temperature * regime_alignment * volatility_alignment * liquidity_score
+    return max(confidence * pattern_temperature * regime_alignment * volatility_alignment * liquidity_score, 0.0)
 
 
 def _regime_alignment(regime: str | None, bias: int) -> float:
@@ -145,7 +145,10 @@ def enrich_signal_context(
         cycle_alignment = _cycle_alignment(cycle, bias)
         temperature = _pattern_temperature(db, slug, signal.timeframe)
         cluster_bonus = 1.15 if signal.candle_timestamp in cluster_timestamps and is_pattern_signal(signal.signal_type) else 1.0
-        context_score = temperature * volatility_alignment * liquidity_score * cluster_bonus * sector_alignment * cycle_alignment
+        context_score = max(
+            temperature * volatility_alignment * liquidity_score * cluster_bonus * sector_alignment * cycle_alignment,
+            0.0,
+        )
         signal.regime_alignment = regime_alignment
         signal.context_score = context_score
         signal.priority_score = calculate_priority_score(
