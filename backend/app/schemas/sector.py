@@ -34,6 +34,7 @@ class SectorNarrativeRead(BaseModel):
     top_sector: str | None = None
     rotation_state: str | None = None
     btc_dominance: float | None = None
+    capital_wave: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

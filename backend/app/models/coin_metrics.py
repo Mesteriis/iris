@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, desc, func
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, JSON, String, desc, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -47,6 +47,7 @@ class CoinMetrics(Base):
     trend: Mapped[str | None] = mapped_column(String(16), nullable=True)
     trend_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     market_regime: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    market_regime_details: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     indicator_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

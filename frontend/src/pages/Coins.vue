@@ -385,7 +385,12 @@ async function runCoinJob(symbol: string) {
           <li v-for="narrative in coinStore.sectorNarratives" :key="narrative.timeframe">
             <div>
               <strong>{{ timeframeToLabel(narrative.timeframe) }}</strong>
-              <p>{{ narrative.top_sector || "No leader" }}</p>
+              <p>
+                {{ narrative.top_sector || "No leader" }}
+                <template v-if="narrative.capital_wave">
+                  / wave {{ narrative.capital_wave }}
+                </template>
+              </p>
             </div>
             <div class="detail-signal-list__meta">
               <span>{{ narrative.rotation_state || "stable" }}</span>

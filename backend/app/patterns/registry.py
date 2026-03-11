@@ -29,33 +29,29 @@ class PatternCatalogEntry:
 
 
 PATTERN_CATALOG: list[PatternCatalogEntry] = [
-    PatternCatalogEntry("head_shoulders", "structural", 4),
-    PatternCatalogEntry("inverse_head_shoulders", "structural", 4),
-    PatternCatalogEntry("double_top", "structural", 2),
-    PatternCatalogEntry("double_bottom", "structural", 2),
-    PatternCatalogEntry("triple_top", "structural", 3),
-    PatternCatalogEntry("triple_bottom", "structural", 3),
-    PatternCatalogEntry("ascending_triangle", "structural", 3),
-    PatternCatalogEntry("descending_triangle", "structural", 3),
-    PatternCatalogEntry("symmetrical_triangle", "structural", 3),
-    PatternCatalogEntry("rising_wedge", "structural", 3),
-    PatternCatalogEntry("falling_wedge", "structural", 3),
-    PatternCatalogEntry("bull_flag", "continuation", 2),
-    PatternCatalogEntry("bear_flag", "continuation", 2),
-    PatternCatalogEntry("pennant", "continuation", 2),
-    PatternCatalogEntry("cup_and_handle", "continuation", 4),
-    PatternCatalogEntry("breakout_retest", "continuation", 2),
-    PatternCatalogEntry("consolidation_breakout", "continuation", 2),
-    PatternCatalogEntry("rsi_divergence", "momentum", 2),
-    PatternCatalogEntry("macd_cross", "momentum", 1),
-    PatternCatalogEntry("macd_divergence", "momentum", 2),
-    PatternCatalogEntry("momentum_exhaustion", "momentum", 2),
-    PatternCatalogEntry("bollinger_squeeze", "volatility", 1),
-    PatternCatalogEntry("bollinger_expansion", "volatility", 1),
-    PatternCatalogEntry("atr_spike", "volatility", 1),
-    PatternCatalogEntry("volume_spike", "volume", 1),
-    PatternCatalogEntry("volume_climax", "volume", 2),
-    PatternCatalogEntry("volume_divergence", "volume", 2),
+    # synchronized with live detectors so registry/statistics cover the full catalog
+    *[
+        PatternCatalogEntry(
+            detector.slug,
+            detector.category,
+            {
+                "head_shoulders": 4,
+                "inverse_head_shoulders": 4,
+                "cup_and_handle": 4,
+                "high_tight_flag": 3,
+            }.get(
+                detector.slug,
+                {
+                    "structural": 3,
+                    "continuation": 2,
+                    "momentum": 2,
+                    "volatility": 1,
+                    "volume": 2,
+                }.get(detector.category, 1),
+            ),
+        )
+        for detector in build_pattern_detectors()
+    ],
 ]
 
 

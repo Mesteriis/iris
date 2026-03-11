@@ -71,7 +71,8 @@ export interface CoinMetrics {
   market_cap: number | null;
   trend: "bullish" | "bearish" | "sideways" | null;
   trend_score: number | null;
-  market_regime: "bull_market" | "bear_market" | "accumulation" | "distribution" | null;
+  market_regime: "bull_trend" | "bear_trend" | "sideways_range" | "high_volatility" | "low_volatility" | null;
+  market_regime_details: Record<string, RegimeSnapshot> | null;
   indicator_version: number | null;
   updated_at: string | null;
 }
@@ -169,6 +170,7 @@ export interface SectorNarrative {
   top_sector: string | null;
   rotation_state: string | null;
   btc_dominance: number | null;
+  capital_wave: string | null;
 }
 
 export interface SectorMetricsResponse {

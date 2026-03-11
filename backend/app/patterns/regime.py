@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from app.patterns.utils import current_indicator_map
 from app.services.candles_service import fetch_candle_points
@@ -86,6 +87,37 @@ def primary_regime(regimes: dict[int, RegimeRead]) -> str | None:
         if timeframe in regimes:
             return regimes[timeframe].regime
     return None
+
+
+def serialize_regime_map(regimes: dict[int, RegimeRead]) -> dict[str, dict[str, float | str]]:
+    return {
+        str(timeframe): {
+            "regime": item.regime,
+            "confidence": item.confidence,
+        }
+        for timeframe, item in sorted(regimes.items())
+    }
+
+
+def read_regime_details(regime_details: dict[str, Any] | None, timeframe: int) -> RegimeRead | None:
+    if not regime_details:
+        return None
+    payload = regime_details.get(str(timeframe))
+    if not isinstance(payload, dict):
+        return None
+    regime = payload.get("regime")
+    confidence = payload.get("confidence")
+    if not isinstance(regime, str):
+        return None
+    try:
+        normalized_confidence = float(confidence)
+    except (TypeError, ValueError):
+        normalized_confidence = 0.0
+    return RegimeRead(
+        timeframe=timeframe,
+        regime=regime,
+        confidence=normalized_confidence,
+    )
 
 
 def compute_live_regimes(db, coin_id: int) -> list[RegimeRead]:

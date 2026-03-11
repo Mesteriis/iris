@@ -20,7 +20,7 @@ from app.patterns.context import enrich_signal_context
 from app.patterns.cycle import update_market_cycle
 from app.patterns.engine import PatternEngine
 from app.patterns.hierarchy import build_hierarchy_signals
-from app.patterns.regime import calculate_regime_map, primary_regime
+from app.patterns.regime import calculate_regime_map, primary_regime, serialize_regime_map
 from app.patterns.registry import feature_enabled
 from app.services.analytics_events import NewCandleEvent, clear_new_candle_event_if_unchanged, list_new_candle_events
 from app.services.candles_service import (
@@ -163,6 +163,7 @@ def list_coin_metrics(db: Session) -> Sequence[dict[str, Any]]:
             CoinMetrics.trend,
             CoinMetrics.trend_score,
             CoinMetrics.market_regime,
+            CoinMetrics.market_regime_details,
             CoinMetrics.indicator_version,
             CoinMetrics.updated_at,
         )
@@ -606,6 +607,7 @@ def _upsert_coin_metrics(
     volatility: float | None,
     refresh_market_cap: bool,
     market_regime: str | None,
+    market_regime_details: dict[str, object] | None,
 ) -> None:
     ensure_coin_metrics_row(db, coin.id)
 
@@ -643,6 +645,7 @@ def _upsert_coin_metrics(
         "trend": trend,
         "trend_score": trend_score,
         "market_regime": market_regime or _compute_market_regime(primary, trend, volume_change_24h),
+        "market_regime_details": market_regime_details,
         "indicator_version": INDICATOR_VERSION,
         "updated_at": utc_now(),
     }
@@ -704,6 +707,7 @@ def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any
         volatility=volatility,
         refresh_market_cap=240 in affected_timeframes or 1440 in affected_timeframes,
         market_regime=primary_regime(regime_map),
+        market_regime_details=serialize_regime_map(regime_map) if regime_map else None,
     )
     _store_indicator_cache(
         db,

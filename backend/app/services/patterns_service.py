@@ -18,7 +18,7 @@ from app.models.sector_metric import SectorMetric
 from app.models.signal import Signal
 from app.patterns.lifecycle import PatternLifecycleState
 from app.patterns.narrative import build_sector_narratives
-from app.patterns.regime import compute_live_regimes
+from app.patterns.regime import RegimeRead, compute_live_regimes, read_regime_details
 from app.patterns.registry import feature_enabled
 from app.services.history_loader import get_coin_by_symbol
 
@@ -175,28 +175,31 @@ def _cluster_membership_map(db: Session, rows: Sequence[object]) -> dict[tuple[i
 
 def _serialize_signal_rows(db: Session, rows: Sequence[object]) -> list[dict[str, Any]]:
     membership = _cluster_membership_map(db, rows)
-    return [
-        {
-            "id": int(row.id),
-            "coin_id": int(row.coin_id),
-            "symbol": str(row.symbol),
-            "name": str(row.name),
-            "sector": row.sector,
-            "timeframe": int(row.timeframe),
-            "signal_type": str(row.signal_type),
-            "confidence": float(row.confidence),
-            "priority_score": float(row.priority_score or 0.0),
-            "context_score": float(row.context_score or 0.0),
-            "regime_alignment": float(row.regime_alignment or 0.0),
-            "candle_timestamp": row.candle_timestamp,
-            "created_at": row.created_at,
-            "market_regime": row.market_regime,
-            "cycle_phase": row.cycle_phase,
-            "cycle_confidence": float(row.cycle_confidence) if row.cycle_confidence is not None else None,
-            "cluster_membership": membership.get((int(row.coin_id), int(row.timeframe), row.candle_timestamp), []),
-        }
-        for row in rows
-    ]
+    payload: list[dict[str, Any]] = []
+    for row in rows:
+        regime_snapshot = read_regime_details(row.market_regime_details, int(row.timeframe))
+        payload.append(
+            {
+                "id": int(row.id),
+                "coin_id": int(row.coin_id),
+                "symbol": str(row.symbol),
+                "name": str(row.name),
+                "sector": row.sector,
+                "timeframe": int(row.timeframe),
+                "signal_type": str(row.signal_type),
+                "confidence": float(row.confidence),
+                "priority_score": float(row.priority_score or 0.0),
+                "context_score": float(row.context_score or 0.0),
+                "regime_alignment": float(row.regime_alignment or 0.0),
+                "candle_timestamp": row.candle_timestamp,
+                "created_at": row.created_at,
+                "market_regime": regime_snapshot.regime if regime_snapshot is not None else row.market_regime,
+                "cycle_phase": row.cycle_phase,
+                "cycle_confidence": float(row.cycle_confidence) if row.cycle_confidence is not None else None,
+                "cluster_membership": membership.get((int(row.coin_id), int(row.timeframe), row.candle_timestamp), []),
+            }
+        )
+    return payload
 
 
 def _signal_select():
@@ -216,6 +219,7 @@ def _signal_select():
             Signal.candle_timestamp,
             Signal.created_at,
             CoinMetrics.market_regime,
+            CoinMetrics.market_regime_details,
             MarketCycle.cycle_phase,
             MarketCycle.confidence.label("cycle_confidence"),
         )
@@ -274,7 +278,17 @@ def get_coin_regimes(db: Session, symbol: str) -> dict[str, Any] | None:
         return None
     metrics = db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin.id))
     regime_enabled = feature_enabled(db, "market_regime_engine")
-    items = compute_live_regimes(db, coin.id) if regime_enabled else []
+    items: list[RegimeRead]
+    if not regime_enabled:
+        items = []
+    elif metrics is not None and metrics.market_regime_details:
+        items = [
+            item
+            for timeframe in (15, 60, 240, 1440)
+            if (item := read_regime_details(metrics.market_regime_details, timeframe)) is not None
+        ]
+    else:
+        items = compute_live_regimes(db, coin.id)
     return {
         "coin_id": coin.id,
         "symbol": coin.symbol,
@@ -333,6 +347,7 @@ def list_sector_metrics(db: Session, *, timeframe: int | None = None) -> dict[st
                 "top_sector": item.top_sector,
                 "rotation_state": item.rotation_state,
                 "btc_dominance": item.btc_dominance,
+                "capital_wave": item.capital_wave,
             }
             for item in build_sector_narratives(db)
             if timeframe is None or item.timeframe == timeframe

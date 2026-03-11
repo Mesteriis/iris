@@ -34,6 +34,7 @@ class CoinMetricsRead(BaseModel):
     trend: str | None = None
     trend_score: int | None = None
     market_regime: str | None = None
+    market_regime_details: dict[str, dict[str, float | str]] | None = None
     indicator_version: int
     updated_at: datetime
 

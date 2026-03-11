@@ -30,7 +30,7 @@ IRIS uses the existing schema instead of duplicating market history:
 - `indicator_cache`
   Stores computed indicators per coin, timeframe and timestamp.
 - `coin_metrics`
-  Stores current aggregate market state per coin. `market_regime` now holds the canonical regime used by the UI and contextual scoring.
+  Stores current aggregate market state per coin. `market_regime` holds the canonical regime and `market_regime_details` stores persisted per-timeframe regime snapshots used by signal context and `/coins/{symbol}/regime`.
 - `signals`
   Stores classic analytics signals, pattern signals, cluster signals and hierarchy signals.
 - `pattern_features`
@@ -79,18 +79,18 @@ The pattern subsystem lives under `backend/app/patterns` and is integrated into 
 
 ### Detector families
 
-Implemented detector set:
+Implemented detector catalog: 87 pattern detectors.
 
 - Structural:
-  `head_shoulders`, `inverse_head_shoulders`, `double_top`, `double_bottom`, `triple_top`, `triple_bottom`, `ascending_triangle`, `descending_triangle`, `symmetrical_triangle`, `rising_wedge`, `falling_wedge`
+  `head_shoulders`, `inverse_head_shoulders`, `double_top`, `double_bottom`, `triple_top`, `triple_bottom`, `ascending_triangle`, `descending_triangle`, `symmetrical_triangle`, `rising_wedge`, `falling_wedge`, `rectangle_top`, `rectangle_bottom`, `broadening_top`, `broadening_bottom`, `expanding_triangle`, `descending_channel_breakout`, `ascending_channel_breakdown`, `rounded_bottom`, `rounded_top`, `diamond_bottom`, `diamond_top`, `flat_base`
 - Continuation:
-  `bull_flag`, `bear_flag`, `pennant`, `cup_and_handle`, `breakout_retest`, `consolidation_breakout`
+  `bull_flag`, `bear_flag`, `pennant`, `cup_and_handle`, `breakout_retest`, `consolidation_breakout`, `high_tight_flag`, `falling_channel_breakout`, `rising_channel_breakdown`, `measured_move_bullish`, `measured_move_bearish`, `base_breakout`, `volatility_contraction_breakout`, `volatility_contraction_breakdown`, `pullback_continuation_bullish`, `pullback_continuation_bearish`, `squeeze_breakout`, `trend_pause_breakout`, `handle_breakout`, `stair_step_continuation`
 - Momentum:
-  `rsi_divergence`, `macd_cross`, `macd_divergence`, `momentum_exhaustion`
+  `rsi_divergence`, `macd_cross`, `macd_divergence`, `momentum_exhaustion`, `rsi_reclaim`, `rsi_rejection`, `rsi_failure_swing_bullish`, `rsi_failure_swing_bearish`, `macd_zero_cross_bullish`, `macd_zero_cross_bearish`, `macd_histogram_expansion_bullish`, `macd_histogram_expansion_bearish`, `trend_acceleration`, `trend_deceleration`
 - Volatility:
-  `bollinger_squeeze`, `bollinger_expansion`, `atr_spike`
+  `bollinger_squeeze`, `bollinger_expansion`, `atr_spike`, `volatility_compression`, `volatility_expansion_breakout`, `atr_compression`, `atr_release`, `narrow_range_breakout`, `band_walk_bullish`, `band_walk_bearish`, `mean_reversion_snap`, `volatility_reversal_bullish`, `volatility_reversal_bearish`
 - Volume:
-  `volume_spike`, `volume_climax`, `volume_divergence`
+  `volume_spike`, `volume_climax`, `volume_divergence`, `volume_dry_up`, `volume_breakout_confirmation`, `accumulation_volume`, `distribution_volume`, `churn_bar`, `effort_result_divergence_bullish`, `effort_result_divergence_bearish`, `relative_volume_breakout`, `volume_follow_through_bullish`, `volume_follow_through_bearish`, `buying_climax`, `selling_climax`, `volume_trend_confirmation_bullish`, `volume_trend_confirmation_bearish`
 
 Signals use `signal_type` values such as:
 
@@ -145,7 +145,7 @@ Regimes:
 - `high_volatility`
 - `low_volatility`
 
-The backend stores the canonical regime in `coin_metrics.market_regime` and exposes per-timeframe regime snapshots through the API.
+The backend stores the canonical regime in `coin_metrics.market_regime`, persists per-timeframe snapshots in `coin_metrics.market_regime_details`, and exposes those snapshots through the API.
 
 ### Market Narrative Engine
 
@@ -156,7 +156,7 @@ The sector layer reuses the current `theme` taxonomy by mapping it into `sectors
 - `capital_flow`
 - `volatility`
 
-Narratives expose BTC dominance bias and sector leadership state for the dashboard.
+Narratives expose BTC dominance bias, sector leadership state and capital-wave rotation (`btc`, `large_caps`, `sector_leaders`, `mid_caps`, `micro_caps`) for the dashboard.
 
 ### Market Cycle Engine
 
@@ -203,6 +203,7 @@ The frontend uses these endpoints to show:
 - market regime
 - cycle phase
 - sector rotation
+- capital wave narrative
 - pattern history
 - discovery candidates for manual review
 

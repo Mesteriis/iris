@@ -12,6 +12,7 @@ from app.models.market_cycle import MarketCycle
 from app.models.pattern_statistic import PatternStatistic
 from app.models.sector_metric import SectorMetric
 from app.models.signal import Signal
+from app.patterns.regime import read_regime_details
 from app.patterns.semantics import is_cluster_signal, is_pattern_signal, pattern_bias, slug_from_signal_type
 from app.services.market_data import ensure_utc, utc_now
 
@@ -108,6 +109,13 @@ def _pattern_temperature(db: Session, slug: str | None, timeframe: int) -> float
     return float(temperature) if temperature is not None and temperature != 0 else 1.0
 
 
+def _signal_regime(metrics: CoinMetrics | None, timeframe: int) -> str | None:
+    if metrics is None:
+        return None
+    detailed = read_regime_details(metrics.market_regime_details, timeframe)
+    return detailed.regime if detailed is not None else metrics.market_regime
+
+
 def enrich_signal_context(
     db: Session,
     *,
@@ -140,7 +148,7 @@ def enrich_signal_context(
     for signal in signals:
         slug = slug_from_signal_type(signal.signal_type)
         bias = pattern_bias(slug or signal.signal_type, fallback_price_delta=signal.confidence - 0.5)
-        regime_alignment = _regime_alignment(metrics.market_regime if metrics is not None else None, bias)
+        regime_alignment = _regime_alignment(_signal_regime(metrics, signal.timeframe), bias)
         volatility_alignment = _volatility_alignment(signal.signal_type, metrics)
         liquidity_score = _liquidity_score(metrics)
         sector_alignment = _sector_alignment(sector_metric, bias)

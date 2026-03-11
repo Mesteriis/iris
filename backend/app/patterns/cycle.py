@@ -9,6 +9,7 @@ from app.models.coin_metrics import CoinMetrics
 from app.models.market_cycle import MarketCycle
 from app.models.sector_metric import SectorMetric
 from app.models.signal import Signal
+from app.patterns.regime import read_regime_details
 from app.services.market_data import utc_now
 
 MARKET_CYCLE_PHASES = [
@@ -90,9 +91,10 @@ def update_market_cycle(
     sector_metric = None
     if coin.sector_id is not None:
         sector_metric = db.get(SectorMetric, (coin.sector_id, timeframe))
+    regime_snapshot = read_regime_details(metrics.market_regime_details, timeframe)
     phase, confidence = _detect_cycle_phase(
         trend_score=metrics.trend_score,
-        regime=metrics.market_regime,
+        regime=regime_snapshot.regime if regime_snapshot is not None else metrics.market_regime,
         volatility=metrics.volatility,
         price_current=metrics.price_current,
         pattern_density=pattern_density,

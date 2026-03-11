@@ -19,6 +19,13 @@ ROTATION_STATES = [
     "btc_dominance_falling",
     "sector_leadership_change",
 ]
+CAPITAL_WAVES = [
+    "btc",
+    "large_caps",
+    "sector_leaders",
+    "mid_caps",
+    "micro_caps",
+]
 
 
 @dataclass(slots=True, frozen=True)
@@ -27,6 +34,7 @@ class SectorNarrative:
     top_sector: str | None
     rotation_state: str | None
     btc_dominance: float | None
+    capital_wave: str | None
 
 
 def _coin_bar_return(db: Session, coin_id: int, timeframe: int) -> tuple[float | None, float | None]:
@@ -40,6 +48,24 @@ def _coin_bar_return(db: Session, coin_id: int, timeframe: int) -> tuple[float |
     mean_close = sum(closes) / len(closes)
     volatility = (sum((value - mean_close) ** 2 for value in closes) / len(closes)) ** 0.5 if closes else 0.0
     return change, (volatility / current if current else 0.0)
+
+
+def _capital_wave_bucket(
+    coin: Coin,
+    metrics: CoinMetrics | None,
+    *,
+    top_sector_id: int | None,
+) -> str:
+    market_cap = float(metrics.market_cap or 0.0) if metrics is not None else 0.0
+    if coin.symbol == "BTCUSD":
+        return "btc"
+    if market_cap >= 15_000_000_000:
+        return "large_caps"
+    if top_sector_id is not None and coin.sector_id == top_sector_id:
+        return "sector_leaders"
+    if market_cap >= 1_000_000_000:
+        return "mid_caps"
+    return "micro_caps"
 
 
 def refresh_sector_metrics(db: Session, *, timeframe: int | None = None) -> dict[str, object]:
@@ -132,10 +158,21 @@ def build_sector_narratives(db: Session) -> list[SectorNarrative]:
     ).all()
     total_market_cap = sum(float(value or 0.0) for value in market_caps)
     btc_dominance = (float(btc_metrics.market_cap or 0.0) / total_market_cap) if btc_metrics is not None and total_market_cap > 0 else None
+    crypto_coins = db.scalars(
+        select(Coin)
+        .where(Coin.asset_type == "crypto", Coin.enabled.is_(True), Coin.deleted_at.is_(None))
+        .order_by(Coin.sort_order.asc(), Coin.symbol.asc())
+    ).all()
+    metrics_by_coin = {
+        item.coin_id: item
+        for item in db.scalars(select(CoinMetrics).where(CoinMetrics.coin_id.in_([coin.id for coin in crypto_coins]))).all()
+    } if crypto_coins else {}
 
     narratives: list[SectorNarrative] = []
     for timeframe, items in by_timeframe.items():
-        top_sector = next((item.sector.name for item in items if item.sector is not None), None)
+        leader = next((item for item in items if item.sector is not None), None)
+        top_sector = leader.sector.name if leader is not None and leader.sector is not None else None
+        top_sector_id = int(leader.sector_id) if leader is not None else None
         if btc_dominance is None:
             rotation_state = None
         elif btc_dominance >= 0.45 and (btc_metrics.price_change_24h or 0.0) >= 0:
@@ -144,12 +181,29 @@ def build_sector_narratives(db: Session) -> list[SectorNarrative]:
             rotation_state = "btc_dominance_falling"
         else:
             rotation_state = "sector_leadership_change" if top_sector is not None else None
+        bucket_scores: dict[str, list[float]] = defaultdict(list)
+        for coin in crypto_coins:
+            metrics_row = metrics_by_coin.get(coin.id)
+            price_change, _ = _coin_bar_return(db, coin.id, timeframe)
+            if price_change is None:
+                continue
+            bucket = _capital_wave_bucket(coin, metrics_row, top_sector_id=top_sector_id)
+            market_cap_weight = min(float(metrics_row.market_cap or 0.0) / 25_000_000_000, 2.0) if metrics_row is not None else 0.0
+            volume_flow = float(metrics_row.volume_change_24h or 0.0) / 100 if metrics_row is not None else 0.0
+            bucket_scores[bucket].append(price_change + volume_flow + (market_cap_weight * price_change))
+        capital_wave = None
+        if bucket_scores:
+            capital_wave = max(
+                CAPITAL_WAVES,
+                key=lambda bucket: sum(bucket_scores.get(bucket, [])) / len(bucket_scores.get(bucket, [1e-9])),
+            )
         narratives.append(
             SectorNarrative(
                 timeframe=timeframe,
                 top_sector=top_sector,
                 rotation_state=rotation_state,
                 btc_dominance=btc_dominance,
+                capital_wave=capital_wave,
             )
         )
     return narratives
