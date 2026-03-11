@@ -15,6 +15,7 @@ from app.models.signal import Signal
 from app.patterns.regime import read_regime_details
 from app.patterns.semantics import is_cluster_signal, is_pattern_signal, pattern_bias, slug_from_signal_type
 from app.services.market_data import ensure_utc, utc_now
+from app.services.regime_cache import read_cached_regime
 
 
 def calculate_priority_score(
@@ -110,6 +111,10 @@ def _pattern_temperature(db: Session, slug: str | None, timeframe: int) -> float
 
 
 def _signal_regime(metrics: CoinMetrics | None, timeframe: int) -> str | None:
+    if metrics is not None:
+        cached = read_cached_regime(coin_id=metrics.coin_id, timeframe=timeframe)
+        if cached is not None:
+            return cached.regime
     if metrics is None:
         return None
     detailed = read_regime_details(metrics.market_regime_details, timeframe)

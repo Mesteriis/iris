@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.models.coin import Coin
 from app.models.signal import Signal
 from app.patterns.base import PatternDetection, PatternDetector
+from app.patterns.pattern_context import apply_pattern_context, dependencies_satisfied
 from app.patterns.registry import feature_enabled, load_active_detectors
 from app.patterns.utils import current_indicator_map
 from app.services.candles_service import CandlePoint
@@ -31,12 +32,23 @@ class PatternEngine:
         indicators: dict[str, float | None],
         detectors: Sequence[PatternDetector],
         timeframe: int,
+        regime: str | None = None,
     ) -> list[PatternDetection]:
         detected: list[PatternDetection] = []
         for detector in detectors:
             if not detector.enabled or timeframe not in detector.supported_timeframes:
                 continue
-            detected.extend(detector.detect(candles, indicators))
+            if not dependencies_satisfied(detector, indicators):
+                continue
+            for detection in detector.detect(candles, indicators):
+                adjusted = apply_pattern_context(
+                    detection=detection,
+                    detector=detector,
+                    indicators=indicators,
+                    regime=regime,
+                )
+                if adjusted is not None:
+                    detected.append(adjusted)
         return detected
 
     def _insert_detections(
@@ -80,6 +92,7 @@ class PatternEngine:
         coin_id: int,
         timeframe: int,
         lookback: int = 200,
+        regime: str | None = None,
     ) -> dict[str, object]:
         if not feature_enabled(db, "pattern_detection"):
             return {"status": "skipped", "reason": "pattern_detection_disabled", "coin_id": coin_id, "timeframe": timeframe}
@@ -95,6 +108,7 @@ class PatternEngine:
             indicators=indicators,
             detectors=detectors,
             timeframe=timeframe,
+            regime=regime,
         )
         created = self._insert_detections(db, coin_id=coin_id, timeframe=timeframe, detections=detections)
         return {
@@ -149,6 +163,7 @@ class PatternEngine:
                     indicators=indicators,
                     detectors=detectors,
                     timeframe=timeframe,
+                    regime=None,
                 )
                 detections.extend(window_detections)
 

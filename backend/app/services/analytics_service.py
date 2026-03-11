@@ -24,6 +24,14 @@ from app.patterns.hierarchy import build_hierarchy_signals
 from app.patterns.regime import calculate_regime_map, primary_regime, serialize_regime_map
 from app.patterns.registry import feature_enabled
 from app.patterns.risk import evaluate_final_signal
+from app.patterns.scheduler import (
+    analysis_priority_for_bucket,
+    assign_activity_bucket,
+    calculate_activity_score,
+    get_activity_snapshot,
+    mark_analysis_requested,
+    should_request_analysis,
+)
 from app.services.analytics_events import NewCandleEvent, clear_new_candle_event_if_unchanged, list_new_candle_events
 from app.services.candles_service import (
     AGGREGATE_VIEW_BY_TIMEFRAME,
@@ -82,6 +90,7 @@ class TimeframeSnapshot:
     price_current: float
     ema_20: float | None
     ema_50: float | None
+    ema_200: float | None
     sma_50: float | None
     sma_200: float | None
     rsi_14: float | None
@@ -89,10 +98,12 @@ class TimeframeSnapshot:
     macd_signal: float | None
     macd_histogram: float | None
     atr_14: float | None
+    prev_atr_14: float | None
     bb_upper: float | None
     bb_middle: float | None
     bb_lower: float | None
     bb_width: float | None
+    prev_bb_width: float | None
     adx_14: float | None
     current_volume: float | None
     average_volume_20: float | None
@@ -166,6 +177,10 @@ def list_coin_metrics(db: Session) -> Sequence[dict[str, Any]]:
             CoinMetrics.market_cap,
             CoinMetrics.trend,
             CoinMetrics.trend_score,
+            CoinMetrics.activity_score,
+            CoinMetrics.activity_bucket,
+            CoinMetrics.analysis_priority,
+            CoinMetrics.last_analysis_at,
             CoinMetrics.market_regime,
             CoinMetrics.market_regime_details,
             CoinMetrics.indicator_version,
@@ -298,6 +313,7 @@ def _calculate_snapshot(
 
     ema_20_series = ema_series(closes, 20)
     ema_50_series = ema_series(closes, 50)
+    ema_200_series = ema_series(closes, 200)
     sma_50_series = sma_series(closes, 50)
     sma_200_series = sma_series(closes, 200)
     rsi_14_series = rsi_series(closes, 14)
@@ -309,6 +325,7 @@ def _calculate_snapshot(
     price_current = closes[-1]
     ema_20, prev_ema_20 = _series_value_pair(ema_20_series)
     ema_50, prev_ema_50 = _series_value_pair(ema_50_series)
+    ema_200, _ = _series_value_pair(ema_200_series)
     sma_50, prev_sma_50 = _series_value_pair(sma_50_series)
     sma_200, prev_sma_200 = _series_value_pair(sma_200_series)
     rsi_14, prev_rsi_14 = _series_value_pair(rsi_14_series)
@@ -316,10 +333,12 @@ def _calculate_snapshot(
     macd_signal, _ = _series_value_pair(macd_signal_line)
     macd_histogram_value, prev_macd_histogram = _series_value_pair(macd_histogram)
     atr_14, _ = _series_value_pair(atr_14_series)
+    prev_atr_14 = atr_14_series[-2] if len(atr_14_series) > 1 else None
     bb_upper, _ = _series_value_pair(bb_upper_series)
     bb_middle, _ = _series_value_pair(bb_middle_series)
     bb_lower, _ = _series_value_pair(bb_lower_series)
     bb_width, _ = _series_value_pair(bb_width_series)
+    prev_bb_width = bb_width_series[-2] if len(bb_width_series) > 1 else None
     adx_14, _ = _series_value_pair(adx_14_series)
 
     average_volume_20 = sum(volumes[-20:]) / min(len(volumes), 20) if volumes else None
@@ -336,6 +355,7 @@ def _calculate_snapshot(
         price_current=price_current,
         ema_20=ema_20,
         ema_50=ema_50,
+        ema_200=ema_200,
         sma_50=sma_50,
         sma_200=sma_200,
         rsi_14=rsi_14,
@@ -343,10 +363,12 @@ def _calculate_snapshot(
         macd_signal=macd_signal,
         macd_histogram=macd_histogram_value,
         atr_14=atr_14,
+        prev_atr_14=prev_atr_14,
         bb_upper=bb_upper,
         bb_middle=bb_middle,
         bb_lower=bb_lower,
         bb_width=bb_width,
+        prev_bb_width=prev_bb_width,
         adx_14=adx_14,
         current_volume=volumes[-1] if volumes else None,
         average_volume_20=average_volume_20,
@@ -464,6 +486,24 @@ def _compute_trend_score(primary: TimeframeSnapshot, volume_change_24h: float | 
         elif volume_change_24h < -10:
             score -= 10
     return max(0, min(100, int(round(score))))
+
+
+def _activity_fields(
+    *,
+    price_change_24h: float | None,
+    volatility: float | None,
+    volume_change_24h: float | None,
+    price_current: float | None,
+) -> tuple[float, str, int]:
+    activity_score = calculate_activity_score(
+        price_change_24h=price_change_24h,
+        volatility=volatility,
+        volume_change_24h=volume_change_24h,
+        price_current=price_current,
+    )
+    activity_bucket = assign_activity_bucket(activity_score)
+    analysis_priority = analysis_priority_for_bucket(activity_bucket)
+    return activity_score, activity_bucket, analysis_priority
 
 
 def _compute_market_regime(primary: TimeframeSnapshot, trend: str, volume_change_24h: float | None) -> str | None:
@@ -659,22 +699,36 @@ def _upsert_coin_metrics(
     refresh_market_cap: bool,
     market_regime: str | None,
     market_regime_details: dict[str, object] | None,
-) -> None:
+) -> dict[str, object]:
     ensure_coin_metrics_row(db, coin.id)
 
     if primary is None:
-        return
+        return {
+            "coin_id": coin.id,
+            "market_regime": market_regime,
+            "market_regime_details": market_regime_details,
+        }
 
     trend = _compute_trend(primary)
     trend_score = _compute_trend_score(primary, volume_change_24h)
     base_candles = fetch_candle_points(db, coin.id, base_timeframe, 800)
     existing_market_cap = db.scalar(select(CoinMetrics.market_cap).where(CoinMetrics.coin_id == coin.id))
+    price_current = base_snapshot.price_current if base_snapshot is not None else primary.price_current
+    price_change_1h = _compute_price_change(base_candles, timedelta(hours=1))
+    price_change_24h = _compute_price_change(base_candles, timedelta(hours=24))
+    price_change_7d = _compute_price_change(base_candles, timedelta(days=7))
+    activity_score, activity_bucket, analysis_priority = _activity_fields(
+        price_change_24h=price_change_24h,
+        volatility=volatility,
+        volume_change_24h=volume_change_24h,
+        price_current=price_current,
+    )
     payload = {
         "coin_id": coin.id,
-        "price_current": base_snapshot.price_current if base_snapshot is not None else primary.price_current,
-        "price_change_1h": _compute_price_change(base_candles, timedelta(hours=1)),
-        "price_change_24h": _compute_price_change(base_candles, timedelta(hours=24)),
-        "price_change_7d": _compute_price_change(base_candles, timedelta(days=7)),
+        "price_current": price_current,
+        "price_change_1h": price_change_1h,
+        "price_change_24h": price_change_24h,
+        "price_change_7d": price_change_7d,
         "ema_20": primary.ema_20,
         "ema_50": primary.ema_50,
         "sma_50": primary.sma_50,
@@ -695,6 +749,9 @@ def _upsert_coin_metrics(
         "market_cap": _fetch_market_cap(coin.symbol) if refresh_market_cap or existing_market_cap is None else existing_market_cap,
         "trend": trend,
         "trend_score": trend_score,
+        "activity_score": activity_score,
+        "activity_bucket": activity_bucket,
+        "analysis_priority": analysis_priority,
         "market_regime": market_regime or _compute_market_regime(primary, trend, volume_change_24h),
         "market_regime_details": market_regime_details,
         "indicator_version": INDICATOR_VERSION,
@@ -707,6 +764,17 @@ def _upsert_coin_metrics(
     )
     db.execute(stmt)
     db.commit()
+    return {
+        "coin_id": coin.id,
+        "activity_score": activity_score,
+        "activity_bucket": activity_bucket,
+        "analysis_priority": analysis_priority,
+        "market_regime": payload["market_regime"],
+        "market_regime_details": market_regime_details,
+        "price_change_24h": price_change_24h,
+        "price_change_7d": price_change_7d,
+        "volatility": volatility,
+    }
 
 
 def process_indicator_event(
@@ -755,8 +823,13 @@ def process_indicator_event(
 
     primary = _select_primary_snapshot(snapshots)
     base_snapshot = snapshots.get(base_timeframe)
-    regime_map = calculate_regime_map(snapshots, volatility=volatility) if feature_enabled(db, "market_regime_engine") else {}
-    _upsert_coin_metrics(
+    price_change_7d = _compute_price_change(base_candles, timedelta(days=7))
+    regime_map = (
+        calculate_regime_map(snapshots, volatility=volatility, price_change_7d=price_change_7d)
+        if feature_enabled(db, "market_regime_engine")
+        else {}
+    )
+    metrics_payload = _upsert_coin_metrics(
         db,
         coin,
         base_timeframe=base_timeframe,
@@ -800,6 +873,22 @@ def process_indicator_event(
                 "timeframe": affected_timeframe,
                 "timestamp": snapshot.candle_close_timestamp,
                 "feature_source": snapshot.feature_source,
+                "activity_score": metrics_payload.get("activity_score"),
+                "activity_bucket": metrics_payload.get("activity_bucket"),
+                "analysis_priority": metrics_payload.get("analysis_priority"),
+                "market_regime": (
+                    regime_map.get(affected_timeframe).regime
+                    if affected_timeframe in regime_map
+                    else metrics_payload.get("market_regime")
+                ),
+                "regime_confidence": (
+                    regime_map.get(affected_timeframe).confidence
+                    if affected_timeframe in regime_map
+                    else None
+                ),
+                "price_change_24h": metrics_payload.get("price_change_24h"),
+                "price_change_7d": metrics_payload.get("price_change_7d"),
+                "volatility": metrics_payload.get("volatility"),
                 "classic_signals": sorted(
                     signal_type for signal_type in (after_signal_types - before_signal_types) if signal_type in SIGNAL_TYPES
                 ),
@@ -829,11 +918,26 @@ def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any
         timestamp=event.timestamp,
     )
     affected_timeframes = list(indicator_result.get("affected_timeframes", []))
+    activity_metrics = get_activity_snapshot(db, coin_id=coin.id)
     snapshots = dict(indicator_result.get("snapshots", {}))
     for timeframe in affected_timeframes:
         snapshot = snapshots.get(timeframe)
         if snapshot is None:
             continue
+        activity_bucket = activity_metrics.activity_bucket if activity_metrics is not None else None
+        last_analysis_at = activity_metrics.last_analysis_at if activity_metrics is not None else None
+        if not should_request_analysis(
+            timeframe=timeframe,
+            timestamp=snapshot.candle_close_timestamp,
+            activity_bucket=activity_bucket,
+            last_analysis_at=last_analysis_at,
+        ):
+            continue
+        mark_analysis_requested(
+            db,
+            coin_id=coin.id,
+            analysis_timestamp=snapshot.candle_close_timestamp,
+        )
         PATTERN_ENGINE.detect_incremental(db, coin_id=coin.id, timeframe=timeframe, lookback=200)
         build_pattern_clusters(
             db,

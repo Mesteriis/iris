@@ -24,39 +24,45 @@ class RegimeRead:
 
 def detect_market_regime(indicators: dict[str, float | None], volatility: float | None = None) -> tuple[str, float]:
     price = float(indicators.get("price_current") or 0.0)
-    ema_20 = indicators.get("ema_20")
     ema_50 = indicators.get("ema_50")
+    ema_200 = indicators.get("ema_200")
     sma_200 = indicators.get("sma_200")
-    macd_hist = indicators.get("macd_histogram")
     adx = indicators.get("adx_14")
+    price_change_7d = float(indicators.get("price_change_7d") or 0.0)
     bb_width = indicators.get("bb_width")
+    prev_bb_width = indicators.get("prev_bb_width")
     atr = indicators.get("atr_14")
-
-    if (
-        price > float(sma_200 or 0)
-        and ema_20 is not None
-        and ema_50 is not None
-        and ema_20 > ema_50
-        and (macd_hist or 0) > 0
-        and (adx or 0) >= 20
-    ):
-        return "bull_trend", min(0.6 + ((adx or 20) / 100), 0.95)
-    if (
-        sma_200 is not None
-        and price < sma_200
-        and ema_20 is not None
-        and ema_50 is not None
-        and ema_20 < ema_50
-        and (macd_hist or 0) < 0
-        and (adx or 0) >= 20
-    ):
-        return "bear_trend", min(0.6 + ((adx or 20) / 100), 0.95)
+    prev_atr = indicators.get("prev_atr_14")
+    reference_average = ema_200 if ema_200 is not None else sma_200
 
     atr_ratio = (float(atr or 0.0) / price) if price > 0 else 0.0
-    if (bb_width or 0) >= 0.1 or atr_ratio >= 0.03 or (volatility or 0) > price * 0.04:
-        return "high_volatility", 0.72
-    if (bb_width or 0) <= 0.04 and (adx or 0) < 18:
-        return "low_volatility", 0.7
+    atr_rising = (
+        atr is not None
+        and prev_atr is not None
+        and float(atr) > float(prev_atr) * 1.03
+    )
+    bb_expanding = (
+        bb_width is not None
+        and prev_bb_width is not None
+        and float(bb_width) > float(prev_bb_width) * 1.05
+    )
+    bb_narrow = bb_width is not None and float(bb_width) <= 0.04
+    low_atr = atr_ratio <= 0.015
+
+    if reference_average is not None and ema_50 is not None and (adx or 0) > 25:
+        if ema_50 > reference_average and price_change_7d >= 0:
+            return "bull_trend", min(0.65 + min((adx or 25) / 120, 0.22), 0.95)
+        if ema_50 < reference_average and price_change_7d <= 0:
+            return "bear_trend", min(0.65 + min((adx or 25) / 120, 0.22), 0.95)
+
+    if atr_rising and bb_expanding:
+        return "high_volatility", 0.8
+    if low_atr and bb_narrow:
+        return "low_volatility", 0.78
+    if (adx or 0) < 20:
+        return "sideways_range", 0.72
+    if atr_ratio >= 0.03 and (bb_width or 0) >= 0.08:
+        return "high_volatility", 0.74
     return "sideways_range", 0.65
 
 
@@ -64,18 +70,21 @@ def calculate_regime_map(
     snapshots: dict[int, object],
     *,
     volatility: float | None,
+    price_change_7d: float | None = None,
 ) -> dict[int, RegimeRead]:
     regimes: dict[int, RegimeRead] = {}
     for timeframe, snapshot in snapshots.items():
         indicators = {
             "price_current": getattr(snapshot, "price_current", None),
-            "ema_20": getattr(snapshot, "ema_20", None),
             "ema_50": getattr(snapshot, "ema_50", None),
+            "ema_200": getattr(snapshot, "ema_200", None),
             "sma_200": getattr(snapshot, "sma_200", None),
-            "macd_histogram": getattr(snapshot, "macd_histogram", None),
             "adx_14": getattr(snapshot, "adx_14", None),
             "bb_width": getattr(snapshot, "bb_width", None),
+            "prev_bb_width": getattr(snapshot, "prev_bb_width", None),
             "atr_14": getattr(snapshot, "atr_14", None),
+            "prev_atr_14": getattr(snapshot, "prev_atr_14", None),
+            "price_change_7d": price_change_7d,
         }
         regime, confidence = detect_market_regime(indicators, volatility)
         regimes[timeframe] = RegimeRead(timeframe=timeframe, regime=regime, confidence=confidence)

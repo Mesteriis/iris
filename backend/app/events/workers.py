@@ -10,6 +10,7 @@ from app.db.session import SessionLocal
 from app.events.consumer import EventConsumer, EventConsumerConfig, default_consumer_name
 from app.events.publisher import publish_event
 from app.events.types import (
+    ANALYSIS_SCHEDULER_WORKER_GROUP,
     DECISION_WORKER_GROUP,
     INDICATOR_WORKER_GROUP,
     IrisEvent,
@@ -27,16 +28,19 @@ from app.patterns.engine import PatternEngine
 from app.patterns.hierarchy import build_hierarchy_signals
 from app.patterns.narrative import refresh_sector_metrics
 from app.patterns.risk import evaluate_final_signal
+from app.patterns.scheduler import get_activity_snapshot, mark_analysis_requested, should_request_analysis
 from app.services.analytics_service import (
     determine_affected_timeframes,
     process_indicator_event,
 )
 from app.services.feature_snapshots_service import capture_feature_snapshot
+from app.services.regime_cache import cache_regime_snapshot, read_cached_regime
 from app.services.signal_history_service import refresh_recent_signal_history
 
 LOGGER = logging.getLogger(__name__)
 EVENT_WORKER_GROUPS = (
     INDICATOR_WORKER_GROUP,
+    ANALYSIS_SCHEDULER_WORKER_GROUP,
     PATTERN_WORKER_GROUP,
     REGIME_WORKER_GROUP,
     DECISION_WORKER_GROUP,
@@ -94,6 +98,14 @@ def _handle_indicator_event(event: IrisEvent) -> None:
                     "timeframe": item["timeframe"],
                     "timestamp": item["timestamp"],
                     "feature_source": item.get("feature_source"),
+                    "activity_score": item.get("activity_score"),
+                    "activity_bucket": item.get("activity_bucket"),
+                    "analysis_priority": item.get("analysis_priority"),
+                    "market_regime": item.get("market_regime"),
+                    "regime_confidence": item.get("regime_confidence"),
+                    "price_change_24h": item.get("price_change_24h"),
+                    "price_change_7d": item.get("price_change_7d"),
+                    "volatility": item.get("volatility"),
                 },
             )
             _emit_signal_created_events(
@@ -102,6 +114,45 @@ def _handle_indicator_event(event: IrisEvent) -> None:
                 timestamp=item["timestamp"],
                 signal_types=list(item.get("classic_signals", [])),
             )
+    finally:
+        db.close()
+
+
+def _handle_analysis_scheduler_event(event: IrisEvent) -> None:
+    db = SessionLocal()
+    try:
+        metrics = get_activity_snapshot(db, coin_id=event.coin_id)
+        activity_bucket = (
+            str(event.payload.get("activity_bucket"))
+            if event.payload.get("activity_bucket") is not None
+            else (metrics.activity_bucket if metrics is not None else None)
+        )
+        last_analysis_at = metrics.last_analysis_at if metrics is not None else None
+        if not should_request_analysis(
+            timeframe=event.timeframe,
+            timestamp=event.timestamp,
+            activity_bucket=activity_bucket,
+            last_analysis_at=last_analysis_at,
+        ):
+            return
+        mark_analysis_requested(
+            db,
+            coin_id=event.coin_id,
+            analysis_timestamp=event.timestamp,
+        )
+        publish_event(
+            "analysis_requested",
+            {
+                "coin_id": event.coin_id,
+                "timeframe": event.timeframe,
+                "timestamp": event.timestamp,
+                "activity_score": event.payload.get("activity_score"),
+                "activity_bucket": activity_bucket,
+                "analysis_priority": event.payload.get("analysis_priority"),
+                "market_regime": event.payload.get("market_regime"),
+                "regime_confidence": event.payload.get("regime_confidence"),
+            },
+        )
     finally:
         db.close()
 
@@ -115,7 +166,13 @@ def _handle_pattern_event(event: IrisEvent) -> None:
             timeframe=event.timeframe,
             timestamp=event.timestamp,
         )
-        _PATTERN_ENGINE.detect_incremental(db, coin_id=event.coin_id, timeframe=event.timeframe, lookback=200)
+        _PATTERN_ENGINE.detect_incremental(
+            db,
+            coin_id=event.coin_id,
+            timeframe=event.timeframe,
+            lookback=200,
+            regime=str(event.payload.get("market_regime")) if event.payload.get("market_regime") is not None else None,
+        )
         build_pattern_clusters(
             db,
             coin_id=event.coin_id,
@@ -168,13 +225,6 @@ def _handle_pattern_event(event: IrisEvent) -> None:
         db.close()
 
 
-def _regime_state_key(event: IrisEvent) -> str:
-    return f"{event.coin_id}:{event.timeframe}"
-
-
-_LAST_REGIME_STATE: dict[str, tuple[str | None, str | None]] = {}
-
-
 def _handle_regime_event(event: IrisEvent) -> None:
     db = SessionLocal()
     try:
@@ -189,17 +239,23 @@ def _handle_regime_event(event: IrisEvent) -> None:
             coin_id=event.coin_id,
             timeframe=event.timeframe,
         )
-        regime = None
-        metrics = coin.metrics
-        if metrics is not None and metrics.market_regime_details:
-            detailed = metrics.market_regime_details.get(str(event.timeframe))
-            regime = detailed.get("regime") if isinstance(detailed, dict) else metrics.market_regime
-        elif metrics is not None:
-            regime = metrics.market_regime
-        state_key = _regime_state_key(event)
-        previous_regime, previous_cycle = _LAST_REGIME_STATE.get(state_key, (None, cycle_before_phase))
+        previous_regime = read_cached_regime(coin_id=event.coin_id, timeframe=event.timeframe)
+        previous_cycle = cycle_before_phase
+        regime = (
+            str(event.payload.get("market_regime"))
+            if event.payload.get("market_regime") is not None
+            else None
+        )
+        regime_confidence = float(event.payload.get("regime_confidence") or 0.0)
+        if regime is not None:
+            cache_regime_snapshot(
+                coin_id=event.coin_id,
+                timeframe=event.timeframe,
+                regime=regime,
+                confidence=regime_confidence,
+            )
         next_cycle = cycle_result.get("cycle_phase")
-        if regime != previous_regime:
+        if regime != (previous_regime.regime if previous_regime is not None else None):
             publish_event(
                 "market_regime_changed",
                 {
@@ -207,6 +263,7 @@ def _handle_regime_event(event: IrisEvent) -> None:
                     "timeframe": event.timeframe,
                     "timestamp": event.timestamp,
                     "regime": regime,
+                    "confidence": regime_confidence,
                 },
             )
         if next_cycle != previous_cycle:
@@ -219,7 +276,6 @@ def _handle_regime_event(event: IrisEvent) -> None:
                     "cycle_phase": next_cycle,
                 },
             )
-        _LAST_REGIME_STATE[state_key] = (regime, str(next_cycle) if next_cycle is not None else None)
     finally:
         db.close()
 
@@ -326,11 +382,17 @@ def create_worker(group_name: str, consumer_name: str | None = None) -> EventCon
             handler=_handle_indicator_event,
             interested_event_types={"candle_closed"},
         )
+    if group_name == ANALYSIS_SCHEDULER_WORKER_GROUP:
+        return EventConsumer(
+            config,
+            handler=_handle_analysis_scheduler_event,
+            interested_event_types={"indicator_updated"},
+        )
     if group_name == PATTERN_WORKER_GROUP:
         return EventConsumer(
             config,
             handler=_handle_pattern_event,
-            interested_event_types={"indicator_updated"},
+            interested_event_types={"analysis_requested"},
         )
     if group_name == REGIME_WORKER_GROUP:
         return EventConsumer(

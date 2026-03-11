@@ -124,6 +124,7 @@ def current_indicator_map(candles: Sequence[CandlePoint]) -> dict[str, float | N
 
     ema_20 = ema_series(close_values, 20)
     ema_50 = ema_series(close_values, 50)
+    ema_200 = ema_series(close_values, 200)
     sma_50 = sma_series(close_values, 50)
     sma_200 = sma_series(close_values, 200)
     rsi_14 = rsi_series(close_values, 14)
@@ -136,18 +137,22 @@ def current_indicator_map(candles: Sequence[CandlePoint]) -> dict[str, float | N
         "price_current": close_values[-1] if close_values else None,
         "ema_20": ema_20[-1] if ema_20 else None,
         "ema_50": ema_50[-1] if ema_50 else None,
+        "ema_200": ema_200[-1] if ema_200 else None,
         "sma_50": sma_50[-1] if sma_50 else None,
         "sma_200": sma_200[-1] if sma_200 else None,
         "rsi_14": rsi_14[-1] if rsi_14 else None,
         "macd": macd[-1] if macd else None,
         "macd_signal": macd_signal[-1] if macd_signal else None,
         "macd_histogram": macd_histogram[-1] if macd_histogram else None,
+        "prev_atr_14": atr_14[-2] if len(atr_14) > 1 else None,
         "atr_14": atr_14[-1] if atr_14 else None,
         "bb_upper": bb_upper[-1] if bb_upper else None,
         "bb_middle": bb_middle[-1] if bb_middle else None,
         "bb_lower": bb_lower[-1] if bb_lower else None,
+        "prev_bb_width": bb_width[-2] if len(bb_width) > 1 else None,
         "bb_width": bb_width[-1] if bb_width else None,
         "adx_14": adx_14[-1] if adx_14 else None,
         "current_volume": volume_values[-1] if volume_values else None,
         "average_volume_20": average(volume_values[-20:]) if volume_values else None,
+        "volume_ratio_20": volume_ratio(candles[-21:]) if len(candles) >= 2 else None,
     }

@@ -11,11 +11,13 @@ from app.services.market_data import ensure_utc, utc_now
 
 EVENT_STREAM_NAME = get_settings().event_stream_name
 INDICATOR_WORKER_GROUP = "indicator_workers"
+ANALYSIS_SCHEDULER_WORKER_GROUP = "analysis_scheduler_workers"
 PATTERN_WORKER_GROUP = "pattern_workers"
 REGIME_WORKER_GROUP = "regime_workers"
 DECISION_WORKER_GROUP = "decision_workers"
 EVENT_WORKER_GROUPS = (
     INDICATOR_WORKER_GROUP,
+    ANALYSIS_SCHEDULER_WORKER_GROUP,
     PATTERN_WORKER_GROUP,
     REGIME_WORKER_GROUP,
     DECISION_WORKER_GROUP,

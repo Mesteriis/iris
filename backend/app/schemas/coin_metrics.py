@@ -33,6 +33,10 @@ class CoinMetricsRead(BaseModel):
     market_cap: float | None = None
     trend: str | None = None
     trend_score: int | None = None
+    activity_score: float | None = None
+    activity_bucket: str | None = None
+    analysis_priority: int | None = None
+    last_analysis_at: datetime | None = None
     market_regime: str | None = None
     market_regime_details: dict[str, dict[str, float | str]] | None = None
     indicator_version: int
