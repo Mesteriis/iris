@@ -2,11 +2,17 @@
 
 IRIS is a market intelligence service built on top of the existing `coins`, `candles`, `indicator_cache`, `coin_metrics` and `signals` schema. The system keeps one canonical candle store and layers analytics, pattern intelligence and market structure on top of it.
 
+The runtime is now hybrid:
+
+- market data ingestion stays polling-driven
+- internal analytics runs through Redis Streams events
+
 ## Stack
 
 - FastAPI backend with SQLAlchemy, Alembic and embedded TaskIQ runtime
 - Vue 3 dashboard with Pinia, Tailwind, Vite and ECharts
 - PostgreSQL / TimescaleDB candle storage
+- Redis Streams event bus for internal analytics
 - Home Assistant addon scaffold
 - Home Assistant custom integration scaffold
 
@@ -35,6 +41,8 @@ IRIS uses the existing schema instead of duplicating market history:
   Stores current aggregate market state per coin. `market_regime` holds the canonical regime and `market_regime_details` stores persisted per-timeframe regime snapshots used by signal context and `/coins/{symbol}/regime`.
 - `signals`
   Stores classic analytics signals, pattern signals, cluster signals and hierarchy signals.
+- `iris_events` Redis Stream
+  Internal event bus for `candle_closed`, `indicator_updated`, `pattern_detected`, `pattern_cluster_detected`, `market_regime_changed`, `decision_generated` and `signal_created`.
 - `signal_history`
   Stores realized signal outcomes with `result_return`, `result_drawdown` and `evaluated_at` so statistics, backtests and strategy research do not need to recalculate forward windows every time.
 - `feature_snapshots`
@@ -124,16 +132,37 @@ Signals use `signal_type` values such as:
 
 ## Runtime flow
 
+### Event-driven analytics
+
+The internal pipeline is event-driven and producer/consumer decoupled:
+
+1. Polling jobs fetch market candles.
+2. Polling inserts candles into `candles`.
+3. Polling publishes `candle_inserted` and `candle_closed` into `iris_events`.
+4. `indicator_workers` consume `candle_closed`, compute indicators and emit `indicator_updated`.
+5. `pattern_workers` consume `indicator_updated`, run incremental pattern detection and emit `pattern_detected` / `pattern_cluster_detected`.
+6. `regime_workers` consume `indicator_updated`, refresh market regime context and emit `market_regime_changed`.
+7. `decision_workers` consume pattern/regime/signal events, enrich context, generate decisions/final signals and emit `decision_generated`.
+
+Workers use Redis Streams consumer groups:
+
+- `indicator_workers`
+- `pattern_workers`
+- `regime_workers`
+- `decision_workers`
+
+Each worker only ACKs after processing. Stale pending messages are reclaimed with `XAUTOCLAIM`, so crash recovery does not lose events.
+
 ### Incremental path
 
-1. New closed candle is written into `candles`.
+1. New closed candle is written into `candles` by polling.
 2. Timescale continuous aggregates keep 1h, 4h and 1d views ready for higher-timeframe reads.
-3. Existing analytics pipeline updates indicators and `coin_metrics`.
-4. The same pipeline persists per-timeframe `indicator_cache` rows.
-5. Pattern engine loads the last 200 candles and runs enabled detectors.
+3. `indicator_workers` update indicators and `coin_metrics`.
+4. The same stage persists per-timeframe `indicator_cache` rows.
+5. `pattern_workers` load the last 200 candles and run enabled detectors.
 6. Cluster and hierarchy engines derive stronger structures from emitted pattern signals.
-7. Regime and cycle context are applied.
-8. Contextual Signal Engine updates:
+7. `regime_workers` update cycle and sector-aware market context.
+8. `decision_workers` update the Contextual Signal Engine:
    `priority_score = confidence * temperature * regime_alignment * volatility_alignment * liquidity_score * sector_alignment * cycle_alignment * cluster_bonus`
 9. Lazy Investor Decision Engine converts the current stack into an investment decision.
 10. Liquidity & Risk Engine converts that decision into a tradable `final_signal`.
@@ -160,6 +189,8 @@ All background work stays inside the existing backend runtime. No new worker con
   Periodic discovery candidate refresh.
 - `signal_context_enrichment`
   Recomputes signal context on demand.
+
+Event workers are started by the backend runtime as separate worker processes inside the same backend service. They do not require a dedicated container.
 
 ## Market structure layers
 
@@ -382,6 +413,23 @@ The frontend uses these endpoints to show:
 - pattern history
 - discovery candidates for manual review
 
+## Testing
+
+Redis Stream pipeline coverage is implemented with `pytest` and `pytest-asyncio`.
+
+Current integration tests cover:
+
+- polling-style candle insert publishing `candle_inserted` and `candle_closed`
+- producer -> `indicator_workers` -> `pattern_workers` -> signal creation
+- multi-worker distribution in the same consumer group
+- ACK and retry semantics after a simulated worker crash
+
+The test fixture uses real 15m OHLCV candles for:
+
+- BTC
+- ETH
+- SOL
+
 ## Performance notes
 
 - Candle history is never duplicated.
@@ -391,6 +439,7 @@ The frontend uses these endpoints to show:
 - `signal_history` removes repeated forward-window scans from nightly statistics refreshes.
 - `feature_snapshots` keep ML-oriented context vectors in a single table keyed by `coin_id`, `timeframe`, `timestamp`.
 - Timescale compression keeps long-horizon candle retention practical for multi-year history.
+- Event workers operate only on the last 200 candles during runtime and do not rescan full history for every event.
 - Runtime scans full retained history only during bootstrap or scheduled discovery/statistics jobs, not during normal incremental operation.
 
 ## Notes
