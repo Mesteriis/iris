@@ -21,11 +21,15 @@ get_settings.cache_clear()
 from app.db.session import SessionLocal
 from app.events.publisher import flush_publisher, reset_event_publisher
 from app.models.coin import Coin
+from app.models.coin_relation import CoinRelation
 from app.models.exchange_account import ExchangeAccount
+from app.models.market_prediction import MarketPrediction
 from app.models.portfolio_action import PortfolioAction
 from app.models.portfolio_balance import PortfolioBalance
 from app.models.portfolio_position import PortfolioPosition
 from app.models.portfolio_state import PortfolioState
+from app.models.prediction_result import PredictionResult
+from app.models.sector_metric import SectorMetric
 from app.schemas.coin import CoinCreate
 from app.services.history_loader import create_coin
 from app.services.market_data import utc_now
@@ -92,6 +96,10 @@ def isolated_event_stream(redis_client: Redis, settings) -> Iterator[None]:
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:portfolio:*"):
         redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:correlation:*"):
+        redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:prediction:*"):
+        redis_client.delete(key)
     yield
     flush_publisher(timeout=2.0)
     redis_client.delete(settings.event_stream_name)
@@ -100,6 +108,10 @@ def isolated_event_stream(redis_client: Redis, settings) -> Iterator[None]:
     for key in redis_client.scan_iter("iris:decision:*"):
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:portfolio:*"):
+        redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:correlation:*"):
+        redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:prediction:*"):
         redis_client.delete(key)
     reset_event_publisher()
 
@@ -130,6 +142,10 @@ def cleanup_test_coins() -> Iterator[None]:
 def cleanup_portfolio_state() -> Iterator[None]:
     db = SessionLocal()
     try:
+        db.execute(delete(SectorMetric))
+        db.execute(delete(PredictionResult))
+        db.execute(delete(MarketPrediction))
+        db.execute(delete(CoinRelation))
         db.execute(delete(PortfolioAction))
         db.execute(delete(PortfolioPosition))
         db.execute(delete(PortfolioBalance))
@@ -138,6 +154,10 @@ def cleanup_portfolio_state() -> Iterator[None]:
         db.commit()
         yield
     finally:
+        db.execute(delete(SectorMetric))
+        db.execute(delete(PredictionResult))
+        db.execute(delete(MarketPrediction))
+        db.execute(delete(CoinRelation))
         db.execute(delete(PortfolioAction))
         db.execute(delete(PortfolioPosition))
         db.execute(delete(PortfolioBalance))
