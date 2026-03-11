@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     taskiq_refresh_interval_seconds: int = 300
     taskiq_metrics_refresh_interval_seconds: int = 300
     taskiq_analytics_event_interval_seconds: int = 900
+    taskiq_pattern_statistics_interval_seconds: int = 86400
     bootstrap_history_on_startup: bool = True
     database_connect_retries: int = 30
     database_connect_retry_delay: float = 1.0

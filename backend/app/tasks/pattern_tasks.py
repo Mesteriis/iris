@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from app.db.session import SessionLocal
+from app.patterns.context import enrich_signal_context
 from app.patterns.engine import PatternEngine
+from app.patterns.statistics import refresh_pattern_statistics
 from app.services.history_loader import get_coin_by_symbol, list_coins_ready_for_latest_sync
 from app.taskiq.broker import broker
 from app.taskiq.locks import redis_task_lock
 
 PATTERN_BOOTSTRAP_LOCK_TIMEOUT_SECONDS = 7200
+PATTERN_STATISTICS_LOCK_TIMEOUT_SECONDS = 7200
 _ENGINE = PatternEngine()
 
 
@@ -39,3 +42,37 @@ def patterns_bootstrap_scan(symbol: str | None = None, force: bool = False) -> d
             }
         finally:
             db.close()
+
+
+@broker.task
+def update_pattern_statistics() -> dict[str, object]:
+    with redis_task_lock(
+        "iris:tasklock:pattern_statistics_refresh",
+        timeout=PATTERN_STATISTICS_LOCK_TIMEOUT_SECONDS,
+    ) as acquired:
+        if not acquired:
+            return {"status": "skipped", "reason": "pattern_statistics_refresh_in_progress"}
+
+        db = SessionLocal()
+        try:
+            return refresh_pattern_statistics(db)
+        finally:
+            db.close()
+
+
+@broker.task
+def signal_context_enrichment(
+    coin_id: int,
+    timeframe: int,
+    candle_timestamp: str | None = None,
+) -> dict[str, object]:
+    db = SessionLocal()
+    try:
+        return enrich_signal_context(
+            db,
+            coin_id=int(coin_id),
+            timeframe=int(timeframe),
+            candle_timestamp=candle_timestamp,
+        )
+    finally:
+        db.close()

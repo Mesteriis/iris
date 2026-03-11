@@ -93,6 +93,26 @@ def _fetch_direct_candle_points(db: Session, coin_id: int, timeframe: int, limit
     return _rows_to_candle_points(rows)
 
 
+def _fetch_direct_candle_points_between(
+    db: Session,
+    coin_id: int,
+    timeframe: int,
+    start: datetime,
+    end: datetime,
+) -> list[CandlePoint]:
+    rows = db.execute(
+        select(Candle.timestamp, Candle.open, Candle.high, Candle.low, Candle.close, Candle.volume)
+        .where(
+            Candle.coin_id == coin_id,
+            Candle.timeframe == timeframe,
+            Candle.timestamp >= ensure_utc(start),
+            Candle.timestamp <= ensure_utc(end),
+        )
+        .order_by(Candle.timestamp.asc())
+    ).all()
+    return _rows_to_candle_points(rows)
+
+
 def _fetch_view_candle_points(db: Session, coin_id: int, timeframe: int, limit: int | None) -> list[CandlePoint]:
     view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
     limit_sql = "LIMIT :limit" if limit is not None else ""
@@ -113,6 +133,30 @@ def _fetch_view_candle_points(db: Session, coin_id: int, timeframe: int, limit: 
     if limit is not None:
         params["limit"] = limit
     rows = db.execute(query, params).all()
+    return _rows_to_candle_points(rows, timestamp_field="bucket")
+
+
+def _fetch_view_candle_points_between(
+    db: Session,
+    coin_id: int,
+    timeframe: int,
+    start: datetime,
+    end: datetime,
+) -> list[CandlePoint]:
+    view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
+    rows = db.execute(
+        text(
+            f"""
+            SELECT bucket, open, high, low, close, volume
+            FROM {view_name}
+            WHERE coin_id = :coin_id
+              AND bucket >= :start
+              AND bucket <= :end
+            ORDER BY bucket ASC
+            """
+        ),
+        {"coin_id": coin_id, "start": ensure_utc(start), "end": ensure_utc(end)},
+    ).all()
     return _rows_to_candle_points(rows, timestamp_field="bucket")
 
 
@@ -166,6 +210,44 @@ def _fetch_resampled_candle_points(
     if limit is not None:
         params["limit"] = limit
     rows = db.execute(query, params).all()
+    return _rows_to_candle_points(rows, timestamp_field="bucket")
+
+
+def _fetch_resampled_candle_points_between(
+    db: Session,
+    coin_id: int,
+    source_timeframe: int,
+    target_timeframe: int,
+    start: datetime,
+    end: datetime,
+) -> list[CandlePoint]:
+    rows = db.execute(
+        text(
+            f"""
+            SELECT
+                time_bucket(CAST(:bucket_interval AS INTERVAL), timestamp) AS bucket,
+                first(open, timestamp) AS open,
+                max(high) AS high,
+                min(low) AS low,
+                last(close, timestamp) AS close,
+                sum(volume) AS volume
+            FROM candles
+            WHERE coin_id = :coin_id
+              AND timeframe = :source_timeframe
+              AND timestamp >= :start
+              AND timestamp <= :end
+            GROUP BY bucket
+            ORDER BY bucket ASC
+            """
+        ),
+        {
+            "coin_id": coin_id,
+            "source_timeframe": source_timeframe,
+            "bucket_interval": timeframe_bucket_interval(target_timeframe),
+            "start": ensure_utc(start),
+            "end": ensure_utc(end),
+        },
+    ).all()
     return _rows_to_candle_points(rows, timestamp_field="bucket")
 
 
@@ -257,6 +339,29 @@ def fetch_candle_points(db: Session, coin_id: int, timeframe: int, limit: int) -
         source_timeframe = get_lowest_available_candle_timeframe(db, coin_id, max_timeframe=timeframe)
         if source_timeframe is not None and source_timeframe < timeframe and timeframe % source_timeframe == 0:
             return _fetch_resampled_candle_points(db, coin_id, source_timeframe, timeframe, limit)
+
+    return []
+
+
+def fetch_candle_points_between(
+    db: Session,
+    coin_id: int,
+    timeframe: int,
+    start: datetime,
+    end: datetime,
+) -> list[CandlePoint]:
+    direct_points = _fetch_direct_candle_points_between(db, coin_id, timeframe, start, end)
+    if direct_points:
+        return direct_points
+
+    if timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
+        view_points = _fetch_view_candle_points_between(db, coin_id, timeframe, start, end)
+        if view_points:
+            return view_points
+
+        source_timeframe = get_lowest_available_candle_timeframe(db, coin_id, max_timeframe=timeframe)
+        if source_timeframe is not None and source_timeframe < timeframe and timeframe % source_timeframe == 0:
+            return _fetch_resampled_candle_points_between(db, coin_id, source_timeframe, timeframe, start, end)
 
     return []
 

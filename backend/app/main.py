@@ -21,7 +21,7 @@ from app.taskiq.broker import broker
 from app.taskiq.dispatcher import dispatch_task_locally
 from app.taskiq.locks import close_task_lock_client, wait_for_redis
 from app.tasks import analytics_tasks, history_tasks  # noqa: F401
-import app.tasks.pattern_tasks  # noqa: F401
+import app.tasks.pattern_tasks as pattern_tasks_module  # noqa: F401
 from app.services.market_data import utc_now
 
 settings = get_settings()
@@ -135,6 +135,24 @@ async def dispatch_pending_analytics_events(receiver: Receiver, stop_event: asyn
             continue
 
 
+async def schedule_pattern_statistics_refresh(receiver: Receiver, stop_event: asyncio.Event) -> None:
+    await asyncio.sleep(1)
+    if stop_event.is_set():
+        return
+
+    interval = settings.taskiq_pattern_statistics_interval_seconds
+    if interval <= 0:
+        await stop_event.wait()
+        return
+
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+        except TimeoutError:
+            LOGGER.info("Queueing nightly pattern statistics refresh task.")
+            await dispatch_task_locally(receiver, pattern_tasks_module.update_pattern_statistics)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await asyncio.to_thread(wait_for_database)
@@ -150,6 +168,7 @@ async def lifespan(app: FastAPI):
     backfill_task = asyncio.create_task(schedule_history_backfills(receiver, finish_event, backfill_event))
     refresh_task = asyncio.create_task(enqueue_latest_price_snapshots(receiver, finish_event))
     analytics_task = asyncio.create_task(dispatch_pending_analytics_events(receiver, finish_event))
+    pattern_stats_task = asyncio.create_task(schedule_pattern_statistics_refresh(receiver, finish_event))
 
     app.state.taskiq_finish_event = finish_event
     app.state.taskiq_backfill_event = backfill_event
@@ -158,12 +177,20 @@ async def lifespan(app: FastAPI):
     app.state.taskiq_backfill_task = backfill_task
     app.state.taskiq_refresh_task = refresh_task
     app.state.taskiq_analytics_task = analytics_task
+    app.state.taskiq_pattern_stats_task = pattern_stats_task
 
     try:
         yield
     finally:
         finish_event.set()
-        await asyncio.gather(listener_task, backfill_task, refresh_task, analytics_task, return_exceptions=True)
+        await asyncio.gather(
+            listener_task,
+            backfill_task,
+            refresh_task,
+            analytics_task,
+            pattern_stats_task,
+            return_exceptions=True,
+        )
         await broker.shutdown()
         await asyncio.to_thread(reset_message_bus)
         await asyncio.to_thread(close_task_lock_client)

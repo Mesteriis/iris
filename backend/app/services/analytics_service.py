@@ -15,7 +15,10 @@ from app.models.coin import Coin
 from app.models.coin_metrics import CoinMetrics
 from app.models.indicator_cache import IndicatorCache
 from app.models.signal import Signal
+from app.patterns.clusters import build_pattern_clusters
+from app.patterns.context import enrich_signal_context
 from app.patterns.engine import PatternEngine
+from app.patterns.hierarchy import build_hierarchy_signals
 from app.services.analytics_events import NewCandleEvent, clear_new_candle_event_if_unchanged, list_new_candle_events
 from app.services.candles_service import (
     AGGREGATE_VIEW_BY_TIMEFRAME,
@@ -710,6 +713,24 @@ def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any
             continue
         _insert_signals(db, coin.id, timeframe, _detect_signals(snapshot))
         PATTERN_ENGINE.detect_incremental(db, coin_id=coin.id, timeframe=timeframe, lookback=200)
+        build_pattern_clusters(
+            db,
+            coin_id=coin.id,
+            timeframe=timeframe,
+            candle_timestamp=snapshot.candle_close_timestamp,
+        )
+        build_hierarchy_signals(
+            db,
+            coin_id=coin.id,
+            timeframe=timeframe,
+            candle_timestamp=snapshot.candle_close_timestamp,
+        )
+        enrich_signal_context(
+            db,
+            coin_id=coin.id,
+            timeframe=timeframe,
+            candle_timestamp=snapshot.candle_close_timestamp,
+        )
 
     clear_new_candle_event_if_unchanged(event)
     return {

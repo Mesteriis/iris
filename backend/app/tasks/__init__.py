@@ -4,7 +4,7 @@ from app.tasks.history_tasks import (
     bootstrap_observed_coins_history,
     refresh_observed_coins_history,
 )
-from app.tasks.pattern_tasks import patterns_bootstrap_scan
+from app.tasks.pattern_tasks import patterns_bootstrap_scan, signal_context_enrichment, update_pattern_statistics
 
 __all__ = [
     "handle_new_candle_event",
@@ -12,4 +12,6 @@ __all__ = [
     "backfill_observed_coins_history",
     "patterns_bootstrap_scan",
     "refresh_observed_coins_history",
+    "signal_context_enrichment",
+    "update_pattern_statistics",
 ]
