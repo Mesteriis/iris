@@ -80,6 +80,19 @@ function decisionTone(decision: string | null | undefined): string {
   }
   return "pending";
 }
+
+function predictionTone(status: string | null | undefined): string {
+  if (status === "confirmed") {
+    return "bullish";
+  }
+  if (status === "failed") {
+    return "bearish";
+  }
+  if (status === "expired") {
+    return "sideways";
+  }
+  return "pending";
+}
 </script>
 
 <template>
@@ -293,6 +306,128 @@ function decisionTone(decision: string | null | undefined): string {
               <span>{{ formatCurrency(action.size) }}</span>
               <small>{{ formatPercent(action.confidence * 100, 1) }}</small>
               <small>{{ formatDateTime(action.created_at) }}</small>
+            </div>
+          </li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="detail-grid__row">
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Market flow map</p>
+            <h3>Leaders and followers</h3>
+          </div>
+          <p>Cross-market intelligence tracks who is leading and who is absorbing the move.</p>
+        </div>
+
+        <div class="job-summary-grid">
+          <div class="indicator-card">
+            <span>Leaders</span>
+            <strong>{{ coinStore.marketFlowLeaders.length }}</strong>
+          </div>
+          <div class="indicator-card">
+            <span>Relations</span>
+            <strong>{{ coinStore.marketFlowRelations.length }}</strong>
+          </div>
+          <div class="indicator-card">
+            <span>Rotations</span>
+            <strong>{{ coinStore.marketFlowRotations.length }}</strong>
+          </div>
+          <div class="indicator-card">
+            <span>Sectors</span>
+            <strong>{{ coinStore.marketFlowSectors.length }}</strong>
+          </div>
+        </div>
+
+        <div v-if="coinStore.marketFlowRelations.length === 0" class="surface-state">
+          Cross-market relations have not been populated yet.
+        </div>
+        <ul v-else class="detail-signal-list">
+          <li v-for="item in coinStore.marketFlowRelations.slice(0, 6)" :key="`flow-${item.leader_coin_id}-${item.follower_coin_id}`">
+            <div>
+              <strong>{{ item.leader_symbol }} → {{ item.follower_symbol }}</strong>
+              <p>lag {{ item.lag_hours }}h / updated {{ formatDateTime(item.updated_at) }}</p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span>{{ formatPercent(item.correlation * 100, 1) }}</span>
+              <small>{{ formatPercent(item.confidence * 100, 1) }}</small>
+            </div>
+          </li>
+        </ul>
+      </article>
+
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Sector momentum</p>
+            <h3>Rotation and capital flow</h3>
+          </div>
+          <p>Sector strength helps explain where follow-through is most likely to appear.</p>
+        </div>
+
+        <div v-if="coinStore.marketFlowSectors.length === 0" class="surface-state">
+          Sector momentum snapshots are not available yet.
+        </div>
+        <ul v-else class="detail-signal-list">
+          <li v-for="item in coinStore.marketFlowSectors.slice(0, 4)" :key="`sector-flow-${item.sector_id}`">
+            <div>
+              <strong>{{ item.sector }}</strong>
+              <p>
+                {{ item.trend ?? "sideways" }} / {{ formatPercent(item.avg_price_change_24h, 2) }}
+                / vol {{ formatPercent(item.avg_volume_change_24h, 2) }}
+              </p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span>{{ formatPercent(item.relative_strength, 2) }}</span>
+              <small>{{ formatCompactNumber(item.capital_flow) }}</small>
+              <small>{{ formatDateTime(item.updated_at) }}</small>
+            </div>
+          </li>
+          <li
+            v-for="rotation in coinStore.marketFlowRotations.slice(0, 3)"
+            :key="`rotation-${rotation.source_sector}-${rotation.target_sector}-${rotation.timestamp}`"
+          >
+            <div>
+              <strong>{{ rotation.source_sector }} → {{ rotation.target_sector }}</strong>
+              <p>{{ timeframeToLabel(rotation.timeframe) }} rotation event</p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span class="trend-badge trend-badge--sideways">rotation</span>
+              <small>{{ formatDateTime(rotation.timestamp) }}</small>
+            </div>
+          </li>
+        </ul>
+      </article>
+
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Prediction journal</p>
+            <h3>Follow-through memory</h3>
+          </div>
+          <p>IRIS keeps score on cross-market predictions and exposes whether they actually worked.</p>
+        </div>
+
+        <div v-if="coinStore.predictionJournal.length === 0" class="surface-state">
+          No tracked predictions yet.
+        </div>
+        <ul v-else class="detail-signal-list">
+          <li v-for="item in coinStore.predictionJournal.slice(0, 6)" :key="`prediction-${item.id}`">
+            <div>
+              <strong>{{ item.leader_symbol }} → {{ item.target_symbol }}</strong>
+              <p>
+                {{ item.prediction_event.replace(/_/g, " ") }} / {{ item.expected_move }}
+                / lag {{ item.lag_hours }}h
+              </p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span class="trend-badge" :class="`trend-badge--${predictionTone(item.status)}`">
+                {{ item.status }}
+              </span>
+              <small>{{ formatPercent(item.confidence * 100, 1) }}</small>
+              <small>{{ item.profit === null ? "pending" : formatPercent(item.profit * 100, 2) }}</small>
             </div>
           </li>
         </ul>

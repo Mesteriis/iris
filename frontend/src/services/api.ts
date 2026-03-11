@@ -13,6 +13,7 @@ export interface Coin {
   name: string;
   asset_type: string;
   theme: string;
+  sector: string | null;
   source: string;
   enabled: boolean;
   auto_watch_enabled: boolean;
@@ -31,6 +32,7 @@ export interface CoinCreatePayload {
   name: string;
   asset_type?: string;
   theme?: string;
+  sector?: string;
   source?: string;
   enabled?: boolean;
   sort_order?: number;
@@ -279,6 +281,76 @@ export interface MarketRadar {
   volatility_spikes: MarketRadarCoin[];
 }
 
+export interface MarketFlowLeader {
+  leader_coin_id: number;
+  symbol: string;
+  name: string;
+  sector: string | null;
+  regime: string | null;
+  confidence: number;
+  price_change_24h: number | null;
+  volume_change_24h: number | null;
+  timestamp: string;
+}
+
+export interface MarketFlowRelation {
+  leader_coin_id: number;
+  leader_symbol: string;
+  follower_coin_id: number;
+  follower_symbol: string;
+  correlation: number;
+  lag_hours: number;
+  confidence: number;
+  updated_at: string;
+}
+
+export interface MarketFlowSector {
+  sector_id: number;
+  sector: string;
+  timeframe: number;
+  avg_price_change_24h: number;
+  avg_volume_change_24h: number;
+  volatility: number;
+  trend: string | null;
+  relative_strength: number;
+  capital_flow: number;
+  updated_at: string;
+}
+
+export interface MarketFlowRotation {
+  source_sector: string;
+  target_sector: string;
+  timeframe: number;
+  timestamp: string;
+}
+
+export interface MarketFlow {
+  leaders: MarketFlowLeader[];
+  relations: MarketFlowRelation[];
+  sectors: MarketFlowSector[];
+  rotations: MarketFlowRotation[];
+}
+
+export interface Prediction {
+  id: number;
+  prediction_type: string;
+  leader_coin_id: number;
+  leader_symbol: string;
+  target_coin_id: number;
+  target_symbol: string;
+  prediction_event: string;
+  expected_move: string;
+  lag_hours: number;
+  confidence: number;
+  created_at: string;
+  evaluation_time: string;
+  status: "pending" | "confirmed" | "failed" | "expired";
+  actual_move: number | null;
+  success: boolean | null;
+  profit: number | null;
+  evaluated_at: string | null;
+}
+
 export interface PatternDescriptor {
   slug: string;
   category: string;
@@ -333,7 +405,10 @@ export interface SectorMetric {
   sector_strength: number;
   relative_strength: number;
   capital_flow: number;
+  avg_price_change_24h: number;
+  avg_volume_change_24h: number;
   volatility: number;
+  trend: string | null;
   updated_at: string;
 }
 
@@ -529,6 +604,21 @@ export const irisApi = {
   async getMarketRadar(limit = 8): Promise<MarketRadar> {
     const response = await api.get<MarketRadar>("/market/radar", {
       params: { limit },
+    });
+    return response.data;
+  },
+  async getMarketFlow(limit = 8, timeframe = 60): Promise<MarketFlow> {
+    const response = await api.get<MarketFlow>("/market/flow", {
+      params: { limit, timeframe },
+    });
+    return response.data;
+  },
+  async listPredictions(limit = 50, status?: Prediction["status"]): Promise<Prediction[]> {
+    const response = await api.get<Prediction[]>("/predictions", {
+      params: {
+        limit,
+        ...(status ? { status } : {}),
+      },
     });
     return response.data;
   },

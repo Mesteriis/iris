@@ -31,6 +31,8 @@ const marketDecision = computed(() => coinStore.activeMarketDecision);
 const backtests = computed(() => coinStore.activeBacktests);
 const regime = computed(() => coinStore.activeRegime);
 const cycles = computed(() => coinStore.activeCycles);
+const crossMarketRelations = computed(() => coinStore.activeCrossMarketRelations);
+const predictionJournal = computed(() => coinStore.activePredictionJournal);
 const intervalOptions = computed<CandleInterval[]>(() => {
   const configured = (coin.value?.candles ?? [])
     .map((entry) => entry.interval)
@@ -77,6 +79,19 @@ function decisionTone(decision: string | null | undefined): string {
     return "bearish";
   }
   if (decision === "HOLD") {
+    return "sideways";
+  }
+  return "pending";
+}
+
+function predictionTone(status: string | null | undefined): string {
+  if (status === "confirmed") {
+    return "bullish";
+  }
+  if (status === "failed") {
+    return "bearish";
+  }
+  if (status === "expired") {
     return "sideways";
   }
   return "pending";
@@ -280,6 +295,69 @@ watch(symbol, loadPage);
             <div class="detail-signal-list__meta">
               <span>{{ signal.priority_score.toFixed(3) }}</span>
               <small>{{ Math.round(signal.confidence * 100) }}%</small>
+            </div>
+          </li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="detail-grid__row">
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Cross-market context</p>
+            <h3>Leader and follower map</h3>
+          </div>
+          <p>{{ crossMarketRelations.length }} active relations touch {{ symbol }}</p>
+        </div>
+
+        <div v-if="crossMarketRelations.length === 0" class="surface-state">
+          No cross-market relations are tracked for {{ symbol }} yet.
+        </div>
+        <ul v-else class="detail-signal-list">
+          <li
+            v-for="relation in crossMarketRelations.slice(0, 8)"
+            :key="`relation-${relation.leader_coin_id}-${relation.follower_coin_id}`"
+          >
+            <div>
+              <strong>{{ relation.leader_symbol }} → {{ relation.follower_symbol }}</strong>
+              <p>lag {{ relation.lag_hours }}h / updated {{ formatDateTime(relation.updated_at) }}</p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span>{{ formatPercent(relation.correlation * 100, 1) }}</span>
+              <small>{{ formatPercent(relation.confidence * 100, 1) }}</small>
+            </div>
+          </li>
+        </ul>
+      </article>
+
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Prediction journal</p>
+            <h3>Follow-through outcomes</h3>
+          </div>
+          <p>{{ predictionJournal.length }} related predictions</p>
+        </div>
+
+        <div v-if="predictionJournal.length === 0" class="surface-state">
+          No stored predictions reference {{ symbol }} yet.
+        </div>
+        <ul v-else class="detail-signal-list">
+          <li v-for="item in predictionJournal.slice(0, 8)" :key="`coin-prediction-${item.id}`">
+            <div>
+              <strong>{{ item.leader_symbol }} → {{ item.target_symbol }}</strong>
+              <p>
+                {{ item.prediction_event.replace(/_/g, " ") }} / {{ item.expected_move }}
+                / lag {{ item.lag_hours }}h
+              </p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span class="trend-badge" :class="`trend-badge--${predictionTone(item.status)}`">
+                {{ item.status }}
+              </span>
+              <small>{{ formatPercent(item.confidence * 100, 1) }}</small>
+              <small>{{ item.profit === null ? "pending" : formatPercent(item.profit * 100, 2) }}</small>
             </div>
           </li>
         </ul>

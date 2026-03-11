@@ -14,10 +14,12 @@ import {
   type CoinMetrics,
   type DiscoveredPattern,
   type MarketCycle,
+  type MarketFlow,
   type MarketDecision,
   type MarketRadar,
   type PatternDescriptor,
   type PatternFeature,
+  type Prediction,
   type PortfolioAction,
   type PortfolioPosition,
   type PortfolioState,
@@ -49,6 +51,8 @@ export const useCoinStore = defineStore("coins", () => {
   const sectorNarratives = ref<SectorNarrative[]>([]);
   const marketCycles = ref<MarketCycle[]>([]);
   const marketRadar = ref<MarketRadar | null>(null);
+  const marketFlow = ref<MarketFlow | null>(null);
+  const predictions = ref<Prediction[]>([]);
   const portfolioPositions = ref<PortfolioPosition[]>([]);
   const portfolioActions = ref<PortfolioAction[]>([]);
   const portfolioState = ref<PortfolioState | null>(null);
@@ -151,6 +155,25 @@ export const useCoinStore = defineStore("coins", () => {
   const emergingRadarCoins = computed(() => marketRadar.value?.emerging_coins ?? []);
   const regimeChangeRadar = computed(() => marketRadar.value?.regime_changes ?? []);
   const volatilitySpikeRadar = computed(() => marketRadar.value?.volatility_spikes ?? []);
+  const marketFlowLeaders = computed(() => marketFlow.value?.leaders ?? []);
+  const marketFlowRelations = computed(() => marketFlow.value?.relations ?? []);
+  const marketFlowSectors = computed(() => marketFlow.value?.sectors ?? []);
+  const marketFlowRotations = computed(() => marketFlow.value?.rotations ?? []);
+  const predictionJournal = computed(() => predictions.value.slice(0, 12));
+  const activeCrossMarketRelations = computed(() =>
+    marketFlowRelations.value.filter(
+      (item) =>
+        item.leader_symbol.toUpperCase() === activeSymbol.value ||
+        item.follower_symbol.toUpperCase() === activeSymbol.value,
+    ),
+  );
+  const activePredictionJournal = computed(() =>
+    predictions.value.filter(
+      (item) =>
+        item.leader_symbol.toUpperCase() === activeSymbol.value ||
+        item.target_symbol.toUpperCase() === activeSymbol.value,
+    ),
+  );
   const enabledPatternFeatures = computed(() => patternFeatures.value.filter((item) => item.enabled));
   const topStrategies = computed(() => strategyPerformance.value.slice(0, 6));
   const topMarketDecisionRadar = computed(() => marketDecisions.value.slice(0, 8));
@@ -364,6 +387,8 @@ export const useCoinStore = defineStore("coins", () => {
         sectorPayload,
         cycleRows,
         radarPayload,
+        flowPayload,
+        predictionRows,
         portfolioStatePayload,
         portfolioPositionRows,
         portfolioActionRows,
@@ -384,6 +409,8 @@ export const useCoinStore = defineStore("coins", () => {
         irisApi.listSectorMetrics(),
         irisApi.listMarketCycles(),
         irisApi.getMarketRadar(8),
+        irisApi.getMarketFlow(8, 60),
+        irisApi.listPredictions(24),
         irisApi.getPortfolioState(),
         irisApi.listPortfolioPositions(40),
         irisApi.listPortfolioActions(40),
@@ -406,6 +433,8 @@ export const useCoinStore = defineStore("coins", () => {
       sectorNarratives.value = sectorPayload.narratives;
       marketCycles.value = cycleRows;
       marketRadar.value = radarPayload;
+      marketFlow.value = flowPayload;
+      predictions.value = predictionRows;
       portfolioState.value = portfolioStatePayload;
       portfolioPositions.value = portfolioPositionRows;
       portfolioActions.value = portfolioActionRows;
@@ -558,6 +587,11 @@ export const useCoinStore = defineStore("coins", () => {
     jobStatusRows,
     lastDashboardRefreshAt,
     marketCycles,
+    marketFlow,
+    marketFlowLeaders,
+    marketFlowRelations,
+    marketFlowRotations,
+    marketFlowSectors,
     marketDecisions,
     marketRadar,
     latestPortfolioActions,
@@ -579,6 +613,8 @@ export const useCoinStore = defineStore("coins", () => {
     patterns,
     patternHealthRows,
     patternRegimeEfficiency,
+    predictionJournal,
+    predictions,
     recentSignals,
     refreshDashboard,
     runCoinJob,
@@ -591,6 +627,8 @@ export const useCoinStore = defineStore("coins", () => {
     sourceStatusRows,
     status,
     statusTone,
+    activeCrossMarketRelations,
+    activePredictionJournal,
     hotRadarCoins,
     emergingRadarCoins,
     regimeChangeRadar,
