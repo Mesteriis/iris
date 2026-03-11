@@ -852,4 +852,5 @@ def process_indicator_event(
         "symbol": coin.symbol,
         "timeframes": affected_timeframes,
         "indicator_version": INDICATOR_VERSION,
+        "items": items,
     }

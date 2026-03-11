@@ -7,11 +7,16 @@ from pydantic import BaseModel, ConfigDict
 
 class PatternStatisticRead(BaseModel):
     timeframe: int
+    market_regime: str
     sample_size: int
+    total_signals: int
+    successful_signals: int
     success_rate: float
     avg_return: float
     avg_drawdown: float
     temperature: float
+    enabled: bool
+    last_evaluated_at: datetime | None = None
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

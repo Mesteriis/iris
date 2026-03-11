@@ -33,6 +33,7 @@ def _insert_hierarchy_signal(
     coin_id: int,
     timeframe: int,
     detection: PatternDetection,
+    market_regime: str | None = None,
 ) -> int:
     stmt = insert(Signal).values(
         {
@@ -43,6 +44,7 @@ def _insert_hierarchy_signal(
             "priority_score": 0.0,
             "context_score": 1.0,
             "regime_alignment": 1.0,
+            "market_regime": market_regime,
             "candle_timestamp": detection.candle_timestamp,
         }
     )
@@ -124,7 +126,13 @@ def build_hierarchy_signals(
         )
 
     created = sum(
-        _insert_hierarchy_signal(db, coin_id=coin_id, timeframe=timeframe, detection=detection)
+        _insert_hierarchy_signal(
+            db,
+            coin_id=coin_id,
+            timeframe=timeframe,
+            detection=detection,
+            market_regime=metrics.market_regime if metrics is not None else None,
+        )
         for detection in detections
     )
     return {"status": "ok", "created": created}

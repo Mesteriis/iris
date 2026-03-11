@@ -18,6 +18,7 @@ from app.models.signal import Signal
 from app.patterns.narrative import SectorNarrative, build_sector_narratives
 from app.patterns.regime import read_regime_details
 from app.patterns.semantics import is_cluster_signal, is_hierarchy_signal, is_pattern_signal, pattern_bias, slug_from_signal_type
+from app.patterns.success import load_pattern_success_snapshot
 from app.patterns.strategy import strategy_alignment
 from app.services.market_data import utc_now
 
@@ -141,16 +142,19 @@ def _sector_strength_factor(
     return _clamp(factor, 0.65, 1.35)
 
 
-def _historical_pattern_success(db: Session, slugs: set[str], timeframe: int) -> float:
+def _historical_pattern_success(db: Session, slugs: set[str], timeframe: int, regime: str | None = None) -> float:
     if not slugs:
         return 0.55
-    rows = db.execute(
-        select(PatternStatistic.success_rate).where(
-            PatternStatistic.pattern_slug.in_(sorted(slugs)),
-            PatternStatistic.timeframe == timeframe,
+    values: list[float] = []
+    for slug in sorted(slugs):
+        snapshot = load_pattern_success_snapshot(
+            db,
+            slug=slug,
+            timeframe=timeframe,
+            market_regime=regime,
         )
-    ).all()
-    values = [float(row.success_rate) for row in rows if row.success_rate is not None]
+        if snapshot is not None:
+            values.append(float(snapshot.success_rate))
     if not values:
         return 0.55
     return _clamp(sum(values) / len(values), 0.35, 0.95)
@@ -286,7 +290,7 @@ def evaluate_investment_decision(
     regime_alignment = _regime_alignment(relevant_signals)
     sector_strength = _sector_strength_factor(coin, metrics, sector_metric, narrative)
     cycle_alignment = _cycle_alignment(cycle, bias)
-    historical_pattern_success = _historical_pattern_success(db, pattern_slugs, timeframe)
+    historical_pattern_success = _historical_pattern_success(db, pattern_slugs, timeframe, regime)
     token_confidence: dict[str, float] = {}
     strategy_tokens: set[str] = set()
     for signal in relevant_signals:

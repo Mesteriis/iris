@@ -11,6 +11,7 @@ from app.models.signal import Signal
 from app.patterns.base import PatternDetection, PatternDetector
 from app.patterns.pattern_context import apply_pattern_context, dependencies_satisfied
 from app.patterns.registry import feature_enabled, load_active_detectors
+from app.patterns.success import apply_pattern_success_validation, load_pattern_success_cache
 from app.patterns.utils import current_indicator_map
 from app.services.candles_service import CandlePoint
 from app.services.candles_service import fetch_candle_points
@@ -27,7 +28,9 @@ class PatternEngine:
 
     def detect(
         self,
+        db: Session,
         *,
+        coin_id: int | None = None,
         candles: Sequence[CandlePoint],
         indicators: dict[str, float | None],
         detectors: Sequence[PatternDetector],
@@ -35,6 +38,12 @@ class PatternEngine:
         regime: str | None = None,
     ) -> list[PatternDetection]:
         detected: list[PatternDetection] = []
+        success_cache = load_pattern_success_cache(
+            db,
+            timeframe=timeframe,
+            slugs={detector.slug for detector in detectors},
+            market_regime=regime,
+        )
         for detector in detectors:
             if not detector.enabled or timeframe not in detector.supported_timeframes:
                 continue
@@ -47,8 +56,19 @@ class PatternEngine:
                     indicators=indicators,
                     regime=regime,
                 )
-                if adjusted is not None:
-                    detected.append(adjusted)
+                if adjusted is None:
+                    continue
+                validated = apply_pattern_success_validation(
+                    db,
+                    detection=adjusted,
+                    timeframe=timeframe,
+                    market_regime=str(adjusted.attributes.get("regime")) if adjusted.attributes.get("regime") is not None else regime,
+                    coin_id=coin_id,
+                    emit_events=True,
+                    snapshot_cache=success_cache,
+                )
+                if validated is not None:
+                    detected.append(validated)
         return detected
 
     def _insert_detections(
@@ -70,6 +90,11 @@ class PatternEngine:
                 "priority_score": 0.0,
                 "context_score": 1.0,
                 "regime_alignment": 1.0,
+                "market_regime": (
+                    str(detection.attributes.get("regime"))
+                    if detection.attributes.get("regime") is not None
+                    else None
+                ),
                 "candle_timestamp": detection.candle_timestamp,
             }
             for detection in detections
@@ -79,6 +104,7 @@ class PatternEngine:
             index_elements=["coin_id", "timeframe", "candle_timestamp", "signal_type"],
             set_={
                 "confidence": stmt.excluded.confidence,
+                "market_regime": stmt.excluded.market_regime,
             },
         )
         result = db.execute(stmt)
@@ -104,6 +130,8 @@ class PatternEngine:
         detectors = load_active_detectors(db, timeframe=timeframe)
         indicators = current_indicator_map(candles)
         detections = self.detect(
+            db,
+            coin_id=coin_id,
             candles=candles,
             indicators=indicators,
             detectors=detectors,
@@ -159,6 +187,8 @@ class PatternEngine:
                 window = candles[max(0, index - 199) : index + 1]
                 indicators = current_indicator_map(window)
                 window_detections = self.detect(
+                    db,
+                    coin_id=coin.id,
                     candles=window,
                     indicators=indicators,
                     detectors=detectors,

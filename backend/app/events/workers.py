@@ -191,12 +191,6 @@ def _handle_pattern_event(event: IrisEvent) -> None:
         new_signal_types = sorted(current_signal_types - existing_signal_types)
         if not new_signal_types:
             return
-        _emit_signal_created_events(
-            coin_id=event.coin_id,
-            timeframe=event.timeframe,
-            timestamp=event.timestamp,
-            signal_types=new_signal_types,
-        )
         for signal_type in new_signal_types:
             if signal_type.startswith("pattern_cluster_"):
                 publish_event(
@@ -218,6 +212,12 @@ def _handle_pattern_event(event: IrisEvent) -> None:
                         "signal_type": signal_type,
                     },
                 )
+        _emit_signal_created_events(
+            coin_id=event.coin_id,
+            timeframe=event.timeframe,
+            timestamp=event.timestamp,
+            signal_types=new_signal_types,
+        )
     finally:
         db.close()
 

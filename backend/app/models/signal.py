@@ -24,6 +24,8 @@ class Signal(Base):
             unique=True,
         ),
         Index("ix_signals_coin_id_timeframe_candle_timestamp", "coin_id", "timeframe", "candle_timestamp"),
+        Index("ix_signals_pattern_timestamp", "signal_type", "candle_timestamp"),
+        Index("ix_signals_coin_timestamp", "coin_id", "candle_timestamp"),
         Index("ix_signals_priority_score_desc", desc("priority_score")),
     )
 
@@ -35,6 +37,7 @@ class Signal(Base):
     priority_score: Mapped[float] = mapped_column(Float(53), nullable=False, default=0.0)
     context_score: Mapped[float] = mapped_column(Float(53), nullable=False, default=1.0)
     regime_alignment: Mapped[float] = mapped_column(Float(53), nullable=False, default=1.0)
+    market_regime: Mapped[str | None] = mapped_column(String(32), nullable=True)
     candle_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

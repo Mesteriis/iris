@@ -33,11 +33,16 @@ def list_patterns(db: Session) -> Sequence[dict[str, Any]]:
         stats_by_slug[stat.pattern_slug].append(
             {
                 "timeframe": stat.timeframe,
+                "market_regime": stat.market_regime,
                 "sample_size": stat.sample_size,
+                "total_signals": stat.total_signals,
+                "successful_signals": stat.successful_signals,
                 "success_rate": stat.success_rate,
                 "avg_return": stat.avg_return,
                 "avg_drawdown": stat.avg_drawdown,
                 "temperature": stat.temperature,
+                "enabled": stat.enabled,
+                "last_evaluated_at": stat.last_evaluated_at,
                 "updated_at": stat.updated_at,
             }
         )
@@ -74,11 +79,16 @@ def get_pattern(db: Session, slug: str) -> dict[str, Any] | None:
         "statistics": [
             {
                 "timeframe": stat.timeframe,
+                "market_regime": stat.market_regime,
                 "sample_size": stat.sample_size,
+                "total_signals": stat.total_signals,
+                "successful_signals": stat.successful_signals,
                 "success_rate": stat.success_rate,
                 "avg_return": stat.avg_return,
                 "avg_drawdown": stat.avg_drawdown,
                 "temperature": stat.temperature,
+                "enabled": stat.enabled,
+                "last_evaluated_at": stat.last_evaluated_at,
                 "updated_at": stat.updated_at,
             }
             for stat in stats
@@ -193,7 +203,7 @@ def _serialize_signal_rows(db: Session, rows: Sequence[object]) -> list[dict[str
                 "regime_alignment": float(row.regime_alignment or 0.0),
                 "candle_timestamp": row.candle_timestamp,
                 "created_at": row.created_at,
-                "market_regime": regime_snapshot.regime if regime_snapshot is not None else row.market_regime,
+                "market_regime": row.signal_market_regime or (regime_snapshot.regime if regime_snapshot is not None else row.market_regime),
                 "cycle_phase": row.cycle_phase,
                 "cycle_confidence": float(row.cycle_confidence) if row.cycle_confidence is not None else None,
                 "cluster_membership": membership.get((int(row.coin_id), int(row.timeframe), row.candle_timestamp), []),
@@ -216,6 +226,7 @@ def _signal_select():
             Signal.priority_score,
             Signal.context_score,
             Signal.regime_alignment,
+            Signal.market_regime.label("signal_market_regime"),
             Signal.candle_timestamp,
             Signal.created_at,
             CoinMetrics.market_regime,

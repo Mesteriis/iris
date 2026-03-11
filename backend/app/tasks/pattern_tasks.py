@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 from app.db.session import SessionLocal
-from app.patterns.context import enrich_signal_context, refresh_recent_signal_contexts
+from app.patterns.context import enrich_signal_context
 from app.patterns.cycle import refresh_market_cycles
 from app.patterns.decision import evaluate_investment_decision, refresh_investment_decisions
 from app.patterns.discovery import refresh_discovered_patterns
 from app.patterns.engine import PatternEngine
+from app.patterns.evaluation import run_pattern_evaluation_cycle
 from app.patterns.narrative import refresh_sector_metrics
 from app.patterns.risk import evaluate_final_signal, refresh_final_signals
-from app.patterns.statistics import refresh_pattern_statistics
 from app.patterns.strategy import refresh_strategies
-from app.services.signal_history_service import refresh_signal_history
 from app.services.history_loader import get_coin_by_symbol, list_coins_ready_for_latest_sync
 from app.taskiq.broker import broker
 from app.taskiq.locks import redis_task_lock
@@ -54,8 +53,7 @@ def patterns_bootstrap_scan(symbol: str | None = None, force: bool = False) -> d
             db.close()
 
 
-@broker.task
-def update_pattern_statistics() -> dict[str, object]:
+def _run_pattern_evaluation() -> dict[str, object]:
     with redis_task_lock(
         "iris:tasklock:pattern_statistics_refresh",
         timeout=PATTERN_STATISTICS_LOCK_TIMEOUT_SECONDS,
@@ -65,21 +63,19 @@ def update_pattern_statistics() -> dict[str, object]:
 
         db = SessionLocal()
         try:
-            history_result = refresh_signal_history(db, lookback_days=365, commit=True)
-            statistics_result = refresh_pattern_statistics(db)
-            context_result = refresh_recent_signal_contexts(db, lookback_days=30)
-            decision_result = refresh_investment_decisions(db, lookback_days=30, emit_events=False)
-            final_signal_result = refresh_final_signals(db, lookback_days=30, emit_events=False)
-            return {
-                "status": "ok",
-                "signal_history": history_result,
-                "statistics": statistics_result,
-                "context": context_result,
-                "decisions": decision_result,
-                "final_signals": final_signal_result,
-            }
+            return run_pattern_evaluation_cycle(db)
         finally:
             db.close()
+
+
+@broker.task
+def pattern_evaluation_job() -> dict[str, object]:
+    return _run_pattern_evaluation()
+
+
+@broker.task
+def update_pattern_statistics() -> dict[str, object]:
+    return _run_pattern_evaluation()
 
 
 @broker.task

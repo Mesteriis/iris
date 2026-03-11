@@ -120,7 +120,7 @@ async def schedule_pattern_statistics_refresh(receiver: Receiver, stop_event: as
             await asyncio.wait_for(stop_event.wait(), timeout=interval)
         except TimeoutError:
             LOGGER.info("Queueing nightly pattern statistics refresh task.")
-            await dispatch_task_locally(receiver, pattern_tasks_module.update_pattern_statistics)
+            await dispatch_task_locally(receiver, pattern_tasks_module.pattern_evaluation_job)
 
 
 async def schedule_market_structure_refresh(receiver: Receiver, stop_event: asyncio.Event) -> None:

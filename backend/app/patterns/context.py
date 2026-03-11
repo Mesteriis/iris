@@ -14,6 +14,7 @@ from app.models.sector_metric import SectorMetric
 from app.models.signal import Signal
 from app.patterns.regime import read_regime_details
 from app.patterns.semantics import is_cluster_signal, is_pattern_signal, pattern_bias, slug_from_signal_type
+from app.patterns.success import load_pattern_success_snapshot
 from app.services.market_data import ensure_utc, utc_now
 from app.services.regime_cache import read_cached_regime
 
@@ -98,16 +99,18 @@ def _cycle_alignment(cycle: MarketCycle | None, bias: int) -> float:
     return 1.0
 
 
-def _pattern_temperature(db: Session, slug: str | None, timeframe: int) -> float:
+def _pattern_temperature(db: Session, slug: str | None, timeframe: int, regime: str | None = None) -> float:
     if slug is None:
         return 1.0
-    temperature = db.scalar(
-        select(PatternStatistic.temperature).where(
-            PatternStatistic.pattern_slug == slug,
-            PatternStatistic.timeframe == timeframe,
-        )
+    snapshot = load_pattern_success_snapshot(
+        db,
+        slug=slug,
+        timeframe=timeframe,
+        market_regime=regime,
     )
-    return float(temperature) if temperature is not None and temperature != 0 else 1.0
+    if snapshot is None:
+        return 1.0
+    return float(snapshot.temperature) if snapshot.temperature != 0 else 1.0
 
 
 def _signal_regime(metrics: CoinMetrics | None, timeframe: int) -> str | None:
@@ -154,11 +157,12 @@ def enrich_signal_context(
         slug = slug_from_signal_type(signal.signal_type)
         bias = pattern_bias(slug or signal.signal_type, fallback_price_delta=signal.confidence - 0.5)
         regime_alignment = _regime_alignment(_signal_regime(metrics, signal.timeframe), bias)
+        signal_regime = signal.market_regime or _signal_regime(metrics, signal.timeframe)
         volatility_alignment = _volatility_alignment(signal.signal_type, metrics)
         liquidity_score = _liquidity_score(metrics)
         sector_alignment = _sector_alignment(sector_metric, bias)
         cycle_alignment = _cycle_alignment(cycle, bias)
-        temperature = _pattern_temperature(db, slug, signal.timeframe)
+        temperature = _pattern_temperature(db, slug, signal.timeframe, signal_regime)
         cluster_bonus = 1.15 if signal.candle_timestamp in cluster_timestamps and is_pattern_signal(signal.signal_type) else 1.0
         context_score = max(
             temperature * volatility_alignment * liquidity_score * cluster_bonus * sector_alignment * cycle_alignment,

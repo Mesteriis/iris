@@ -22,6 +22,7 @@ def _insert_cluster_signal(
     coin_id: int,
     timeframe: int,
     detection: PatternDetection,
+    market_regime: str | None = None,
 ) -> int:
     stmt = insert(Signal).values(
         {
@@ -32,6 +33,7 @@ def _insert_cluster_signal(
             "priority_score": 0.0,
             "context_score": 1.0,
             "regime_alignment": 1.0,
+            "market_regime": market_regime,
             "candle_timestamp": detection.candle_timestamp,
         }
     )
@@ -73,6 +75,7 @@ def build_pattern_clusters(
             db,
             coin_id=coin_id,
             timeframe=timeframe,
+            market_regime=metrics.market_regime if metrics is not None else None,
             detection=PatternDetection(
                 slug="cluster_bullish",
                 signal_type=CLUSTER_SIGNAL_TYPES["bullish"],
@@ -87,6 +90,7 @@ def build_pattern_clusters(
             db,
             coin_id=coin_id,
             timeframe=timeframe,
+            market_regime=metrics.market_regime if metrics is not None else None,
             detection=PatternDetection(
                 slug="cluster_bearish",
                 signal_type=CLUSTER_SIGNAL_TYPES["bearish"],
