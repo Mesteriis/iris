@@ -60,6 +60,26 @@ async function submitCoinForm() {
 async function runCoinJob(symbol: string) {
   await coinStore.runCoinJob(symbol, "auto", true);
 }
+
+function formatFusionDecision(decision: string | null | undefined): string {
+  if (!decision) {
+    return "WATCH";
+  }
+  return decision.replace(/_/g, " ");
+}
+
+function decisionTone(decision: string | null | undefined): string {
+  if (decision === "BUY") {
+    return "bullish";
+  }
+  if (decision === "SELL") {
+    return "bearish";
+  }
+  if (decision === "HOLD") {
+    return "sideways";
+  }
+  return "pending";
+}
 </script>
 
 <template>
@@ -416,6 +436,37 @@ async function runCoinJob(symbol: string) {
     </section>
 
     <section class="detail-grid__row">
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Decision radar</p>
+            <h3>Unified BUY / SELL layer</h3>
+          </div>
+          <p>{{ coinStore.topMarketDecisionRadar.length }} fused decisions</p>
+        </div>
+
+        <div v-if="coinStore.topMarketDecisionRadar.length === 0" class="surface-state">
+          Signal Fusion Engine has not produced market decisions yet.
+        </div>
+        <ul v-else class="detail-signal-list">
+          <li v-for="item in coinStore.topMarketDecisionRadar" :key="`${item.symbol}-${item.timeframe}`">
+            <div>
+              <strong>{{ item.symbol }}</strong>
+              <p>
+                {{ timeframeToLabel(item.timeframe) }} / {{ formatMarketRegime(item.regime) }} / {{ item.signal_count }} signals
+              </p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span class="trend-badge" :class="`trend-badge--${decisionTone(item.decision)}`">
+                {{ formatFusionDecision(item.decision) }}
+              </span>
+              <small>{{ formatPercent(item.confidence * 100, 2) }}</small>
+              <small>{{ formatDateTime(item.created_at) }}</small>
+            </div>
+          </li>
+        </ul>
+      </article>
+
       <article class="surface-card">
         <div class="section-head">
           <div>

@@ -27,6 +27,7 @@ const coin = computed(
 );
 const metric = computed(() => coinStore.metricsBySymbol.get(symbol.value) ?? null);
 const patternSignals = computed(() => coinStore.activePatternSignals);
+const marketDecision = computed(() => coinStore.activeMarketDecision);
 const backtests = computed(() => coinStore.activeBacktests);
 const regime = computed(() => coinStore.activeRegime);
 const cycles = computed(() => coinStore.activeCycles);
@@ -59,6 +60,26 @@ async function runCoinJob() {
   if (queued) {
     await coinStore.fetchHistory(symbol.value, coinStore.activeInterval);
   }
+}
+
+function formatFusionDecision(decision: string | null | undefined): string {
+  if (!decision) {
+    return "WATCH";
+  }
+  return decision.replace(/_/g, " ");
+}
+
+function decisionTone(decision: string | null | undefined): string {
+  if (decision === "BUY") {
+    return "bullish";
+  }
+  if (decision === "SELL") {
+    return "bearish";
+  }
+  if (decision === "HOLD") {
+    return "sideways";
+  }
+  return "pending";
 }
 
 onMounted(loadPage);
@@ -202,6 +223,37 @@ watch(symbol, loadPage);
         </div>
       </article>
 
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Decision radar</p>
+            <h3>Fused market stance</h3>
+          </div>
+          <p>{{ marketDecision?.items.length ?? 0 }} timeframe decisions</p>
+        </div>
+
+        <div v-if="!marketDecision || marketDecision.items.length === 0" class="surface-state">
+          Signal Fusion Engine has not produced a market decision for {{ symbol }} yet.
+        </div>
+        <ul v-else class="detail-signal-list">
+          <li v-for="item in marketDecision.items" :key="`market-decision-${item.timeframe}`">
+            <div>
+              <strong>{{ timeframeToLabel(item.timeframe) }}</strong>
+              <p>{{ formatMarketRegime(item.regime) }} / {{ item.signal_count }} fused signals</p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span class="trend-badge" :class="`trend-badge--${decisionTone(item.decision)}`">
+                {{ formatFusionDecision(item.decision) }}
+              </span>
+              <small>{{ formatPercent(item.confidence * 100, 2) }}</small>
+              <small>{{ formatDateTime(item.created_at) }}</small>
+            </div>
+          </li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="detail-grid__row">
       <article class="surface-card">
         <div class="section-head">
           <div>

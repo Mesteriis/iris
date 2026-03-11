@@ -116,6 +116,36 @@ export interface PatternStatistic {
   updated_at: string;
 }
 
+export interface MarketDecision {
+  id: number;
+  coin_id: number;
+  symbol: string;
+  name: string;
+  sector: string | null;
+  timeframe: number;
+  decision: "BUY" | "SELL" | "HOLD" | "WATCH";
+  confidence: number;
+  signal_count: number;
+  regime: string | null;
+  created_at: string;
+}
+
+export interface CoinMarketDecisionItem {
+  timeframe: number;
+  decision: "BUY" | "SELL" | "HOLD" | "WATCH";
+  confidence: number;
+  signal_count: number;
+  regime: string | null;
+  created_at: string | null;
+}
+
+export interface CoinMarketDecision {
+  coin_id: number;
+  symbol: string;
+  canonical_decision: "BUY" | "SELL" | "HOLD" | "WATCH" | null;
+  items: CoinMarketDecisionItem[];
+}
+
 export interface StrategyRule {
   pattern_slug: string;
   regime: string;
@@ -348,6 +378,22 @@ export const irisApi = {
     const response = await api.get<Signal[]>("/signals/top", {
       params: { limit },
     });
+    return response.data;
+  },
+  async listMarketDecisions(limit = 24): Promise<MarketDecision[]> {
+    const response = await api.get<MarketDecision[]>("/market-decisions", {
+      params: { limit },
+    });
+    return response.data;
+  },
+  async listTopMarketDecisions(limit = 12): Promise<MarketDecision[]> {
+    const response = await api.get<MarketDecision[]>("/market-decisions/top", {
+      params: { limit },
+    });
+    return response.data;
+  },
+  async getCoinMarketDecision(symbol: string): Promise<CoinMarketDecision> {
+    const response = await api.get<CoinMarketDecision>(`/coins/${symbol}/market-decision`);
     return response.data;
   },
   async listPatterns(): Promise<PatternDescriptor[]> {

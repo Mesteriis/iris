@@ -8,11 +8,13 @@ import {
   type CandleInterval,
   type Coin,
   type CoinBacktests,
+  type CoinMarketDecision,
   type CoinRegime,
   type CoinCreatePayload,
   type CoinMetrics,
   type DiscoveredPattern,
   type MarketCycle,
+  type MarketDecision,
   type MarketRadar,
   type PatternDescriptor,
   type PatternFeature,
@@ -32,6 +34,7 @@ export const useCoinStore = defineStore("coins", () => {
   const metrics = ref<CoinMetrics[]>([]);
   const signals = ref<Signal[]>([]);
   const topSignals = ref<Signal[]>([]);
+  const marketDecisions = ref<MarketDecision[]>([]);
   const patterns = ref<PatternDescriptor[]>([]);
   const strategies = ref<Strategy[]>([]);
   const strategyPerformance = ref<StrategyPerformance[]>([]);
@@ -44,6 +47,7 @@ export const useCoinStore = defineStore("coins", () => {
   const marketCycles = ref<MarketCycle[]>([]);
   const marketRadar = ref<MarketRadar | null>(null);
   const coinBacktests = ref<Record<string, CoinBacktests>>({});
+  const coinMarketDecisions = ref<Record<string, CoinMarketDecision>>({});
   const coinPatternHistory = ref<Record<string, Signal[]>>({});
   const coinRegimes = ref<Record<string, CoinRegime>>({});
   const history = ref<PriceHistoryPoint[]>([]);
@@ -131,6 +135,7 @@ export const useCoinStore = defineStore("coins", () => {
   );
   const activePatternSignals = computed(() => coinPatternHistory.value[activeSymbol.value] ?? []);
   const activeBacktests = computed(() => coinBacktests.value[activeSymbol.value]?.items ?? []);
+  const activeMarketDecision = computed(() => coinMarketDecisions.value[activeSymbol.value] ?? null);
   const activeRegime = computed(() => coinRegimes.value[activeSymbol.value] ?? null);
   const activeCycles = computed(() =>
     marketCycles.value.filter((item) => item.symbol.toUpperCase() === activeSymbol.value),
@@ -142,6 +147,7 @@ export const useCoinStore = defineStore("coins", () => {
   const volatilitySpikeRadar = computed(() => marketRadar.value?.volatility_spikes ?? []);
   const enabledPatternFeatures = computed(() => patternFeatures.value.filter((item) => item.enabled));
   const topStrategies = computed(() => strategyPerformance.value.slice(0, 6));
+  const topMarketDecisionRadar = computed(() => marketDecisions.value.slice(0, 8));
   const activePatternsCount = computed(() =>
     patterns.value.filter((pattern) => pattern.enabled && pattern.lifecycle_state !== "DISABLED").length,
   );
@@ -309,6 +315,7 @@ export const useCoinStore = defineStore("coins", () => {
         metricRows,
         signalRows,
         topSignalRows,
+        topMarketDecisionRows,
         patternRows,
         strategyRows,
         strategyPerformanceRows,
@@ -325,6 +332,7 @@ export const useCoinStore = defineStore("coins", () => {
         irisApi.listCoinMetrics(),
         irisApi.listSignals(40),
         irisApi.listTopSignals(12),
+        irisApi.listTopMarketDecisions(12),
         irisApi.listPatterns(),
         irisApi.listStrategies(40, false),
         irisApi.listStrategyPerformance(12),
@@ -342,6 +350,7 @@ export const useCoinStore = defineStore("coins", () => {
       metrics.value = metricRows;
       signals.value = signalRows;
       topSignals.value = topSignalRows;
+      marketDecisions.value = topMarketDecisionRows;
       patterns.value = patternRows;
       strategies.value = strategyRows;
       strategyPerformance.value = strategyPerformanceRows;
@@ -376,12 +385,13 @@ export const useCoinStore = defineStore("coins", () => {
     activeSymbol.value = symbol.toUpperCase();
     activeInterval.value = interval;
     try {
-      const [historyRows, patternRows, regime, cycleRows, backtests] = await Promise.all([
+      const [historyRows, patternRows, regime, cycleRows, backtests, marketDecision] = await Promise.all([
         irisApi.getCoinHistory(symbol, interval),
         irisApi.listCoinPatterns(symbol, 120),
         irisApi.getCoinRegime(symbol),
         irisApi.listMarketCycles(symbol),
         irisApi.getCoinBacktests(symbol, 16),
+        irisApi.getCoinMarketDecision(symbol),
       ]);
       history.value = historyRows;
       coinPatternHistory.value = {
@@ -391,6 +401,10 @@ export const useCoinStore = defineStore("coins", () => {
       coinRegimes.value = {
         ...coinRegimes.value,
         [symbol.toUpperCase()]: regime,
+      };
+      coinMarketDecisions.value = {
+        ...coinMarketDecisions.value,
+        [symbol.toUpperCase()]: marketDecision,
       };
       coinBacktests.value = {
         ...coinBacktests.value,
@@ -465,6 +479,7 @@ export const useCoinStore = defineStore("coins", () => {
     activeBacktests,
     activeCycles,
     activeInterval,
+    activeMarketDecision,
     activeMetrics,
     activePatternSignals,
     activeRegime,
@@ -496,6 +511,7 @@ export const useCoinStore = defineStore("coins", () => {
     jobStatusRows,
     lastDashboardRefreshAt,
     marketCycles,
+    marketDecisions,
     marketRadar,
     metrics,
     metricsBySymbol,
@@ -525,6 +541,7 @@ export const useCoinStore = defineStore("coins", () => {
     volatilitySpikeRadar,
     topSectorMetrics,
     topBacktests,
+    topMarketDecisionRadar,
     topStrategies,
     topSignals,
   };
