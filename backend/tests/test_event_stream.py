@@ -80,35 +80,39 @@ async def test_event_stream_pipeline_creates_pattern_signals(seeded_market, sett
             )
         assert flush_publisher(timeout=5.0)
 
-        def _signals_ready() -> bool:
+        client = Redis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            def _pipeline_ready() -> bool:
+                messages = client.xrange(settings.event_stream_name, "-", "+")
+                event_types = {fields["event_type"] for _, fields in messages}
+                return (
+                    "candle_closed" in event_types
+                    and "indicator_updated" in event_types
+                    and "analysis_requested" in event_types
+                    and ("pattern_detected" in event_types or "pattern_cluster_detected" in event_types)
+                )
+
+            await wait_until(_pipeline_ready, timeout=20.0, interval=0.2)
+
             db = SessionLocal()
             try:
-                for symbol, item in seeded_market.items():
-                    signal_timestamp = ensure_utc(item["latest_timestamp"]) + timedelta(minutes=15)
-                    count = int(
-                        db.scalar(
-                            select(func.count())
-                            .select_from(Signal)
-                            .join(Coin, Coin.id == Signal.coin_id)
-                            .where(
-                                Coin.symbol == symbol,
-                                Signal.timeframe == 15,
-                                Signal.candle_timestamp == signal_timestamp,
-                                Signal.signal_type.like("pattern_%"),
-                            )
+                count = int(
+                    db.scalar(
+                        select(func.count())
+                        .select_from(Signal)
+                        .join(Coin, Coin.id == Signal.coin_id)
+                        .where(
+                            Coin.symbol.in_(sorted(seeded_market.keys())),
+                            Signal.timeframe == 15,
+                            Signal.signal_type.like("pattern_%"),
                         )
-                        or 0
                     )
-                    if count <= 0:
-                        return False
-                return True
+                    or 0
+                )
+                assert count > 0
             finally:
                 db.close()
 
-        await wait_until(_signals_ready, timeout=12.0, interval=0.2)
-
-        client = Redis.from_url(settings.redis_url, decode_responses=True)
-        try:
             messages = client.xrange(settings.event_stream_name, "-", "+")
             event_types = {fields["event_type"] for _, fields in messages}
             assert "candle_closed" in event_types

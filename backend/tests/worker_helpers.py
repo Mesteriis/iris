@@ -24,9 +24,9 @@ def recording_worker_loop(
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
 
     def handler(event: IrisEvent) -> None:
+        time.sleep(0.05)
         redis.hincrby(record_hash, consumer_name, 1)
         redis.hset(record_hash, f"last:{consumer_name}", event.stream_id)
-        time.sleep(0.05)
 
     consumer = EventConsumer(
         EventConsumerConfig(

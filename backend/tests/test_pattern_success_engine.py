@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+from redis import Redis
+from sqlalchemy import delete
+
+from app.events.publisher import flush_publisher
+from app.models.pattern_statistic import PatternStatistic
+from app.patterns.base import PatternDetection
+from app.patterns.success import GLOBAL_MARKET_REGIME, apply_pattern_success_validation
+from app.patterns.registry import sync_pattern_metadata
+
+
+def _pattern_stat(
+    *,
+    slug: str,
+    timeframe: int,
+    market_regime: str,
+    success_rate: float,
+    total_signals: int,
+    enabled: bool = True,
+) -> PatternStatistic:
+    successful_signals = int(round(success_rate * total_signals))
+    return PatternStatistic(
+        pattern_slug=slug,
+        timeframe=timeframe,
+        market_regime=market_regime,
+        sample_size=total_signals,
+        total_signals=total_signals,
+        successful_signals=successful_signals,
+        success_rate=success_rate,
+        avg_return=0.03 if success_rate >= 0.5 else -0.02,
+        avg_drawdown=-0.02,
+        temperature=0.8 if success_rate >= 0.5 else -0.6,
+        enabled=enabled,
+        last_evaluated_at=datetime.now(timezone.utc),
+    )
+
+
+def test_pattern_success_engine_prefers_regime_specific_statistics(db_session) -> None:
+    sync_pattern_metadata(db_session)
+    db_session.execute(delete(PatternStatistic).where(PatternStatistic.pattern_slug == "bull_flag"))
+    db_session.add_all(
+        [
+            _pattern_stat(
+                slug="bull_flag",
+                timeframe=15,
+                market_regime=GLOBAL_MARKET_REGIME,
+                success_rate=0.32,
+                total_signals=40,
+                enabled=False,
+            ),
+            _pattern_stat(
+                slug="bull_flag",
+                timeframe=15,
+                market_regime="bull_trend",
+                success_rate=0.82,
+                total_signals=40,
+                enabled=True,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    detection = PatternDetection(
+        slug="bull_flag",
+        signal_type="pattern_bull_flag",
+        confidence=0.72,
+        candle_timestamp=datetime(2026, 3, 11, 14, 0, tzinfo=timezone.utc),
+        category="continuation",
+        attributes={"regime": "bull_trend"},
+    )
+
+    adjusted = apply_pattern_success_validation(
+        db_session,
+        detection=detection,
+        timeframe=15,
+        market_regime="bull_trend",
+        coin_id=1,
+        emit_events=False,
+    )
+    assert adjusted is not None
+    assert adjusted.confidence > detection.confidence
+    assert adjusted.attributes["pattern_success_regime"] == "bull_trend"
+
+
+def test_pattern_success_engine_degrades_and_suppresses(db_session, settings) -> None:
+    sync_pattern_metadata(db_session)
+    db_session.execute(delete(PatternStatistic).where(PatternStatistic.pattern_slug == "head_shoulders"))
+    db_session.add_all(
+        [
+            _pattern_stat(
+                slug="head_shoulders",
+                timeframe=60,
+                market_regime="bull_trend",
+                success_rate=0.50,
+                total_signals=20,
+                enabled=True,
+            ),
+            _pattern_stat(
+                slug="head_shoulders",
+                timeframe=60,
+                market_regime="bear_trend",
+                success_rate=0.30,
+                total_signals=25,
+                enabled=True,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    degraded = apply_pattern_success_validation(
+        db_session,
+        detection=PatternDetection(
+            slug="head_shoulders",
+            signal_type="pattern_head_shoulders",
+            confidence=0.8,
+            candle_timestamp=datetime(2026, 3, 11, 15, 0, tzinfo=timezone.utc),
+            category="structural",
+            attributes={"regime": "bull_trend"},
+        ),
+        timeframe=60,
+        market_regime="bull_trend",
+        coin_id=1,
+        emit_events=True,
+    )
+    assert degraded is not None
+    assert degraded.confidence < 0.8
+
+    suppressed = apply_pattern_success_validation(
+        db_session,
+        detection=PatternDetection(
+            slug="head_shoulders",
+            signal_type="pattern_head_shoulders",
+            confidence=0.75,
+            candle_timestamp=datetime(2026, 3, 11, 16, 0, tzinfo=timezone.utc),
+            category="structural",
+            attributes={"regime": "bear_trend"},
+        ),
+        timeframe=60,
+        market_regime="bear_trend",
+        coin_id=1,
+        emit_events=True,
+    )
+    assert suppressed is None
+    assert flush_publisher(timeout=5.0)
+
+    client = Redis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        event_types = [fields["event_type"] for _, fields in client.xrange(settings.event_stream_name, "-", "+")]
+        assert "pattern_degraded" in event_types
+        assert "pattern_disabled" in event_types
+    finally:
+        client.close()
