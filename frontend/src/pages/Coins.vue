@@ -9,8 +9,11 @@ import {
   formatDateTime,
   formatDurationSeconds,
   formatMarketRegime,
+  formatPercent,
   formatRateLimitPolicy,
+  formatSignalType,
   formatTrend,
+  timeframeToLabel,
 } from "../utils/format";
 
 const coinStore = useCoinStore();
@@ -320,6 +323,113 @@ async function runCoinJob(symbol: string) {
           </li>
         </ul>
       </article>
+    </section>
+
+    <section class="detail-grid__row">
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Top signals</p>
+            <h3>Priority-ranked flow</h3>
+          </div>
+          <p>{{ coinStore.topSignals.length }} ranked items</p>
+        </div>
+
+        <div v-if="coinStore.topSignals.length === 0" class="surface-state">
+          No prioritized signals yet.
+        </div>
+        <ul v-else class="detail-signal-list">
+          <li v-for="signal in coinStore.topSignals" :key="signal.id">
+            <div>
+              <strong>{{ signal.symbol }} · {{ formatSignalType(signal.signal_type) }}</strong>
+              <p>
+                {{ timeframeToLabel(signal.timeframe) }} / {{ formatMarketRegime(signal.market_regime) }}
+                <template v-if="signal.cycle_phase"> / {{ signal.cycle_phase }}</template>
+                <template v-if="signal.cluster_membership.length > 0">
+                  / {{ signal.cluster_membership.map(formatSignalType).join(", ") }}
+                </template>
+              </p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span>{{ signal.priority_score.toFixed(3) }}</span>
+              <small>{{ Math.round(signal.confidence * 100) }}%</small>
+            </div>
+          </li>
+        </ul>
+      </article>
+
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Sector rotation</p>
+            <h3>Capital flow map</h3>
+          </div>
+          <p>{{ coinStore.sectors.length }} sectors from current taxonomy</p>
+        </div>
+
+        <div class="indicator-grid">
+          <div
+            v-for="item in coinStore.topSectorMetrics"
+            :key="`${item.sector_id}-${item.timeframe}`"
+            class="indicator-card"
+          >
+            <span>{{ item.name }} · {{ timeframeToLabel(item.timeframe) }}</span>
+            <strong>{{ formatPercent(item.sector_strength * 100, 2) }}</strong>
+            <small>
+              RS {{ formatPercent(item.relative_strength * 100, 2) }} · Flow {{ item.capital_flow.toFixed(2) }}
+            </small>
+          </div>
+        </div>
+
+        <ul v-if="coinStore.sectorNarratives.length > 0" class="detail-signal-list">
+          <li v-for="narrative in coinStore.sectorNarratives" :key="narrative.timeframe">
+            <div>
+              <strong>{{ timeframeToLabel(narrative.timeframe) }}</strong>
+              <p>{{ narrative.top_sector || "No leader" }}</p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span>{{ narrative.rotation_state || "stable" }}</span>
+              <small>
+                BTC dom
+                {{
+                  narrative.btc_dominance !== null
+                    ? `${(narrative.btc_dominance * 100).toFixed(1)}%`
+                    : "No data"
+                }}
+              </small>
+            </div>
+          </li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="surface-card">
+      <div class="section-head">
+        <div>
+          <p class="section-head__eyebrow">Pattern library</p>
+          <h3>Lifecycle and temperature</h3>
+        </div>
+        <p>{{ coinStore.patterns.length }} registered detectors</p>
+      </div>
+
+      <ul class="detail-signal-list">
+        <li v-for="pattern in coinStore.patterns.slice(0, 12)" :key="pattern.slug">
+          <div>
+            <strong>{{ formatSignalType(pattern.slug) }}</strong>
+            <p>{{ pattern.category }} / {{ pattern.lifecycle_state }}</p>
+          </div>
+          <div class="detail-signal-list__meta">
+            <span>
+              {{
+                pattern.statistics.length > 0
+                  ? Math.max(...pattern.statistics.map((item) => item.temperature)).toFixed(3)
+                  : "0.000"
+              }}
+            </span>
+            <small>CPU {{ pattern.cpu_cost }}</small>
+          </div>
+        </li>
+      </ul>
     </section>
 
     <section class="surface-card">

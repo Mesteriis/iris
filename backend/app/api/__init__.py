@@ -1,3 +1,3 @@
-from app.api import coins, history, metrics, signals, system
+from app.api import coins, history, market, metrics, patterns, sectors, signals, system
 
-__all__ = ["coins", "history", "metrics", "signals", "system"]
+__all__ = ["coins", "history", "market", "metrics", "patterns", "sectors", "signals", "system"]

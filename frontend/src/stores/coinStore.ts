@@ -6,9 +6,15 @@ import {
   irisApi,
   type CandleInterval,
   type Coin,
+  type CoinRegime,
   type CoinCreatePayload,
   type CoinMetrics,
+  type MarketCycle,
+  type PatternDescriptor,
   type PriceHistoryPoint,
+  type Sector,
+  type SectorMetric,
+  type SectorNarrative,
   type Signal,
   type SystemStatus,
 } from "../services/api";
@@ -18,6 +24,14 @@ export const useCoinStore = defineStore("coins", () => {
   const coins = ref<Coin[]>([]);
   const metrics = ref<CoinMetrics[]>([]);
   const signals = ref<Signal[]>([]);
+  const topSignals = ref<Signal[]>([]);
+  const patterns = ref<PatternDescriptor[]>([]);
+  const sectors = ref<Sector[]>([]);
+  const sectorMetrics = ref<SectorMetric[]>([]);
+  const sectorNarratives = ref<SectorNarrative[]>([]);
+  const marketCycles = ref<MarketCycle[]>([]);
+  const coinPatternHistory = ref<Record<string, Signal[]>>({});
+  const coinRegimes = ref<Record<string, CoinRegime>>({});
   const history = ref<PriceHistoryPoint[]>([]);
   const activeSymbol = ref<string>("");
   const activeInterval = ref<CandleInterval>("1d");
@@ -54,6 +68,16 @@ export const useCoinStore = defineStore("coins", () => {
     }
     return grouped;
   });
+  const topSignalsBySymbol = computed(() => {
+    const grouped = new Map<string, Signal[]>();
+    for (const signal of topSignals.value) {
+      const symbol = signal.symbol.toUpperCase();
+      const bucket = grouped.get(symbol) ?? [];
+      bucket.push(signal);
+      grouped.set(symbol, bucket);
+    }
+    return grouped;
+  });
   const recentSignals = computed(() =>
     [...signals.value].sort(
       (left, right) =>
@@ -65,6 +89,7 @@ export const useCoinStore = defineStore("coins", () => {
       .map((coin) => {
         const metric = metricsBySymbol.value.get(coin.symbol.toUpperCase());
         const signalCount = signalsBySymbol.value.get(coin.symbol.toUpperCase())?.length ?? 0;
+        const topSignal = topSignalsBySymbol.value.get(coin.symbol.toUpperCase())?.[0] ?? null;
         const job = getCoinJobSnapshot(coin);
 
         return {
@@ -72,6 +97,7 @@ export const useCoinStore = defineStore("coins", () => {
           ...metric,
           job,
           signalCount,
+          topSignal,
         };
       })
       .sort((left, right) => {
@@ -89,6 +115,12 @@ export const useCoinStore = defineStore("coins", () => {
   const activeSignals = computed(
     () => signalsBySymbol.value.get(activeSymbol.value)?.slice(0, 12) ?? [],
   );
+  const activePatternSignals = computed(() => coinPatternHistory.value[activeSymbol.value] ?? []);
+  const activeRegime = computed(() => coinRegimes.value[activeSymbol.value] ?? null);
+  const activeCycles = computed(() =>
+    marketCycles.value.filter((item) => item.symbol.toUpperCase() === activeSymbol.value),
+  );
+  const topSectorMetrics = computed(() => sectorMetrics.value.slice(0, 6));
   const bullishShare = computed(() => {
     if (metrics.value.length === 0) {
       return 0;
@@ -200,16 +232,27 @@ export const useCoinStore = defineStore("coins", () => {
     isBootstrapping.value = true;
     dashboardError.value = "";
     try {
-      const [coinRows, metricRows, signalRows, systemState] = await Promise.all([
+      const [coinRows, metricRows, signalRows, topSignalRows, patternRows, sectorRows, sectorPayload, cycleRows, systemState] = await Promise.all([
         irisApi.listCoins(),
         irisApi.listCoinMetrics(),
         irisApi.listSignals(40),
+        irisApi.listTopSignals(12),
+        irisApi.listPatterns(),
+        irisApi.listSectors(),
+        irisApi.listSectorMetrics(),
+        irisApi.listMarketCycles(),
         irisApi.getStatus(),
       ]);
 
       coins.value = coinRows;
       metrics.value = metricRows;
       signals.value = signalRows;
+      topSignals.value = topSignalRows;
+      patterns.value = patternRows;
+      sectors.value = sectorRows;
+      sectorMetrics.value = sectorPayload.items;
+      sectorNarratives.value = sectorPayload.narratives;
+      marketCycles.value = cycleRows;
       status.value = systemState;
       lastDashboardRefreshAt.value = new Date().toISOString();
     } catch (err) {
@@ -233,7 +276,25 @@ export const useCoinStore = defineStore("coins", () => {
     activeSymbol.value = symbol.toUpperCase();
     activeInterval.value = interval;
     try {
-      history.value = await irisApi.getCoinHistory(symbol, interval);
+      const [historyRows, patternRows, regime, cycleRows] = await Promise.all([
+        irisApi.getCoinHistory(symbol, interval),
+        irisApi.listCoinPatterns(symbol, 120),
+        irisApi.getCoinRegime(symbol),
+        irisApi.listMarketCycles(symbol),
+      ]);
+      history.value = historyRows;
+      coinPatternHistory.value = {
+        ...coinPatternHistory.value,
+        [symbol.toUpperCase()]: patternRows,
+      };
+      coinRegimes.value = {
+        ...coinRegimes.value,
+        [symbol.toUpperCase()]: regime,
+      };
+      marketCycles.value = [
+        ...marketCycles.value.filter((item) => item.symbol.toUpperCase() !== symbol.toUpperCase()),
+        ...cycleRows,
+      ];
     } catch (err) {
       history.value = [];
       historyError.value = getErrorMessage(err, "Unable to load price history.");
@@ -296,8 +357,11 @@ export const useCoinStore = defineStore("coins", () => {
   return {
     activeSymbol,
     activeCoin,
+    activeCycles,
     activeInterval,
     activeMetrics,
+    activePatternSignals,
+    activeRegime,
     activeSignals,
     bootstrapDashboard,
     bullishShare,
@@ -323,16 +387,23 @@ export const useCoinStore = defineStore("coins", () => {
     jobStatusCounts,
     jobStatusRows,
     lastDashboardRefreshAt,
+    marketCycles,
     metrics,
     metricsBySymbol,
+    patterns,
     recentSignals,
     refreshDashboard,
     runCoinJob,
+    sectorMetrics,
+    sectorNarratives,
+    sectors,
     signals,
     signalsBySymbol,
     sourceStatusCounts,
     sourceStatusRows,
     status,
     statusTone,
+    topSectorMetrics,
+    topSignals,
   };
 });

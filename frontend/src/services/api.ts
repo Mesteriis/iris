@@ -77,14 +77,98 @@ export interface CoinMetrics {
 }
 
 export interface Signal {
+  id: number;
+  coin_id: number;
+  symbol: string;
+  name: string;
+  sector: string | null;
+  timeframe: number;
+  signal_type: string;
+  confidence: number;
+  priority_score: number;
+  context_score: number;
+  regime_alignment: number;
+  candle_timestamp: string;
+  created_at: string;
+  market_regime: string | null;
+  cycle_phase: string | null;
+  cycle_confidence: number | null;
+  cluster_membership: string[];
+}
+
+export interface PatternStatistic {
+  timeframe: number;
+  sample_size: number;
+  success_rate: number;
+  avg_return: number;
+  avg_drawdown: number;
+  temperature: number;
+  updated_at: string;
+}
+
+export interface PatternDescriptor {
+  slug: string;
+  category: string;
+  enabled: boolean;
+  cpu_cost: number;
+  lifecycle_state: string;
+  created_at: string;
+  statistics: PatternStatistic[];
+}
+
+export interface RegimeSnapshot {
+  timeframe: number;
+  regime: string;
+  confidence: number;
+}
+
+export interface CoinRegime {
+  coin_id: number;
+  symbol: string;
+  canonical_regime: string | null;
+  items: RegimeSnapshot[];
+}
+
+export interface Sector {
+  id: number;
+  name: string;
+  description: string | null;
+  created_at: string;
+  coin_count: number;
+}
+
+export interface SectorMetric {
+  sector_id: number;
+  name: string;
+  description: string | null;
+  timeframe: number;
+  sector_strength: number;
+  relative_strength: number;
+  capital_flow: number;
+  volatility: number;
+  updated_at: string;
+}
+
+export interface SectorNarrative {
+  timeframe: number;
+  top_sector: string | null;
+  rotation_state: string | null;
+  btc_dominance: number | null;
+}
+
+export interface SectorMetricsResponse {
+  items: SectorMetric[];
+  narratives: SectorNarrative[];
+}
+
+export interface MarketCycle {
   coin_id: number;
   symbol: string;
   name: string;
   timeframe: number;
-  signal_type: string;
+  cycle_phase: string;
   confidence: number;
-  candle_timestamp: string;
-  created_at: string;
+  detected_at: string;
 }
 
 export interface SystemStatus {
@@ -148,6 +232,45 @@ export const irisApi = {
   async listSignals(limit = 24): Promise<Signal[]> {
     const response = await api.get<Signal[]>("/signals", {
       params: { limit },
+    });
+    return response.data;
+  },
+  async listTopSignals(limit = 12): Promise<Signal[]> {
+    const response = await api.get<Signal[]>("/signals/top", {
+      params: { limit },
+    });
+    return response.data;
+  },
+  async listPatterns(): Promise<PatternDescriptor[]> {
+    const response = await api.get<PatternDescriptor[]>("/patterns");
+    return response.data;
+  },
+  async listCoinPatterns(symbol: string, limit = 120): Promise<Signal[]> {
+    const response = await api.get<Signal[]>(`/coins/${symbol}/patterns`, {
+      params: { limit },
+    });
+    return response.data;
+  },
+  async getCoinRegime(symbol: string): Promise<CoinRegime> {
+    const response = await api.get<CoinRegime>(`/coins/${symbol}/regime`);
+    return response.data;
+  },
+  async listSectors(): Promise<Sector[]> {
+    const response = await api.get<Sector[]>("/sectors");
+    return response.data;
+  },
+  async listSectorMetrics(timeframe?: number): Promise<SectorMetricsResponse> {
+    const response = await api.get<SectorMetricsResponse>("/sectors/metrics", {
+      params: timeframe ? { timeframe } : undefined,
+    });
+    return response.data;
+  },
+  async listMarketCycles(symbol?: string, timeframe?: number): Promise<MarketCycle[]> {
+    const response = await api.get<MarketCycle[]>("/market/cycle", {
+      params: {
+        ...(symbol ? { symbol } : {}),
+        ...(timeframe ? { timeframe } : {}),
+      },
     });
     return response.data;
   },

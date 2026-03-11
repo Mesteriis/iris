@@ -26,7 +26,9 @@ const coin = computed(
   () => coinStore.enabledCoins.find((item) => item.symbol === symbol.value) ?? null,
 );
 const metric = computed(() => coinStore.metricsBySymbol.get(symbol.value) ?? null);
-const signals = computed(() => coinStore.signalsBySymbol.get(symbol.value) ?? []);
+const patternSignals = computed(() => coinStore.activePatternSignals);
+const regime = computed(() => coinStore.activeRegime);
+const cycles = computed(() => coinStore.activeCycles);
 const intervalOptions = computed<CandleInterval[]>(() => {
   const configured = (coin.value?.candles ?? [])
     .map((entry) => entry.interval)
@@ -202,27 +204,76 @@ watch(symbol, loadPage);
       <article class="surface-card">
         <div class="section-head">
           <div>
-            <p class="section-head__eyebrow">Signals</p>
-            <h3>Latest closed-candle events</h3>
+            <p class="section-head__eyebrow">Pattern history</p>
+            <h3>Contextual pattern flow</h3>
           </div>
-          <p>{{ signals.length }} items</p>
+          <p>{{ patternSignals.length }} items</p>
         </div>
 
-        <div v-if="signals.length === 0" class="surface-state">
-          No stored signals for {{ symbol }} yet.
+        <div v-if="patternSignals.length === 0" class="surface-state">
+          No stored pattern signals for {{ symbol }} yet.
         </div>
         <ul v-else class="detail-signal-list">
-          <li v-for="signal in signals.slice(0, 10)" :key="`${signal.signal_type}-${signal.candle_timestamp}`">
+          <li v-for="signal in patternSignals.slice(0, 12)" :key="signal.id">
             <div>
               <strong>{{ formatSignalType(signal.signal_type) }}</strong>
-              <p>{{ timeframeToLabel(signal.timeframe) }} / {{ formatDateTime(signal.candle_timestamp) }}</p>
+              <p>
+                {{ timeframeToLabel(signal.timeframe) }} / {{ formatDateTime(signal.candle_timestamp) }}
+                <template v-if="signal.cluster_membership.length > 0">
+                  / {{ signal.cluster_membership.map(formatSignalType).join(", ") }}
+                </template>
+              </p>
             </div>
             <div class="detail-signal-list__meta">
-              <span>{{ Math.round(signal.confidence * 100) }}%</span>
-              <small>{{ formatDateTime(signal.created_at) }}</small>
+              <span>{{ signal.priority_score.toFixed(3) }}</span>
+              <small>{{ Math.round(signal.confidence * 100) }}%</small>
             </div>
           </li>
         </ul>
+      </article>
+    </section>
+
+    <section class="detail-grid__row">
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Regime map</p>
+            <h3>Per-timeframe market state</h3>
+          </div>
+          <p>{{ regime?.canonical_regime ? formatMarketRegime(regime.canonical_regime) : "Pending" }}</p>
+        </div>
+
+        <div v-if="!regime || regime.items.length === 0" class="surface-state">
+          No regime snapshots for {{ symbol }} yet.
+        </div>
+        <div v-else class="indicator-grid">
+          <div v-for="item in regime.items" :key="item.timeframe" class="indicator-card">
+            <span>{{ timeframeToLabel(item.timeframe) }}</span>
+            <strong>{{ formatMarketRegime(item.regime) }}</strong>
+            <small>{{ Math.round(item.confidence * 100) }}%</small>
+          </div>
+        </div>
+      </article>
+
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Market cycle</p>
+            <h3>Macro phase context</h3>
+          </div>
+          <p>{{ cycles.length }} tracked phases</p>
+        </div>
+
+        <div v-if="cycles.length === 0" class="surface-state">
+          No market cycle snapshots for {{ symbol }} yet.
+        </div>
+        <div v-else class="indicator-grid">
+          <div v-for="cycle in cycles" :key="`${cycle.coin_id}-${cycle.timeframe}`" class="indicator-card">
+            <span>{{ timeframeToLabel(cycle.timeframe) }}</span>
+            <strong>{{ cycle.cycle_phase }}</strong>
+            <small>{{ Math.round(cycle.confidence * 100) }}%</small>
+          </div>
+        </div>
       </article>
     </section>
   </section>
