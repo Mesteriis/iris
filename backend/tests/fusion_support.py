@@ -50,6 +50,14 @@ def upsert_coin_metrics(
         )
         db.add(row)
     else:
+        row.price_current = 100.0
+        row.adx_14 = 28.0
+        row.bb_width = 0.08 if regime == "high_volatility" else 0.03 if regime == "sideways_range" else 0.05
+        row.atr_14 = 2.5
+        row.volume_24h = 1_000_000.0
+        row.volume_change_24h = 18.0
+        row.volatility = 0.04
+        row.market_cap = 5_000_000_000.0
         row.market_regime = regime
         row.market_regime_details = payload
     db.commit()

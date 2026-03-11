@@ -21,6 +21,11 @@ get_settings.cache_clear()
 from app.db.session import SessionLocal
 from app.events.publisher import flush_publisher, reset_event_publisher
 from app.models.coin import Coin
+from app.models.exchange_account import ExchangeAccount
+from app.models.portfolio_action import PortfolioAction
+from app.models.portfolio_balance import PortfolioBalance
+from app.models.portfolio_position import PortfolioPosition
+from app.models.portfolio_state import PortfolioState
 from app.schemas.coin import CoinCreate
 from app.services.history_loader import create_coin
 from app.services.market_data import utc_now
@@ -85,12 +90,16 @@ def isolated_event_stream(redis_client: Redis, settings) -> Iterator[None]:
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:decision:*"):
         redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:portfolio:*"):
+        redis_client.delete(key)
     yield
     flush_publisher(timeout=2.0)
     redis_client.delete(settings.event_stream_name)
     for key in redis_client.scan_iter("iris:events:processed:*"):
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:decision:*"):
+        redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:portfolio:*"):
         redis_client.delete(key)
     reset_event_publisher()
 
@@ -108,11 +117,32 @@ def db_session() -> Iterator:
 def cleanup_test_coins() -> Iterator[None]:
     db = SessionLocal()
     try:
-        db.execute(delete(Coin).where(Coin.symbol.in_(sorted(TEST_SYMBOLS.keys()))))
+        db.execute(delete(Coin).where(Coin.symbol.endswith("_EVT")))
         db.commit()
         yield
     finally:
-        db.execute(delete(Coin).where(Coin.symbol.in_(sorted(TEST_SYMBOLS.keys()))))
+        db.execute(delete(Coin).where(Coin.symbol.endswith("_EVT")))
+        db.commit()
+        db.close()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_portfolio_state() -> Iterator[None]:
+    db = SessionLocal()
+    try:
+        db.execute(delete(PortfolioAction))
+        db.execute(delete(PortfolioPosition))
+        db.execute(delete(PortfolioBalance))
+        db.execute(delete(ExchangeAccount))
+        db.execute(delete(PortfolioState))
+        db.commit()
+        yield
+    finally:
+        db.execute(delete(PortfolioAction))
+        db.execute(delete(PortfolioPosition))
+        db.execute(delete(PortfolioBalance))
+        db.execute(delete(ExchangeAccount))
+        db.execute(delete(PortfolioState))
         db.commit()
         db.close()
 
