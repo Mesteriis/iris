@@ -18,6 +18,9 @@ import {
   type MarketRadar,
   type PatternDescriptor,
   type PatternFeature,
+  type PortfolioAction,
+  type PortfolioPosition,
+  type PortfolioState,
   type PriceHistoryPoint,
   type Sector,
   type SectorMetric,
@@ -46,6 +49,9 @@ export const useCoinStore = defineStore("coins", () => {
   const sectorNarratives = ref<SectorNarrative[]>([]);
   const marketCycles = ref<MarketCycle[]>([]);
   const marketRadar = ref<MarketRadar | null>(null);
+  const portfolioPositions = ref<PortfolioPosition[]>([]);
+  const portfolioActions = ref<PortfolioAction[]>([]);
+  const portfolioState = ref<PortfolioState | null>(null);
   const coinBacktests = ref<Record<string, CoinBacktests>>({});
   const coinMarketDecisions = ref<Record<string, CoinMarketDecision>>({});
   const coinPatternHistory = ref<Record<string, Signal[]>>({});
@@ -148,6 +154,38 @@ export const useCoinStore = defineStore("coins", () => {
   const enabledPatternFeatures = computed(() => patternFeatures.value.filter((item) => item.enabled));
   const topStrategies = computed(() => strategyPerformance.value.slice(0, 6));
   const topMarketDecisionRadar = computed(() => marketDecisions.value.slice(0, 8));
+  const openPortfolioPositions = computed(() => portfolioPositions.value.filter((item) => item.status !== "closed"));
+  const topPortfolioPositions = computed(() => openPortfolioPositions.value.slice(0, 8));
+  const latestPortfolioActions = computed(() => portfolioActions.value.slice(0, 8));
+  const portfolioExposure = computed(() => {
+    if (!portfolioState.value || portfolioState.value.total_capital <= 0) {
+      return 0;
+    }
+    return (portfolioState.value.allocated_capital / portfolioState.value.total_capital) * 100;
+  });
+  const portfolioPnl = computed(() =>
+    openPortfolioPositions.value.reduce((total, item) => total + (item.unrealized_pnl ?? 0), 0),
+  );
+  const portfolioRiskBudget = computed(() =>
+    openPortfolioPositions.value.reduce(
+      (total, item) => total + ((item.risk_to_stop ?? 0) * (item.position_value ?? 0)),
+      0,
+    ),
+  );
+  const portfolioWatchRadar = computed(() =>
+    openPortfolioPositions.value
+      .map((item) => ({
+        symbol: item.symbol,
+        sourceExchange: item.source_exchange,
+        regime: item.regime,
+        latestDecision: item.latest_decision,
+        latestDecisionConfidence: item.latest_decision_confidence,
+        positionValue: item.position_value,
+        unrealizedPnl: item.unrealized_pnl,
+        riskToStop: item.risk_to_stop,
+      }))
+      .sort((left, right) => right.positionValue - left.positionValue),
+  );
   const activePatternsCount = computed(() =>
     patterns.value.filter((pattern) => pattern.enabled && pattern.lifecycle_state !== "DISABLED").length,
   );
@@ -326,6 +364,9 @@ export const useCoinStore = defineStore("coins", () => {
         sectorPayload,
         cycleRows,
         radarPayload,
+        portfolioStatePayload,
+        portfolioPositionRows,
+        portfolioActionRows,
         systemState,
       ] = await Promise.all([
         irisApi.listCoins(),
@@ -343,6 +384,9 @@ export const useCoinStore = defineStore("coins", () => {
         irisApi.listSectorMetrics(),
         irisApi.listMarketCycles(),
         irisApi.getMarketRadar(8),
+        irisApi.getPortfolioState(),
+        irisApi.listPortfolioPositions(40),
+        irisApi.listPortfolioActions(40),
         irisApi.getStatus(),
       ]);
 
@@ -362,6 +406,9 @@ export const useCoinStore = defineStore("coins", () => {
       sectorNarratives.value = sectorPayload.narratives;
       marketCycles.value = cycleRows;
       marketRadar.value = radarPayload;
+      portfolioState.value = portfolioStatePayload;
+      portfolioPositions.value = portfolioPositionRows;
+      portfolioActions.value = portfolioActionRows;
       status.value = systemState;
       lastDashboardRefreshAt.value = new Date().toISOString();
     } catch (err) {
@@ -513,9 +560,18 @@ export const useCoinStore = defineStore("coins", () => {
     marketCycles,
     marketDecisions,
     marketRadar,
+    latestPortfolioActions,
     metrics,
     metricsBySymbol,
+    openPortfolioPositions,
     discoveredPatterns,
+    portfolioActions,
+    portfolioExposure,
+    portfolioPositions,
+    portfolioPnl,
+    portfolioRiskBudget,
+    portfolioState,
+    portfolioWatchRadar,
     strategies,
     strategyPerformance,
     enabledPatternFeatures,
@@ -542,6 +598,7 @@ export const useCoinStore = defineStore("coins", () => {
     topSectorMetrics,
     topBacktests,
     topMarketDecisionRadar,
+    topPortfolioPositions,
     topStrategies,
     topSignals,
   };

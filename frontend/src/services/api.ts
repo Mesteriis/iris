@@ -15,6 +15,8 @@ export interface Coin {
   theme: string;
   source: string;
   enabled: boolean;
+  auto_watch_enabled: boolean;
+  auto_watch_source: string | null;
   sort_order: number;
   candles: CandlePolicy[];
   created_at: string;
@@ -128,6 +130,54 @@ export interface MarketDecision {
   signal_count: number;
   regime: string | null;
   created_at: string;
+}
+
+export interface PortfolioPosition {
+  id: number;
+  coin_id: number;
+  symbol: string;
+  name: string;
+  sector: string | null;
+  exchange_account_id: number | null;
+  source_exchange: string | null;
+  position_type: string;
+  timeframe: number;
+  entry_price: number;
+  position_size: number;
+  position_value: number;
+  stop_loss: number | null;
+  take_profit: number | null;
+  status: "open" | "closed" | "partial";
+  opened_at: string;
+  closed_at: string | null;
+  current_price: number | null;
+  unrealized_pnl: number;
+  latest_decision: "BUY" | "SELL" | "HOLD" | "WATCH" | null;
+  latest_decision_confidence: number | null;
+  regime: string | null;
+  risk_to_stop: number | null;
+}
+
+export interface PortfolioAction {
+  id: number;
+  coin_id: number;
+  symbol: string;
+  name: string;
+  action: "OPEN_POSITION" | "CLOSE_POSITION" | "REDUCE_POSITION" | "INCREASE_POSITION" | "HOLD_POSITION";
+  size: number;
+  confidence: number;
+  decision_id: number;
+  market_decision: "BUY" | "SELL" | "HOLD" | "WATCH";
+  created_at: string;
+}
+
+export interface PortfolioState {
+  total_capital: number;
+  allocated_capital: number;
+  available_capital: number;
+  updated_at: string | null;
+  open_positions: number;
+  max_positions: number;
 }
 
 export interface CoinMarketDecisionItem {
@@ -480,6 +530,22 @@ export const irisApi = {
     const response = await api.get<MarketRadar>("/market/radar", {
       params: { limit },
     });
+    return response.data;
+  },
+  async listPortfolioPositions(limit = 100): Promise<PortfolioPosition[]> {
+    const response = await api.get<PortfolioPosition[]>("/portfolio/positions", {
+      params: { limit },
+    });
+    return response.data;
+  },
+  async listPortfolioActions(limit = 100): Promise<PortfolioAction[]> {
+    const response = await api.get<PortfolioAction[]>("/portfolio/actions", {
+      params: { limit },
+    });
+    return response.data;
+  },
+  async getPortfolioState(): Promise<PortfolioState> {
+    const response = await api.get<PortfolioState>("/portfolio/state");
     return response.data;
   },
   async getStatus(): Promise<SystemStatus> {
