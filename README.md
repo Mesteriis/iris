@@ -39,10 +39,17 @@ IRIS uses the existing schema instead of duplicating market history:
   Stores computed indicators per coin, timeframe and timestamp.
 - `coin_metrics`
   Stores current aggregate market state per coin. `market_regime` holds the canonical regime and `market_regime_details` stores persisted per-timeframe regime snapshots used by signal context and `/coins/{symbol}/regime`.
+  The same table also carries activity scheduling fields such as `activity_score`, `activity_bucket`, `analysis_priority` and `last_analysis_at`.
 - `signals`
   Stores classic analytics signals, pattern signals, cluster signals and hierarchy signals.
 - `iris_events` Redis Stream
   Internal event bus for `candle_closed`, `indicator_updated`, `pattern_detected`, `pattern_cluster_detected`, `market_regime_changed`, `decision_generated` and `signal_created`.
+- `coin_relations`
+  Rolling leader -> follower correlation snapshots with lag and confidence.
+- `market_predictions`
+  Pending and resolved cross-market predictions such as `BTC breakout -> ETH follow-through`.
+- `prediction_results`
+  Realized prediction outcomes with `success`, `actual_move`, `profit` and `evaluated_at`.
 - `signal_history`
   Stores realized signal outcomes with `market_regime`, `profit_after_24h`, `profit_after_72h`, `maximum_drawdown`, `result_return`, `result_drawdown` and `evaluated_at` so statistics, backtests and strategy research do not need to recalculate forward windows every time.
 - `feature_snapshots`
@@ -58,7 +65,7 @@ IRIS uses the existing schema instead of duplicating market history:
 - `sectors`
   Sector taxonomy mapped from the existing `coins.theme`.
 - `sector_metrics`
-  Sector strength, relative strength, capital flow and volatility.
+  Sector strength, relative strength, capital flow, volatility and Market Flow fields `avg_price_change_24h`, `avg_volume_change_24h`, `trend`.
 - `market_cycles`
   Latest cycle phase per coin and timeframe.
 - `investment_decisions`
@@ -201,6 +208,8 @@ Responsibilities:
 - mirror latest decisions into Redis cache keys `iris:decision:{coin_id}:{timeframe}`
 - emit `decision_generated` with `source=signal_fusion`
 
+Fusion also consumes Cross-Market Intelligence weights so a follower asset can inherit conviction from a live leader regime/decision stack when the rolling leader -> follower relation is strong enough.
+
 Decision outcomes:
 
 - `BUY`
@@ -244,9 +253,10 @@ The internal pipeline is event-driven and producer/consumer decoupled:
 5. `analysis_scheduler_workers` consume `indicator_updated`, evaluate `activity_score` / `activity_bucket` and emit `analysis_requested` only when the coin should be analyzed now.
 6. `pattern_workers` consume `analysis_requested`, run incremental pattern detection and emit `pattern_detected` / `pattern_cluster_detected`.
 7. `regime_workers` consume `indicator_updated`, refresh market regime context and emit `market_regime_changed`.
-8. `decision_workers` consume pattern/regime/signal events, enrich context, generate decisions/final signals and emit `decision_generated`.
-9. `signal_fusion_workers` consume recent signal/regime events, fuse recent stacks and persist `market_decisions`.
-10. `portfolio_workers` consume fused decisions, regime changes and portfolio balance events to maintain positions and actions.
+8. `cross_market_workers` consume `candle_closed` / `indicator_updated`, refresh rolling correlations, sector momentum and leader events.
+9. `decision_workers` consume pattern/regime/signal events, enrich context, generate decisions/final signals and emit `decision_generated`.
+10. `signal_fusion_workers` consume recent signal/regime/correlation events, fuse recent stacks and persist `market_decisions`.
+11. `portfolio_workers` consume fused decisions, regime changes and portfolio balance events to maintain positions and actions.
 
 Workers use Redis Streams consumer groups:
 
@@ -254,6 +264,7 @@ Workers use Redis Streams consumer groups:
 - `analysis_scheduler_workers`
 - `pattern_workers`
 - `regime_workers`
+- `cross_market_workers`
 - `decision_workers`
 - `signal_fusion_workers`
 - `portfolio_workers`
@@ -274,14 +285,16 @@ There is no parallel legacy analytics trigger path. Runtime candle analytics now
 8. Pattern Success Engine validates the adjusted detections against rolling historical success snapshots, can suppress weak regimes, degrade confidence or boost high-performing setups, and only then persists pattern signals.
 9. Cluster and hierarchy engines derive stronger structures from emitted pattern signals.
 10. `regime_workers` update cycle and sector-aware market context and mirror regime reads into Redis cache keys `iris:regime:{coin_id}:{timeframe}`.
-11. `decision_workers` update the Contextual Signal Engine:
+11. `cross_market_workers` update rolling `coin_relations`, refresh `sector_metrics`, emit `market_leader_detected` / `sector_rotation_detected` / `correlation_updated` and cache relations under `iris:correlation:{leader_coin_id}:{follower_coin_id}`.
+12. `decision_workers` update the Contextual Signal Engine:
    `priority_score = confidence * temperature * regime_alignment * volatility_alignment * liquidity_score * sector_alignment * cycle_alignment * cluster_bonus`
-12. Lazy Investor Decision Engine converts the current stack into an investment decision.
-13. Liquidity & Risk Engine converts that decision into a tradable `final_signal`.
-14. `signal_fusion_workers` aggregate the last 1-3 signal groups into `market_decisions` and cache them under `iris:decision:{coin_id}:{timeframe}`.
-15. `signal_history` refresh evaluates matured signals and persists 24h / 72h return windows plus drawdown outcomes.
-16. `feature_snapshots` capture the closed-candle feature vector for ML, research and backtests.
-17. `portfolio_workers` convert fused market decisions plus portfolio balance changes into capital actions and live positions.
+13. Lazy Investor Decision Engine converts the current stack into an investment decision.
+14. Liquidity & Risk Engine converts that decision into a tradable `final_signal`.
+15. `signal_fusion_workers` aggregate the last 1-3 signal groups into `market_decisions`, apply cross-market alignment and cache them under `iris:decision:{coin_id}:{timeframe}`.
+16. Cross-Market leader events create `market_predictions`, and the scheduled prediction memory job evaluates them into `prediction_results` while feeding confidence back into `coin_relations`.
+17. `signal_history` refresh evaluates matured signals and persists 24h / 72h return windows plus drawdown outcomes.
+18. `feature_snapshots` capture the closed-candle feature vector for ML, research and backtests.
+19. `portfolio_workers` convert fused market decisions plus portfolio balance changes into capital actions and live positions.
 
 ### Bootstrap path
 
@@ -305,6 +318,8 @@ All background work stays inside the existing backend runtime. No new worker con
   Periodic discovery candidate refresh.
 - `signal_context_enrichment`
   Recomputes signal context on demand.
+- `prediction_evaluation_job`
+  Every 10 minutes, evaluates pending cross-market predictions, writes `prediction_results` and updates relation confidence.
 - `portfolio_sync_job`
   Every 5 minutes, synchronizes balances from enabled exchange accounts, updates portfolio tables and emits balance-change events.
 
@@ -517,6 +532,71 @@ Runtime behavior:
 - Active strategies are reused by the Lazy Investor Decision Engine through `strategy_alignment`.
 - Matching active strategies increase decision score and confidence.
 
+## Cross-Market Intelligence Layer
+
+The cross-market layer lives under `backend/app/analysis/cross_market_engine.py` and extends, not replaces, the existing analytics stack.
+
+Responsibilities:
+
+- detect rolling lagged correlations between leader and follower assets from the last 200 candles
+- refresh sector momentum from current `coin_metrics`
+- identify market leaders from breakout / activity / volume context
+- feed Signal Fusion with cross-market alignment weights
+
+Stored structures:
+
+- `coin_relations`
+  `leader_coin_id`, `follower_coin_id`, `correlation`, `lag_hours`, `confidence`, `updated_at`
+- `coins.sector`
+  lightweight sector code used in reads and flow analytics while keeping the existing sector relationship intact
+- `sector_metrics`
+  now also stores `avg_price_change_24h`, `avg_volume_change_24h`, `trend`
+
+Redis caches and events:
+
+- `iris:correlation:{leader_coin_id}:{follower_coin_id}`
+- `market_leader_detected`
+- `sector_rotation_detected`
+- `correlation_updated`
+
+Typical use:
+
+- `BTC -> ETH` correlation and lag detection
+- sector rotation such as `store_of_value -> smart_contract`
+- boosting a follower BUY stance when the leader already broke out and the relation confidence is high
+
+## Market Prediction Memory Engine
+
+The prediction memory layer lives under `backend/app/analysis/prediction_memory_engine.py`.
+
+Responsibilities:
+
+- persist cross-market predictions created by leader events
+- evaluate whether those predictions were confirmed, failed or expired
+- store realized outcomes
+- feed the result back into relation confidence
+- emit user-facing outcome events for frontend / Home Assistant subscribers
+
+Stored tables:
+
+- `market_predictions`
+- `prediction_results`
+
+Statuses:
+
+- `pending`
+- `confirmed`
+- `failed`
+- `expired`
+
+Redis caches and events:
+
+- `iris:prediction:{id}`
+- `prediction_confirmed`
+- `prediction_failed`
+
+The evaluation worker checks only the required candle window between prediction creation and `evaluation_time`. It does not rescan full history.
+
 ## Signal History And Backtests
 
 The data architecture now follows:
@@ -564,6 +644,8 @@ Primary endpoints:
 - `GET /sectors/metrics`
 - `GET /market/cycle`
 - `GET /market/radar`
+- `GET /market/flow`
+- `GET /predictions`
 - `GET /portfolio/positions`
 - `GET /portfolio/actions`
 - `GET /portfolio/state`
@@ -585,6 +667,8 @@ The frontend uses these endpoints to show:
 - HOT coins and emerging coins
 - recent regime changes
 - volatility spikes
+- Market Flow Map with leaders, follower relations and sector rotations
+- Prediction Journal with pending / confirmed / failed cross-market calls and realized profit
 - Portfolio Map with capital allocation, current positions, risk-to-stop and unrealized P/L
 - Portfolio Watch Radar with held assets, regime, fused IRIS stance and risk
 - Pattern Health Dashboard with rolling success rates, active / disabled detector counts and best regime-fit rows
@@ -605,6 +689,8 @@ Current integration tests cover:
 - regime detection rules and Redis regime cache
 - pattern dependency filtering and regime-aware context adjustment
 - signal fusion aggregation, conflict handling, regime weighting and Redis decision events
+- rolling correlation detection, sector momentum refresh and cross-market worker leader detection
+- prediction creation, evaluation, failure handling and relation-confidence feedback
 - portfolio position creation, rebalance actions and ATR stop calculation
 - portfolio risk limits for max positions and sector exposure
 - exchange plugin registry loading and exchange balance synchronization
@@ -622,6 +708,8 @@ The test fixture uses real 15m OHLCV candles for:
 - Incremental detection reads the last 200 candles from `candles` / aggregate views.
 - `ix_candles_coin_tf_ts_desc` accelerates the last-200-candle query pattern.
 - Signal fusion reads only recent `signals` windows through `ix_signals_coin_tf_ts`.
+- Cross-market relation reads are mirrored into Redis correlation cache keys for the fusion layer.
+- Prediction Journal reads can reuse Redis prediction cache keys instead of forcing a DB roundtrip for every latest-status lookup.
 - Portfolio state and portfolio balances are mirrored into Redis so dashboard refreshes do not have to hit SQL for every poll.
 - Higher timeframes are served from continuous aggregates instead of rebuilding 1h / 4h / 1d candles from the raw table on every read.
 - `signal_history` removes repeated forward-window scans from nightly statistics refreshes.

@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Cross-Market Intelligence Layer with `coin_relations`, rolling lagged-correlation detection, sector momentum refresh, leader detection, Redis correlation cache keys `iris:correlation:{leader_coin_id}:{follower_coin_id}` and a dedicated `cross_market_workers` consumer group.
+- Market Prediction Memory Engine with `market_predictions`, `prediction_results`, Redis prediction cache keys `iris:prediction:{id}`, scheduled `prediction_evaluation_job` feedback and prediction outcome events.
+- Market Flow API surface: `/market/flow` and `/predictions`.
+- Market Flow Map and Prediction Journal UI for leaders, follower relations, sector rotations and prediction accuracy tracking.
+- Pytest coverage for correlation detection, sector momentum refresh, cross-market worker behavior, prediction creation, evaluation and relation-confidence feedback.
 - Portfolio Engine with `portfolio_positions`, `portfolio_actions`, `portfolio_state`, ATR-based stops, rebalancing logic and Redis portfolio-state caches.
 - Multi-exchange portfolio scaffolding with `exchange_accounts`, `portfolio_balances`, exchange plugin registry and built-in `bybit` / `binance` plugin stubs.
 - Portfolio API surface: `/portfolio/positions`, `/portfolio/actions` and `/portfolio/state`.
@@ -54,6 +59,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- Event-driven runtime now includes `cross_market_workers` consuming `candle_closed` and `indicator_updated`, and Signal Fusion now folds cross-market alignment into fused confidence.
+- `coins` now expose a dedicated `sector` code alongside the existing sector relationship so cross-market and frontend reads can reason about sector momentum without breaking current taxonomy logic.
+- `sector_metrics` now also persist `avg_price_change_24h`, `avg_volume_change_24h` and `trend` for Market Flow reads.
 - Event-driven runtime now includes `portfolio_workers` consuming `decision_generated`, `market_regime_changed`, `portfolio_balance_updated` and `portfolio_position_changed`.
 - Embedded TaskIQ runtime now also schedules `portfolio_sync_job` every 5 minutes for exchange balance synchronization.
 - `coins` API now exposes `auto_watch_enabled` and `auto_watch_source` so portfolio-driven watch activation is visible to the dashboard.
