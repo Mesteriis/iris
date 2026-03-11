@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from app.models.indicator_cache import IndicatorCache
     from app.models.investment_decision import InvestmentDecision
     from app.models.market_cycle import MarketCycle
+    from app.models.market_decision import MarketDecision
     from app.models.risk_metric import RiskMetric
     from app.models.sector import Sector
     from app.models.signal import Signal
@@ -86,6 +87,11 @@ class Coin(Base):
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="InvestmentDecision.created_at",
+    )
+    market_decisions: Mapped[list["MarketDecision"]] = relationship(
+        back_populates="coin",
+        cascade="all, delete-orphan",
+        order_by="MarketDecision.created_at",
     )
     risk_metrics: Mapped[list["RiskMetric"]] = relationship(
         back_populates="coin",

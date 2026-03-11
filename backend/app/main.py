@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from taskiq.receiver import Receiver
 
-from app.api import backtests, coins, decisions, final_signals, history, market, metrics, patterns, sectors, signals, strategies, system
+from app.api import backtests, coins, decisions, final_signals, history, market, market_decisions, metrics, patterns, sectors, signals, strategies, system
 from app.core.config import get_settings
 from app.db.session import wait_for_database
 from app.events.publisher import reset_event_publisher
@@ -248,6 +248,7 @@ app.include_router(metrics.router)
 app.include_router(backtests.router)
 app.include_router(patterns.router)
 app.include_router(decisions.router)
+app.include_router(market_decisions.router)
 app.include_router(final_signals.router)
 app.include_router(strategies.router)
 app.include_router(sectors.router)

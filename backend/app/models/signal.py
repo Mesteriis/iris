@@ -24,6 +24,7 @@ class Signal(Base):
             unique=True,
         ),
         Index("ix_signals_coin_id_timeframe_candle_timestamp", "coin_id", "timeframe", "candle_timestamp"),
+        Index("ix_signals_coin_tf_ts", "coin_id", "timeframe", desc("candle_timestamp")),
         Index("ix_signals_pattern_timestamp", "signal_type", "candle_timestamp"),
         Index("ix_signals_coin_timestamp", "coin_id", "candle_timestamp"),
         Index("ix_signals_priority_score_desc", desc("priority_score")),

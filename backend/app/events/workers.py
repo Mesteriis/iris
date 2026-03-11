@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from sqlalchemy import select
 
+from app.analysis.signal_fusion_engine import evaluate_market_decision
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.events.consumer import EventConsumer, EventConsumerConfig, default_consumer_name
@@ -12,6 +13,7 @@ from app.events.publisher import publish_event
 from app.events.types import (
     ANALYSIS_SCHEDULER_WORKER_GROUP,
     DECISION_WORKER_GROUP,
+    FUSION_WORKER_GROUP,
     INDICATOR_WORKER_GROUP,
     IrisEvent,
     PATTERN_WORKER_GROUP,
@@ -41,6 +43,7 @@ EVENT_WORKER_GROUPS = (
     PATTERN_WORKER_GROUP,
     REGIME_WORKER_GROUP,
     DECISION_WORKER_GROUP,
+    FUSION_WORKER_GROUP,
 )
 _PATTERN_ENGINE = PatternEngine()
 
@@ -362,6 +365,20 @@ def _handle_decision_event(event: IrisEvent) -> None:
         db.close()
 
 
+def _handle_fusion_event(event: IrisEvent) -> None:
+    db = SessionLocal()
+    try:
+        evaluate_market_decision(
+            db,
+            coin_id=event.coin_id,
+            timeframe=event.timeframe,
+            trigger_timestamp=None if event.event_type == "market_regime_changed" else event.timestamp,
+            emit_event=True,
+        )
+    finally:
+        db.close()
+
+
 def create_worker(group_name: str, consumer_name: str | None = None) -> EventConsumer:
     settings = get_settings()
     effective_consumer_name = consumer_name or default_consumer_name(group_name)
@@ -407,6 +424,16 @@ def create_worker(group_name: str, consumer_name: str | None = None) -> EventCon
                 "market_regime_changed",
                 "market_cycle_changed",
                 "signal_created",
+            },
+        )
+    if group_name == FUSION_WORKER_GROUP:
+        return EventConsumer(
+            config,
+            handler=_handle_fusion_event,
+            interested_event_types={
+                "pattern_detected",
+                "signal_created",
+                "market_regime_changed",
             },
         )
     raise ValueError(f"Unsupported event worker group '{group_name}'.")
