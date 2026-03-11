@@ -20,6 +20,7 @@ class CoinBase(BaseModel):
     name: str
     asset_type: str = "crypto"
     theme: str = "core"
+    sector: str | None = None
     source: str = "default"
     enabled: bool = True
     sort_order: int = 0
@@ -46,6 +47,10 @@ class CoinRead(CoinBase):
     id: int
     auto_watch_enabled: bool = False
     auto_watch_source: str | None = None
+    sector: str = Field(
+        validation_alias="sector_code",
+        serialization_alias="sector",
+    )
     created_at: datetime
     history_backfill_completed_at: datetime | None = None
     last_history_sync_at: datetime | None = None

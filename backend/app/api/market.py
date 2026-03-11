@@ -3,7 +3,9 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas.market_cycle import MarketCycleRead
+from app.schemas.market_flow import MarketFlowRead
 from app.schemas.market_radar import MarketRadarRead
+from app.services.market_flow_service import get_market_flow
 from app.services.market_radar_service import get_market_radar
 from app.services.patterns_service import list_market_cycles
 
@@ -25,3 +27,12 @@ def read_market_radar(
     db: Session = Depends(get_db),
 ) -> MarketRadarRead:
     return get_market_radar(db, limit=limit)
+
+
+@router.get("/market/flow", response_model=MarketFlowRead)
+def read_market_flow(
+    limit: int = Query(default=8, ge=1, le=24),
+    timeframe: int = Query(default=60, ge=15, le=1440),
+    db: Session = Depends(get_db),
+) -> MarketFlowRead:
+    return get_market_flow(db, limit=limit, timeframe=timeframe)

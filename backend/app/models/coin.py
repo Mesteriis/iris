@@ -15,11 +15,14 @@ if TYPE_CHECKING:
     from app.models.final_signal import FinalSignal
     from app.models.indicator_cache import IndicatorCache
     from app.models.investment_decision import InvestmentDecision
+    from app.models.coin_relation import CoinRelation
     from app.models.market_cycle import MarketCycle
     from app.models.market_decision import MarketDecision
+    from app.models.market_prediction import MarketPrediction
     from app.models.portfolio_action import PortfolioAction
     from app.models.portfolio_balance import PortfolioBalance
     from app.models.portfolio_position import PortfolioPosition
+    from app.models.prediction_result import PredictionResult
     from app.models.risk_metric import RiskMetric
     from app.models.sector import Sector
     from app.models.signal import Signal
@@ -39,6 +42,7 @@ class Coin(Base):
     auto_watch_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     auto_watch_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sector_code: Mapped[str] = mapped_column("sector", String(32), nullable=False, default="infrastructure")
     sector_id: Mapped[int | None] = mapped_column(ForeignKey("sectors.id", ondelete="SET NULL"), nullable=True)
     candles_config: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     history_backfill_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -97,6 +101,34 @@ class Coin(Base):
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="MarketDecision.created_at",
+    )
+    leading_relations: Mapped[list["CoinRelation"]] = relationship(
+        "CoinRelation",
+        foreign_keys="CoinRelation.leader_coin_id",
+        back_populates="leader_coin",
+        cascade="all, delete-orphan",
+        order_by="CoinRelation.updated_at",
+    )
+    following_relations: Mapped[list["CoinRelation"]] = relationship(
+        "CoinRelation",
+        foreign_keys="CoinRelation.follower_coin_id",
+        back_populates="follower_coin",
+        cascade="all, delete-orphan",
+        order_by="CoinRelation.updated_at",
+    )
+    leader_predictions: Mapped[list["MarketPrediction"]] = relationship(
+        "MarketPrediction",
+        foreign_keys="MarketPrediction.leader_coin_id",
+        back_populates="leader_coin",
+        cascade="all, delete-orphan",
+        order_by="MarketPrediction.created_at",
+    )
+    target_predictions: Mapped[list["MarketPrediction"]] = relationship(
+        "MarketPrediction",
+        foreign_keys="MarketPrediction.target_coin_id",
+        back_populates="target_coin",
+        cascade="all, delete-orphan",
+        order_by="MarketPrediction.created_at",
     )
     portfolio_balances: Mapped[list["PortfolioBalance"]] = relationship(
         back_populates="coin",

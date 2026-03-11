@@ -20,7 +20,10 @@ class SectorMetric(Base):
     sector_strength: Mapped[float] = mapped_column(Float(53), nullable=False, default=0.0)
     relative_strength: Mapped[float] = mapped_column(Float(53), nullable=False, default=0.0)
     capital_flow: Mapped[float] = mapped_column(Float(53), nullable=False, default=0.0)
+    avg_price_change_24h: Mapped[float] = mapped_column(Float(53), nullable=False, default=0.0)
+    avg_volume_change_24h: Mapped[float] = mapped_column(Float(53), nullable=False, default=0.0)
     volatility: Mapped[float] = mapped_column(Float(53), nullable=False, default=0.0)
+    trend: Mapped[str | None] = mapped_column(nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

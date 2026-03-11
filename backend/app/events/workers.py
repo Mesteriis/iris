@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from sqlalchemy import select
 
+from app.analysis.cross_market_engine import process_cross_market_event
 from app.analysis.signal_fusion_engine import evaluate_market_decision
 from app.core.config import get_settings
 from app.db.session import SessionLocal
@@ -12,6 +13,7 @@ from app.events.consumer import EventConsumer, EventConsumerConfig, default_cons
 from app.events.publisher import publish_event
 from app.events.types import (
     ANALYSIS_SCHEDULER_WORKER_GROUP,
+    CROSS_MARKET_WORKER_GROUP,
     DECISION_WORKER_GROUP,
     FUSION_WORKER_GROUP,
     INDICATOR_WORKER_GROUP,
@@ -47,6 +49,7 @@ EVENT_WORKER_GROUPS = (
     DECISION_WORKER_GROUP,
     FUSION_WORKER_GROUP,
     PORTFOLIO_WORKER_GROUP,
+    CROSS_MARKET_WORKER_GROUP,
 )
 _PATTERN_ENGINE = PatternEngine()
 
@@ -382,6 +385,23 @@ def _handle_fusion_event(event: IrisEvent) -> None:
         db.close()
 
 
+def _handle_cross_market_event(event: IrisEvent) -> None:
+    if event.coin_id <= 0:
+        return
+    db = SessionLocal()
+    try:
+        process_cross_market_event(
+            db,
+            coin_id=event.coin_id,
+            timeframe=event.timeframe,
+            event_type=event.event_type,
+            payload=event.payload,
+            emit_events=True,
+        )
+    finally:
+        db.close()
+
+
 def _handle_portfolio_event(event: IrisEvent) -> None:
     if event.event_type == "decision_generated" and event.payload.get("source") != "signal_fusion":
         return
@@ -455,7 +475,14 @@ def create_worker(group_name: str, consumer_name: str | None = None) -> EventCon
                 "pattern_detected",
                 "signal_created",
                 "market_regime_changed",
+                "correlation_updated",
             },
+        )
+    if group_name == CROSS_MARKET_WORKER_GROUP:
+        return EventConsumer(
+            config,
+            handler=_handle_cross_market_event,
+            interested_event_types={"candle_closed", "indicator_updated"},
         )
     if group_name == PORTFOLIO_WORKER_GROUP:
         return EventConsumer(

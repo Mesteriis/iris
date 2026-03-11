@@ -176,6 +176,7 @@ def create_coin(db: Session, payload: CoinCreate) -> Coin:
     normalized_name = payload.name.strip()
     normalized_asset_type = payload.asset_type.strip().lower()
     normalized_theme = payload.theme.strip().lower()
+    normalized_sector = (payload.sector or payload.theme).strip().lower()
     normalized_source = payload.source.strip().lower()
 
     if existing is not None:
@@ -188,6 +189,7 @@ def create_coin(db: Session, payload: CoinCreate) -> Coin:
         existing.name = normalized_name
         existing.asset_type = normalized_asset_type
         existing.theme = normalized_theme
+        existing.sector_code = normalized_sector
         existing.source = normalized_source
         existing.enabled = payload.enabled
         existing.sort_order = payload.sort_order
@@ -208,6 +210,7 @@ def create_coin(db: Session, payload: CoinCreate) -> Coin:
         name=normalized_name,
         asset_type=normalized_asset_type,
         theme=normalized_theme,
+        sector_code=normalized_sector,
         source=normalized_source,
         enabled=payload.enabled,
         sort_order=payload.sort_order,

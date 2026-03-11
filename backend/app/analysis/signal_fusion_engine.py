@@ -6,6 +6,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.analysis.cross_market_engine import cross_market_alignment_weight
 from app.events.publisher import publish_event
 from app.models.coin_metrics import CoinMetrics
 from app.models.market_decision import MarketDecision
@@ -206,6 +207,13 @@ def _weighted_signal_score(
     context_factor = _clamp(float(signal.context_score or 1.0), 0.6, 1.4)
     alignment = _clamp(float(signal.regime_alignment or 1.0), 0.6, 1.4)
     priority_factor = _clamp(max(float(signal.priority_score or 0.0), float(signal.confidence)), 0.45, 1.6)
+    directional_bias = pattern_bias(slug_from_signal_type(signal.signal_type) or signal.signal_type, fallback_price_delta=signal.confidence - 0.5)
+    cross_market_factor = cross_market_alignment_weight(
+        db,
+        coin_id=int(signal.coin_id),
+        timeframe=int(signal.timeframe),
+        directional_bias=directional_bias,
+    )
     recency_weight = max(1.0 - (age_index * 0.1), 0.75)
     return (
         _clamp(float(signal.confidence), 0.01, 1.0)
@@ -213,6 +221,7 @@ def _weighted_signal_score(
         * _regime_weight(signal, regime)
         * context_factor
         * alignment
+        * cross_market_factor
         * priority_factor
         * recency_weight
     )

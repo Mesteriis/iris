@@ -3,6 +3,7 @@ from app.tasks.history_tasks import (
     bootstrap_observed_coins_history,
     refresh_observed_coins_history,
 )
+from app.tasks.cross_market_tasks import prediction_evaluation_job
 from app.tasks.pattern_tasks import (
     pattern_evaluation_job,
     patterns_bootstrap_scan,
@@ -19,6 +20,7 @@ __all__ = [
     "backfill_observed_coins_history",
     "pattern_evaluation_job",
     "patterns_bootstrap_scan",
+    "prediction_evaluation_job",
     "portfolio_sync_job",
     "run_pattern_discovery",
     "refresh_observed_coins_history",

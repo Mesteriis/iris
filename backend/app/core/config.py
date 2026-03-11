@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     taskiq_pattern_discovery_interval_seconds: int = 21600
     taskiq_strategy_discovery_interval_seconds: int = 21600
     taskiq_portfolio_sync_interval_seconds: int = 300
+    taskiq_prediction_evaluation_interval_seconds: int = 600
     event_worker_block_milliseconds: int = 1000
     event_worker_pending_idle_milliseconds: int = 30000
     event_worker_batch_size: int = 10

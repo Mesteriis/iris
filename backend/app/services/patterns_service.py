@@ -341,7 +341,10 @@ def list_sector_metrics(db: Session, *, timeframe: int | None = None) -> dict[st
             SectorMetric.sector_strength,
             SectorMetric.relative_strength,
             SectorMetric.capital_flow,
+            SectorMetric.avg_price_change_24h,
+            SectorMetric.avg_volume_change_24h,
             SectorMetric.volatility,
+            SectorMetric.trend,
             SectorMetric.updated_at,
         )
         .join(Sector, Sector.id == SectorMetric.sector_id)

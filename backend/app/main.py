@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from taskiq.receiver import Receiver
 
-from app.api import backtests, coins, decisions, final_signals, history, market, market_decisions, metrics, patterns, portfolio, sectors, signals, strategies, system
+from app.api import backtests, coins, decisions, final_signals, history, market, market_decisions, metrics, patterns, portfolio, predictions, sectors, signals, strategies, system
 from app.core.config import get_settings
 from app.db.session import wait_for_database
 from app.events.publisher import reset_event_publisher
@@ -23,6 +23,7 @@ from app.taskiq.broker import broker
 from app.taskiq.dispatcher import dispatch_task_locally
 from app.taskiq.locks import close_task_lock_client, wait_for_redis
 from app.tasks import history_tasks  # noqa: F401
+import app.tasks.cross_market_tasks as cross_market_tasks_module  # noqa: F401
 import app.tasks.pattern_tasks as pattern_tasks_module  # noqa: F401
 import app.tasks.portfolio_tasks as portfolio_tasks_module  # noqa: F401
 from app.services.market_data import utc_now
@@ -196,6 +197,24 @@ async def schedule_portfolio_sync(receiver: Receiver, stop_event: asyncio.Event)
             await dispatch_task_locally(receiver, portfolio_tasks_module.portfolio_sync_job)
 
 
+async def schedule_prediction_evaluation(receiver: Receiver, stop_event: asyncio.Event) -> None:
+    await asyncio.sleep(1)
+    if stop_event.is_set():
+        return
+
+    interval = settings.taskiq_prediction_evaluation_interval_seconds
+    if interval <= 0:
+        await stop_event.wait()
+        return
+
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+        except TimeoutError:
+            LOGGER.info("Queueing prediction evaluation task.")
+            await dispatch_task_locally(receiver, cross_market_tasks_module.prediction_evaluation_job)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await asyncio.to_thread(wait_for_database)
@@ -216,6 +235,7 @@ async def lifespan(app: FastAPI):
     pattern_discovery_task = asyncio.create_task(schedule_pattern_discovery_refresh(receiver, finish_event))
     strategy_discovery_task = asyncio.create_task(schedule_strategy_discovery_refresh(receiver, finish_event))
     portfolio_sync_task = asyncio.create_task(schedule_portfolio_sync(receiver, finish_event))
+    prediction_evaluation_task = asyncio.create_task(schedule_prediction_evaluation(receiver, finish_event))
 
     app.state.taskiq_finish_event = finish_event
     app.state.taskiq_backfill_event = backfill_event
@@ -230,6 +250,7 @@ async def lifespan(app: FastAPI):
     app.state.taskiq_pattern_discovery_task = pattern_discovery_task
     app.state.taskiq_strategy_discovery_task = strategy_discovery_task
     app.state.taskiq_portfolio_sync_task = portfolio_sync_task
+    app.state.taskiq_prediction_evaluation_task = prediction_evaluation_task
 
     try:
         yield
@@ -244,6 +265,7 @@ async def lifespan(app: FastAPI):
             pattern_discovery_task,
             strategy_discovery_task,
             portfolio_sync_task,
+            prediction_evaluation_task,
             return_exceptions=True,
         )
         await asyncio.to_thread(stop_event_worker_processes, worker_stop_event, worker_processes)
@@ -276,6 +298,7 @@ app.include_router(strategies.router)
 app.include_router(sectors.router)
 app.include_router(market.router)
 app.include_router(portfolio.router)
+app.include_router(predictions.router)
 app.include_router(signals.router)
 app.include_router(history.router)
 

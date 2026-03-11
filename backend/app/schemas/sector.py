@@ -23,7 +23,10 @@ class SectorMetricRead(BaseModel):
     sector_strength: float
     relative_strength: float
     capital_flow: float
+    avg_price_change_24h: float
+    avg_volume_change_24h: float
     volatility: float
+    trend: str | None = None
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
