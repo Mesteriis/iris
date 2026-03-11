@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from app.db.session import SessionLocal
 from app.patterns.context import enrich_signal_context
+from app.patterns.cycle import refresh_market_cycles
 from app.patterns.engine import PatternEngine
+from app.patterns.narrative import refresh_sector_metrics
 from app.patterns.statistics import refresh_pattern_statistics
 from app.services.history_loader import get_coin_by_symbol, list_coins_ready_for_latest_sync
 from app.taskiq.broker import broker
@@ -10,6 +12,7 @@ from app.taskiq.locks import redis_task_lock
 
 PATTERN_BOOTSTRAP_LOCK_TIMEOUT_SECONDS = 7200
 PATTERN_STATISTICS_LOCK_TIMEOUT_SECONDS = 7200
+MARKET_STRUCTURE_LOCK_TIMEOUT_SECONDS = 7200
 _ENGINE = PatternEngine()
 
 
@@ -76,3 +79,21 @@ def signal_context_enrichment(
         )
     finally:
         db.close()
+
+
+@broker.task
+def refresh_market_structure() -> dict[str, object]:
+    with redis_task_lock(
+        "iris:tasklock:market_structure_refresh",
+        timeout=MARKET_STRUCTURE_LOCK_TIMEOUT_SECONDS,
+    ) as acquired:
+        if not acquired:
+            return {"status": "skipped", "reason": "market_structure_refresh_in_progress"}
+
+        db = SessionLocal()
+        try:
+            sector_result = refresh_sector_metrics(db)
+            cycle_result = refresh_market_cycles(db)
+            return {"status": "ok", "sectors": sector_result, "cycles": cycle_result}
+        finally:
+            db.close()

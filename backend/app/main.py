@@ -153,6 +153,24 @@ async def schedule_pattern_statistics_refresh(receiver: Receiver, stop_event: as
             await dispatch_task_locally(receiver, pattern_tasks_module.update_pattern_statistics)
 
 
+async def schedule_market_structure_refresh(receiver: Receiver, stop_event: asyncio.Event) -> None:
+    await asyncio.sleep(1)
+    if stop_event.is_set():
+        return
+
+    interval = settings.taskiq_market_structure_interval_seconds
+    if interval <= 0:
+        await stop_event.wait()
+        return
+
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+        except TimeoutError:
+            LOGGER.info("Queueing market structure refresh task.")
+            await dispatch_task_locally(receiver, pattern_tasks_module.refresh_market_structure)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await asyncio.to_thread(wait_for_database)
@@ -169,6 +187,7 @@ async def lifespan(app: FastAPI):
     refresh_task = asyncio.create_task(enqueue_latest_price_snapshots(receiver, finish_event))
     analytics_task = asyncio.create_task(dispatch_pending_analytics_events(receiver, finish_event))
     pattern_stats_task = asyncio.create_task(schedule_pattern_statistics_refresh(receiver, finish_event))
+    market_structure_task = asyncio.create_task(schedule_market_structure_refresh(receiver, finish_event))
 
     app.state.taskiq_finish_event = finish_event
     app.state.taskiq_backfill_event = backfill_event
@@ -178,6 +197,7 @@ async def lifespan(app: FastAPI):
     app.state.taskiq_refresh_task = refresh_task
     app.state.taskiq_analytics_task = analytics_task
     app.state.taskiq_pattern_stats_task = pattern_stats_task
+    app.state.taskiq_market_structure_task = market_structure_task
 
     try:
         yield
@@ -189,6 +209,7 @@ async def lifespan(app: FastAPI):
             refresh_task,
             analytics_task,
             pattern_stats_task,
+            market_structure_task,
             return_exceptions=True,
         )
         await broker.shutdown()

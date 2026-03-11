@@ -5,8 +5,11 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.coin import Coin
 from app.models.coin_metrics import CoinMetrics
+from app.models.market_cycle import MarketCycle
 from app.models.pattern_statistic import PatternStatistic
+from app.models.sector_metric import SectorMetric
 from app.models.signal import Signal
 from app.patterns.semantics import is_cluster_signal, is_pattern_signal, pattern_bias, slug_from_signal_type
 from app.services.market_data import ensure_utc
@@ -66,6 +69,32 @@ def _liquidity_score(metrics: CoinMetrics | None) -> float:
     return max(score, 0.4)
 
 
+def _sector_alignment(sector_metric: SectorMetric | None, bias: int) -> float:
+    if sector_metric is None:
+        return 1.0
+    if sector_metric.sector_strength > 0 and bias > 0:
+        return 1.12
+    if sector_metric.sector_strength < 0 and bias < 0:
+        return 1.12
+    if sector_metric.relative_strength < 0 and bias > 0:
+        return 0.88
+    if sector_metric.relative_strength > 0 and bias < 0:
+        return 0.88
+    return 1.0
+
+
+def _cycle_alignment(cycle: MarketCycle | None, bias: int) -> float:
+    if cycle is None:
+        return 1.0
+    if cycle.cycle_phase in {"ACCUMULATION", "EARLY_MARKUP", "MARKUP"}:
+        return 1.15 if bias > 0 else 0.82
+    if cycle.cycle_phase in {"DISTRIBUTION", "EARLY_MARKDOWN", "MARKDOWN", "CAPITULATION"}:
+        return 1.15 if bias < 0 else 0.82
+    if cycle.cycle_phase == "LATE_MARKUP":
+        return 0.92 if bias > 0 else 1.05
+    return 1.0
+
+
 def _pattern_temperature(db: Session, slug: str | None, timeframe: int) -> float:
     if slug is None:
         return 1.0
@@ -98,6 +127,9 @@ def enrich_signal_context(
         return {"status": "skipped", "reason": "signals_not_found", "coin_id": coin_id, "timeframe": timeframe}
 
     metrics = db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin_id))
+    coin = db.get(Coin, coin_id)
+    sector_metric = db.get(SectorMetric, (coin.sector_id, timeframe)) if coin is not None and coin.sector_id is not None else None
+    cycle = db.get(MarketCycle, (coin_id, timeframe))
     cluster_timestamps = {
         signal.candle_timestamp
         for signal in signals
@@ -109,16 +141,18 @@ def enrich_signal_context(
         regime_alignment = _regime_alignment(metrics.market_regime if metrics is not None else None, bias)
         volatility_alignment = _volatility_alignment(signal.signal_type, metrics)
         liquidity_score = _liquidity_score(metrics)
+        sector_alignment = _sector_alignment(sector_metric, bias)
+        cycle_alignment = _cycle_alignment(cycle, bias)
         temperature = _pattern_temperature(db, slug, signal.timeframe)
         cluster_bonus = 1.15 if signal.candle_timestamp in cluster_timestamps and is_pattern_signal(signal.signal_type) else 1.0
-        context_score = temperature * volatility_alignment * liquidity_score * cluster_bonus
+        context_score = temperature * volatility_alignment * liquidity_score * cluster_bonus * sector_alignment * cycle_alignment
         signal.regime_alignment = regime_alignment
         signal.context_score = context_score
         signal.priority_score = calculate_priority_score(
             confidence=signal.confidence,
             pattern_temperature=temperature,
             regime_alignment=regime_alignment,
-            volatility_alignment=volatility_alignment * cluster_bonus,
+            volatility_alignment=volatility_alignment * cluster_bonus * sector_alignment * cycle_alignment,
             liquidity_score=liquidity_score,
         )
     db.commit()

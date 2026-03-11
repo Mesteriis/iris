@@ -17,8 +17,10 @@ from app.models.indicator_cache import IndicatorCache
 from app.models.signal import Signal
 from app.patterns.clusters import build_pattern_clusters
 from app.patterns.context import enrich_signal_context
+from app.patterns.cycle import update_market_cycle
 from app.patterns.engine import PatternEngine
 from app.patterns.hierarchy import build_hierarchy_signals
+from app.patterns.regime import calculate_regime_map, primary_regime
 from app.services.analytics_events import NewCandleEvent, clear_new_candle_event_if_unchanged, list_new_candle_events
 from app.services.candles_service import (
     AGGREGATE_VIEW_BY_TIMEFRAME,
@@ -602,6 +604,7 @@ def _upsert_coin_metrics(
     volume_change_24h: float | None,
     volatility: float | None,
     refresh_market_cap: bool,
+    market_regime: str | None,
 ) -> None:
     ensure_coin_metrics_row(db, coin.id)
 
@@ -610,7 +613,6 @@ def _upsert_coin_metrics(
 
     trend = _compute_trend(primary)
     trend_score = _compute_trend_score(primary, volume_change_24h)
-    market_regime = _compute_market_regime(primary, trend, volume_change_24h)
     base_candles = fetch_candle_points(db, coin.id, base_timeframe, 800)
     existing_market_cap = db.scalar(select(CoinMetrics.market_cap).where(CoinMetrics.coin_id == coin.id))
     payload = {
@@ -639,7 +641,7 @@ def _upsert_coin_metrics(
         "market_cap": _fetch_market_cap(coin.symbol) if refresh_market_cap or existing_market_cap is None else existing_market_cap,
         "trend": trend,
         "trend_score": trend_score,
-        "market_regime": market_regime,
+        "market_regime": market_regime or _compute_market_regime(primary, trend, volume_change_24h),
         "indicator_version": INDICATOR_VERSION,
         "updated_at": utc_now(),
     }
@@ -689,6 +691,7 @@ def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any
     snapshot_priority = [1440, 240, 60, 15]
     primary = next((snapshots[timeframe] for timeframe in snapshot_priority if timeframe in snapshots), None)
     base_snapshot = snapshots.get(base_timeframe)
+    regime_map = calculate_regime_map(snapshots, volatility=volatility)
     _upsert_coin_metrics(
         db,
         coin,
@@ -699,6 +702,7 @@ def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any
         volume_change_24h=volume_change_24h,
         volatility=volatility,
         refresh_market_cap=240 in affected_timeframes or 1440 in affected_timeframes,
+        market_regime=primary_regime(regime_map),
     )
     _store_indicator_cache(
         db,
@@ -724,6 +728,11 @@ def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any
             coin_id=coin.id,
             timeframe=timeframe,
             candle_timestamp=snapshot.candle_close_timestamp,
+        )
+        update_market_cycle(
+            db,
+            coin_id=coin.id,
+            timeframe=timeframe,
         )
         enrich_signal_context(
             db,
