@@ -37,3 +37,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - Corrected primary snapshot selection for `coin_metrics` and canonical regime so higher timeframes with insufficient candles no longer override fully-populated lower-timeframe indicators.
 - Fixed a runtime import error in the expanded momentum detector family and ensured downstream cluster/hierarchy/context steps see fresh `coin_metrics` values after incremental upserts.
+- Sector metric refresh now replaces stale timeframe rows so deleted or reassigned assets do not leave orphaned rotation narratives behind.

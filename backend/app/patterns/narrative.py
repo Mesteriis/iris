@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -76,6 +76,7 @@ def refresh_sector_metrics(db: Session, *, timeframe: int | None = None) -> dict
     timeframes = [timeframe] if timeframe is not None else [15, 60, 240, 1440]
     created = 0
     for current_timeframe in timeframes:
+        db.execute(delete(SectorMetric).where(SectorMetric.timeframe == current_timeframe))
         market_returns: list[float] = []
         sector_rows: list[dict[str, object]] = []
         for sector in sectors:
