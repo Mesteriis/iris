@@ -137,6 +137,27 @@ export interface Strategy {
   performance: StrategyPerformance | null;
 }
 
+export interface BacktestSummary {
+  symbol: string | null;
+  signal_type: string;
+  timeframe: number;
+  sample_size: number;
+  coin_count: number;
+  win_rate: number;
+  roi: number;
+  avg_return: number;
+  sharpe_ratio: number;
+  max_drawdown: number;
+  avg_confidence: number;
+  last_evaluated_at: string | null;
+}
+
+export interface CoinBacktests {
+  coin_id: number;
+  symbol: string;
+  items: BacktestSummary[];
+}
+
 export interface PatternDescriptor {
   slug: string;
   category: string;
@@ -300,6 +321,31 @@ export const irisApi = {
   },
   async listStrategyPerformance(limit = 20): Promise<StrategyPerformance[]> {
     const response = await api.get<StrategyPerformance[]>("/strategies/performance", {
+      params: { limit },
+    });
+    return response.data;
+  },
+  async listBacktests(limit = 100, timeframe?: number, signalType?: string): Promise<BacktestSummary[]> {
+    const response = await api.get<BacktestSummary[]>("/backtests", {
+      params: {
+        limit,
+        ...(timeframe ? { timeframe } : {}),
+        ...(signalType ? { signal_type: signalType } : {}),
+      },
+    });
+    return response.data;
+  },
+  async listTopBacktests(limit = 12, timeframe?: number): Promise<BacktestSummary[]> {
+    const response = await api.get<BacktestSummary[]>("/backtests/top", {
+      params: {
+        limit,
+        ...(timeframe ? { timeframe } : {}),
+      },
+    });
+    return response.data;
+  },
+  async getCoinBacktests(symbol: string, limit = 20): Promise<CoinBacktests> {
+    const response = await api.get<CoinBacktests>(`/coins/${symbol}/backtests`, {
       params: { limit },
     });
     return response.data;

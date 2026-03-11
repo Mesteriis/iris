@@ -27,6 +27,7 @@ const coin = computed(
 );
 const metric = computed(() => coinStore.metricsBySymbol.get(symbol.value) ?? null);
 const patternSignals = computed(() => coinStore.activePatternSignals);
+const backtests = computed(() => coinStore.activeBacktests);
 const regime = computed(() => coinStore.activeRegime);
 const cycles = computed(() => coinStore.activeCycles);
 const intervalOptions = computed<CandleInterval[]>(() => {
@@ -231,6 +232,36 @@ watch(symbol, loadPage);
           </li>
         </ul>
       </article>
+    </section>
+
+    <section class="surface-card">
+      <div class="section-head">
+        <div>
+          <p class="section-head__eyebrow">Backtest</p>
+          <h3>Historical signal performance</h3>
+        </div>
+        <p>{{ backtests.length }} evaluated signal families</p>
+      </div>
+
+      <div v-if="backtests.length === 0" class="surface-state">
+        No evaluated signal history for {{ symbol }} yet.
+      </div>
+      <ul v-else class="detail-signal-list">
+        <li v-for="item in backtests.slice(0, 10)" :key="`${item.signal_type}-${item.timeframe}`">
+          <div>
+            <strong>{{ formatSignalType(item.signal_type) }}</strong>
+            <p>
+              {{ timeframeToLabel(item.timeframe) }} / win {{ formatPercent(item.win_rate * 100, 2) }}
+              / avg {{ formatPercent(item.avg_return * 100, 2) }}
+            </p>
+          </div>
+          <div class="detail-signal-list__meta">
+            <span>{{ item.sharpe_ratio.toFixed(2) }}</span>
+            <small>ROI {{ formatPercent(item.roi * 100, 2) }}</small>
+            <small>sample {{ item.sample_size }}</small>
+          </div>
+        </li>
+      </ul>
     </section>
 
     <section class="detail-grid__row">

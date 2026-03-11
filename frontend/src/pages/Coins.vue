@@ -442,6 +442,36 @@ async function runCoinJob(symbol: string) {
     <section class="surface-card">
       <div class="section-head">
         <div>
+          <p class="section-head__eyebrow">Backtest engine</p>
+          <h3>Signals with proven edge</h3>
+        </div>
+        <p>{{ coinStore.topBacktests.length }} ranked signal stacks</p>
+      </div>
+
+      <div v-if="coinStore.topBacktests.length === 0" class="surface-state">
+        Backtest engine has not produced signal performance rows yet.
+      </div>
+      <ul v-else class="detail-signal-list">
+        <li v-for="item in coinStore.topBacktests" :key="`${item.signal_type}-${item.timeframe}`">
+          <div>
+            <strong>{{ formatSignalType(item.signal_type) }}</strong>
+            <p>
+              {{ timeframeToLabel(item.timeframe) }} / win {{ formatPercent(item.win_rate * 100, 2) }}
+              / avg {{ formatPercent(item.avg_return * 100, 2) }}
+            </p>
+          </div>
+          <div class="detail-signal-list__meta">
+            <span>{{ item.sharpe_ratio.toFixed(2) }}</span>
+            <small>ROI {{ formatPercent(item.roi * 100, 2) }}</small>
+            <small>sample {{ item.sample_size }}</small>
+          </div>
+        </li>
+      </ul>
+    </section>
+
+    <section class="surface-card">
+      <div class="section-head">
+        <div>
           <p class="section-head__eyebrow">Pattern library</p>
           <h3>Lifecycle and temperature</h3>
         </div>

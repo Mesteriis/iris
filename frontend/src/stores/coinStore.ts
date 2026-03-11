@@ -4,8 +4,10 @@ import { defineStore } from "pinia";
 
 import {
   irisApi,
+  type BacktestSummary,
   type CandleInterval,
   type Coin,
+  type CoinBacktests,
   type CoinRegime,
   type CoinCreatePayload,
   type CoinMetrics,
@@ -32,12 +34,14 @@ export const useCoinStore = defineStore("coins", () => {
   const patterns = ref<PatternDescriptor[]>([]);
   const strategies = ref<Strategy[]>([]);
   const strategyPerformance = ref<StrategyPerformance[]>([]);
+  const topBacktests = ref<BacktestSummary[]>([]);
   const patternFeatures = ref<PatternFeature[]>([]);
   const discoveredPatterns = ref<DiscoveredPattern[]>([]);
   const sectors = ref<Sector[]>([]);
   const sectorMetrics = ref<SectorMetric[]>([]);
   const sectorNarratives = ref<SectorNarrative[]>([]);
   const marketCycles = ref<MarketCycle[]>([]);
+  const coinBacktests = ref<Record<string, CoinBacktests>>({});
   const coinPatternHistory = ref<Record<string, Signal[]>>({});
   const coinRegimes = ref<Record<string, CoinRegime>>({});
   const history = ref<PriceHistoryPoint[]>([]);
@@ -124,6 +128,7 @@ export const useCoinStore = defineStore("coins", () => {
     () => signalsBySymbol.value.get(activeSymbol.value)?.slice(0, 12) ?? [],
   );
   const activePatternSignals = computed(() => coinPatternHistory.value[activeSymbol.value] ?? []);
+  const activeBacktests = computed(() => coinBacktests.value[activeSymbol.value]?.items ?? []);
   const activeRegime = computed(() => coinRegimes.value[activeSymbol.value] ?? null);
   const activeCycles = computed(() =>
     marketCycles.value.filter((item) => item.symbol.toUpperCase() === activeSymbol.value),
@@ -250,6 +255,7 @@ export const useCoinStore = defineStore("coins", () => {
         patternRows,
         strategyRows,
         strategyPerformanceRows,
+        backtestRows,
         patternFeatureRows,
         discoveredPatternRows,
         sectorRows,
@@ -264,6 +270,7 @@ export const useCoinStore = defineStore("coins", () => {
         irisApi.listPatterns(),
         irisApi.listStrategies(40, false),
         irisApi.listStrategyPerformance(12),
+        irisApi.listTopBacktests(10),
         irisApi.listPatternFeatures(),
         irisApi.listDiscoveredPatterns(24),
         irisApi.listSectors(),
@@ -279,6 +286,7 @@ export const useCoinStore = defineStore("coins", () => {
       patterns.value = patternRows;
       strategies.value = strategyRows;
       strategyPerformance.value = strategyPerformanceRows;
+      topBacktests.value = backtestRows;
       patternFeatures.value = patternFeatureRows;
       discoveredPatterns.value = discoveredPatternRows;
       sectors.value = sectorRows;
@@ -308,11 +316,12 @@ export const useCoinStore = defineStore("coins", () => {
     activeSymbol.value = symbol.toUpperCase();
     activeInterval.value = interval;
     try {
-      const [historyRows, patternRows, regime, cycleRows] = await Promise.all([
+      const [historyRows, patternRows, regime, cycleRows, backtests] = await Promise.all([
         irisApi.getCoinHistory(symbol, interval),
         irisApi.listCoinPatterns(symbol, 120),
         irisApi.getCoinRegime(symbol),
         irisApi.listMarketCycles(symbol),
+        irisApi.getCoinBacktests(symbol, 16),
       ]);
       history.value = historyRows;
       coinPatternHistory.value = {
@@ -322,6 +331,10 @@ export const useCoinStore = defineStore("coins", () => {
       coinRegimes.value = {
         ...coinRegimes.value,
         [symbol.toUpperCase()]: regime,
+      };
+      coinBacktests.value = {
+        ...coinBacktests.value,
+        [symbol.toUpperCase()]: backtests,
       };
       marketCycles.value = [
         ...marketCycles.value.filter((item) => item.symbol.toUpperCase() !== symbol.toUpperCase()),
@@ -389,6 +402,7 @@ export const useCoinStore = defineStore("coins", () => {
   return {
     activeSymbol,
     activeCoin,
+    activeBacktests,
     activeCycles,
     activeInterval,
     activeMetrics,
@@ -441,6 +455,7 @@ export const useCoinStore = defineStore("coins", () => {
     status,
     statusTone,
     topSectorMetrics,
+    topBacktests,
     topStrategies,
     topSignals,
   };

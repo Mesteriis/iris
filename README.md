@@ -26,13 +26,19 @@ Services:
 IRIS uses the existing schema instead of duplicating market history:
 
 - `candles`
-  Stores OHLCV. Primary key: `coin_id`, `timeframe`, `timestamp`.
+  Stores OHLCV. Primary key: `coin_id`, `timeframe`, `timestamp`. The table is configured as a TimescaleDB hypertable with a 30-day chunk interval, hash partitioning by `coin_id`, the descending access index `ix_candles_coin_tf_ts_desc`, and a 90-day compression policy.
+- `candles_1h`, `candles_4h`, `candles_1d`
+  Continuous aggregate views derived from the retained base timeframe so higher-timeframe analytics do not rescan raw 15m history on every request.
 - `indicator_cache`
   Stores computed indicators per coin, timeframe and timestamp.
 - `coin_metrics`
   Stores current aggregate market state per coin. `market_regime` holds the canonical regime and `market_regime_details` stores persisted per-timeframe regime snapshots used by signal context and `/coins/{symbol}/regime`.
 - `signals`
   Stores classic analytics signals, pattern signals, cluster signals and hierarchy signals.
+- `signal_history`
+  Stores realized signal outcomes with `result_return`, `result_drawdown` and `evaluated_at` so statistics, backtests and strategy research do not need to recalculate forward windows every time.
+- `feature_snapshots`
+  Stores wide ML-oriented feature vectors per closed candle with regime, cycle, sector strength, pattern density and cluster score.
 - `pattern_features`
   Feature flags for `pattern_detection`, `pattern_clusters`, `pattern_hierarchy`, `market_regime_engine`, `pattern_discovery_engine`.
 - `pattern_registry`
@@ -121,14 +127,18 @@ Signals use `signal_type` values such as:
 ### Incremental path
 
 1. New closed candle is written into `candles`.
-2. Existing analytics pipeline updates indicators and `coin_metrics`.
-3. Pattern engine loads the last 200 candles and runs enabled detectors.
-4. Cluster and hierarchy engines derive stronger structures from emitted pattern signals.
-5. Regime and cycle context are applied.
-6. Contextual Signal Engine updates:
+2. Timescale continuous aggregates keep 1h, 4h and 1d views ready for higher-timeframe reads.
+3. Existing analytics pipeline updates indicators and `coin_metrics`.
+4. The same pipeline persists per-timeframe `indicator_cache` rows.
+5. Pattern engine loads the last 200 candles and runs enabled detectors.
+6. Cluster and hierarchy engines derive stronger structures from emitted pattern signals.
+7. Regime and cycle context are applied.
+8. Contextual Signal Engine updates:
    `priority_score = confidence * temperature * regime_alignment * volatility_alignment * liquidity_score * sector_alignment * cycle_alignment * cluster_bonus`
-7. Lazy Investor Decision Engine converts the current stack into an investment decision.
-8. Liquidity & Risk Engine converts that decision into a tradable `final_signal`.
+9. Lazy Investor Decision Engine converts the current stack into an investment decision.
+10. Liquidity & Risk Engine converts that decision into a tradable `final_signal`.
+11. `signal_history` refresh evaluates matured signals and persists forward return / drawdown outcomes.
+12. `feature_snapshots` capture the closed-candle feature vector for ML, research and backtests.
 
 ### Bootstrap path
 
@@ -313,6 +323,21 @@ Runtime behavior:
 - Active strategies are reused by the Lazy Investor Decision Engine through `strategy_alignment`.
 - Matching active strategies increase decision score and confidence.
 
+## Signal History And Backtests
+
+The data architecture now follows:
+
+- `candles -> continuous aggregates -> indicator_cache -> signals -> signal_history -> pattern statistics / feature_snapshots -> decisions / backtests / ML`
+
+`signal_history` is the canonical realized-outcome store. It allows IRIS to:
+
+- compute pattern temperature from persisted outcomes
+- rank signal families by ROI, win rate and Sharpe ratio
+- feed strategy discovery with stable historical performance data
+- build ML datasets from `feature_snapshots` without joining raw candle windows repeatedly
+
+The backtest layer is an API read model over `signal_history`, not a separate worker subsystem.
+
 ## API
 
 Primary endpoints:
@@ -325,12 +350,15 @@ Primary endpoints:
 - `GET /final-signals/top`
 - `GET /strategies`
 - `GET /strategies/performance`
+- `GET /backtests`
+- `GET /backtests/top`
 - `GET /patterns`
 - `GET /patterns/features`
 - `PATCH /patterns/features/{feature_slug}`
 - `PATCH /patterns/{slug}`
 - `GET /patterns/discovered`
 - `GET /coins/{symbol}/patterns`
+- `GET /coins/{symbol}/backtests`
 - `GET /coins/{symbol}/decision`
 - `GET /coins/{symbol}/final-signal`
 - `GET /coins/{symbol}/regime`
@@ -345,6 +373,7 @@ The frontend uses these endpoints to show:
 - priority-ranked signals
 - lazy-investor decisions
 - self-evolving top strategies
+- backtested signal families
 - cluster membership
 - market regime
 - cycle phase
@@ -358,6 +387,10 @@ The frontend uses these endpoints to show:
 - Candle history is never duplicated.
 - Incremental detection reads the last 200 candles from `candles` / aggregate views.
 - `ix_candles_coin_tf_ts_desc` accelerates the last-200-candle query pattern.
+- Higher timeframes are served from continuous aggregates instead of rebuilding 1h / 4h / 1d candles from the raw table on every read.
+- `signal_history` removes repeated forward-window scans from nightly statistics refreshes.
+- `feature_snapshots` keep ML-oriented context vectors in a single table keyed by `coin_id`, `timeframe`, `timestamp`.
+- Timescale compression keeps long-horizon candle retention practical for multi-year history.
 - Runtime scans full retained history only during bootstrap or scheduled discovery/statistics jobs, not during normal incremental operation.
 
 ## Notes

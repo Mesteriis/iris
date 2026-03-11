@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from taskiq.receiver import Receiver
 
-from app.api import coins, decisions, final_signals, history, market, metrics, patterns, sectors, signals, strategies, system
+from app.api import backtests, coins, decisions, final_signals, history, market, metrics, patterns, sectors, signals, strategies, system
 from app.core.config import get_settings
 from app.db.session import wait_for_database
 from app.messaging import register_default_receivers, reset_message_bus
@@ -273,6 +273,7 @@ app.add_middleware(
 app.include_router(system.router)
 app.include_router(coins.router)
 app.include_router(metrics.router)
+app.include_router(backtests.router)
 app.include_router(patterns.router)
 app.include_router(decisions.router)
 app.include_router(final_signals.router)

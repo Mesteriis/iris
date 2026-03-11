@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Home Assistant final investment-signal event emission via `iris.investment_signal` with `coin`, `decision`, `confidence`, `risk_score` and `reason`.
 - Self Evolving Strategy Engine with `strategies`, `strategy_rules`, `strategy_performance`, discovery job and API endpoints for `/strategies` and `/strategies/performance`.
 - Runtime `signal_history` refresh and `feature_snapshots` capture wired into the existing incremental analytics pipeline.
+- Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
 - Pattern statistics now read from persisted `signal_history` outcomes instead of rescanning candle windows on every refresh.
