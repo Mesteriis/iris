@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.candle import Candle
     from app.models.coin_metrics import CoinMetrics
     from app.models.indicator_cache import IndicatorCache
+    from app.models.investment_decision import InvestmentDecision
     from app.models.market_cycle import MarketCycle
     from app.models.sector import Sector
     from app.models.signal import Signal
@@ -66,4 +67,9 @@ class Coin(Base):
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="MarketCycle.timeframe",
+    )
+    investment_decisions: Mapped[list["InvestmentDecision"]] = relationship(
+        back_populates="coin",
+        cascade="all, delete-orphan",
+        order_by="InvestmentDecision.created_at",
     )

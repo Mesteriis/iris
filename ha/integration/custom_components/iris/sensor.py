@@ -38,4 +38,5 @@ class IrisStatusSensor(CoordinatorEntity[IrisDataUpdateCoordinator], SensorEntit
             "service": self.coordinator.data.get("service"),
             "taskiq_mode": self.coordinator.data.get("taskiq_mode"),
             "taskiq_running": self.coordinator.data.get("taskiq_running"),
+            "decision_count": len(self.coordinator.data.get("decisions", [])),
         }

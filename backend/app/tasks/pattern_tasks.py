@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.db.session import SessionLocal
 from app.patterns.context import enrich_signal_context, refresh_recent_signal_contexts
 from app.patterns.cycle import refresh_market_cycles
+from app.patterns.decision import evaluate_investment_decision, refresh_investment_decisions
 from app.patterns.discovery import refresh_discovered_patterns
 from app.patterns.engine import PatternEngine
 from app.patterns.narrative import refresh_sector_metrics
@@ -62,7 +63,8 @@ def update_pattern_statistics() -> dict[str, object]:
         try:
             statistics_result = refresh_pattern_statistics(db)
             context_result = refresh_recent_signal_contexts(db, lookback_days=30)
-            return {"status": "ok", "statistics": statistics_result, "context": context_result}
+            decision_result = refresh_investment_decisions(db, lookback_days=30, emit_events=False)
+            return {"status": "ok", "statistics": statistics_result, "context": context_result, "decisions": decision_result}
         finally:
             db.close()
 
@@ -75,12 +77,19 @@ def signal_context_enrichment(
 ) -> dict[str, object]:
     db = SessionLocal()
     try:
-        return enrich_signal_context(
+        context_result = enrich_signal_context(
             db,
             coin_id=int(coin_id),
             timeframe=int(timeframe),
             candle_timestamp=candle_timestamp,
         )
+        decision_result = evaluate_investment_decision(
+            db,
+            coin_id=int(coin_id),
+            timeframe=int(timeframe),
+            emit_event=False,
+        )
+        return {"status": "ok", "context": context_result, "decision": decision_result}
     finally:
         db.close()
 
@@ -99,7 +108,14 @@ def refresh_market_structure() -> dict[str, object]:
             sector_result = refresh_sector_metrics(db)
             cycle_result = refresh_market_cycles(db)
             context_result = refresh_recent_signal_contexts(db, lookback_days=30)
-            return {"status": "ok", "sectors": sector_result, "cycles": cycle_result, "context": context_result}
+            decision_result = refresh_investment_decisions(db, lookback_days=30, emit_events=False)
+            return {
+                "status": "ok",
+                "sectors": sector_result,
+                "cycles": cycle_result,
+                "context": context_result,
+                "decisions": decision_result,
+            }
         finally:
             db.close()
 

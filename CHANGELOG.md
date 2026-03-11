@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Manual feature-flag and pattern lifecycle management via API, plus discovery review endpoint for `discovered_patterns`.
 - Dashboard now surfaces feature-flag state and discovery candidates, and maintenance jobs re-enrich recent signal context after market structure/statistics updates.
 - Detector catalog expanded from the mandatory baseline to 87 grouped pattern detectors across structural, continuation, momentum, volatility and volume families.
+- Lazy Investor Decision Engine with `investment_decisions` storage, decision scoring and API endpoints for `/decisions`, `/decisions/top` and `/coins/{symbol}/decision`.
+- Home Assistant decision event emission via `iris.decision` with `coin`, `decision`, `confidence` and `reason`.
 
 ### Changed
 - Extended `signals` with `priority_score`, `context_score` and `regime_alignment`.
@@ -33,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - README now documents the full pattern intelligence architecture, database usage, TaskIQ jobs and frontend/API surface.
 - Nightly lifecycle refresh now updates `lifecycle_state` without overriding manual `enabled=false` switches.
 - Sector narratives now include capital-wave rotation and the signal/regime APIs use persisted per-timeframe regime details for ranking and display.
+- Pattern runtime now refreshes investment decisions after incremental signal detection, market structure refresh and nightly statistics updates.
 
 ### Fixed
 - Corrected primary snapshot selection for `coin_metrics` and canonical regime so higher timeframes with insufficient candles no longer override fully-populated lower-timeframe indicators.

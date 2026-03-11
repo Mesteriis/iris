@@ -267,3 +267,31 @@ def publish_coin_analysis_messages(coin: "Coin") -> None:
     )
     bus.publish(ready_message)
     bus.publish(analysis_started_message)
+
+
+def publish_investment_decision_message(
+    coin: "Coin",
+    *,
+    timeframe: int,
+    decision: str,
+    confidence: float,
+    score: float,
+    reason: str,
+) -> None:
+    get_message_bus().publish(
+        AnalysisMessage(
+            topic="iris.decision",
+            text=f"Decision {decision} for {coin.symbol}.",
+            coin_symbol=coin.symbol,
+            created_at=utc_now(),
+            payload={
+                **_coin_payload(coin),
+                "coin": coin.symbol,
+                "timeframe": timeframe,
+                "decision": decision,
+                "confidence": confidence,
+                "score": score,
+                "reason": reason,
+            },
+        )
+    )

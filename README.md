@@ -47,6 +47,8 @@ IRIS uses the existing schema instead of duplicating market history:
   Sector strength, relative strength, capital flow and volatility.
 - `market_cycles`
   Latest cycle phase per coin and timeframe.
+- `investment_decisions`
+  Latest and historical lazy-investor decisions derived from signals, regime, sector, cycle and pattern statistics.
 
 ## Pattern Intelligence System
 
@@ -76,6 +78,8 @@ The pattern subsystem lives under `backend/app/patterns` and is integrated into 
   Market Cycle Engine.
 - `discovery.py`
   Shape clustering and discovery candidate generation.
+- `decision.py`
+  Lazy Investor Decision Engine that converts market analysis into `STRONG_BUY` ... `STRONG_SELL` actions.
 
 ### Detector families
 
@@ -177,18 +181,67 @@ Cycle state is stored in `market_cycles` and fed back into contextual signal ran
 
 The discovery job clusters rolling price windows by normalized shape and volatility hash and writes candidates to `discovered_patterns`. These rows are never auto-enabled.
 
+## Lazy Investor Decision Engine
+
+The decision layer aggregates:
+
+- pattern signals
+- pattern clusters
+- hierarchy signals
+- market regime
+- sector narrative
+- market cycle
+- historical pattern statistics
+
+Supported decisions:
+
+- `STRONG_BUY`
+- `BUY`
+- `ACCUMULATE`
+- `HOLD`
+- `REDUCE`
+- `SELL`
+- `STRONG_SELL`
+
+Stored table:
+
+- `investment_decisions`
+
+Decision score formula:
+
+- `decision_score = signal_priority * regime_alignment * sector_strength * cycle_alignment * historical_pattern_success`
+
+Runtime triggers:
+
+- new signal detected inside incremental candle processing
+- new cluster / hierarchy emission
+- market regime refresh
+- sector strength refresh
+- market cycle refresh
+- nightly pattern statistics refresh
+
+The Home Assistant integration polls decision updates and fires `iris.decision` with:
+
+- `coin`
+- `decision`
+- `confidence`
+- `reason`
+
 ## API
 
 Primary endpoints:
 
 - `GET /signals`
 - `GET /signals/top`
+- `GET /decisions`
+- `GET /decisions/top`
 - `GET /patterns`
 - `GET /patterns/features`
 - `PATCH /patterns/features/{feature_slug}`
 - `PATCH /patterns/{slug}`
 - `GET /patterns/discovered`
 - `GET /coins/{symbol}/patterns`
+- `GET /coins/{symbol}/decision`
 - `GET /coins/{symbol}/regime`
 - `GET /sectors`
 - `GET /sectors/metrics`
@@ -199,6 +252,7 @@ The frontend uses these endpoints to show:
 - active patterns
 - feature flag state
 - priority-ranked signals
+- lazy-investor decisions
 - cluster membership
 - market regime
 - cycle phase

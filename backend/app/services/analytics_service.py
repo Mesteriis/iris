@@ -18,6 +18,7 @@ from app.models.signal import Signal
 from app.patterns.clusters import build_pattern_clusters
 from app.patterns.context import enrich_signal_context
 from app.patterns.cycle import update_market_cycle
+from app.patterns.decision import evaluate_investment_decision
 from app.patterns.engine import PatternEngine
 from app.patterns.hierarchy import build_hierarchy_signals
 from app.patterns.regime import calculate_regime_map, primary_regime, serialize_regime_map
@@ -772,6 +773,12 @@ def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any
             coin_id=coin.id,
             timeframe=timeframe,
             candle_timestamp=snapshot.candle_close_timestamp,
+        )
+        evaluate_investment_decision(
+            db,
+            coin_id=coin.id,
+            timeframe=timeframe,
+            emit_event=True,
         )
 
     clear_new_candle_event_if_unchanged(event)
