@@ -590,6 +590,24 @@ def _insert_signals(db: Session, coin_id: int, timeframe: int, signals: Sequence
     db.commit()
 
 
+def list_signal_types_at_timestamp(
+    db: Session,
+    *,
+    coin_id: int,
+    timeframe: int,
+    candle_timestamp: object,
+) -> set[str]:
+    return set(
+        db.scalars(
+            select(Signal.signal_type).where(
+                Signal.coin_id == coin_id,
+                Signal.timeframe == timeframe,
+                Signal.candle_timestamp == candle_timestamp,
+            )
+        ).all()
+    )
+
+
 def _detect_signals(snapshot: TimeframeSnapshot) -> list[dict[str, Any]]:
     detected: list[dict[str, Any]] = []
     candle_time = snapshot.candle_close_timestamp
@@ -691,36 +709,46 @@ def _upsert_coin_metrics(
     db.commit()
 
 
-def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any]:
+def process_indicator_event(
+    db: Session,
+    *,
+    coin_id: int,
+    timeframe: int,
+    timestamp: datetime,
+) -> dict[str, Any]:
+    event = NewCandleEvent(
+        coin_id=int(coin_id),
+        timeframe=int(timeframe),
+        timestamp=ensure_utc(timestamp),
+    )
     coin = db.get(Coin, event.coin_id)
     if coin is None or coin.deleted_at is not None:
-        clear_new_candle_event_if_unchanged(event)
         return {"status": "skipped", "reason": "coin_not_found", "coin_id": event.coin_id}
 
     base_timeframe = _coin_base_timeframe(coin)
 
     base_window_start, base_window_end = get_base_candle_bounds(db, coin.id)
     if base_window_start is not None and base_window_end is not None:
-        for timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
-            if not aggregate_has_rows(db, coin.id, timeframe):
-                refresh_continuous_aggregate_range(db, timeframe, base_window_start, base_window_end)
+        for aggregate_timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
+            if not aggregate_has_rows(db, coin.id, aggregate_timeframe):
+                refresh_continuous_aggregate_range(db, aggregate_timeframe, base_window_start, base_window_end)
 
     affected_timeframes = determine_affected_timeframes(event)
-    for timeframe in affected_timeframes:
-        if timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
-            refresh_continuous_aggregate_window(db, timeframe, event.timestamp)
+    for affected_timeframe in affected_timeframes:
+        if affected_timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
+            refresh_continuous_aggregate_window(db, affected_timeframe, event.timestamp)
 
     snapshots: dict[int, TimeframeSnapshot] = {}
-    for timeframe in TIMEFRAME_INTERVALS:
-        candles = fetch_candle_points(db, coin.id, timeframe, PRICE_HISTORY_LOOKBACK_BARS)
+    for current_timeframe in TIMEFRAME_INTERVALS:
+        candles = fetch_candle_points(db, coin.id, current_timeframe, PRICE_HISTORY_LOOKBACK_BARS)
         feature_source = (
             "candles"
-            if _has_direct_candles(db, coin.id, timeframe) or base_timeframe != BASE_TIMEFRAME_MINUTES
-            else AGGREGATE_VIEW_BY_TIMEFRAME.get(timeframe, "candles")
+            if _has_direct_candles(db, coin.id, current_timeframe) or base_timeframe != BASE_TIMEFRAME_MINUTES
+            else AGGREGATE_VIEW_BY_TIMEFRAME.get(current_timeframe, "candles")
         )
-        snapshot = _calculate_snapshot(candles, timeframe, feature_source=feature_source)
+        snapshot = _calculate_snapshot(candles, current_timeframe, feature_source=feature_source)
         if snapshot is not None:
-            snapshots[timeframe] = snapshot
+            snapshots[current_timeframe] = snapshot
 
     base_candles = fetch_candle_points(db, coin.id, base_timeframe, 400)
     volume_24h, volume_change_24h, volatility = _compute_volume_metrics(base_candles, base_timeframe)
@@ -744,15 +772,68 @@ def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any
     _store_indicator_cache(
         db,
         coin.id,
-        [snapshots[timeframe] for timeframe in affected_timeframes if timeframe in snapshots],
+        [snapshots[current_timeframe] for current_timeframe in affected_timeframes if current_timeframe in snapshots],
         volume_24h,
         volume_change_24h,
     )
+    items: list[dict[str, Any]] = []
+    for affected_timeframe in affected_timeframes:
+        snapshot = snapshots.get(affected_timeframe)
+        if snapshot is None:
+            continue
+        before_signal_types = list_signal_types_at_timestamp(
+            db,
+            coin_id=coin.id,
+            timeframe=affected_timeframe,
+            candle_timestamp=snapshot.candle_close_timestamp,
+        )
+        _insert_signals(db, coin.id, affected_timeframe, _detect_signals(snapshot))
+        after_signal_types = list_signal_types_at_timestamp(
+            db,
+            coin_id=coin.id,
+            timeframe=affected_timeframe,
+            candle_timestamp=snapshot.candle_close_timestamp,
+        )
+        items.append(
+            {
+                "coin_id": coin.id,
+                "timeframe": affected_timeframe,
+                "timestamp": snapshot.candle_close_timestamp,
+                "feature_source": snapshot.feature_source,
+                "classic_signals": sorted(
+                    signal_type for signal_type in (after_signal_types - before_signal_types) if signal_type in SIGNAL_TYPES
+                ),
+            }
+        )
+    return {
+        "status": "ok",
+        "coin_id": coin.id,
+        "symbol": coin.symbol,
+        "affected_timeframes": affected_timeframes,
+        "items": items,
+        "snapshots": snapshots,
+        "indicator_version": INDICATOR_VERSION,
+    }
+
+
+def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any]:
+    coin = db.get(Coin, event.coin_id)
+    if coin is None or coin.deleted_at is not None:
+        clear_new_candle_event_if_unchanged(event)
+        return {"status": "skipped", "reason": "coin_not_found", "coin_id": event.coin_id}
+
+    indicator_result = process_indicator_event(
+        db,
+        coin_id=event.coin_id,
+        timeframe=event.timeframe,
+        timestamp=event.timestamp,
+    )
+    affected_timeframes = list(indicator_result.get("affected_timeframes", []))
+    snapshots = dict(indicator_result.get("snapshots", {}))
     for timeframe in affected_timeframes:
         snapshot = snapshots.get(timeframe)
         if snapshot is None:
             continue
-        _insert_signals(db, coin.id, timeframe, _detect_signals(snapshot))
         PATTERN_ENGINE.detect_incremental(db, coin_id=coin.id, timeframe=timeframe, lookback=200)
         build_pattern_clusters(
             db,

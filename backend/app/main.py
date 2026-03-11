@@ -15,6 +15,8 @@ from taskiq.receiver import Receiver
 from app.api import backtests, coins, decisions, final_signals, history, market, metrics, patterns, sectors, signals, strategies, system
 from app.core.config import get_settings
 from app.db.session import wait_for_database
+from app.events.publisher import reset_event_publisher
+from app.events.runner import spawn_event_worker_processes, stop_event_worker_processes
 from app.messaging import register_default_receivers, reset_message_bus
 from app.services.market_sources import get_market_source_carousel
 from app.taskiq.broker import broker
@@ -103,38 +105,6 @@ async def enqueue_latest_price_snapshots(receiver: Receiver, stop_event: asyncio
             await dispatch_task_locally(receiver, history_tasks.refresh_observed_coins_history)
 
 
-async def dispatch_pending_analytics_events(receiver: Receiver, stop_event: asyncio.Event) -> None:
-    await asyncio.sleep(1)
-    if stop_event.is_set():
-        return
-
-    interval = settings.taskiq_analytics_event_interval_seconds
-    if interval <= 0:
-        await stop_event.wait()
-        return
-
-    while not stop_event.is_set():
-        events = await asyncio.to_thread(analytics_tasks.get_pending_new_candle_events)
-        for event in events:
-            LOGGER.info(
-                "Queueing analytics event for coin_id=%s timeframe=%s timestamp=%s.",
-                event.coin_id,
-                event.timeframe,
-                event.timestamp.isoformat(),
-            )
-            await dispatch_task_locally(
-                receiver,
-                analytics_tasks.handle_new_candle_event,
-                event.coin_id,
-                event.timeframe,
-                event.timestamp.isoformat(),
-            )
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=interval)
-        except TimeoutError:
-            continue
-
-
 async def schedule_pattern_statistics_refresh(receiver: Receiver, stop_event: asyncio.Event) -> None:
     await asyncio.sleep(1)
     if stop_event.is_set():
@@ -215,13 +185,13 @@ async def lifespan(app: FastAPI):
     await asyncio.to_thread(register_default_receivers)
 
     await broker.startup()
+    worker_stop_event, worker_processes = await asyncio.to_thread(spawn_event_worker_processes)
     finish_event = asyncio.Event()
     backfill_event = asyncio.Event()
     receiver = Receiver(broker=broker, run_startup=False)
     listener_task = asyncio.create_task(receiver.listen(finish_event))
     backfill_task = asyncio.create_task(schedule_history_backfills(receiver, finish_event, backfill_event))
     refresh_task = asyncio.create_task(enqueue_latest_price_snapshots(receiver, finish_event))
-    analytics_task = asyncio.create_task(dispatch_pending_analytics_events(receiver, finish_event))
     pattern_stats_task = asyncio.create_task(schedule_pattern_statistics_refresh(receiver, finish_event))
     market_structure_task = asyncio.create_task(schedule_market_structure_refresh(receiver, finish_event))
     pattern_discovery_task = asyncio.create_task(schedule_pattern_discovery_refresh(receiver, finish_event))
@@ -233,7 +203,8 @@ async def lifespan(app: FastAPI):
     app.state.taskiq_receiver = receiver
     app.state.taskiq_backfill_task = backfill_task
     app.state.taskiq_refresh_task = refresh_task
-    app.state.taskiq_analytics_task = analytics_task
+    app.state.event_worker_stop_event = worker_stop_event
+    app.state.event_worker_processes = worker_processes
     app.state.taskiq_pattern_stats_task = pattern_stats_task
     app.state.taskiq_market_structure_task = market_structure_task
     app.state.taskiq_pattern_discovery_task = pattern_discovery_task
@@ -247,15 +218,16 @@ async def lifespan(app: FastAPI):
             listener_task,
             backfill_task,
             refresh_task,
-            analytics_task,
             pattern_stats_task,
             market_structure_task,
             pattern_discovery_task,
             strategy_discovery_task,
             return_exceptions=True,
         )
+        await asyncio.to_thread(stop_event_worker_processes, worker_stop_event, worker_processes)
         await broker.shutdown()
         await asyncio.to_thread(reset_message_bus)
+        await asyncio.to_thread(reset_event_publisher)
         await asyncio.to_thread(close_task_lock_client)
         await asyncio.to_thread(get_market_source_carousel().close)
 

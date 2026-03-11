@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Redis Streams event pipeline foundation with `iris_events`, async publisher and consumer-group worker base.
 - TimescaleDB tuning for `candles`: 30-day chunks, hash partitioning by `coin_id` and 90-day compression policy.
 - `signal_history` outcome store for evaluated signal returns and drawdowns.
 - `feature_snapshots` wide feature-vector table for ML and historical context training.
@@ -33,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- Polling/history writes now publish `candle_inserted` and `candle_closed` into `iris_events` instead of directly driving runtime analytics.
 - Pattern statistics now read from persisted `signal_history` outcomes instead of rescanning candle windows on every refresh.
 - Extended `signals` with `priority_score`, `context_score` and `regime_alignment`.
 - Extended `coins` with `sector_id` mapped from the existing `theme` field so sector analytics can reuse current asset taxonomy.

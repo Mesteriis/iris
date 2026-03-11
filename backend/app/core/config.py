@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     taskiq_market_structure_interval_seconds: int = 3600
     taskiq_pattern_discovery_interval_seconds: int = 21600
     taskiq_strategy_discovery_interval_seconds: int = 21600
+    event_worker_block_milliseconds: int = 1000
+    event_worker_pending_idle_milliseconds: int = 30000
+    event_worker_batch_size: int = 10
     bootstrap_history_on_startup: bool = True
     database_connect_retries: int = 30
     database_connect_retry_delay: float = 1.0

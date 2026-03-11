@@ -13,6 +13,7 @@ from app.messaging import (
     publish_coin_history_loaded_message,
     publish_coin_history_progress_message,
 )
+from app.events.publisher import publish_event
 from app.core.watched_assets import WATCHED_ASSETS
 from app.models.candle import Candle
 from app.models.coin import Coin
@@ -20,7 +21,6 @@ from app.models.indicator_cache import IndicatorCache
 from app.models.signal import Signal
 from app.schemas.coin import CandleConfig, CoinCreate
 from app.schemas.price_history import PriceHistoryCreate
-from app.services.analytics_events import emit_new_candle_event
 from app.services.analytics_service import delete_coin_metrics_row, ensure_coin_metrics_row
 from app.services.candles_service import (
     AGGREGATE_VIEW_BY_TIMEFRAME,
@@ -41,6 +41,25 @@ from app.services.market_data import (
 from app.services.market_sources import get_market_source_carousel
 
 PRICE_HISTORY_UPSERT_BATCH_SIZE = 5000
+
+
+def publish_candle_events(
+    *,
+    coin_id: int,
+    timeframe: int,
+    timestamp: datetime,
+    created_count: int,
+    source: str,
+) -> None:
+    payload = {
+        "coin_id": coin_id,
+        "timeframe": timeframe,
+        "timestamp": timestamp,
+        "created_count": created_count,
+        "source": source,
+    }
+    publish_event("candle_inserted", payload)
+    publish_event("candle_closed", payload)
 
 
 def get_base_candle_config(coin: Coin) -> dict[str, Any]:
@@ -295,7 +314,13 @@ def create_price_history(
     )
     db.execute(stmt)
     db.commit()
-    emit_new_candle_event(coin.id, timeframe, timestamp)
+    publish_candle_events(
+        coin_id=coin.id,
+        timeframe=timeframe,
+        timestamp=timestamp,
+        created_count=1,
+        source="manual",
+    )
     return _serialize_history_row(
         coin_id=coin.id,
         interval=resolved_interval,
@@ -351,7 +376,13 @@ def bulk_create_price_history(
         db.execute(stmt)
     db.commit()
     latest_timestamp = max(row["timestamp"] for row in rows)
-    emit_new_candle_event(coin.id, timeframe, latest_timestamp)
+    publish_candle_events(
+        coin_id=coin.id,
+        timeframe=timeframe,
+        timestamp=latest_timestamp,
+        created_count=len(rows),
+        source="bulk_manual",
+    )
     return len(rows)
 
 
@@ -537,7 +568,13 @@ def _sync_coin_history(
         latest_candle_timestamp = upsert_base_candles(db, coin, interval, fetch_result.bars)
         total_created += len(fetch_result.bars)
         if latest_candle_timestamp is not None:
-            emit_new_candle_event(coin.id, interval_to_timeframe(interval), latest_candle_timestamp)
+            publish_candle_events(
+                coin_id=coin.id,
+                timeframe=interval_to_timeframe(interval),
+                timestamp=latest_candle_timestamp,
+                created_count=len(fetch_result.bars),
+                source=history_mode,
+            )
         prune_price_history(db, coin, interval, retention_bars)
 
         if history_mode == "backfill":
