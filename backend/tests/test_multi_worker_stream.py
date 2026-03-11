@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from redis import Redis
 
-from app.core.config import get_settings
-from app.events.publisher import flush_publisher, publish_event
+from app.core.settings import get_settings
+from app.runtime.streams.publisher import flush_publisher, publish_event
 from tests.worker_helpers import crashing_worker_loop, recording_worker_loop
 
 

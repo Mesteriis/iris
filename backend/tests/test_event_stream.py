@@ -7,13 +7,13 @@ import pytest
 from redis import Redis
 from sqlalchemy import func, select
 
-from app.db.session import SessionLocal
-from app.events.publisher import flush_publisher, publish_event
-from app.events.runner import run_worker_loop
-from app.models.coin import Coin
-from app.models.signal import Signal
-from app.services.history_loader import publish_candle_events
-from app.services.market_data import ensure_utc
+from app.core.db.session import SessionLocal
+from app.runtime.streams.publisher import flush_publisher, publish_event
+from app.runtime.streams.runner import run_worker_loop
+from app.apps.market_data.models import Coin
+from app.apps.signals.models import Signal
+from app.apps.market_data.service_layer import publish_candle_events
+from app.apps.market_data.domain import ensure_utc
 
 
 @pytest.mark.asyncio

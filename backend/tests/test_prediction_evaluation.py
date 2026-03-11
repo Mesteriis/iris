@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.analysis.prediction_memory_engine import evaluate_pending_predictions
-from app.models.market_prediction import MarketPrediction
-from app.models.prediction_result import PredictionResult
+from app.apps.predictions.engine import evaluate_pending_predictions
+from app.apps.predictions.models import MarketPrediction
+from app.apps.predictions.models import PredictionResult
 from tests.cross_market_support import (
     DEFAULT_START,
     create_cross_market_coin,

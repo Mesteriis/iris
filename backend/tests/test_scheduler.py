@@ -6,10 +6,10 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from redis import Redis
 
-from app.core.config import get_settings
-from app.events.publisher import flush_publisher, publish_event
-from app.events.runner import run_worker_loop
-from app.patterns.scheduler import (
+from app.core.settings import get_settings
+from app.runtime.streams.publisher import flush_publisher, publish_event
+from app.runtime.streams.runner import run_worker_loop
+from app.apps.patterns.domain.scheduler import (
     analysis_interval,
     assign_activity_bucket,
     calculate_activity_score,

@@ -6,12 +6,12 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import select
 
-from app.db.session import SessionLocal
-from app.events.publisher import flush_publisher, publish_event
-from app.events.runner import run_worker_loop
-from app.models.portfolio_action import PortfolioAction
-from app.models.portfolio_position import PortfolioPosition
-from app.portfolio.engine import evaluate_portfolio_action
+from app.core.db.session import SessionLocal
+from app.runtime.streams.publisher import flush_publisher, publish_event
+from app.runtime.streams.runner import run_worker_loop
+from app.apps.portfolio.models import PortfolioAction
+from app.apps.portfolio.models import PortfolioPosition
+from app.apps.portfolio.engine import evaluate_portfolio_action
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_market_decision
 

@@ -5,13 +5,13 @@ from datetime import timedelta
 from redis import Redis
 from sqlalchemy import delete
 
-from app.events.publisher import flush_publisher
-from app.models.pattern_registry import PatternRegistry
-from app.models.pattern_statistic import PatternStatistic
-from app.models.signal_history import SignalHistory
-from app.patterns.evaluation import run_pattern_evaluation_cycle
-from app.patterns.registry import sync_pattern_metadata
-from app.services.market_data import utc_now
+from app.runtime.streams.publisher import flush_publisher
+from app.apps.patterns.models import PatternRegistry
+from app.apps.patterns.models import PatternStatistic
+from app.apps.signals.models import SignalHistory
+from app.apps.patterns.domain.evaluation import run_pattern_evaluation_cycle
+from app.apps.patterns.domain.registry import sync_pattern_metadata
+from app.apps.market_data.domain import utc_now
 
 
 def test_pattern_evaluation_job_disables_weak_patterns_and_emits_events(db_session, seeded_market, settings) -> None:

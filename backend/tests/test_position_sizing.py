@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.portfolio.engine import calculate_position_size, calculate_stops
+from app.apps.portfolio.engine import calculate_position_size, calculate_stops
 
 
 def test_position_sizing_scales_with_confidence_and_regime() -> None:

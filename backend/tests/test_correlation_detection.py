@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.analysis.cross_market_engine import update_coin_relations
-from app.models.coin_relation import CoinRelation
-from app.services.correlation_cache import read_cached_correlation
+from app.apps.cross_market.engine import update_coin_relations
+from app.apps.cross_market.models import CoinRelation
+from app.apps.cross_market.cache import read_cached_correlation
 from tests.cross_market_support import (
     DEFAULT_START,
     correlated_close_series,

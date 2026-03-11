@@ -4,10 +4,10 @@ import json
 
 from redis import Redis
 
-from app.analysis.prediction_memory_engine import evaluate_pending_predictions
-from app.events.publisher import flush_publisher
-from app.models.coin_relation import CoinRelation
-from app.services.market_data import utc_now
+from app.apps.predictions.engine import evaluate_pending_predictions
+from app.runtime.streams.publisher import flush_publisher
+from app.apps.cross_market.models import CoinRelation
+from app.apps.market_data.domain import utc_now
 from tests.cross_market_support import (
     DEFAULT_START,
     create_cross_market_coin,

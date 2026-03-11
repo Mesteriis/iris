@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.patterns.base import PatternDetection
-from app.patterns.detectors.continuation import FlagDetector
-from app.patterns.detectors.structural import HeadShouldersDetector
-from app.patterns.pattern_context import apply_pattern_context, dependencies_satisfied
+from app.apps.patterns.domain.base import PatternDetection
+from app.apps.patterns.domain.detectors.continuation import FlagDetector
+from app.apps.patterns.domain.detectors.structural import HeadShouldersDetector
+from app.apps.patterns.domain.pattern_context import apply_pattern_context, dependencies_satisfied
 
 
 def test_pattern_dependency_filter() -> None:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.analysis.cross_market_engine import refresh_sector_momentum
-from app.models.sector_metric import SectorMetric
+from app.apps.cross_market.engine import refresh_sector_momentum
+from app.apps.cross_market.models import SectorMetric
 from tests.cross_market_support import create_cross_market_coin, set_market_metrics
 
 

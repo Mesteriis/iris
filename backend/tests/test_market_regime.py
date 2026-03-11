@@ -5,11 +5,11 @@ import multiprocessing
 import pytest
 from redis import Redis
 
-from app.core.config import get_settings
-from app.events.publisher import flush_publisher, publish_event
-from app.events.runner import run_worker_loop
-from app.patterns.regime import detect_market_regime
-from app.services.regime_cache import read_cached_regime
+from app.core.settings import get_settings
+from app.runtime.streams.publisher import flush_publisher, publish_event
+from app.runtime.streams.runner import run_worker_loop
+from app.apps.patterns.domain.regime import detect_market_regime
+from app.apps.patterns.cache import read_cached_regime
 
 
 def test_market_regime_detection_rules() -> None:

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.models.coin import Coin
-from app.portfolio.engine import sync_exchange_balances
+from app.apps.market_data.models import Coin
+from app.apps.portfolio.engine import sync_exchange_balances
 from tests.portfolio_support import create_exchange_account
 
 
@@ -25,7 +25,7 @@ class AutoWatchPlugin:
 
 
 def test_auto_watch_enables_coin_from_portfolio_balance(db_session) -> None:
-    from app.exchanges.registry import register_exchange
+    from app.apps.portfolio.clients import register_exchange
 
     register_exchange("fixture_watch", AutoWatchPlugin)
     create_exchange_account(db_session, exchange_name="fixture_watch")

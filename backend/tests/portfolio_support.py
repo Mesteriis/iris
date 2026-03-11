@@ -3,9 +3,9 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.exchange_account import ExchangeAccount
-from app.models.market_decision import MarketDecision
-from app.models.sector import Sector
+from app.apps.portfolio.models import ExchangeAccount
+from app.apps.signals.models import MarketDecision
+from app.apps.cross_market.models import Sector
 
 
 def create_market_decision(

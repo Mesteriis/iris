@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.exchanges.registry import create_exchange_plugin, list_registered_exchanges, register_exchange
-from app.models.exchange_account import ExchangeAccount
+from app.apps.portfolio.clients import create_exchange_plugin, list_registered_exchanges, register_exchange
+from app.apps.portfolio.models import ExchangeAccount
 
 
 class DummyExchangePlugin:

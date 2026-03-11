@@ -59,6 +59,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- Backend layout was fully realigned around `backend/app/apps`, `backend/app/core` and `backend/app/runtime`; real implementations now live in domain apps, portfolio exchange plugins moved into `apps/portfolio`, and the legacy horizontal layers under `api`, `services`, `events`, `db`, `models`, `schemas`, `patterns`, `analysis`, `taskiq`, `messaging` and `exchanges` were removed.
 - Event-driven runtime now includes `cross_market_workers` consuming `candle_closed` and `indicator_updated`, and Signal Fusion now folds cross-market alignment into fused confidence.
 - `coins` now expose a dedicated `sector` code alongside the existing sector relationship so cross-market and frontend reads can reason about sector momentum without breaking current taxonomy logic.
 - `sector_metrics` now also persist `avg_price_change_24h`, `avg_volume_change_24h` and `trend` for Market Flow reads.
@@ -90,6 +91,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Decision scoring now incorporates active strategy alignment from auto-discovered strategies, and the dashboard shows top strategy performance.
 
 ### Fixed
+- Isolated pattern registry/statistics state between tests so full-suite runs no longer leak lifecycle state across evaluation jobs.
 - Restored `indicator_updated` emission from the event-driven analytics pipeline by returning the computed item payloads from `process_indicator_event`.
 - Removed a circular import between `patterns.success`, `events.publisher` and `patterns.context` that only surfaced in spawned event workers.
 - Corrected primary snapshot selection for `coin_metrics` and canonical regime so higher timeframes with insufficient candles no longer override fully-populated lower-timeframe indicators.

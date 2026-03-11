@@ -14,27 +14,30 @@ from sqlalchemy import delete, select
 
 os.environ.setdefault("EVENT_STREAM_NAME", "iris_events_test")
 
-from app.core.config import get_settings
+from app.core.settings import get_settings
 
 get_settings.cache_clear()
 
-from app.db.session import SessionLocal
-from app.events.publisher import flush_publisher, reset_event_publisher
-from app.models.coin import Coin
-from app.models.coin_relation import CoinRelation
-from app.models.exchange_account import ExchangeAccount
-from app.models.market_prediction import MarketPrediction
-from app.models.portfolio_action import PortfolioAction
-from app.models.portfolio_balance import PortfolioBalance
-from app.models.portfolio_position import PortfolioPosition
-from app.models.portfolio_state import PortfolioState
-from app.models.prediction_result import PredictionResult
-from app.models.sector_metric import SectorMetric
-from app.schemas.coin import CoinCreate
-from app.services.history_loader import create_coin
-from app.services.market_data import utc_now
-from app.services.market_sources.base import MarketBar
-from app.services.candles_service import upsert_base_candles
+from app.core.db.session import SessionLocal
+from app.runtime.streams.publisher import flush_publisher, reset_event_publisher
+from app.apps.market_data.models import Coin
+from app.apps.cross_market.models import CoinRelation
+from app.apps.portfolio.models import ExchangeAccount
+from app.apps.predictions.models import MarketPrediction
+from app.apps.patterns.models import PatternFeature
+from app.apps.patterns.models import PatternRegistry
+from app.apps.patterns.models import PatternStatistic
+from app.apps.portfolio.models import PortfolioAction
+from app.apps.portfolio.models import PortfolioBalance
+from app.apps.portfolio.models import PortfolioPosition
+from app.apps.portfolio.models import PortfolioState
+from app.apps.predictions.models import PredictionResult
+from app.apps.cross_market.models import SectorMetric
+from app.apps.market_data.schemas import CoinCreate
+from app.apps.market_data.service_layer import create_coin
+from app.apps.market_data.domain import utc_now
+from app.apps.market_data.sources.base import MarketBar
+from app.apps.market_data.repos import upsert_base_candles
 
 TEST_SYMBOLS = {
     "BTCUSD_EVT": ("BTCUSD", "Bitcoin Event Test"),
@@ -163,6 +166,23 @@ def cleanup_portfolio_state() -> Iterator[None]:
         db.execute(delete(PortfolioBalance))
         db.execute(delete(ExchangeAccount))
         db.execute(delete(PortfolioState))
+        db.commit()
+        db.close()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_pattern_state() -> Iterator[None]:
+    db = SessionLocal()
+    try:
+        db.execute(delete(PatternStatistic))
+        db.execute(delete(PatternRegistry))
+        db.execute(delete(PatternFeature))
+        db.commit()
+        yield
+    finally:
+        db.execute(delete(PatternStatistic))
+        db.execute(delete(PatternRegistry))
+        db.execute(delete(PatternFeature))
         db.commit()
         db.close()
 
