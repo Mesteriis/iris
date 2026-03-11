@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.db.session import SessionLocal
+from app.patterns.engine import PatternEngine
 from app.services.history_loader import (
     get_next_pending_backfill_due_at,
     get_coin_by_symbol,
@@ -17,6 +18,7 @@ from app.taskiq.locks import redis_task_lock
 HISTORY_BACKFILL_LOCK_TIMEOUT_SECONDS = 3600
 HISTORY_REFRESH_LOCK_TIMEOUT_SECONDS = 900
 COIN_HISTORY_LOCK_TIMEOUT_SECONDS = 1800
+_PATTERN_ENGINE = PatternEngine()
 
 
 def get_next_history_backfill_due_at():
@@ -43,9 +45,10 @@ def _sync_coin_backfill_item(db, coin, *, force: bool = False) -> dict[str, obje
                 "status": "skipped",
                 "reason": "coin_history_in_progress",
             }
-        if force:
-            return sync_coin_history_backfill_forced(db, coin)
-        return sync_coin_history_backfill(db, coin)
+        result = sync_coin_history_backfill_forced(db, coin) if force else sync_coin_history_backfill(db, coin)
+        if result.get("status") == "ok":
+            result["patterns_bootstrap"] = _PATTERN_ENGINE.bootstrap_coin(db, coin=coin, force=force)
+        return result
 
 
 def _sync_coin_latest_item(db, coin, *, force: bool = False) -> dict[str, object]:

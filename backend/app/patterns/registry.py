@@ -2,6 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
+
+from app.models.pattern_feature import PatternFeature
+from app.models.pattern_registry import PatternRegistry
+from app.patterns.lifecycle import PatternLifecycleState, lifecycle_allows_detection
+from app.patterns.detectors import build_pattern_detectors
+
 
 SUPPORTED_PATTERN_FEATURES = [
     "pattern_detection",
@@ -48,3 +57,49 @@ PATTERN_CATALOG: list[PatternCatalogEntry] = [
     PatternCatalogEntry("volume_climax", "volume", 2),
     PatternCatalogEntry("volume_divergence", "volume", 2),
 ]
+
+
+def sync_pattern_metadata(db: Session) -> None:
+    feature_stmt = insert(PatternFeature).values(
+        [{"feature_slug": slug, "enabled": True} for slug in SUPPORTED_PATTERN_FEATURES]
+    )
+    db.execute(feature_stmt.on_conflict_do_nothing(index_elements=["feature_slug"]))
+
+    registry_stmt = insert(PatternRegistry).values(
+        [
+            {
+                "slug": item.slug,
+                "category": item.category,
+                "enabled": True,
+                "cpu_cost": item.cpu_cost,
+                "lifecycle_state": PatternLifecycleState.ACTIVE.value,
+            }
+            for item in PATTERN_CATALOG
+        ]
+    )
+    db.execute(registry_stmt.on_conflict_do_nothing(index_elements=["slug"]))
+    db.commit()
+
+
+def feature_enabled(db: Session, feature_slug: str) -> bool:
+    value = db.scalar(select(PatternFeature.enabled).where(PatternFeature.feature_slug == feature_slug))
+    return bool(value) if value is not None else False
+
+
+def active_detector_slugs(db: Session) -> set[str]:
+    rows = db.execute(select(PatternRegistry.slug, PatternRegistry.enabled, PatternRegistry.lifecycle_state)).all()
+    return {
+        str(row.slug)
+        for row in rows
+        if lifecycle_allows_detection(str(row.lifecycle_state), bool(row.enabled))
+    }
+
+
+def load_active_detectors(db: Session, *, timeframe: int) -> list[object]:
+    sync_pattern_metadata(db)
+    enabled_slugs = active_detector_slugs(db)
+    return [
+        detector
+        for detector in build_pattern_detectors()
+        if detector.slug in enabled_slugs and timeframe in detector.supported_timeframes
+    ]

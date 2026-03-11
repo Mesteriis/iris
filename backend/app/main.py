@@ -21,6 +21,7 @@ from app.taskiq.broker import broker
 from app.taskiq.dispatcher import dispatch_task_locally
 from app.taskiq.locks import close_task_lock_client, wait_for_redis
 from app.tasks import analytics_tasks, history_tasks  # noqa: F401
+import app.tasks.pattern_tasks  # noqa: F401
 from app.services.market_data import utc_now
 
 settings = get_settings()
