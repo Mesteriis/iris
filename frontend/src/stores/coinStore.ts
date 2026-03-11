@@ -142,6 +142,57 @@ export const useCoinStore = defineStore("coins", () => {
   const volatilitySpikeRadar = computed(() => marketRadar.value?.volatility_spikes ?? []);
   const enabledPatternFeatures = computed(() => patternFeatures.value.filter((item) => item.enabled));
   const topStrategies = computed(() => strategyPerformance.value.slice(0, 6));
+  const activePatternsCount = computed(() =>
+    patterns.value.filter((pattern) => pattern.enabled && pattern.lifecycle_state !== "DISABLED").length,
+  );
+  const disabledPatternsCount = computed(() =>
+    patterns.value.filter((pattern) => !pattern.enabled || pattern.lifecycle_state === "DISABLED").length,
+  );
+  const patternHealthRows = computed(() =>
+    patterns.value
+      .map((pattern) => {
+        const globalStats = pattern.statistics
+          .filter((item) => item.market_regime === "all")
+          .sort((left, right) => right.total_signals - left.total_signals || right.success_rate - left.success_rate);
+        const regimeStats = pattern.statistics
+          .filter((item) => item.market_regime !== "all")
+          .sort((left, right) => right.success_rate - left.success_rate || right.total_signals - left.total_signals);
+        const primary = globalStats[0] ?? regimeStats[0] ?? null;
+        return {
+          slug: pattern.slug,
+          category: pattern.category,
+          lifecycleState: pattern.lifecycle_state,
+          enabled: pattern.enabled,
+          totalSignals: primary?.total_signals ?? 0,
+          successRate: primary?.success_rate ?? 0,
+          avgReturn: primary?.avg_return ?? 0,
+          regimeCount: regimeStats.length,
+          bestRegime: regimeStats[0]?.market_regime ?? null,
+          bestRegimeSuccess: regimeStats[0]?.success_rate ?? null,
+          hottestTemperature:
+            pattern.statistics.length > 0
+              ? Math.max(...pattern.statistics.map((item) => item.temperature))
+              : 0,
+        };
+      })
+      .sort((left, right) => right.successRate - left.successRate || right.totalSignals - left.totalSignals),
+  );
+  const patternRegimeEfficiency = computed(() =>
+    patterns.value
+      .flatMap((pattern) =>
+        pattern.statistics
+          .filter((item) => item.market_regime !== "all" && item.total_signals > 0)
+          .map((item) => ({
+            slug: pattern.slug,
+            market_regime: item.market_regime,
+            success_rate: item.success_rate,
+            total_signals: item.total_signals,
+            enabled: item.enabled,
+          })),
+      )
+      .sort((left, right) => right.success_rate - left.success_rate || right.total_signals - left.total_signals)
+      .slice(0, 10),
+  );
   const bullishShare = computed(() => {
     if (metrics.value.length === 0) {
       return 0;
@@ -426,8 +477,10 @@ export const useCoinStore = defineStore("coins", () => {
     createCoinSuccess,
     dashboardError,
     dashboardRows,
+    disabledPatternsCount,
     enabledCoins,
     enabledCoinsCount,
+    activePatternsCount,
     fetchCoins,
     fetchHistory,
     hasHistory,
@@ -452,6 +505,8 @@ export const useCoinStore = defineStore("coins", () => {
     enabledPatternFeatures,
     patternFeatures,
     patterns,
+    patternHealthRows,
+    patternRegimeEfficiency,
     recentSignals,
     refreshDashboard,
     runCoinJob,

@@ -562,6 +562,89 @@ async function runCoinJob(symbol: string) {
     <section class="surface-card">
       <div class="section-head">
         <div>
+          <p class="section-head__eyebrow">Pattern health</p>
+          <h3>Success engine dashboard</h3>
+        </div>
+        <p>{{ coinStore.activePatternsCount }} active / {{ coinStore.disabledPatternsCount }} disabled</p>
+      </div>
+
+      <div class="job-summary-grid">
+        <div class="indicator-card">
+          <span>Tracked patterns</span>
+          <strong>{{ coinStore.patterns.length }}</strong>
+        </div>
+        <div class="indicator-card">
+          <span>Active</span>
+          <strong>{{ coinStore.activePatternsCount }}</strong>
+        </div>
+        <div class="indicator-card">
+          <span>Disabled</span>
+          <strong>{{ coinStore.disabledPatternsCount }}</strong>
+        </div>
+        <div class="indicator-card">
+          <span>Regime edges</span>
+          <strong>{{ coinStore.patternRegimeEfficiency.length }}</strong>
+        </div>
+      </div>
+
+      <div class="detail-grid__row">
+        <article class="surface-card surface-card--nested">
+          <div class="section-head">
+            <div>
+              <p class="section-head__eyebrow">Top patterns</p>
+              <h3>Rolling success window</h3>
+            </div>
+            <p>Last 200 mature signals per scope</p>
+          </div>
+
+          <ul class="detail-signal-list">
+            <li v-for="row in coinStore.patternHealthRows.slice(0, 8)" :key="`health-${row.slug}`">
+              <div>
+                <strong>{{ formatSignalType(row.slug) }}</strong>
+                <p>
+                  {{ row.category }} / {{ row.lifecycleState }} / {{ row.totalSignals }} signals
+                </p>
+              </div>
+              <div class="detail-signal-list__meta">
+                <span>{{ formatPercent(row.successRate * 100, 2) }}</span>
+                <small>avg {{ formatPercent(row.avgReturn * 100, 2) }}</small>
+                <small>temp {{ row.hottestTemperature.toFixed(3) }}</small>
+              </div>
+            </li>
+          </ul>
+        </article>
+
+        <article class="surface-card surface-card--nested">
+          <div class="section-head">
+            <div>
+              <p class="section-head__eyebrow">Regime efficiency</p>
+              <h3>Best pattern-by-regime fits</h3>
+            </div>
+            <p>Regime-aware success rows</p>
+          </div>
+
+          <ul class="detail-signal-list">
+            <li
+              v-for="row in coinStore.patternRegimeEfficiency"
+              :key="`pattern-regime-${row.slug}-${row.market_regime}`"
+            >
+              <div>
+                <strong>{{ formatSignalType(row.slug) }}</strong>
+                <p>{{ formatMarketRegime(row.market_regime) }} / sample {{ row.total_signals }}</p>
+              </div>
+              <div class="detail-signal-list__meta">
+                <span>{{ formatPercent(row.success_rate * 100, 2) }}</span>
+                <small>{{ row.enabled ? "enabled" : "suppressed" }}</small>
+              </div>
+            </li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="surface-card">
+      <div class="section-head">
+        <div>
           <p class="section-head__eyebrow">Pattern library</p>
           <h3>Lifecycle and temperature</h3>
         </div>

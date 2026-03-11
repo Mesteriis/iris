@@ -44,7 +44,7 @@ IRIS uses the existing schema instead of duplicating market history:
 - `iris_events` Redis Stream
   Internal event bus for `candle_closed`, `indicator_updated`, `pattern_detected`, `pattern_cluster_detected`, `market_regime_changed`, `decision_generated` and `signal_created`.
 - `signal_history`
-  Stores realized signal outcomes with `result_return`, `result_drawdown` and `evaluated_at` so statistics, backtests and strategy research do not need to recalculate forward windows every time.
+  Stores realized signal outcomes with `market_regime`, `profit_after_24h`, `profit_after_72h`, `maximum_drawdown`, `result_return`, `result_drawdown` and `evaluated_at` so statistics, backtests and strategy research do not need to recalculate forward windows every time.
 - `feature_snapshots`
   Stores wide ML-oriented feature vectors per closed candle with regime, cycle, sector strength, pattern density and cluster score.
 - `pattern_features`
@@ -52,7 +52,7 @@ IRIS uses the existing schema instead of duplicating market history:
 - `pattern_registry`
   Pattern lifecycle registry with `ACTIVE`, `EXPERIMENTAL`, `COOLDOWN`, `DISABLED`.
 - `pattern_statistics`
-  Pattern performance snapshots with `sample_size`, `success_rate`, `avg_return`, `avg_drawdown`, `temperature`.
+  Pattern performance snapshots with rolling-window `sample_size`, `total_signals`, `successful_signals`, `success_rate`, `avg_return`, `avg_drawdown`, `temperature`, `market_regime`, `last_evaluated_at` and per-scope `enabled`.
 - `discovered_patterns`
   Review-only candidates from the discovery engine.
 - `sectors`
@@ -87,7 +87,9 @@ The pattern subsystem lives under `backend/app/patterns` and is integrated into 
 - `lifecycle.py`
   Lifecycle state resolution from temperature.
 - `statistics.py`
-  Nightly pattern statistics refresh and temperature decay.
+  Nightly pattern statistics refresh, rolling success windows, temperature decay and pattern state events.
+- `success.py`
+  Pattern Success Engine validation layer that can suppress, degrade or boost detections before signal persistence.
 - `clusters.py`
   Cluster construction such as `pattern_cluster_bullish`.
 - `hierarchy.py`
@@ -165,15 +167,16 @@ There is no parallel legacy analytics trigger path. Runtime candle analytics now
 4. The same stage persists per-timeframe `indicator_cache` rows.
 5. `analysis_scheduler_workers` compute activity buckets: `HOT`, `WARM`, `COLD`, `DEAD`.
 6. `pattern_workers` load the last 200 candles and run enabled detectors only when `analysis_requested` arrives.
-7. Pattern Context Layer filters detectors with missing dependencies and adjusts confidence with regime-aware weights before writing new pattern signals.
-8. Cluster and hierarchy engines derive stronger structures from emitted pattern signals.
-9. `regime_workers` update cycle and sector-aware market context and mirror regime reads into Redis cache keys `iris:regime:{coin_id}:{timeframe}`.
-10. `decision_workers` update the Contextual Signal Engine:
+7. Pattern Context Layer filters detectors with missing dependencies and adjusts confidence with regime-aware weights.
+8. Pattern Success Engine validates the adjusted detections against rolling historical success snapshots, can suppress weak regimes, degrade confidence or boost high-performing setups, and only then persists pattern signals.
+9. Cluster and hierarchy engines derive stronger structures from emitted pattern signals.
+10. `regime_workers` update cycle and sector-aware market context and mirror regime reads into Redis cache keys `iris:regime:{coin_id}:{timeframe}`.
+11. `decision_workers` update the Contextual Signal Engine:
    `priority_score = confidence * temperature * regime_alignment * volatility_alignment * liquidity_score * sector_alignment * cycle_alignment * cluster_bonus`
-11. Lazy Investor Decision Engine converts the current stack into an investment decision.
-12. Liquidity & Risk Engine converts that decision into a tradable `final_signal`.
-13. `signal_history` refresh evaluates matured signals and persists forward return / drawdown outcomes.
-14. `feature_snapshots` capture the closed-candle feature vector for ML, research and backtests.
+12. Lazy Investor Decision Engine converts the current stack into an investment decision.
+13. Liquidity & Risk Engine converts that decision into a tradable `final_signal`.
+14. `signal_history` refresh evaluates matured signals and persists 24h / 72h return windows plus drawdown outcomes.
+15. `feature_snapshots` capture the closed-candle feature vector for ML, research and backtests.
 
 ### Bootstrap path
 
@@ -189,6 +192,8 @@ All background work stays inside the existing backend runtime. No new worker con
   One-time historical pattern bootstrap.
 - `update_pattern_statistics`
   Nightly refresh of pattern statistics and lifecycle state transitions.
+- `pattern_evaluation_job`
+  Compatibility alias for the nightly Pattern Success Engine evaluation job.
 - `refresh_market_structure`
   Periodic sector metrics and market cycle refresh.
 - `run_pattern_discovery`
@@ -244,6 +249,18 @@ Examples:
 - reversal patterns are reduced when they fight the current trend
 - volatility breakout patterns are boosted in `high_volatility`
 - mean-reversion patterns are favored in `sideways_range`
+
+### Pattern Success Engine
+
+After context adjustment and before `signals` persistence, IRIS validates each detection against rolling realized outcomes from `signal_history`.
+
+- Uses a rolling window of the latest 200 mature signals per `pattern_slug`, `timeframe` and optional `market_regime`.
+- Tracks `total_signals`, `successful_signals`, `success_rate`, `avg_return`, `avg_drawdown`, `temperature` and `last_evaluated_at`.
+- Can suppress weak detections, degrade confidence below neutral thresholds, or boost high-performing setups.
+- Publishes Redis Stream state events:
+  `pattern_enabled`, `pattern_disabled`, `pattern_degraded`, `pattern_boosted`
+
+The nightly evaluation job updates `pattern_statistics`, refreshes lifecycle state and keeps the runtime validator aligned with recent market behavior.
 
 ### Market Narrative Engine
 
@@ -402,6 +419,7 @@ The data architecture now follows:
 `signal_history` is the canonical realized-outcome store. It allows IRIS to:
 
 - compute pattern temperature from persisted outcomes
+- compute 24h / 72h success windows and maximum drawdown without rescanning raw history for every statistic read
 - rank signal families by ROI, win rate and Sharpe ratio
 - feed strategy discovery with stable historical performance data
 - build ML datasets from `feature_snapshots` without joining raw candle windows repeatedly
@@ -453,6 +471,7 @@ The frontend uses these endpoints to show:
 - HOT coins and emerging coins
 - recent regime changes
 - volatility spikes
+- Pattern Health Dashboard with rolling success rates, active / disabled detector counts and best regime-fit rows
 - pattern history
 - discovery candidates for manual review
 

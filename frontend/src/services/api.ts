@@ -103,11 +103,16 @@ export interface Signal {
 
 export interface PatternStatistic {
   timeframe: number;
+  market_regime: string;
   sample_size: number;
+  total_signals: number;
+  successful_signals: number;
   success_rate: number;
   avg_return: number;
   avg_drawdown: number;
   temperature: number;
+  enabled: boolean;
+  last_evaluated_at: string | null;
   updated_at: string;
 }
 

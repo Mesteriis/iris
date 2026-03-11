@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Pattern Success Engine with pre-write reliability validation between pattern context adjustment and `signals` persistence.
+- Regime-aware `pattern_statistics` rows with rolling 200-signal windows, `total_signals`, `successful_signals`, `last_evaluated_at` and per-scope `enabled` flags.
+- TaskIQ `pattern_evaluation_job` alias for nightly pattern evaluation plus Redis Stream pattern state events: `pattern_enabled`, `pattern_disabled`, `pattern_degraded`, `pattern_boosted`.
+- `signals.market_regime`, `signal_history.market_regime`, `signal_history.profit_after_24h`, `signal_history.profit_after_72h` and `signal_history.maximum_drawdown` for regime-aware outcome tracking.
+- Pattern Health Dashboard in the frontend with rolling success rates, active vs disabled detectors and best regime-fit rows.
 - Redis Streams event pipeline foundation with `iris_events`, async publisher and consumer-group worker base.
 - Integration tests for Redis Stream pipeline, worker ACK/retry and multi-worker distribution using BTC/ETH/SOL candle fixtures.
 - Smart Market Scheduling layer with `activity_score`, `activity_bucket`, `analysis_priority`, `last_analysis_at` and Redis Stream `analysis_requested` gating before pattern detection.
@@ -40,6 +45,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- `pattern_statistics` now use the realized outcome store with rolling windows and regime scopes instead of single global aggregates per timeframe.
+- Pattern runtime now validates detections against historical success snapshots before writing `signals`.
+- Signal outcome evaluation now stores 24h / 72h profit windows plus maximum drawdown while keeping canonical `result_return` / `result_drawdown` compatibility.
 - Polling/history writes now publish `candle_inserted` and `candle_closed` into `iris_events` instead of directly driving runtime analytics.
 - Event-driven runtime flow now inserts an `analysis_scheduler_workers` layer between `indicator_updated` and pattern detection so pattern scans only run when requested by activity-aware scheduling.
 - Removed the remaining direct `handle_new_candle_event` task/hash path so runtime analytics now has a single Redis Streams execution path.
@@ -60,6 +68,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Decision scoring now incorporates active strategy alignment from auto-discovered strategies, and the dashboard shows top strategy performance.
 
 ### Fixed
+- Restored `indicator_updated` emission from the event-driven analytics pipeline by returning the computed item payloads from `process_indicator_event`.
+- Removed a circular import between `patterns.success`, `events.publisher` and `patterns.context` that only surfaced in spawned event workers.
 - Corrected primary snapshot selection for `coin_metrics` and canonical regime so higher timeframes with insufficient candles no longer override fully-populated lower-timeframe indicators.
 - Fixed a runtime import error in the expanded momentum detector family and ensured downstream cluster/hierarchy/context steps see fresh `coin_metrics` values after incremental upserts.
 - Sector metric refresh now replaces stale timeframe rows so deleted or reassigned assets do not leave orphaned rotation narratives behind.
