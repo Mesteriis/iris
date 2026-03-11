@@ -6,9 +6,10 @@ from datetime import datetime
 from hashlib import sha1
 from typing import Any
 
+from app.core.config import get_settings
 from app.services.market_data import ensure_utc, utc_now
 
-EVENT_STREAM_NAME = "iris_events"
+EVENT_STREAM_NAME = get_settings().event_stream_name
 INDICATOR_WORKER_GROUP = "indicator_workers"
 PATTERN_WORKER_GROUP = "pattern_workers"
 REGIME_WORKER_GROUP = "regime_workers"

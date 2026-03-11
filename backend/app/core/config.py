@@ -18,6 +18,7 @@ class Settings(BaseSettings):
         default="redis://redis:6379/0",
         alias="REDIS_URL",
     )
+    event_stream_name: str = Field(default="iris_events", alias="EVENT_STREAM_NAME")
     polygon_api_key: str = Field(default="", alias="POLYGON_API_KEY")
     twelve_data_api_key: str = Field(default="", alias="TWELVE_DATA_API_KEY")
     alpha_vantage_api_key: str = Field(default="", alias="ALPHA_VANTAGE_API_KEY")

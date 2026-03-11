@@ -315,6 +315,7 @@ def create_worker(group_name: str, consumer_name: str | None = None) -> EventCon
     config = EventConsumerConfig(
         group_name=group_name,
         consumer_name=effective_consumer_name,
+        stream_name=settings.event_stream_name,
         batch_size=settings.event_worker_batch_size,
         block_milliseconds=settings.event_worker_block_milliseconds,
         pending_idle_milliseconds=settings.event_worker_pending_idle_milliseconds,

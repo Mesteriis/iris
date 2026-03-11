@@ -9,14 +9,14 @@ from redis import Redis
 from redis.exceptions import RedisError
 
 from app.core.config import get_settings
-from app.events.types import EVENT_STREAM_NAME, build_event_fields
+from app.events.types import build_event_fields
 
 LOGGER = logging.getLogger(__name__)
 _QUEUE_WAIT_SECONDS = 0.25
 
 
 class RedisEventPublisher:
-    def __init__(self, redis_url: str, *, stream_name: str = EVENT_STREAM_NAME) -> None:
+    def __init__(self, redis_url: str, *, stream_name: str) -> None:
         self._redis = Redis.from_url(redis_url, decode_responses=True)
         self._stream_name = stream_name
         self._queue: queue.SimpleQueue[dict[str, str] | None] = queue.SimpleQueue()
@@ -76,7 +76,7 @@ def get_event_publisher() -> RedisEventPublisher:
     global _publisher
     if _publisher is None:
         settings = get_settings()
-        _publisher = RedisEventPublisher(settings.redis_url)
+        _publisher = RedisEventPublisher(settings.redis_url, stream_name=settings.event_stream_name)
     return _publisher
 
 
