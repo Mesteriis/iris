@@ -411,6 +411,37 @@ async function runCoinJob(symbol: string) {
     <section class="surface-card">
       <div class="section-head">
         <div>
+          <p class="section-head__eyebrow">Self evolving strategies</p>
+          <h3>Top discovered combinations</h3>
+        </div>
+        <p>{{ coinStore.strategies.length }} stored strategies</p>
+      </div>
+
+      <div v-if="coinStore.topStrategies.length === 0" class="surface-state">
+        Strategy discovery has not produced ranked strategies yet.
+      </div>
+      <ul v-else class="detail-signal-list">
+        <li v-for="strategy in coinStore.topStrategies" :key="strategy.strategy_id">
+          <div>
+            <strong>{{ strategy.name }}</strong>
+            <p>
+              win {{ formatPercent(strategy.win_rate * 100, 2) }}
+              / ret {{ formatPercent(strategy.avg_return * 100, 2) }}
+              / dd {{ formatPercent(strategy.max_drawdown * 100, 2) }}
+            </p>
+          </div>
+          <div class="detail-signal-list__meta">
+            <span>{{ strategy.sharpe_ratio.toFixed(2) }}</span>
+            <small>sample {{ strategy.sample_size }}</small>
+            <small>{{ strategy.enabled ? "enabled" : "disabled" }}</small>
+          </div>
+        </li>
+      </ul>
+    </section>
+
+    <section class="surface-card">
+      <div class="section-head">
+        <div>
           <p class="section-head__eyebrow">Pattern library</p>
           <h3>Lifecycle and temperature</h3>
         </div>

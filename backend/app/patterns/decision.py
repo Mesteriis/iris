@@ -18,6 +18,7 @@ from app.models.signal import Signal
 from app.patterns.narrative import SectorNarrative, build_sector_narratives
 from app.patterns.regime import read_regime_details
 from app.patterns.semantics import is_cluster_signal, is_hierarchy_signal, is_pattern_signal, pattern_bias, slug_from_signal_type
+from app.patterns.strategy import strategy_alignment
 from app.services.market_data import utc_now
 
 DECISION_TYPES = [
@@ -41,6 +42,7 @@ class DecisionFactors:
     sector_strength: float
     cycle_alignment: float
     historical_pattern_success: float
+    strategy_alignment: float
 
 
 def calculate_decision_score(
@@ -50,6 +52,7 @@ def calculate_decision_score(
     sector_strength: float,
     cycle_alignment: float,
     historical_pattern_success: float,
+    strategy_alignment: float = 1.0,
 ) -> float:
     return max(
         signal_priority
@@ -58,7 +61,7 @@ def calculate_decision_score(
         * cycle_alignment
         * historical_pattern_success,
         0.0,
-    )
+    ) * max(strategy_alignment, 0.0)
 
 
 def _clamp(value: float, lower: float, upper: float) -> float:
@@ -173,7 +176,14 @@ def _decision_confidence(score: float, bias_ratio: float, factors: DecisionFacto
     base = _clamp(score / 2.5, 0.0, 0.98)
     directionality = 0.55 + min(abs(bias_ratio), 1.0) * 0.45
     stability = _clamp(
-        (factors.regime_alignment + factors.cycle_alignment + factors.historical_pattern_success + factors.sector_strength) / 4,
+        (
+            factors.regime_alignment
+            + factors.cycle_alignment
+            + factors.historical_pattern_success
+            + factors.sector_strength
+            + factors.strategy_alignment
+        )
+        / 5,
         0.5,
         1.2,
     )
@@ -200,6 +210,8 @@ def _decision_reason(
     narrative: SectorNarrative | None,
     cycle: MarketCycle | None,
     historical_pattern_success: float,
+    strategy_alignment_value: float,
+    matched_strategies: Sequence[str],
 ) -> str:
     cluster_count = sum(1 for signal in signals if is_cluster_signal(signal.signal_type))
     hierarchy_count = sum(1 for signal in signals if is_hierarchy_signal(signal.signal_type))
@@ -208,6 +220,7 @@ def _decision_reason(
     sector_strength = float(sector_metric.sector_strength) if sector_metric is not None else 0.0
     capital_wave = narrative.capital_wave if narrative is not None else None
     top_sector = narrative.top_sector if narrative is not None else None
+    strategy_names = ", ".join(name[:48] for name in matched_strategies[:2]) if matched_strategies else "none"
     return (
         f"{decision}: {bias_label} stack {base_patterns} patterns/{cluster_count} clusters/{hierarchy_count} hierarchies; "
         f"regime={regime or 'unknown'}; "
@@ -216,6 +229,8 @@ def _decision_reason(
         f"top_sector={top_sector or 'n/a'}; "
         f"capital_wave={capital_wave or 'n/a'}; "
         f"historical_success={historical_pattern_success:.2f}; "
+        f"strategy_alignment={strategy_alignment_value:.2f}; "
+        f"strategies={strategy_names}; "
         f"score={score:.3f}"
     )
 
@@ -272,12 +287,29 @@ def evaluate_investment_decision(
     sector_strength = _sector_strength_factor(coin, metrics, sector_metric, narrative)
     cycle_alignment = _cycle_alignment(cycle, bias)
     historical_pattern_success = _historical_pattern_success(db, pattern_slugs, timeframe)
+    token_confidence: dict[str, float] = {}
+    strategy_tokens: set[str] = set()
+    for signal in relevant_signals:
+        slug = slug_from_signal_type(signal.signal_type)
+        if slug is None:
+            continue
+        strategy_tokens.add(slug)
+        token_confidence[slug] = max(token_confidence.get(slug, 0.0), float(signal.confidence))
+    strategy_alignment_value, matched_strategies = strategy_alignment(
+        db,
+        tokens=strategy_tokens,
+        token_confidence=token_confidence,
+        regime=regime,
+        sector=coin.sector.name if coin.sector is not None else None,
+        cycle=cycle.cycle_phase if cycle is not None else None,
+    )
     factors = DecisionFactors(
         signal_priority=signal_priority,
         regime_alignment=regime_alignment,
         sector_strength=sector_strength,
         cycle_alignment=cycle_alignment,
         historical_pattern_success=historical_pattern_success,
+        strategy_alignment=strategy_alignment_value,
     )
     score = calculate_decision_score(
         signal_priority=factors.signal_priority,
@@ -285,6 +317,7 @@ def evaluate_investment_decision(
         sector_strength=factors.sector_strength,
         cycle_alignment=factors.cycle_alignment,
         historical_pattern_success=factors.historical_pattern_success,
+        strategy_alignment=factors.strategy_alignment,
     )
     decision = _decision_from_score(score, bias_ratio)
     confidence = _decision_confidence(score, bias_ratio, factors)
@@ -298,6 +331,8 @@ def evaluate_investment_decision(
         narrative=narrative,
         cycle=cycle,
         historical_pattern_success=historical_pattern_success,
+        strategy_alignment_value=strategy_alignment_value,
+        matched_strategies=matched_strategies,
     )
 
     latest_decision = _latest_decision(db, coin_id, timeframe)

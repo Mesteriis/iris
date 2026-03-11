@@ -53,6 +53,12 @@ IRIS uses the existing schema instead of duplicating market history:
   Liquidity and risk state per coin and timeframe with `liquidity_score`, `slippage_risk` and `volatility_risk`.
 - `final_signals`
   Risk-adjusted actionable investment signals derived from `investment_decisions` and `risk_metrics`.
+- `strategies`
+  Auto-discovered strategy definitions generated from historical signal combinations.
+- `strategy_rules`
+  Strategy rule rows describing required signal/context alignment.
+- `strategy_performance`
+  Persisted strategy win rate, return, Sharpe ratio and drawdown.
 
 ## Pattern Intelligence System
 
@@ -84,6 +90,8 @@ The pattern subsystem lives under `backend/app/patterns` and is integrated into 
   Shape clustering and discovery candidate generation.
 - `decision.py`
   Lazy Investor Decision Engine that converts market analysis into `STRONG_BUY` ... `STRONG_SELL` actions.
+- `strategy.py`
+  Self Evolving Strategy Engine for strategy discovery, performance tracking and decision alignment.
 
 ### Detector families
 
@@ -270,6 +278,41 @@ The Home Assistant integration also polls final-signal updates and fires `iris.i
 - `risk_score`
 - `reason`
 
+## Self Evolving Strategy Engine
+
+The strategy layer automatically discovers profitable signal combinations and feeds them back into the decision stack.
+
+Stored tables:
+
+- `strategies`
+- `strategy_rules`
+- `strategy_performance`
+
+Discovery inputs:
+
+- pattern signals
+- cluster signals
+- hierarchy signals
+- locally derived market regime
+- sector context
+- market cycle context
+- realized forward returns and drawdowns
+
+Strategy evaluation metrics:
+
+- `win_rate`
+- `avg_return`
+- `sharpe_ratio`
+- `max_drawdown`
+
+Runtime behavior:
+
+- `strategy_discovery_job` scans historical pattern stacks and future outcomes.
+- It discovers single-token and two-token combinations plus regime/sector/cycle context.
+- Only strategies above the configured performance thresholds are marked `enabled`.
+- Active strategies are reused by the Lazy Investor Decision Engine through `strategy_alignment`.
+- Matching active strategies increase decision score and confidence.
+
 ## API
 
 Primary endpoints:
@@ -280,6 +323,8 @@ Primary endpoints:
 - `GET /decisions/top`
 - `GET /final-signals`
 - `GET /final-signals/top`
+- `GET /strategies`
+- `GET /strategies/performance`
 - `GET /patterns`
 - `GET /patterns/features`
 - `PATCH /patterns/features/{feature_slug}`
@@ -299,6 +344,7 @@ The frontend uses these endpoints to show:
 - feature flag state
 - priority-ranked signals
 - lazy-investor decisions
+- self-evolving top strategies
 - cluster membership
 - market regime
 - cycle phase

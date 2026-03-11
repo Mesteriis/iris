@@ -107,6 +107,36 @@ export interface PatternStatistic {
   updated_at: string;
 }
 
+export interface StrategyRule {
+  pattern_slug: string;
+  regime: string;
+  sector: string;
+  cycle: string;
+  min_confidence: number;
+}
+
+export interface StrategyPerformance {
+  strategy_id: number;
+  name: string;
+  enabled: boolean;
+  sample_size: number;
+  win_rate: number;
+  avg_return: number;
+  sharpe_ratio: number;
+  max_drawdown: number;
+  updated_at: string;
+}
+
+export interface Strategy {
+  id: number;
+  name: string;
+  description: string;
+  enabled: boolean;
+  created_at: string;
+  rules: StrategyRule[];
+  performance: StrategyPerformance | null;
+}
+
 export interface PatternDescriptor {
   slug: string;
   category: string;
@@ -260,6 +290,18 @@ export const irisApi = {
   },
   async listPatterns(): Promise<PatternDescriptor[]> {
     const response = await api.get<PatternDescriptor[]>("/patterns");
+    return response.data;
+  },
+  async listStrategies(limit = 40, enabledOnly = false): Promise<Strategy[]> {
+    const response = await api.get<Strategy[]>("/strategies", {
+      params: { limit, enabled_only: enabledOnly },
+    });
+    return response.data;
+  },
+  async listStrategyPerformance(limit = 20): Promise<StrategyPerformance[]> {
+    const response = await api.get<StrategyPerformance[]>("/strategies/performance", {
+      params: { limit },
+    });
     return response.data;
   },
   async listPatternFeatures(): Promise<PatternFeature[]> {

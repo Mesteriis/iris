@@ -9,6 +9,7 @@ from app.tasks.pattern_tasks import (
     run_pattern_discovery,
     refresh_market_structure,
     signal_context_enrichment,
+    strategy_discovery_job,
     update_pattern_statistics,
 )
 
@@ -21,5 +22,6 @@ __all__ = [
     "refresh_observed_coins_history",
     "refresh_market_structure",
     "signal_context_enrichment",
+    "strategy_discovery_job",
     "update_pattern_statistics",
 ]

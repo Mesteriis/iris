@@ -18,6 +18,8 @@ import {
   type SectorMetric,
   type SectorNarrative,
   type Signal,
+  type Strategy,
+  type StrategyPerformance,
   type SystemStatus,
 } from "../services/api";
 import { getCoinJobSnapshot } from "../utils/coinJobs";
@@ -28,6 +30,8 @@ export const useCoinStore = defineStore("coins", () => {
   const signals = ref<Signal[]>([]);
   const topSignals = ref<Signal[]>([]);
   const patterns = ref<PatternDescriptor[]>([]);
+  const strategies = ref<Strategy[]>([]);
+  const strategyPerformance = ref<StrategyPerformance[]>([]);
   const patternFeatures = ref<PatternFeature[]>([]);
   const discoveredPatterns = ref<DiscoveredPattern[]>([]);
   const sectors = ref<Sector[]>([]);
@@ -126,6 +130,7 @@ export const useCoinStore = defineStore("coins", () => {
   );
   const topSectorMetrics = computed(() => sectorMetrics.value.slice(0, 6));
   const enabledPatternFeatures = computed(() => patternFeatures.value.filter((item) => item.enabled));
+  const topStrategies = computed(() => strategyPerformance.value.slice(0, 6));
   const bullishShare = computed(() => {
     if (metrics.value.length === 0) {
       return 0;
@@ -243,6 +248,8 @@ export const useCoinStore = defineStore("coins", () => {
         signalRows,
         topSignalRows,
         patternRows,
+        strategyRows,
+        strategyPerformanceRows,
         patternFeatureRows,
         discoveredPatternRows,
         sectorRows,
@@ -255,6 +262,8 @@ export const useCoinStore = defineStore("coins", () => {
         irisApi.listSignals(40),
         irisApi.listTopSignals(12),
         irisApi.listPatterns(),
+        irisApi.listStrategies(40, false),
+        irisApi.listStrategyPerformance(12),
         irisApi.listPatternFeatures(),
         irisApi.listDiscoveredPatterns(24),
         irisApi.listSectors(),
@@ -268,6 +277,8 @@ export const useCoinStore = defineStore("coins", () => {
       signals.value = signalRows;
       topSignals.value = topSignalRows;
       patterns.value = patternRows;
+      strategies.value = strategyRows;
+      strategyPerformance.value = strategyPerformanceRows;
       patternFeatures.value = patternFeatureRows;
       discoveredPatterns.value = discoveredPatternRows;
       sectors.value = sectorRows;
@@ -412,6 +423,8 @@ export const useCoinStore = defineStore("coins", () => {
     metrics,
     metricsBySymbol,
     discoveredPatterns,
+    strategies,
+    strategyPerformance,
     enabledPatternFeatures,
     patternFeatures,
     patterns,
@@ -428,6 +441,7 @@ export const useCoinStore = defineStore("coins", () => {
     status,
     statusTone,
     topSectorMetrics,
+    topStrategies,
     topSignals,
   };
 });

@@ -14,6 +14,9 @@ from app.models.risk_metric import RiskMetric
 from app.models.sector import Sector
 from app.models.sector_metric import SectorMetric
 from app.models.signal import Signal
+from app.models.strategy import Strategy
+from app.models.strategy_performance import StrategyPerformance
+from app.models.strategy_rule import StrategyRule
 
 __all__ = [
     "Base",
@@ -25,4 +28,7 @@ __all__ = [
     "InvestmentDecision",
     "RiskMetric",
     "Signal",
+    "Strategy",
+    "StrategyPerformance",
+    "StrategyRule",
 ]

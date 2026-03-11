@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from taskiq.receiver import Receiver
 
-from app.api import coins, decisions, final_signals, history, market, metrics, patterns, sectors, signals, system
+from app.api import coins, decisions, final_signals, history, market, metrics, patterns, sectors, signals, strategies, system
 from app.core.config import get_settings
 from app.db.session import wait_for_database
 from app.messaging import register_default_receivers, reset_message_bus
@@ -189,6 +189,24 @@ async def schedule_pattern_discovery_refresh(receiver: Receiver, stop_event: asy
             await dispatch_task_locally(receiver, pattern_tasks_module.run_pattern_discovery)
 
 
+async def schedule_strategy_discovery_refresh(receiver: Receiver, stop_event: asyncio.Event) -> None:
+    await asyncio.sleep(1)
+    if stop_event.is_set():
+        return
+
+    interval = settings.taskiq_strategy_discovery_interval_seconds
+    if interval <= 0:
+        await stop_event.wait()
+        return
+
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+        except TimeoutError:
+            LOGGER.info("Queueing strategy discovery refresh task.")
+            await dispatch_task_locally(receiver, pattern_tasks_module.strategy_discovery_job)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await asyncio.to_thread(wait_for_database)
@@ -207,6 +225,7 @@ async def lifespan(app: FastAPI):
     pattern_stats_task = asyncio.create_task(schedule_pattern_statistics_refresh(receiver, finish_event))
     market_structure_task = asyncio.create_task(schedule_market_structure_refresh(receiver, finish_event))
     pattern_discovery_task = asyncio.create_task(schedule_pattern_discovery_refresh(receiver, finish_event))
+    strategy_discovery_task = asyncio.create_task(schedule_strategy_discovery_refresh(receiver, finish_event))
 
     app.state.taskiq_finish_event = finish_event
     app.state.taskiq_backfill_event = backfill_event
@@ -218,6 +237,7 @@ async def lifespan(app: FastAPI):
     app.state.taskiq_pattern_stats_task = pattern_stats_task
     app.state.taskiq_market_structure_task = market_structure_task
     app.state.taskiq_pattern_discovery_task = pattern_discovery_task
+    app.state.taskiq_strategy_discovery_task = strategy_discovery_task
 
     try:
         yield
@@ -231,6 +251,7 @@ async def lifespan(app: FastAPI):
             pattern_stats_task,
             market_structure_task,
             pattern_discovery_task,
+            strategy_discovery_task,
             return_exceptions=True,
         )
         await broker.shutdown()
@@ -255,6 +276,7 @@ app.include_router(metrics.router)
 app.include_router(patterns.router)
 app.include_router(decisions.router)
 app.include_router(final_signals.router)
+app.include_router(strategies.router)
 app.include_router(sectors.router)
 app.include_router(market.router)
 app.include_router(signals.router)
