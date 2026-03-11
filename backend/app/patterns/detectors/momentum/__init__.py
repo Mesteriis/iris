@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Sequence
 
 from app.patterns.base import PatternDetection, PatternDetector
-from app.patterns.utils import clamp, closes, find_pivots, signal_timestamp, volume_ratio
+from app.patterns.utils import clamp, closes, find_pivots, pct_change, signal_timestamp, volume_ratio
 from app.services.candles_service import CandlePoint
 from app.services.indicator_engine import macd_series, rsi_series
 

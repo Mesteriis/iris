@@ -33,3 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - README now documents the full pattern intelligence architecture, database usage, TaskIQ jobs and frontend/API surface.
 - Nightly lifecycle refresh now updates `lifecycle_state` without overriding manual `enabled=false` switches.
 - Sector narratives now include capital-wave rotation and the signal/regime APIs use persisted per-timeframe regime details for ranking and display.
+
+### Fixed
+- Corrected primary snapshot selection for `coin_metrics` and canonical regime so higher timeframes with insufficient candles no longer override fully-populated lower-timeframe indicators.
+- Fixed a runtime import error in the expanded momentum detector family and ensured downstream cluster/hierarchy/context steps see fresh `coin_metrics` values after incremental upserts.

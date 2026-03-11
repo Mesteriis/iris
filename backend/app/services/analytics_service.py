@@ -398,6 +398,34 @@ def _compute_volume_metrics(
     return volume_24h, volume_change_24h, volatility
 
 
+def _snapshot_completeness(snapshot: TimeframeSnapshot) -> int:
+    return sum(
+        value is not None
+        for value in (
+            snapshot.ema_20,
+            snapshot.ema_50,
+            snapshot.sma_50,
+            snapshot.sma_200,
+            snapshot.rsi_14,
+            snapshot.macd,
+            snapshot.macd_signal,
+            snapshot.macd_histogram,
+            snapshot.atr_14,
+            snapshot.bb_width,
+            snapshot.adx_14,
+        )
+    )
+
+
+def _select_primary_snapshot(snapshots: dict[int, TimeframeSnapshot]) -> TimeframeSnapshot | None:
+    if not snapshots:
+        return None
+    return max(
+        snapshots.values(),
+        key=lambda snapshot: (_snapshot_completeness(snapshot), snapshot.timeframe),
+    )
+
+
 def _compute_trend(primary: TimeframeSnapshot) -> str:
     if primary.sma_200 is None or primary.ema_50 is None or primary.macd_histogram is None:
         return "sideways"
@@ -531,6 +559,7 @@ def _store_indicator_cache(db: Session, coin_id: int, snapshots: Sequence[Timefr
     )
     db.execute(stmt)
     db.commit()
+    db.expire_all()
 
 
 def _insert_signals(db: Session, coin_id: int, timeframe: int, signals: Sequence[dict[str, Any]]) -> None:
@@ -692,8 +721,7 @@ def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any
     base_candles = fetch_candle_points(db, coin.id, base_timeframe, 400)
     volume_24h, volume_change_24h, volatility = _compute_volume_metrics(base_candles, base_timeframe)
 
-    snapshot_priority = [1440, 240, 60, 15]
-    primary = next((snapshots[timeframe] for timeframe in snapshot_priority if timeframe in snapshots), None)
+    primary = _select_primary_snapshot(snapshots)
     base_snapshot = snapshots.get(base_timeframe)
     regime_map = calculate_regime_map(snapshots, volatility=volatility) if feature_enabled(db, "market_regime_engine") else {}
     _upsert_coin_metrics(
@@ -706,7 +734,7 @@ def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any
         volume_change_24h=volume_change_24h,
         volatility=volatility,
         refresh_market_cap=240 in affected_timeframes or 1440 in affected_timeframes,
-        market_regime=primary_regime(regime_map),
+        market_regime=regime_map.get(primary.timeframe).regime if primary is not None and primary.timeframe in regime_map else primary_regime(regime_map),
         market_regime_details=serialize_regime_map(regime_map) if regime_map else None,
     )
     _store_indicator_cache(
