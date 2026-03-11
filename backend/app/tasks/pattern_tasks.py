@@ -7,6 +7,7 @@ from app.patterns.decision import evaluate_investment_decision, refresh_investme
 from app.patterns.discovery import refresh_discovered_patterns
 from app.patterns.engine import PatternEngine
 from app.patterns.narrative import refresh_sector_metrics
+from app.patterns.risk import evaluate_final_signal, refresh_final_signals
 from app.patterns.statistics import refresh_pattern_statistics
 from app.services.history_loader import get_coin_by_symbol, list_coins_ready_for_latest_sync
 from app.taskiq.broker import broker
@@ -64,7 +65,14 @@ def update_pattern_statistics() -> dict[str, object]:
             statistics_result = refresh_pattern_statistics(db)
             context_result = refresh_recent_signal_contexts(db, lookback_days=30)
             decision_result = refresh_investment_decisions(db, lookback_days=30, emit_events=False)
-            return {"status": "ok", "statistics": statistics_result, "context": context_result, "decisions": decision_result}
+            final_signal_result = refresh_final_signals(db, lookback_days=30, emit_events=False)
+            return {
+                "status": "ok",
+                "statistics": statistics_result,
+                "context": context_result,
+                "decisions": decision_result,
+                "final_signals": final_signal_result,
+            }
         finally:
             db.close()
 
@@ -89,7 +97,18 @@ def signal_context_enrichment(
             timeframe=int(timeframe),
             emit_event=False,
         )
-        return {"status": "ok", "context": context_result, "decision": decision_result}
+        final_signal_result = evaluate_final_signal(
+            db,
+            coin_id=int(coin_id),
+            timeframe=int(timeframe),
+            emit_event=False,
+        )
+        return {
+            "status": "ok",
+            "context": context_result,
+            "decision": decision_result,
+            "final_signal": final_signal_result,
+        }
     finally:
         db.close()
 
@@ -109,12 +128,14 @@ def refresh_market_structure() -> dict[str, object]:
             cycle_result = refresh_market_cycles(db)
             context_result = refresh_recent_signal_contexts(db, lookback_days=30)
             decision_result = refresh_investment_decisions(db, lookback_days=30, emit_events=False)
+            final_signal_result = refresh_final_signals(db, lookback_days=30, emit_events=False)
             return {
                 "status": "ok",
                 "sectors": sector_result,
                 "cycles": cycle_result,
                 "context": context_result,
                 "decisions": decision_result,
+                "final_signals": final_signal_result,
             }
         finally:
             db.close()

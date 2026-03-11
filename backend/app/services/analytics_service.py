@@ -23,6 +23,7 @@ from app.patterns.engine import PatternEngine
 from app.patterns.hierarchy import build_hierarchy_signals
 from app.patterns.regime import calculate_regime_map, primary_regime, serialize_regime_map
 from app.patterns.registry import feature_enabled
+from app.patterns.risk import evaluate_final_signal
 from app.services.analytics_events import NewCandleEvent, clear_new_candle_event_if_unchanged, list_new_candle_events
 from app.services.candles_service import (
     AGGREGATE_VIEW_BY_TIMEFRAME,
@@ -775,6 +776,12 @@ def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any
             candle_timestamp=snapshot.candle_close_timestamp,
         )
         evaluate_investment_decision(
+            db,
+            coin_id=coin.id,
+            timeframe=timeframe,
+            emit_event=True,
+        )
+        evaluate_final_signal(
             db,
             coin_id=coin.id,
             timeframe=timeframe,

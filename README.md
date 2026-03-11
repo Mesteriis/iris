@@ -49,6 +49,10 @@ IRIS uses the existing schema instead of duplicating market history:
   Latest cycle phase per coin and timeframe.
 - `investment_decisions`
   Latest and historical lazy-investor decisions derived from signals, regime, sector, cycle and pattern statistics.
+- `risk_metrics`
+  Liquidity and risk state per coin and timeframe with `liquidity_score`, `slippage_risk` and `volatility_risk`.
+- `final_signals`
+  Risk-adjusted actionable investment signals derived from `investment_decisions` and `risk_metrics`.
 
 ## Pattern Intelligence System
 
@@ -115,6 +119,8 @@ Signals use `signal_type` values such as:
 5. Regime and cycle context are applied.
 6. Contextual Signal Engine updates:
    `priority_score = confidence * temperature * regime_alignment * volatility_alignment * liquidity_score * sector_alignment * cycle_alignment * cluster_bonus`
+7. Lazy Investor Decision Engine converts the current stack into an investment decision.
+8. Liquidity & Risk Engine converts that decision into a tradable `final_signal`.
 
 ### Bootstrap path
 
@@ -227,6 +233,43 @@ The Home Assistant integration polls decision updates and fires `iris.decision` 
 - `confidence`
 - `reason`
 
+## Liquidity & Risk Engine
+
+The liquidity/risk layer evaluates whether a decision is actually tradable for a lazy investor.
+
+Stored tables:
+
+- `risk_metrics`
+- `final_signals`
+
+Risk metrics:
+
+- `liquidity_score`
+  Computed from `volume_24h` and `market_cap`.
+- `slippage_risk`
+  Computed from the `volume / liquidity` turnover proxy.
+- `volatility_risk`
+  Computed from `ATR / price` using the latest timeframe snapshot.
+
+Risk-adjusted score formula:
+
+- `risk_adjusted_score = decision_score * liquidity_score * (1 - slippage_risk) * (1 - volatility_risk)`
+
+Runtime behavior:
+
+- Reuses `coin_metrics.volume_24h`, `coin_metrics.market_cap` and timeframe ATR data from `indicator_cache`.
+- Runs immediately after decision generation inside the existing new-candle pipeline.
+- Re-runs after nightly decision refreshes and market-structure refreshes inside the same embedded TaskIQ runtime.
+- Stores the latest risk state in `risk_metrics` and historical actionable outputs in `final_signals`.
+
+The Home Assistant integration also polls final-signal updates and fires `iris.investment_signal` with:
+
+- `coin`
+- `decision`
+- `confidence`
+- `risk_score`
+- `reason`
+
 ## API
 
 Primary endpoints:
@@ -235,6 +278,8 @@ Primary endpoints:
 - `GET /signals/top`
 - `GET /decisions`
 - `GET /decisions/top`
+- `GET /final-signals`
+- `GET /final-signals/top`
 - `GET /patterns`
 - `GET /patterns/features`
 - `PATCH /patterns/features/{feature_slug}`
@@ -242,6 +287,7 @@ Primary endpoints:
 - `GET /patterns/discovered`
 - `GET /coins/{symbol}/patterns`
 - `GET /coins/{symbol}/decision`
+- `GET /coins/{symbol}/final-signal`
 - `GET /coins/{symbol}/regime`
 - `GET /sectors`
 - `GET /sectors/metrics`

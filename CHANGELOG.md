@@ -23,6 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Detector catalog expanded from the mandatory baseline to 87 grouped pattern detectors across structural, continuation, momentum, volatility and volume families.
 - Lazy Investor Decision Engine with `investment_decisions` storage, decision scoring and API endpoints for `/decisions`, `/decisions/top` and `/coins/{symbol}/decision`.
 - Home Assistant decision event emission via `iris.decision` with `coin`, `decision`, `confidence` and `reason`.
+- Liquidity & Risk Engine with persisted `risk_metrics`, risk-adjusted `final_signals` and API endpoints for `/final-signals`, `/final-signals/top` and `/coins/{symbol}/final-signal`.
+- Home Assistant final investment-signal event emission via `iris.investment_signal` with `coin`, `decision`, `confidence`, `risk_score` and `reason`.
 
 ### Changed
 - Extended `signals` with `priority_score`, `context_score` and `regime_alignment`.
@@ -36,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Nightly lifecycle refresh now updates `lifecycle_state` without overriding manual `enabled=false` switches.
 - Sector narratives now include capital-wave rotation and the signal/regime APIs use persisted per-timeframe regime details for ranking and display.
 - Pattern runtime now refreshes investment decisions after incremental signal detection, market structure refresh and nightly statistics updates.
+- Decision runtime now also persists liquidity/risk state and emits risk-adjusted final signals after incremental updates and scheduled refreshes.
 
 ### Fixed
 - Corrected primary snapshot selection for `coin_metrics` and canonical regime so higher timeframes with insufficient candles no longer override fully-populated lower-timeframe indicators.

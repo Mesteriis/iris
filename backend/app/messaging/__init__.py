@@ -5,6 +5,7 @@ from app.messaging.bus import (
     publish_coin_history_loaded_message,
     publish_coin_history_progress_message,
     publish_investment_decision_message,
+    publish_investment_signal_message,
     register_default_receivers,
     reset_message_bus,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "publish_coin_history_loaded_message",
     "publish_coin_history_progress_message",
     "publish_investment_decision_message",
+    "publish_investment_signal_message",
     "register_default_receivers",
     "reset_message_bus",
 ]
