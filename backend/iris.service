@@ -1,0 +1,14 @@
+[Unit]
+Description=IRIS backend service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/iris/backend
+EnvironmentFile=-/etc/iris/iris.env
+ExecStart=/usr/bin/python -m app.main
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
