@@ -2,6 +2,7 @@ from app.models.candle import Candle
 from app.models.coin import Coin
 from app.models.coin_metrics import CoinMetrics
 from app.models.discovered_pattern import DiscoveredPattern
+from app.models.exchange_account import ExchangeAccount
 from app.models.feature_snapshot import FeatureSnapshot
 from app.models.final_signal import FinalSignal
 from app.models.indicator_cache import IndicatorCache
@@ -11,6 +12,10 @@ from app.models.market_decision import MarketDecision
 from app.models.pattern_feature import PatternFeature
 from app.models.pattern_registry import PatternRegistry
 from app.models.pattern_statistic import PatternStatistic
+from app.models.portfolio_action import PortfolioAction
+from app.models.portfolio_balance import PortfolioBalance
+from app.models.portfolio_position import PortfolioPosition
+from app.models.portfolio_state import PortfolioState
 from app.models.risk_metric import RiskMetric
 from app.models.sector import Sector
 from app.models.sector_metric import SectorMetric
@@ -25,6 +30,7 @@ __all__ = [
     "Coin",
     "CoinMetrics",
     "DiscoveredPattern",
+    "ExchangeAccount",
     "FeatureSnapshot",
     "FinalSignal",
     "IndicatorCache",
@@ -34,6 +40,10 @@ __all__ = [
     "PatternFeature",
     "PatternRegistry",
     "PatternStatistic",
+    "PortfolioAction",
+    "PortfolioBalance",
+    "PortfolioPosition",
+    "PortfolioState",
     "RiskMetric",
     "Sector",
     "SectorMetric",

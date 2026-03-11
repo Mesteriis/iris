@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     from app.models.investment_decision import InvestmentDecision
     from app.models.market_cycle import MarketCycle
     from app.models.market_decision import MarketDecision
+    from app.models.portfolio_action import PortfolioAction
+    from app.models.portfolio_balance import PortfolioBalance
+    from app.models.portfolio_position import PortfolioPosition
     from app.models.risk_metric import RiskMetric
     from app.models.sector import Sector
     from app.models.signal import Signal
@@ -33,6 +36,8 @@ class Coin(Base):
     theme: Mapped[str] = mapped_column(String(64), nullable=False, default="core")
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="default")
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    auto_watch_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    auto_watch_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     sector_id: Mapped[int | None] = mapped_column(ForeignKey("sectors.id", ondelete="SET NULL"), nullable=True)
     candles_config: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
@@ -92,6 +97,21 @@ class Coin(Base):
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="MarketDecision.created_at",
+    )
+    portfolio_balances: Mapped[list["PortfolioBalance"]] = relationship(
+        back_populates="coin",
+        cascade="all, delete-orphan",
+        order_by="PortfolioBalance.updated_at",
+    )
+    portfolio_positions: Mapped[list["PortfolioPosition"]] = relationship(
+        back_populates="coin",
+        cascade="all, delete-orphan",
+        order_by="PortfolioPosition.opened_at",
+    )
+    portfolio_actions: Mapped[list["PortfolioAction"]] = relationship(
+        back_populates="coin",
+        cascade="all, delete-orphan",
+        order_by="PortfolioAction.created_at",
     )
     risk_metrics: Mapped[list["RiskMetric"]] = relationship(
         back_populates="coin",
