@@ -75,6 +75,16 @@ IRIS uses the existing schema instead of duplicating market history:
   Strategy rule rows describing required signal/context alignment.
 - `strategy_performance`
   Persisted strategy win rate, return, Sharpe ratio and drawdown.
+- `exchange_accounts`
+  Registered exchange accounts used by plugin-based portfolio synchronization.
+- `portfolio_balances`
+  Raw balances per exchange account, symbol and coin.
+- `portfolio_positions`
+  Portfolio positions with exchange source, position type, ATR-based stops and status tracking.
+- `portfolio_actions`
+  Portfolio actions linked to the fused `market_decisions` they came from.
+- `portfolio_state`
+  Capital allocation state mirrored into Redis for fast dashboard reads.
 
 ## Pattern Intelligence System
 
@@ -110,6 +120,73 @@ The pattern subsystem lives under `backend/app/patterns` and is integrated into 
   Lazy Investor Decision Engine that converts market analysis into `STRONG_BUY` ... `STRONG_SELL` actions.
 - `strategy.py`
   Self Evolving Strategy Engine for strategy discovery, performance tracking and decision alignment.
+- `portfolio/engine.py`
+  Portfolio Engine for position sizing, rebalancing, capital allocation, exchange balance sync and auto-watch activation.
+
+## Portfolio Engine
+
+The portfolio layer consumes existing `market_decisions` and does not modify candles, indicators, patterns, context, success validation or signal fusion.
+
+Stored tables:
+
+- `portfolio_positions`
+- `portfolio_actions`
+- `portfolio_state`
+- `exchange_accounts`
+- `portfolio_balances`
+
+Responsibilities:
+
+- convert fused `BUY / SELL / HOLD / WATCH` decisions into portfolio actions
+- size positions from confidence, regime and volatility
+- enforce portfolio-wide capital and exposure limits
+- maintain ATR-based stop loss / take profit levels
+- synchronize exchange balances through plugins
+- auto-enable watched coins when real holdings cross a USD threshold
+
+Supported actions:
+
+- `OPEN_POSITION`
+- `CLOSE_POSITION`
+- `REDUCE_POSITION`
+- `INCREASE_POSITION`
+- `HOLD_POSITION`
+
+Portfolio rules:
+
+- max position size: 5% of total capital
+- max positions: 20
+- max sector exposure: configurable
+- no allocation beyond `portfolio_state.available_capital`
+
+Position sizing:
+
+- `position_size = base_size * decision_confidence * regime_factor * volatility_adjustment`
+
+Stops:
+
+- `stop_loss = entry_price - atr_14 * portfolio_stop_atr_multiplier`
+- `take_profit = entry_price + atr_14 * portfolio_take_profit_atr_multiplier`
+
+Redis caches:
+
+- `iris:portfolio:state`
+- `iris:portfolio:balances`
+
+### Multi-exchange support
+
+Exchange integrations live under `backend/app/exchanges`:
+
+- `base.py`
+  abstract `ExchangePlugin` contract
+- `registry.py`
+  automatic plugin registration and instantiation
+- `bybit.py`
+  current exchange scaffold
+- `binance.py`
+  additional plugin scaffold proving the plugin architecture
+
+This keeps the portfolio engine open for `Kraken`, `Coinbase`, `OKX` and other exchanges without changing the portfolio core.
 
 ## Signal Fusion Engine
 
@@ -169,6 +246,7 @@ The internal pipeline is event-driven and producer/consumer decoupled:
 7. `regime_workers` consume `indicator_updated`, refresh market regime context and emit `market_regime_changed`.
 8. `decision_workers` consume pattern/regime/signal events, enrich context, generate decisions/final signals and emit `decision_generated`.
 9. `signal_fusion_workers` consume recent signal/regime events, fuse recent stacks and persist `market_decisions`.
+10. `portfolio_workers` consume fused decisions, regime changes and portfolio balance events to maintain positions and actions.
 
 Workers use Redis Streams consumer groups:
 
@@ -178,6 +256,7 @@ Workers use Redis Streams consumer groups:
 - `regime_workers`
 - `decision_workers`
 - `signal_fusion_workers`
+- `portfolio_workers`
 
 Each worker only ACKs after processing. Stale pending messages are reclaimed with `XAUTOCLAIM`, so crash recovery does not lose events.
 
@@ -202,6 +281,7 @@ There is no parallel legacy analytics trigger path. Runtime candle analytics now
 14. `signal_fusion_workers` aggregate the last 1-3 signal groups into `market_decisions` and cache them under `iris:decision:{coin_id}:{timeframe}`.
 15. `signal_history` refresh evaluates matured signals and persists 24h / 72h return windows plus drawdown outcomes.
 16. `feature_snapshots` capture the closed-candle feature vector for ML, research and backtests.
+17. `portfolio_workers` convert fused market decisions plus portfolio balance changes into capital actions and live positions.
 
 ### Bootstrap path
 
@@ -225,6 +305,8 @@ All background work stays inside the existing backend runtime. No new worker con
   Periodic discovery candidate refresh.
 - `signal_context_enrichment`
   Recomputes signal context on demand.
+- `portfolio_sync_job`
+  Every 5 minutes, synchronizes balances from enabled exchange accounts, updates portfolio tables and emits balance-change events.
 
 Event workers are started by the backend runtime as separate worker processes inside the same backend service. They do not require a dedicated container.
 
@@ -482,6 +564,9 @@ Primary endpoints:
 - `GET /sectors/metrics`
 - `GET /market/cycle`
 - `GET /market/radar`
+- `GET /portfolio/positions`
+- `GET /portfolio/actions`
+- `GET /portfolio/state`
 
 The frontend uses these endpoints to show:
 
@@ -500,6 +585,8 @@ The frontend uses these endpoints to show:
 - HOT coins and emerging coins
 - recent regime changes
 - volatility spikes
+- Portfolio Map with capital allocation, current positions, risk-to-stop and unrealized P/L
+- Portfolio Watch Radar with held assets, regime, fused IRIS stance and risk
 - Pattern Health Dashboard with rolling success rates, active / disabled detector counts and best regime-fit rows
 - pattern history
 - discovery candidates for manual review
@@ -518,6 +605,10 @@ Current integration tests cover:
 - regime detection rules and Redis regime cache
 - pattern dependency filtering and regime-aware context adjustment
 - signal fusion aggregation, conflict handling, regime weighting and Redis decision events
+- portfolio position creation, rebalance actions and ATR stop calculation
+- portfolio risk limits for max positions and sector exposure
+- exchange plugin registry loading and exchange balance synchronization
+- auto-watch activation for portfolio-held assets
 
 The test fixture uses real 15m OHLCV candles for:
 
@@ -531,6 +622,7 @@ The test fixture uses real 15m OHLCV candles for:
 - Incremental detection reads the last 200 candles from `candles` / aggregate views.
 - `ix_candles_coin_tf_ts_desc` accelerates the last-200-candle query pattern.
 - Signal fusion reads only recent `signals` windows through `ix_signals_coin_tf_ts`.
+- Portfolio state and portfolio balances are mirrored into Redis so dashboard refreshes do not have to hit SQL for every poll.
 - Higher timeframes are served from continuous aggregates instead of rebuilding 1h / 4h / 1d candles from the raw table on every read.
 - `signal_history` removes repeated forward-window scans from nightly statistics refreshes.
 - `feature_snapshots` keep ML-oriented context vectors in a single table keyed by `coin_id`, `timeframe`, `timestamp`.

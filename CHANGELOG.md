@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Portfolio Engine with `portfolio_positions`, `portfolio_actions`, `portfolio_state`, ATR-based stops, rebalancing logic and Redis portfolio-state caches.
+- Multi-exchange portfolio scaffolding with `exchange_accounts`, `portfolio_balances`, exchange plugin registry and built-in `bybit` / `binance` plugin stubs.
+- Portfolio API surface: `/portfolio/positions`, `/portfolio/actions` and `/portfolio/state`.
+- Portfolio Map and Portfolio Watch Radar UI showing capital allocation, current positions, regime context, fused IRIS stance, downside risk and unrealized P/L.
+- Portfolio / exchange pytest coverage for position sizing, risk limits, sync behavior, plugin loading and auto-watch activation.
 - Signal Fusion Engine under `backend/app/analysis/signal_fusion_engine.py` with `market_decisions` storage, Redis decision cache keys `iris:decision:{coin_id}:{timeframe}` and a dedicated `signal_fusion_workers` consumer group.
 - Market decision API surface: `/market-decisions`, `/market-decisions/top` and `/coins/{symbol}/market-decision`.
 - Decision Radar UI showing fused BUY / SELL / HOLD / WATCH stances, confidence, signal count and regime.
@@ -49,6 +54,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- Event-driven runtime now includes `portfolio_workers` consuming `decision_generated`, `market_regime_changed`, `portfolio_balance_updated` and `portfolio_position_changed`.
+- Embedded TaskIQ runtime now also schedules `portfolio_sync_job` every 5 minutes for exchange balance synchronization.
+- `coins` API now exposes `auto_watch_enabled` and `auto_watch_source` so portfolio-driven watch activation is visible to the dashboard.
 - Event-driven runtime now includes a post-signal fusion layer: `signal_created` / `market_regime_changed` -> `signal_fusion_workers` -> `market_decisions`.
 - `signals` now also have a dedicated descending access index `ix_signals_coin_tf_ts` for recent-window fusion reads.
 - `pattern_statistics` now use the realized outcome store with rolling windows and regime scopes instead of single global aggregates per timeframe.
