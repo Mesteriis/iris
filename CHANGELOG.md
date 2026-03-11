@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Signal Fusion Engine under `backend/app/analysis/signal_fusion_engine.py` with `market_decisions` storage, Redis decision cache keys `iris:decision:{coin_id}:{timeframe}` and a dedicated `signal_fusion_workers` consumer group.
+- Market decision API surface: `/market-decisions`, `/market-decisions/top` and `/coins/{symbol}/market-decision`.
+- Decision Radar UI showing fused BUY / SELL / HOLD / WATCH stances, confidence, signal count and regime.
+- Signal fusion tests for bullish aggregation, conflicting-stack HOLD behavior, regime-aware weighting and Redis `decision_generated` event emission.
 - Pattern Success Engine with pre-write reliability validation between pattern context adjustment and `signals` persistence.
 - Regime-aware `pattern_statistics` rows with rolling 200-signal windows, `total_signals`, `successful_signals`, `last_evaluated_at` and per-scope `enabled` flags.
 - TaskIQ `pattern_evaluation_job` alias for nightly pattern evaluation plus Redis Stream pattern state events: `pattern_enabled`, `pattern_disabled`, `pattern_degraded`, `pattern_boosted`.
@@ -45,6 +49,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- Event-driven runtime now includes a post-signal fusion layer: `signal_created` / `market_regime_changed` -> `signal_fusion_workers` -> `market_decisions`.
+- `signals` now also have a dedicated descending access index `ix_signals_coin_tf_ts` for recent-window fusion reads.
 - `pattern_statistics` now use the realized outcome store with rolling windows and regime scopes instead of single global aggregates per timeframe.
 - Pattern runtime now validates detections against historical success snapshots before writing `signals`.
 - Signal outcome evaluation now stores 24h / 72h profit windows plus maximum drawdown while keeping canonical `result_return` / `result_drawdown` compatibility.

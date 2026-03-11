@@ -63,6 +63,8 @@ IRIS uses the existing schema instead of duplicating market history:
   Latest cycle phase per coin and timeframe.
 - `investment_decisions`
   Latest and historical lazy-investor decisions derived from signals, regime, sector, cycle and pattern statistics.
+- `market_decisions`
+  Fused BUY / SELL / HOLD / WATCH outputs aggregated from recent `signals` per coin and timeframe.
 - `risk_metrics`
   Liquidity and risk state per coin and timeframe with `liquidity_score`, `slippage_risk` and `volatility_risk`.
 - `final_signals`
@@ -109,6 +111,26 @@ The pattern subsystem lives under `backend/app/patterns` and is integrated into 
 - `strategy.py`
   Self Evolving Strategy Engine for strategy discovery, performance tracking and decision alignment.
 
+## Signal Fusion Engine
+
+The fusion layer lives under `backend/app/analysis/signal_fusion_engine.py` and sits on top of stored `signals`. It does not replace pattern signals or investment decisions. It adds a separate aggregation layer that turns recent signal stacks into a unified market stance.
+
+Responsibilities:
+
+- read the latest 1-3 closed-candle signal groups from `signals`
+- weight each signal by confidence, historical pattern success, signal context and regime compatibility
+- resolve agreement vs conflict across bullish and bearish signals
+- persist fused rows into `market_decisions`
+- mirror latest decisions into Redis cache keys `iris:decision:{coin_id}:{timeframe}`
+- emit `decision_generated` with `source=signal_fusion`
+
+Decision outcomes:
+
+- `BUY`
+- `SELL`
+- `HOLD`
+- `WATCH`
+
 ### Detector families
 
 Implemented detector catalog: 87 pattern detectors.
@@ -146,6 +168,7 @@ The internal pipeline is event-driven and producer/consumer decoupled:
 6. `pattern_workers` consume `analysis_requested`, run incremental pattern detection and emit `pattern_detected` / `pattern_cluster_detected`.
 7. `regime_workers` consume `indicator_updated`, refresh market regime context and emit `market_regime_changed`.
 8. `decision_workers` consume pattern/regime/signal events, enrich context, generate decisions/final signals and emit `decision_generated`.
+9. `signal_fusion_workers` consume recent signal/regime events, fuse recent stacks and persist `market_decisions`.
 
 Workers use Redis Streams consumer groups:
 
@@ -154,6 +177,7 @@ Workers use Redis Streams consumer groups:
 - `pattern_workers`
 - `regime_workers`
 - `decision_workers`
+- `signal_fusion_workers`
 
 Each worker only ACKs after processing. Stale pending messages are reclaimed with `XAUTOCLAIM`, so crash recovery does not lose events.
 
@@ -175,8 +199,9 @@ There is no parallel legacy analytics trigger path. Runtime candle analytics now
    `priority_score = confidence * temperature * regime_alignment * volatility_alignment * liquidity_score * sector_alignment * cycle_alignment * cluster_bonus`
 12. Lazy Investor Decision Engine converts the current stack into an investment decision.
 13. Liquidity & Risk Engine converts that decision into a tradable `final_signal`.
-14. `signal_history` refresh evaluates matured signals and persists 24h / 72h return windows plus drawdown outcomes.
-15. `feature_snapshots` capture the closed-candle feature vector for ML, research and backtests.
+14. `signal_fusion_workers` aggregate the last 1-3 signal groups into `market_decisions` and cache them under `iris:decision:{coin_id}:{timeframe}`.
+15. `signal_history` refresh evaluates matured signals and persists 24h / 72h return windows plus drawdown outcomes.
+16. `feature_snapshots` capture the closed-candle feature vector for ML, research and backtests.
 
 ### Bootstrap path
 
@@ -434,6 +459,8 @@ Primary endpoints:
 - `GET /signals/top`
 - `GET /decisions`
 - `GET /decisions/top`
+- `GET /market-decisions`
+- `GET /market-decisions/top`
 - `GET /final-signals`
 - `GET /final-signals/top`
 - `GET /strategies`
@@ -448,6 +475,7 @@ Primary endpoints:
 - `GET /coins/{symbol}/patterns`
 - `GET /coins/{symbol}/backtests`
 - `GET /coins/{symbol}/decision`
+- `GET /coins/{symbol}/market-decision`
 - `GET /coins/{symbol}/final-signal`
 - `GET /coins/{symbol}/regime`
 - `GET /sectors`
@@ -461,6 +489,7 @@ The frontend uses these endpoints to show:
 - feature flag state
 - priority-ranked signals
 - lazy-investor decisions
+- fused market decisions with Decision Radar
 - self-evolving top strategies
 - backtested signal families
 - cluster membership
@@ -488,6 +517,7 @@ Current integration tests cover:
 - scheduler activity-score calculation and bucket assignment
 - regime detection rules and Redis regime cache
 - pattern dependency filtering and regime-aware context adjustment
+- signal fusion aggregation, conflict handling, regime weighting and Redis decision events
 
 The test fixture uses real 15m OHLCV candles for:
 
@@ -500,12 +530,14 @@ The test fixture uses real 15m OHLCV candles for:
 - Candle history is never duplicated.
 - Incremental detection reads the last 200 candles from `candles` / aggregate views.
 - `ix_candles_coin_tf_ts_desc` accelerates the last-200-candle query pattern.
+- Signal fusion reads only recent `signals` windows through `ix_signals_coin_tf_ts`.
 - Higher timeframes are served from continuous aggregates instead of rebuilding 1h / 4h / 1d candles from the raw table on every read.
 - `signal_history` removes repeated forward-window scans from nightly statistics refreshes.
 - `feature_snapshots` keep ML-oriented context vectors in a single table keyed by `coin_id`, `timeframe`, `timestamp`.
 - Timescale compression keeps long-horizon candle retention practical for multi-year history.
 - Event workers operate only on the last 200 candles during runtime and do not rescan full history for every event.
 - Runtime scans full retained history only during bootstrap or scheduled discovery/statistics jobs, not during normal incremental operation.
+- Coin-detail Decision Radar can reuse Redis cache keys `iris:decision:{coin_id}:{timeframe}` instead of forcing PostgreSQL reads on every refresh.
 
 ## Notes
 
