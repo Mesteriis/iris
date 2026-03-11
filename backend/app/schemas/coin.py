@@ -44,6 +44,8 @@ class CoinCreate(CoinBase):
 
 class CoinRead(CoinBase):
     id: int
+    auto_watch_enabled: bool = False
+    auto_watch_source: str | None = None
     created_at: datetime
     history_backfill_completed_at: datetime | None = None
     last_history_sync_at: datetime | None = None

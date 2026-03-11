@@ -17,6 +17,7 @@ from app.events.types import (
     INDICATOR_WORKER_GROUP,
     IrisEvent,
     PATTERN_WORKER_GROUP,
+    PORTFOLIO_WORKER_GROUP,
     REGIME_WORKER_GROUP,
 )
 from app.models.coin import Coin
@@ -31,6 +32,7 @@ from app.patterns.hierarchy import build_hierarchy_signals
 from app.patterns.narrative import refresh_sector_metrics
 from app.patterns.risk import evaluate_final_signal
 from app.patterns.scheduler import get_activity_snapshot, mark_analysis_requested, should_request_analysis
+from app.portfolio.engine import evaluate_portfolio_action
 from app.services.analytics_service import process_indicator_event
 from app.services.feature_snapshots_service import capture_feature_snapshot
 from app.services.regime_cache import cache_regime_snapshot, read_cached_regime
@@ -44,6 +46,7 @@ EVENT_WORKER_GROUPS = (
     REGIME_WORKER_GROUP,
     DECISION_WORKER_GROUP,
     FUSION_WORKER_GROUP,
+    PORTFOLIO_WORKER_GROUP,
 )
 _PATTERN_ENGINE = PatternEngine()
 
@@ -379,6 +382,24 @@ def _handle_fusion_event(event: IrisEvent) -> None:
         db.close()
 
 
+def _handle_portfolio_event(event: IrisEvent) -> None:
+    if event.event_type == "decision_generated" and event.payload.get("source") != "signal_fusion":
+        return
+    db = SessionLocal()
+    try:
+        timeframe = int(event.timeframe)
+        if timeframe <= 0:
+            return
+        evaluate_portfolio_action(
+            db,
+            coin_id=event.coin_id,
+            timeframe=timeframe,
+            emit_events=True,
+        )
+    finally:
+        db.close()
+
+
 def create_worker(group_name: str, consumer_name: str | None = None) -> EventConsumer:
     settings = get_settings()
     effective_consumer_name = consumer_name or default_consumer_name(group_name)
@@ -434,6 +455,17 @@ def create_worker(group_name: str, consumer_name: str | None = None) -> EventCon
                 "pattern_detected",
                 "signal_created",
                 "market_regime_changed",
+            },
+        )
+    if group_name == PORTFOLIO_WORKER_GROUP:
+        return EventConsumer(
+            config,
+            handler=_handle_portfolio_event,
+            interested_event_types={
+                "decision_generated",
+                "market_regime_changed",
+                "portfolio_balance_updated",
+                "portfolio_position_changed",
             },
         )
     raise ValueError(f"Unsupported event worker group '{group_name}'.")
