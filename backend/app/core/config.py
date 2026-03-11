@@ -30,8 +30,6 @@ class Settings(BaseSettings):
         alias="CORS_ORIGINS",
     )
     taskiq_refresh_interval_seconds: int = 300
-    taskiq_metrics_refresh_interval_seconds: int = 300
-    taskiq_analytics_event_interval_seconds: int = 900
     taskiq_pattern_statistics_interval_seconds: int = 86400
     taskiq_market_structure_interval_seconds: int = 3600
     taskiq_pattern_discovery_interval_seconds: int = 21600

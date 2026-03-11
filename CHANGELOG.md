@@ -43,6 +43,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Polling/history writes now publish `candle_inserted` and `candle_closed` into `iris_events` instead of directly driving runtime analytics.
 - Event-driven runtime flow now inserts an `analysis_scheduler_workers` layer between `indicator_updated` and pattern detection so pattern scans only run when requested by activity-aware scheduling.
 - Removed the remaining direct `handle_new_candle_event` task/hash path so runtime analytics now has a single Redis Streams execution path.
+- Removed the disabled `metrics_service` compatibility shim, its orphan TaskIQ task and unused legacy refresh settings so `coin_metrics` updates now exist only in the event-driven analytics pipeline.
 - Pattern statistics now read from persisted `signal_history` outcomes instead of rescanning candle windows on every refresh.
 - Extended `signals` with `priority_score`, `context_score` and `regime_alignment`.
 - Extended `coins` with `sector_id` mapped from the existing `theme` field so sector analytics can reuse current asset taxonomy.
