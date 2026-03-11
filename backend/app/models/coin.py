@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, DateTime, Integer, JSON, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from app.models.candle import Candle
     from app.models.coin_metrics import CoinMetrics
     from app.models.indicator_cache import IndicatorCache
+    from app.models.market_cycle import MarketCycle
+    from app.models.sector import Sector
     from app.models.signal import Signal
 
 
@@ -26,6 +28,7 @@ class Coin(Base):
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="default")
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sector_id: Mapped[int | None] = mapped_column(ForeignKey("sectors.id", ondelete="SET NULL"), nullable=True)
     candles_config: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     history_backfill_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_history_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -43,6 +46,7 @@ class Coin(Base):
         cascade="all, delete-orphan",
         order_by="Candle.timestamp",
     )
+    sector: Mapped["Sector | None"] = relationship("Sector", back_populates="coins")
     metrics: Mapped["CoinMetrics | None"] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
@@ -57,4 +61,9 @@ class Coin(Base):
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="Signal.candle_timestamp",
+    )
+    market_cycles: Mapped[list["MarketCycle"]] = relationship(
+        back_populates="coin",
+        cascade="all, delete-orphan",
+        order_by="MarketCycle.timeframe",
     )

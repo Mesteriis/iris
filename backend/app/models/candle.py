@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, SmallInteger
+from sqlalchemy import DateTime, Float, ForeignKey, Index, SmallInteger, desc
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -16,6 +16,7 @@ class Candle(Base):
     __tablename__ = "candles"
     __table_args__ = (
         Index("ix_candles_coin_id_timestamp", "coin_id", "timestamp"),
+        Index("ix_candles_coin_tf_ts_desc", "coin_id", "timeframe", desc("timestamp")),
     )
 
     coin_id: Mapped[int] = mapped_column(ForeignKey("coins.id", ondelete="CASCADE"), primary_key=True)

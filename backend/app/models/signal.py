@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, BigInteger, SmallInteger, String, func
+from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Index, SmallInteger, String, desc, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -24,6 +24,7 @@ class Signal(Base):
             unique=True,
         ),
         Index("ix_signals_coin_id_timeframe_candle_timestamp", "coin_id", "timeframe", "candle_timestamp"),
+        Index("ix_signals_priority_score_desc", desc("priority_score")),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -31,6 +32,9 @@ class Signal(Base):
     timeframe: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     signal_type: Mapped[str] = mapped_column(String(64), nullable=False)
     confidence: Mapped[float] = mapped_column(Float(53), nullable=False)
+    priority_score: Mapped[float] = mapped_column(Float(53), nullable=False, default=0.0)
+    context_score: Mapped[float] = mapped_column(Float(53), nullable=False, default=1.0)
+    regime_alignment: Mapped[float] = mapped_column(Float(53), nullable=False, default=1.0)
     candle_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
