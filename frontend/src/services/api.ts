@@ -71,6 +71,10 @@ export interface CoinMetrics {
   market_cap: number | null;
   trend: "bullish" | "bearish" | "sideways" | null;
   trend_score: number | null;
+  activity_score: number | null;
+  activity_bucket: "HOT" | "WARM" | "COLD" | "DEAD" | null;
+  analysis_priority: number | null;
+  last_analysis_at: string | null;
   market_regime: "bull_trend" | "bear_trend" | "sideways_range" | "high_volatility" | "low_volatility" | null;
   market_regime_details: Record<string, RegimeSnapshot> | null;
   indicator_version: number | null;
@@ -156,6 +160,38 @@ export interface CoinBacktests {
   coin_id: number;
   symbol: string;
   items: BacktestSummary[];
+}
+
+export interface MarketRadarCoin {
+  coin_id: number;
+  symbol: string;
+  name: string;
+  activity_score: number | null;
+  activity_bucket: "HOT" | "WARM" | "COLD" | "DEAD" | null;
+  analysis_priority: number | null;
+  price_change_24h: number | null;
+  price_change_7d: number | null;
+  volatility: number | null;
+  market_regime: string | null;
+  updated_at: string | null;
+  last_analysis_at: string | null;
+}
+
+export interface MarketRegimeChange {
+  coin_id: number;
+  symbol: string;
+  name: string;
+  timeframe: number;
+  regime: string;
+  confidence: number;
+  timestamp: string;
+}
+
+export interface MarketRadar {
+  hot_coins: MarketRadarCoin[];
+  emerging_coins: MarketRadarCoin[];
+  regime_changes: MarketRegimeChange[];
+  volatility_spikes: MarketRadarCoin[];
 }
 
 export interface PatternDescriptor {
@@ -386,6 +422,12 @@ export const irisApi = {
         ...(symbol ? { symbol } : {}),
         ...(timeframe ? { timeframe } : {}),
       },
+    });
+    return response.data;
+  },
+  async getMarketRadar(limit = 8): Promise<MarketRadar> {
+    const response = await api.get<MarketRadar>("/market/radar", {
+      params: { limit },
     });
     return response.data;
   },

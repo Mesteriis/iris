@@ -109,6 +109,14 @@ export function formatMarketRegime(value: string | null | undefined): string {
     .join(" ");
 }
 
+export function formatActivityBucket(value: string | null | undefined): string {
+  if (!value) {
+    return "Pending";
+  }
+
+  return value.toUpperCase();
+}
+
 export function formatTrend(value: string | null | undefined): string {
   if (!value) {
     return "Pending";

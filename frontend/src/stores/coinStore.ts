@@ -13,6 +13,7 @@ import {
   type CoinMetrics,
   type DiscoveredPattern,
   type MarketCycle,
+  type MarketRadar,
   type PatternDescriptor,
   type PatternFeature,
   type PriceHistoryPoint,
@@ -41,6 +42,7 @@ export const useCoinStore = defineStore("coins", () => {
   const sectorMetrics = ref<SectorMetric[]>([]);
   const sectorNarratives = ref<SectorNarrative[]>([]);
   const marketCycles = ref<MarketCycle[]>([]);
+  const marketRadar = ref<MarketRadar | null>(null);
   const coinBacktests = ref<Record<string, CoinBacktests>>({});
   const coinPatternHistory = ref<Record<string, Signal[]>>({});
   const coinRegimes = ref<Record<string, CoinRegime>>({});
@@ -134,6 +136,10 @@ export const useCoinStore = defineStore("coins", () => {
     marketCycles.value.filter((item) => item.symbol.toUpperCase() === activeSymbol.value),
   );
   const topSectorMetrics = computed(() => sectorMetrics.value.slice(0, 6));
+  const hotRadarCoins = computed(() => marketRadar.value?.hot_coins ?? []);
+  const emergingRadarCoins = computed(() => marketRadar.value?.emerging_coins ?? []);
+  const regimeChangeRadar = computed(() => marketRadar.value?.regime_changes ?? []);
+  const volatilitySpikeRadar = computed(() => marketRadar.value?.volatility_spikes ?? []);
   const enabledPatternFeatures = computed(() => patternFeatures.value.filter((item) => item.enabled));
   const topStrategies = computed(() => strategyPerformance.value.slice(0, 6));
   const bullishShare = computed(() => {
@@ -261,6 +267,7 @@ export const useCoinStore = defineStore("coins", () => {
         sectorRows,
         sectorPayload,
         cycleRows,
+        radarPayload,
         systemState,
       ] = await Promise.all([
         irisApi.listCoins(),
@@ -276,6 +283,7 @@ export const useCoinStore = defineStore("coins", () => {
         irisApi.listSectors(),
         irisApi.listSectorMetrics(),
         irisApi.listMarketCycles(),
+        irisApi.getMarketRadar(8),
         irisApi.getStatus(),
       ]);
 
@@ -293,6 +301,7 @@ export const useCoinStore = defineStore("coins", () => {
       sectorMetrics.value = sectorPayload.items;
       sectorNarratives.value = sectorPayload.narratives;
       marketCycles.value = cycleRows;
+      marketRadar.value = radarPayload;
       status.value = systemState;
       lastDashboardRefreshAt.value = new Date().toISOString();
     } catch (err) {
@@ -434,6 +443,7 @@ export const useCoinStore = defineStore("coins", () => {
     jobStatusRows,
     lastDashboardRefreshAt,
     marketCycles,
+    marketRadar,
     metrics,
     metricsBySymbol,
     discoveredPatterns,
@@ -454,6 +464,10 @@ export const useCoinStore = defineStore("coins", () => {
     sourceStatusRows,
     status,
     statusTone,
+    hotRadarCoins,
+    emergingRadarCoins,
+    regimeChangeRadar,
+    volatilitySpikeRadar,
     topSectorMetrics,
     topBacktests,
     topStrategies,

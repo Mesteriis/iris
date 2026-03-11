@@ -3,6 +3,7 @@ import { computed, onMounted, reactive } from "vue";
 
 import { useCoinStore } from "../stores/coinStore";
 import {
+  formatActivityBucket,
   formatCompactNumber,
   formatCurrency,
   formatCurrencyDelta,
@@ -147,6 +148,95 @@ async function runCoinJob(symbol: string) {
           </dl>
         </RouterLink>
       </div>
+    </section>
+
+    <section class="detail-grid__row">
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Market radar</p>
+            <h3>HOT and emerging coins</h3>
+          </div>
+          <p>Dynamic scheduling highlights the assets that deserve immediate pattern analysis.</p>
+        </div>
+
+        <div class="job-summary-grid">
+          <div class="indicator-card">
+            <span>HOT now</span>
+            <strong>{{ coinStore.hotRadarCoins.length }}</strong>
+          </div>
+          <div class="indicator-card">
+            <span>Emerging</span>
+            <strong>{{ coinStore.emergingRadarCoins.length }}</strong>
+          </div>
+          <div class="indicator-card">
+            <span>Regime flips</span>
+            <strong>{{ coinStore.regimeChangeRadar.length }}</strong>
+          </div>
+          <div class="indicator-card">
+            <span>Volatility spikes</span>
+            <strong>{{ coinStore.volatilitySpikeRadar.length }}</strong>
+          </div>
+        </div>
+
+        <ul class="detail-signal-list">
+          <li v-for="row in coinStore.hotRadarCoins.slice(0, 4)" :key="`hot-${row.symbol}`">
+            <div>
+              <strong>{{ row.symbol }}</strong>
+              <p>
+                {{ formatActivityBucket(row.activity_bucket) }} · {{ formatMarketRegime(row.market_regime) }}
+              </p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span class="trend-badge trend-badge--bullish">{{ formatCompactNumber(row.activity_score) }}</span>
+              <small>{{ formatDateTime(row.last_analysis_at ?? row.updated_at) }}</small>
+            </div>
+          </li>
+          <li v-for="row in coinStore.emergingRadarCoins.slice(0, 4)" :key="`emerging-${row.symbol}`">
+            <div>
+              <strong>{{ row.symbol }}</strong>
+              <p>24h {{ formatCurrencyDelta(row.price_change_24h) }} · 7d {{ formatCurrencyDelta(row.price_change_7d) }}</p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span class="trend-badge trend-badge--sideways">{{ formatMarketRegime(row.market_regime) }}</span>
+              <small>{{ formatDateTime(row.updated_at) }}</small>
+            </div>
+          </li>
+        </ul>
+      </article>
+
+      <article class="surface-card">
+        <div class="section-head">
+          <div>
+            <p class="section-head__eyebrow">Regime pulse</p>
+            <h3>Regime changes and volatility spikes</h3>
+          </div>
+          <p>Redis Stream events expose context shifts without rescanning full history.</p>
+        </div>
+
+        <ul class="detail-signal-list">
+          <li v-for="row in coinStore.regimeChangeRadar.slice(0, 4)" :key="`regime-${row.symbol}-${row.timeframe}-${row.timestamp}`">
+            <div>
+              <strong>{{ row.symbol }}</strong>
+              <p>{{ timeframeToLabel(row.timeframe) }} · {{ formatMarketRegime(row.regime) }}</p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span class="trend-badge trend-badge--sideways">{{ formatPercent(row.confidence * 100, 0) }}</span>
+              <small>{{ formatDateTime(row.timestamp) }}</small>
+            </div>
+          </li>
+          <li v-for="row in coinStore.volatilitySpikeRadar.slice(0, 4)" :key="`volatility-${row.symbol}`">
+            <div>
+              <strong>{{ row.symbol }}</strong>
+              <p>{{ formatMarketRegime(row.market_regime) }} · 24h {{ formatCurrencyDelta(row.price_change_24h) }}</p>
+            </div>
+            <div class="detail-signal-list__meta">
+              <span class="trend-badge trend-badge--bearish">{{ formatCompactNumber(row.volatility) }}</span>
+              <small>{{ formatDateTime(row.updated_at) }}</small>
+            </div>
+          </li>
+        </ul>
+      </article>
     </section>
 
     <section class="detail-grid__row">
