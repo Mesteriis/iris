@@ -54,12 +54,18 @@ async def test_event_stream_pipeline_creates_pattern_signals(seeded_market, sett
         args=("indicator_workers",),
         daemon=True,
     )
+    scheduler = ctx.Process(
+        target=run_worker_loop,
+        args=("analysis_scheduler_workers",),
+        daemon=True,
+    )
     pattern = ctx.Process(
         target=run_worker_loop,
         args=("pattern_workers",),
         daemon=True,
     )
     indicator.start()
+    scheduler.start()
     pattern.start()
     try:
         for item in seeded_market.values():
@@ -107,11 +113,14 @@ async def test_event_stream_pipeline_creates_pattern_signals(seeded_market, sett
             event_types = {fields["event_type"] for _, fields in messages}
             assert "candle_closed" in event_types
             assert "indicator_updated" in event_types
+            assert "analysis_requested" in event_types
             assert "pattern_detected" in event_types or "pattern_cluster_detected" in event_types
         finally:
             client.close()
     finally:
         indicator.terminate()
+        scheduler.terminate()
         pattern.terminate()
         indicator.join(timeout=2.0)
+        scheduler.join(timeout=2.0)
         pattern.join(timeout=2.0)

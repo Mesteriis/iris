@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from redis import Redis
 from sqlalchemy import delete, select
 
@@ -52,6 +54,15 @@ def wait_until():
 @pytest.fixture(scope="session")
 def settings():
     return get_settings()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def migrated_database(settings) -> None:
+    backend_root = Path(__file__).resolve().parents[1]
+    config = Config(str(backend_root / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_root / "alembic"))
+    config.set_main_option("sqlalchemy.url", settings.database_url)
+    command.upgrade(config, "head")
 
 
 @pytest.fixture(scope="session")
