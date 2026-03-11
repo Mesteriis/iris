@@ -9,6 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Redis Streams event pipeline foundation with `iris_events`, async publisher and consumer-group worker base.
 - Integration tests for Redis Stream pipeline, worker ACK/retry and multi-worker distribution using BTC/ETH/SOL candle fixtures.
+- Smart Market Scheduling layer with `activity_score`, `activity_bucket`, `analysis_priority`, `last_analysis_at` and Redis Stream `analysis_requested` gating before pattern detection.
+- Regime cache in Redis under `iris:regime:{coin_id}:{timeframe}` plus refined regime rules based on ADX, ATR, Bollinger width, 7d price change and EMA50 vs long trend average.
+- Pre-signal Pattern Context Layer with dependency filtering and regime-aware confidence adjustment before pattern signals are written to `signals`.
+- Market Radar API/UI for HOT coins, emerging coins, recent regime changes and volatility spikes.
+- Dedicated pytest coverage for scheduler decisions, regime detection/cache and pattern context filtering.
 - TimescaleDB tuning for `candles`: 30-day chunks, hash partitioning by `coin_id` and 90-day compression policy.
 - `signal_history` outcome store for evaluated signal returns and drawdowns.
 - `feature_snapshots` wide feature-vector table for ML and historical context training.
@@ -36,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - Polling/history writes now publish `candle_inserted` and `candle_closed` into `iris_events` instead of directly driving runtime analytics.
+- Event-driven runtime flow now inserts an `analysis_scheduler_workers` layer between `indicator_updated` and pattern detection so pattern scans only run when requested by activity-aware scheduling.
 - Pattern statistics now read from persisted `signal_history` outcomes instead of rescanning candle windows on every refresh.
 - Extended `signals` with `priority_score`, `context_score` and `regime_alignment`.
 - Extended `coins` with `sector_id` mapped from the existing `theme` field so sector analytics can reuse current asset taxonomy.

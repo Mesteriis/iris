@@ -140,13 +140,15 @@ The internal pipeline is event-driven and producer/consumer decoupled:
 2. Polling inserts candles into `candles`.
 3. Polling publishes `candle_inserted` and `candle_closed` into `iris_events`.
 4. `indicator_workers` consume `candle_closed`, compute indicators and emit `indicator_updated`.
-5. `pattern_workers` consume `indicator_updated`, run incremental pattern detection and emit `pattern_detected` / `pattern_cluster_detected`.
-6. `regime_workers` consume `indicator_updated`, refresh market regime context and emit `market_regime_changed`.
-7. `decision_workers` consume pattern/regime/signal events, enrich context, generate decisions/final signals and emit `decision_generated`.
+5. `analysis_scheduler_workers` consume `indicator_updated`, evaluate `activity_score` / `activity_bucket` and emit `analysis_requested` only when the coin should be analyzed now.
+6. `pattern_workers` consume `analysis_requested`, run incremental pattern detection and emit `pattern_detected` / `pattern_cluster_detected`.
+7. `regime_workers` consume `indicator_updated`, refresh market regime context and emit `market_regime_changed`.
+8. `decision_workers` consume pattern/regime/signal events, enrich context, generate decisions/final signals and emit `decision_generated`.
 
 Workers use Redis Streams consumer groups:
 
 - `indicator_workers`
+- `analysis_scheduler_workers`
 - `pattern_workers`
 - `regime_workers`
 - `decision_workers`
@@ -159,15 +161,17 @@ Each worker only ACKs after processing. Stale pending messages are reclaimed wit
 2. Timescale continuous aggregates keep 1h, 4h and 1d views ready for higher-timeframe reads.
 3. `indicator_workers` update indicators and `coin_metrics`.
 4. The same stage persists per-timeframe `indicator_cache` rows.
-5. `pattern_workers` load the last 200 candles and run enabled detectors.
-6. Cluster and hierarchy engines derive stronger structures from emitted pattern signals.
-7. `regime_workers` update cycle and sector-aware market context.
-8. `decision_workers` update the Contextual Signal Engine:
+5. `analysis_scheduler_workers` compute activity buckets: `HOT`, `WARM`, `COLD`, `DEAD`.
+6. `pattern_workers` load the last 200 candles and run enabled detectors only when `analysis_requested` arrives.
+7. Pattern Context Layer filters detectors with missing dependencies and adjusts confidence with regime-aware weights before writing new pattern signals.
+8. Cluster and hierarchy engines derive stronger structures from emitted pattern signals.
+9. `regime_workers` update cycle and sector-aware market context and mirror regime reads into Redis cache keys `iris:regime:{coin_id}:{timeframe}`.
+10. `decision_workers` update the Contextual Signal Engine:
    `priority_score = confidence * temperature * regime_alignment * volatility_alignment * liquidity_score * sector_alignment * cycle_alignment * cluster_bonus`
-9. Lazy Investor Decision Engine converts the current stack into an investment decision.
-10. Liquidity & Risk Engine converts that decision into a tradable `final_signal`.
-11. `signal_history` refresh evaluates matured signals and persists forward return / drawdown outcomes.
-12. `feature_snapshots` capture the closed-candle feature vector for ML, research and backtests.
+11. Lazy Investor Decision Engine converts the current stack into an investment decision.
+12. Liquidity & Risk Engine converts that decision into a tradable `final_signal`.
+13. `signal_history` refresh evaluates matured signals and persists forward return / drawdown outcomes.
+14. `feature_snapshots` capture the closed-candle feature vector for ML, research and backtests.
 
 ### Bootstrap path
 
@@ -194,6 +198,24 @@ Event workers are started by the backend runtime as separate worker processes in
 
 ## Market structure layers
 
+### Smart Market Scheduling
+
+`coin_metrics` now stores:
+
+- `activity_score`
+- `activity_bucket`
+- `analysis_priority`
+- `last_analysis_at`
+
+Activity score is derived from normalized 24h price change, volatility and 24h volume change. The scheduler uses that score to bucket assets:
+
+- `HOT`: analyze every candle
+- `WARM`: analyze every 2 candles
+- `COLD`: analyze every 10 candles
+- `DEAD`: analyze at most once per hour
+
+This keeps the event-driven pattern pipeline scalable without changing the canonical polling -> candles -> indicators -> patterns -> signals flow.
+
 ### Market Regime Engine
 
 Regimes:
@@ -204,7 +226,22 @@ Regimes:
 - `high_volatility`
 - `low_volatility`
 
-The backend stores the canonical regime in `coin_metrics.market_regime`, persists per-timeframe snapshots in `coin_metrics.market_regime_details`, and exposes those snapshots through the API.
+The backend stores the canonical regime in `coin_metrics.market_regime`, persists per-timeframe snapshots in `coin_metrics.market_regime_details`, mirrors them into Redis cache keys `iris:regime:{coin_id}:{timeframe}`, and exposes those snapshots through the API.
+
+### Pattern Context Layer
+
+The Pattern Context Layer runs before pattern signals are inserted:
+
+- checks detector dependencies such as trend / volume prerequisites
+- skips patterns when required context is missing
+- weights pattern confidence by the active market regime
+
+Examples:
+
+- continuation patterns are boosted in `bull_trend` / `bear_trend`
+- reversal patterns are reduced when they fight the current trend
+- volatility breakout patterns are boosted in `high_volatility`
+- mean-reversion patterns are favored in `sideways_range`
 
 ### Market Narrative Engine
 
@@ -396,6 +433,7 @@ Primary endpoints:
 - `GET /sectors`
 - `GET /sectors/metrics`
 - `GET /market/cycle`
+- `GET /market/radar`
 
 The frontend uses these endpoints to show:
 
@@ -410,6 +448,9 @@ The frontend uses these endpoints to show:
 - cycle phase
 - sector rotation
 - capital wave narrative
+- HOT coins and emerging coins
+- recent regime changes
+- volatility spikes
 - pattern history
 - discovery candidates for manual review
 
@@ -420,9 +461,12 @@ Redis Stream pipeline coverage is implemented with `pytest` and `pytest-asyncio`
 Current integration tests cover:
 
 - polling-style candle insert publishing `candle_inserted` and `candle_closed`
-- producer -> `indicator_workers` -> `pattern_workers` -> signal creation
+- producer -> `indicator_workers` -> `analysis_scheduler_workers` -> `pattern_workers` -> signal creation
 - multi-worker distribution in the same consumer group
 - ACK and retry semantics after a simulated worker crash
+- scheduler activity-score calculation and bucket assignment
+- regime detection rules and Redis regime cache
+- pattern dependency filtering and regime-aware context adjustment
 
 The test fixture uses real 15m OHLCV candles for:
 
