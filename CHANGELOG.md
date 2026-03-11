@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- TimescaleDB tuning for `candles`: 30-day chunks, hash partitioning by `coin_id` and 90-day compression policy.
+- `signal_history` outcome store for evaluated signal returns and drawdowns.
+- `feature_snapshots` wide feature-vector table for ML and historical context training.
 - Pattern Intelligence foundation schema: feature flags, pattern registry, pattern statistics, discovered patterns, sectors, sector metrics and market cycles.
 - Pattern engine package scaffold under `backend/app/patterns` with detector interface, lifecycle enums and priority/temperature helpers.
 - Descending candle index `ix_candles_coin_tf_ts_desc` for incremental last-200-candle pattern scans.
@@ -26,8 +29,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Liquidity & Risk Engine with persisted `risk_metrics`, risk-adjusted `final_signals` and API endpoints for `/final-signals`, `/final-signals/top` and `/coins/{symbol}/final-signal`.
 - Home Assistant final investment-signal event emission via `iris.investment_signal` with `coin`, `decision`, `confidence`, `risk_score` and `reason`.
 - Self Evolving Strategy Engine with `strategies`, `strategy_rules`, `strategy_performance`, discovery job and API endpoints for `/strategies` and `/strategies/performance`.
+- Runtime `signal_history` refresh and `feature_snapshots` capture wired into the existing incremental analytics pipeline.
 
 ### Changed
+- Pattern statistics now read from persisted `signal_history` outcomes instead of rescanning candle windows on every refresh.
 - Extended `signals` with `priority_score`, `context_score` and `regime_alignment`.
 - Extended `coins` with `sector_id` mapped from the existing `theme` field so sector analytics can reuse current asset taxonomy.
 - Extended `coin_metrics` with persisted `market_regime_details` so regime context is stored per timeframe instead of being recomputed on every read.

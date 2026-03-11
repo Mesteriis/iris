@@ -39,10 +39,12 @@ from app.services.candles_service import (
     refresh_continuous_aggregate_window,
     timeframe_delta,
 )
+from app.services.feature_snapshots_service import capture_feature_snapshot
 from app.services.indicator_engine import adx_series, atr_series, bollinger_bands, ema_series, macd_series, rsi_series, sma_series
 from app.services.market_data import ensure_utc, utc_now
 from app.services.market_sources.base import RateLimitedMarketSourceError
 from app.services.market_sources.rate_limits import rate_limited_get
+from app.services.signal_history_service import refresh_recent_signal_history
 
 LOGGER = logging.getLogger(__name__)
 
@@ -786,6 +788,22 @@ def handle_new_candle_event(db: Session, event: NewCandleEvent) -> dict[str, Any
             coin_id=coin.id,
             timeframe=timeframe,
             emit_event=True,
+        )
+        refresh_recent_signal_history(
+            db,
+            coin_id=coin.id,
+            timeframe=timeframe,
+            commit=True,
+        )
+        capture_feature_snapshot(
+            db,
+            coin_id=coin.id,
+            timeframe=timeframe,
+            timestamp=snapshot.candle_close_timestamp,
+            price_current=snapshot.price_current,
+            rsi_14=snapshot.rsi_14,
+            macd=snapshot.macd,
+            commit=True,
         )
 
     clear_new_candle_event_if_unchanged(event)

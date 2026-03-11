@@ -11,11 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.models.pattern_registry import PatternRegistry
 from app.models.pattern_statistic import PatternStatistic
-from app.models.signal import Signal
-from app.patterns.lifecycle import PatternLifecycleState, resolve_lifecycle_state
+from app.models.signal_history import SignalHistory
+from app.patterns.lifecycle import resolve_lifecycle_state
 from app.patterns.registry import PATTERN_CATALOG, sync_pattern_metadata
-from app.patterns.semantics import is_pattern_signal, pattern_bias, slug_from_signal_type
-from app.services.candles_service import CandlePoint, fetch_candle_points_between, timeframe_delta
+from app.patterns.semantics import is_pattern_signal, slug_from_signal_type
 from app.services.market_data import ensure_utc, utc_now
 
 STATISTICS_LOOKBACK_DAYS = 365
@@ -49,82 +48,38 @@ def calculate_temperature(
     return base * exp(-(max(days_since_sample, 0) / 90))
 
 
-def _signal_groups(db: Session) -> dict[tuple[int, int], list[Signal]]:
+def _history_rows(db: Session) -> list[SignalHistory]:
     cutoff = utc_now() - timedelta(days=STATISTICS_LOOKBACK_DAYS)
-    rows = db.scalars(
-        select(Signal)
+    return db.scalars(
+        select(SignalHistory)
         .where(
-            Signal.candle_timestamp >= cutoff,
-            Signal.signal_type.like("pattern_%"),
+            SignalHistory.candle_timestamp >= cutoff,
+            SignalHistory.signal_type.like("pattern_%"),
+            SignalHistory.result_return.is_not(None),
+            SignalHistory.result_drawdown.is_not(None),
         )
-        .order_by(Signal.coin_id.asc(), Signal.timeframe.asc(), Signal.candle_timestamp.asc())
+        .order_by(SignalHistory.timeframe.asc(), SignalHistory.candle_timestamp.asc())
     ).all()
-    grouped: dict[tuple[int, int], list[Signal]] = defaultdict(list)
-    for signal in rows:
-        if is_pattern_signal(signal.signal_type):
-            grouped[(signal.coin_id, signal.timeframe)].append(signal)
-    return grouped
-
-
-def _open_timestamp_from_signal(signal: Signal) -> object:
-    return ensure_utc(signal.candle_timestamp) - timeframe_delta(signal.timeframe)
-
-
-def _candle_index_map(candles: list[CandlePoint]) -> dict[object, int]:
-    return {ensure_utc(candle.timestamp): index for index, candle in enumerate(candles)}
-
-
-def _signal_outcome(signal: Signal, candles: list[CandlePoint], index_map: dict[object, int]) -> PatternOutcome | None:
-    slug = slug_from_signal_type(signal.signal_type)
-    if slug is None:
-        return None
-    open_timestamp = _open_timestamp_from_signal(signal)
-    candle_index = index_map.get(open_timestamp)
-    if candle_index is None:
-        return None
-    horizon = HORIZON_BARS_BY_TIMEFRAME.get(signal.timeframe, 8)
-    if candle_index + 1 >= len(candles):
-        return None
-    future_window = candles[candle_index + 1 : candle_index + 1 + horizon]
-    if not future_window:
-        return None
-    entry_close = float(candles[candle_index].close)
-    last_close = float(future_window[-1].close)
-    fallback_delta = float(candles[candle_index].close) - float(candles[max(candle_index - 1, 0)].close)
-    bias = pattern_bias(slug, fallback_price_delta=fallback_delta)
-    if bias > 0:
-        terminal_return = (last_close - entry_close) / max(entry_close, 1e-9)
-        drawdown = (min(float(item.low) for item in future_window) - entry_close) / max(entry_close, 1e-9)
-    else:
-        terminal_return = (entry_close - last_close) / max(entry_close, 1e-9)
-        drawdown = (entry_close - max(float(item.high) for item in future_window)) / max(entry_close, 1e-9)
-    return PatternOutcome(
-        pattern_slug=slug,
-        timeframe=signal.timeframe,
-        terminal_return=terminal_return,
-        drawdown=drawdown,
-        success=terminal_return > 0,
-        age_days=max((utc_now() - ensure_utc(signal.candle_timestamp)).days, 0),
-    )
 
 
 def refresh_pattern_statistics(db: Session) -> dict[str, object]:
     sync_pattern_metadata(db)
     outcomes_by_pattern: dict[tuple[str, int], list[PatternOutcome]] = defaultdict(list)
-    grouped_signals = _signal_groups(db)
-    for (coin_id, timeframe), signals in grouped_signals.items():
-        if not signals:
+    for row in _history_rows(db):
+        if not is_pattern_signal(str(row.signal_type)):
             continue
-        start = _open_timestamp_from_signal(signals[0])
-        end = ensure_utc(signals[-1].candle_timestamp) + timeframe_delta(timeframe) * (HORIZON_BARS_BY_TIMEFRAME.get(timeframe, 8) + 1)
-        candles = fetch_candle_points_between(db, coin_id, timeframe, start, end)
-        if not candles:
+        slug = slug_from_signal_type(str(row.signal_type))
+        if slug is None:
             continue
-        index_map = _candle_index_map(candles)
-        for signal in signals:
-            outcome = _signal_outcome(signal, candles, index_map)
-            if outcome is not None:
-                outcomes_by_pattern[(outcome.pattern_slug, outcome.timeframe)].append(outcome)
+        outcome = PatternOutcome(
+            pattern_slug=slug,
+            timeframe=int(row.timeframe),
+            terminal_return=float(row.result_return),
+            drawdown=float(row.result_drawdown),
+            success=float(row.result_return) > 0,
+            age_days=max((utc_now() - ensure_utc(row.candle_timestamp)).days, 0),
+        )
+        outcomes_by_pattern[(outcome.pattern_slug, outcome.timeframe)].append(outcome)
 
     rows: list[dict[str, object]] = []
     lifecycle_updates: list[dict[str, object]] = []

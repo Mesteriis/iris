@@ -11,6 +11,7 @@ from app.db.session import Base
 if TYPE_CHECKING:
     from app.models.candle import Candle
     from app.models.coin_metrics import CoinMetrics
+    from app.models.feature_snapshot import FeatureSnapshot
     from app.models.final_signal import FinalSignal
     from app.models.indicator_cache import IndicatorCache
     from app.models.investment_decision import InvestmentDecision
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from app.models.risk_metric import RiskMetric
     from app.models.sector import Sector
     from app.models.signal import Signal
+    from app.models.signal_history import SignalHistory
 
 
 class Coin(Base):
@@ -60,10 +62,20 @@ class Coin(Base):
         cascade="all, delete-orphan",
         order_by="IndicatorCache.timestamp",
     )
+    feature_snapshots: Mapped[list["FeatureSnapshot"]] = relationship(
+        back_populates="coin",
+        cascade="all, delete-orphan",
+        order_by="FeatureSnapshot.timestamp",
+    )
     signals: Mapped[list["Signal"]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="Signal.candle_timestamp",
+    )
+    signal_history: Mapped[list["SignalHistory"]] = relationship(
+        back_populates="coin",
+        cascade="all, delete-orphan",
+        order_by="SignalHistory.candle_timestamp",
     )
     market_cycles: Mapped[list["MarketCycle"]] = relationship(
         back_populates="coin",
