@@ -1,21 +1,17 @@
 from __future__ import annotations
 
-from src.core.db.session import AsyncSessionLocal
 from src.apps.market_data.models import Coin
 from src.apps.market_data.services import get_coin_by_symbol_async, list_coin_symbols_ready_for_latest_sync_async
-from src.apps.patterns.services import (
-    PatternEngine,
-    enrich_signal_context,
-    evaluate_investment_decision,
-    refresh_discovered_patterns,
-    refresh_investment_decisions,
-    refresh_market_cycles,
-    refresh_recent_signal_contexts,
-    refresh_sector_metrics,
-    refresh_strategies,
-    run_pattern_evaluation_cycle,
-)
+from src.apps.patterns.domain.context import enrich_signal_context, refresh_recent_signal_contexts
+from src.apps.patterns.domain.cycle import refresh_market_cycles
+from src.apps.patterns.domain.decision import evaluate_investment_decision, refresh_investment_decisions
+from src.apps.patterns.domain.discovery import refresh_discovered_patterns
+from src.apps.patterns.domain.engine import PatternEngine
+from src.apps.patterns.domain.evaluation import run_pattern_evaluation_cycle
+from src.apps.patterns.domain.narrative import refresh_sector_metrics
+from src.apps.patterns.domain.strategy import refresh_strategies
 from src.apps.patterns.domain.risk import evaluate_final_signal, refresh_final_signals
+from src.core.db.session import AsyncSessionLocal
 from src.runtime.orchestration.broker import analytics_broker
 from src.runtime.orchestration.locks import async_redis_task_lock
 

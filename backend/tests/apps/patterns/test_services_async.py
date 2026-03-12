@@ -8,7 +8,7 @@ from sqlalchemy import select
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics
 from src.apps.patterns.models import PatternFeature
-from src.apps.patterns.services import (
+from src.apps.patterns.query_services import (
     _build_sector_narratives_async,
     _capital_wave_bucket,
     _cluster_membership_map_async,
@@ -16,19 +16,12 @@ from src.apps.patterns.services import (
     _compute_live_regimes_async,
     _fetch_candle_points_async,
     _serialize_signal_rows_async,
-    get_coin_regimes_async,
-    list_coin_patterns_async,
-    list_discovered_patterns_async,
-    list_market_cycles_async,
-    list_pattern_features_async,
-    list_patterns_async,
-    list_sector_metrics_async,
-    list_sectors_async,
-    update_pattern_async,
-    update_pattern_feature_async,
+    PatternQueryService,
 )
+from src.apps.patterns.services import PatternAdminService
 from src.apps.patterns.selectors import _signal_select
 from src.apps.signals.models import Signal
+from src.core.db.uow import SessionUnitOfWork
 
 
 @pytest.mark.asyncio
@@ -47,12 +40,12 @@ async def test_pattern_async_services_cover_runtime_helpers(async_db_session, db
 
     assert await _cluster_membership_map_async(async_db_session, []) == {}
     membership = await _cluster_membership_map_async(async_db_session, rows)
-    assert membership[(int(btc.id), 15, signal_timestamp)] == ["pattern_cluster_breakout"]
+    assert membership[(int(btc.id), 15, signal_timestamp)] == ("pattern_cluster_breakout",)
 
     serialized = await _serialize_signal_rows_async(async_db_session, rows)
-    assert serialized[0]["cluster_membership"] == ["pattern_cluster_breakout"]
-    assert serialized[0]["market_regime"] == "bull_trend"
-    assert serialized[0]["cycle_phase"] == "markup"
+    assert serialized[0].cluster_membership == ("pattern_cluster_breakout",)
+    assert serialized[0].market_regime == "bull_trend"
+    assert serialized[0].cycle_phase == "markup"
 
     candles = await _fetch_candle_points_async(async_db_session, coin_id=int(btc.id), timeframe=15, limit=25)
     assert len(candles) == 25
@@ -71,10 +64,32 @@ async def test_pattern_async_services_cover_runtime_helpers(async_db_session, db
     assert live_regimes[0].timeframe == 15
 
     assert _capital_wave_bucket(SimpleNamespace(symbol="BTCUSD", sector_id=1), None, top_sector_id=None) == "btc"
-    assert _capital_wave_bucket(SimpleNamespace(symbol="ETHUSD", sector_id=1), SimpleNamespace(market_cap=20_000_000_000), top_sector_id=None) == "large_caps"
-    assert _capital_wave_bucket(SimpleNamespace(symbol="ETHUSD", sector_id=77), SimpleNamespace(market_cap=5_000_000_000), top_sector_id=77) == "sector_leaders"
-    assert _capital_wave_bucket(SimpleNamespace(symbol="ALTUSD", sector_id=1), SimpleNamespace(market_cap=2_000_000_000), top_sector_id=None) == "mid_caps"
-    assert _capital_wave_bucket(SimpleNamespace(symbol="MICROUSD", sector_id=1), SimpleNamespace(market_cap=200_000_000), top_sector_id=None) == "micro_caps"
+    assert (
+        _capital_wave_bucket(
+            SimpleNamespace(symbol="ETHUSD", sector_id=1),
+            SimpleNamespace(market_cap=20_000_000_000),
+            top_sector_id=None,
+        )
+        == "large_caps"
+    )
+    assert (
+        _capital_wave_bucket(
+            SimpleNamespace(symbol="ETHUSD", sector_id=77), SimpleNamespace(market_cap=5_000_000_000), top_sector_id=77
+        )
+        == "sector_leaders"
+    )
+    assert (
+        _capital_wave_bucket(
+            SimpleNamespace(symbol="ALTUSD", sector_id=1), SimpleNamespace(market_cap=2_000_000_000), top_sector_id=None
+        )
+        == "mid_caps"
+    )
+    assert (
+        _capital_wave_bucket(
+            SimpleNamespace(symbol="MICROUSD", sector_id=1), SimpleNamespace(market_cap=200_000_000), top_sector_id=None
+        )
+        == "micro_caps"
+    )
 
     db_session.add_all(
         [
@@ -114,59 +129,103 @@ async def test_pattern_async_services_cover_runtime_helpers(async_db_session, db
 
 
 @pytest.mark.asyncio
-async def test_pattern_async_services_cover_listing_update_and_regime_paths(async_db_session, db_session, seeded_api_state) -> None:
-    patterns = await list_patterns_async(async_db_session)
-    assert {"bull_flag", "breakout_retest"} <= {row["slug"] for row in patterns}
+async def test_pattern_async_services_cover_listing_update_and_regime_paths(
+    async_db_session, db_session, seeded_api_state
+) -> None:
+    query_service = PatternQueryService(async_db_session)
 
-    features = await list_pattern_features_async(async_db_session)
-    assert {"market_regime_engine", "pattern_context_engine"} <= {row["feature_slug"] for row in features}
-    assert await update_pattern_feature_async(async_db_session, "missing_feature", enabled=False) is None
-    assert (await update_pattern_feature_async(async_db_session, "pattern_context_engine", enabled=False))["enabled"] is False
+    patterns = await query_service.list_patterns()
+    assert {"bull_flag", "breakout_retest"} <= {row.slug for row in patterns}
 
-    assert await update_pattern_async(async_db_session, "missing_pattern", enabled=True, lifecycle_state=None, cpu_cost=None) is None
+    features = await query_service.list_pattern_features()
+    assert {"market_regime_engine", "pattern_context_engine"} <= {row.feature_slug for row in features}
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        admin_service = PatternAdminService(uow)
+        assert await admin_service.update_pattern_feature("missing_feature", enabled=False) is None
+        assert (await admin_service.update_pattern_feature("pattern_context_engine", enabled=False)).enabled is False
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        admin_service = PatternAdminService(uow)
+        assert (
+            await admin_service.update_pattern(
+                "missing_pattern",
+                enabled=True,
+                lifecycle_state=None,
+                cpu_cost=None,
+            )
+            is None
+        )
     with pytest.raises(ValueError):
-        await update_pattern_async(async_db_session, "bull_flag", enabled=True, lifecycle_state="invalid", cpu_cost=None)
-    updated = await update_pattern_async(async_db_session, "bull_flag", enabled=False, lifecycle_state="experimental", cpu_cost=0)
-    assert updated["enabled"] is False
-    assert updated["lifecycle_state"] == "EXPERIMENTAL"
-    assert updated["cpu_cost"] == 1
-    active_update = await update_pattern_async(async_db_session, "breakout_retest", enabled=None, lifecycle_state="active", cpu_cost=None)
+        async with SessionUnitOfWork(async_db_session) as uow:
+            await PatternAdminService(uow).update_pattern(
+                "bull_flag",
+                enabled=True,
+                lifecycle_state="invalid",
+                cpu_cost=None,
+            )
+    async with SessionUnitOfWork(async_db_session) as uow:
+        updated = await PatternAdminService(uow).update_pattern(
+            "bull_flag",
+            enabled=False,
+            lifecycle_state="experimental",
+            cpu_cost=0,
+        )
+    assert updated.enabled is False
+    assert updated.lifecycle_state == "EXPERIMENTAL"
+    assert updated.cpu_cost == 1
+    async with SessionUnitOfWork(async_db_session) as uow:
+        active_update = await PatternAdminService(uow).update_pattern(
+            "breakout_retest",
+            enabled=None,
+            lifecycle_state="active",
+            cpu_cost=None,
+        )
     assert active_update is not None
-    assert active_update["lifecycle_state"] == "ACTIVE"
-    cpu_only_update = await update_pattern_async(async_db_session, "breakout_retest", enabled=True, lifecycle_state=None, cpu_cost=2)
+    assert active_update.lifecycle_state == "ACTIVE"
+    async with SessionUnitOfWork(async_db_session) as uow:
+        cpu_only_update = await PatternAdminService(uow).update_pattern(
+            "breakout_retest",
+            enabled=True,
+            lifecycle_state=None,
+            cpu_cost=2,
+        )
     assert cpu_only_update is not None
-    assert cpu_only_update["cpu_cost"] == 2
+    assert cpu_only_update.cpu_cost == 2
 
-    discovered = await list_discovered_patterns_async(async_db_session, timeframe=15, limit=1)
-    assert discovered[0]["structure_hash"] == "cluster:bull_flag:15"
-    assert (await list_discovered_patterns_async(async_db_session, limit=1))[0]["structure_hash"] == "cluster:bull_flag:15"
+    discovered = await query_service.list_discovered_patterns(timeframe=15, limit=1)
+    assert discovered[0].structure_hash == "cluster:bull_flag:15"
+    assert (await query_service.list_discovered_patterns(limit=1))[0].structure_hash == "cluster:bull_flag:15"
 
-    coin_patterns = await list_coin_patterns_async(async_db_session, "btcusd_evt", limit=10)
-    assert [row["signal_type"] for row in coin_patterns] == ["pattern_bull_flag", "pattern_cluster_breakout"]
+    coin_patterns = await query_service.list_coin_patterns("btcusd_evt", limit=10)
+    assert [row.signal_type for row in coin_patterns] == ["pattern_bull_flag", "pattern_cluster_breakout"]
 
-    assert await get_coin_regimes_async(async_db_session, "missing_evt") is None
-    direct_regime = await get_coin_regimes_async(async_db_session, "BTCUSD_EVT")
+    assert await query_service.get_coin_regime_read_by_symbol("missing_evt") is None
+    direct_regime = await query_service.get_coin_regime_read_by_symbol("BTCUSD_EVT")
     assert direct_regime is not None
-    assert direct_regime["canonical_regime"] == "bull_trend"
-    assert direct_regime["items"][0]["timeframe"] == 15
+    assert direct_regime.canonical_regime == "bull_trend"
+    assert direct_regime.items[0].timeframe == 15
 
-    await update_pattern_feature_async(async_db_session, "market_regime_engine", enabled=False)
-    disabled_regime = await get_coin_regimes_async(async_db_session, "BTCUSD_EVT")
-    assert disabled_regime["canonical_regime"] is None
-    assert disabled_regime["items"] == []
+    async with SessionUnitOfWork(async_db_session) as uow:
+        await PatternAdminService(uow).update_pattern_feature("market_regime_engine", enabled=False)
+    disabled_regime = await query_service.get_coin_regime_read_by_symbol("BTCUSD_EVT")
+    assert disabled_regime.canonical_regime is None
+    assert disabled_regime.items == ()
 
     feature = await async_db_session.get(PatternFeature, "market_regime_engine")
     assert feature is not None
     feature.enabled = True
-    metrics = (await async_db_session.execute(select(CoinMetrics).where(CoinMetrics.coin_id == direct_regime["coin_id"]))).scalar_one()
+    metrics = (
+        await async_db_session.execute(select(CoinMetrics).where(CoinMetrics.coin_id == direct_regime.coin_id))
+    ).scalar_one()
     metrics.market_regime_details = None
     await async_db_session.commit()
 
-    fallback_regime = await get_coin_regimes_async(async_db_session, "BTCUSD_EVT")
-    assert fallback_regime["items"]
+    fallback_regime = await query_service.get_coin_regime_read_by_symbol("BTCUSD_EVT")
+    assert fallback_regime.items
 
-    sectors = await list_sectors_async(async_db_session)
-    assert {row["name"] for row in sectors} >= {"store_of_value", "smart_contract", "high_beta"}
+    sectors = await query_service.list_sectors()
+    assert {row.name for row in sectors} >= {"store_of_value", "smart_contract", "high_beta"}
 
     signal_timestamp = seeded_api_state["signal_timestamp"]
     db_session.add_all(
@@ -199,18 +258,18 @@ async def test_pattern_async_services_cover_listing_update_and_regime_paths(asyn
     )
     db_session.commit()
 
-    sector_metrics_filtered = await list_sector_metrics_async(async_db_session, timeframe=15)
-    assert [row["name"] for row in sector_metrics_filtered["items"]] == ["store_of_value", "smart_contract"]
-    assert sector_metrics_filtered["narratives"][0]["timeframe"] == 15
+    sector_metrics_filtered = await query_service.list_sector_metrics(timeframe=15)
+    assert [row.name for row in sector_metrics_filtered.items] == ["store_of_value", "smart_contract"]
+    assert sector_metrics_filtered.narratives[0].timeframe == 15
 
-    sector_metrics_all = await list_sector_metrics_async(async_db_session)
-    assert len(sector_metrics_all["items"]) >= 4
-    assert {item["timeframe"] for item in sector_metrics_all["narratives"]} >= {15, 60}
+    sector_metrics_all = await query_service.list_sector_metrics()
+    assert len(sector_metrics_all.items) >= 4
+    assert {item.timeframe for item in sector_metrics_all.narratives} >= {15, 60}
 
-    cycles = await list_market_cycles_async(async_db_session, symbol="BTCUSD_EVT", timeframe=15)
+    cycles = await query_service.list_market_cycles(symbol="BTCUSD_EVT", timeframe=15)
     assert len(cycles) == 1
-    assert cycles[0]["cycle_phase"] == "markup"
-    assert await list_market_cycles_async(async_db_session)
+    assert cycles[0].cycle_phase == "markup"
+    assert await query_service.list_market_cycles()
 
 
 class _ScalarResult:
@@ -256,7 +315,7 @@ async def test_pattern_async_sector_narrative_rotation_branches(monkeypatch) -> 
         del timeframe
         return (0.03 if coin_id == 1 else 0.02, 0.01)
 
-    monkeypatch.setattr("src.apps.patterns.services._coin_bar_return_async", _coin_bar_return)
+    monkeypatch.setattr("src.apps.patterns.query_services._coin_bar_return_async", _coin_bar_return)
 
     none_session = _NarrativeSession(
         [

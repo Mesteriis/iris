@@ -160,11 +160,29 @@ Classification:
 
 - `OK`
 
+#### `apps/patterns`
+
+Status: migrated on the async API/application surface; sync analytics task/runtime core still pending
+
+- repositories now isolate pattern feature and pattern registry write paths in [backend/src/apps/patterns/repositories.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/repositories.py)
+- read-only pattern catalog, discovered pattern, coin regime, coin pattern, sector metrics and market-cycle projections now go through [backend/src/apps/patterns/query_services.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/query_services.py)
+- immutable dataclass read models now live in [backend/src/apps/patterns/read_models.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/read_models.py)
+- views now depend on the shared async UoW instead of owning `AsyncSession` directly
+- the market-cycle endpoint consumed by `indicators` now reuses the same query service instead of a module-level function facade
+- persistence logging now covers pattern feature/pattern registry writes and public query paths
+- remaining follow-up:
+  - [backend/src/apps/patterns/tasks.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/tasks.py) still executes the legacy sync analytics core through `run_sync`
+  - sync-heavy domain modules under [backend/src/apps/patterns/domain](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/domain) still own evaluation/bootstrap/discovery/strategy persistence internally
+
+Classification:
+
+- `OK` on async/public callers
+- `later migration` for sync-heavy task/runtime analytics core
+
 ### Sync-Heavy Analytical Domains
 
 These domains are still dominated by synchronous `Session` access inside selectors/engines and represent the largest remaining migration surface:
 
-- `apps/patterns`
 - `apps/signals`
 - `apps/portfolio`
 - `apps/predictions`
@@ -197,10 +215,9 @@ Priority note:
 
 Direct session injection exists in multiple route modules, including:
 
-- [backend/src/apps/market_structure/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_structure/views.py)
-- [backend/src/apps/market_data/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/views.py)
+- [backend/src/apps/portfolio/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/portfolio/views.py)
 - [backend/src/apps/predictions/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/predictions/views.py)
-- [backend/src/apps/patterns/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/views.py)
+- [backend/src/apps/signals/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/signals/views.py)
 
 Required action:
 
@@ -262,8 +279,9 @@ Recommended rollout order:
 5. completed: `apps/market_structure`
 6. completed: `apps/market_data`
 7. completed: `apps/indicators`
-8. next: sync-heavy analytical domains starting with `apps/patterns`
-9. later: `signals`, `portfolio`, `predictions`, `cross_market`
+8. completed on the async/public API surface: `apps/patterns`
+9. next: `apps/patterns` task/runtime analytics core
+10. later: `signals`, `portfolio`, `predictions`, `cross_market`
 
 ## Current Behavior To Preserve
 

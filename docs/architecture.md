@@ -179,8 +179,9 @@ Current implementation coverage:
 
 - shared `core/db` unit-of-work and persistence logging foundation
 - migrated `hypothesis_engine`, `control_plane`, `news`, `market_structure`, `market_data` and `indicators` repository/query contracts
+- `patterns` API/read-write surface now uses repositories, query services, immutable read models and UoW-owned FastAPI handlers
 - `apps/market_data` keeps legacy sync adapters only for Timescale-specific aggregate/resampling access and not for new async callers
-- `indicator_workers` now persist metrics/cache/signals through async repositories/UoW instead of `run_sync`, while later analytical stages still keep their legacy sync cores
+- `indicator_workers` now persist metrics/cache/signals through async repositories/UoW; `patterns` task/runtime analytics is the remaining sync-heavy core in that pipeline
 - remaining domains tracked in the audit backlog
 
 ## Home Assistant

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.apps.patterns.query_services import PatternQueryService
 from src.apps.patterns.schemas import (
     CoinRegimeRead,
     DiscoveredPatternRead,
@@ -11,40 +11,33 @@ from src.apps.patterns.schemas import (
     SectorMetricsResponse,
     SectorRead,
 )
-from src.apps.patterns.services import (
-    get_coin_regimes_async,
-    list_coin_patterns_async,
-    list_discovered_patterns_async,
-    list_pattern_features_async,
-    list_patterns_async,
-    list_sector_metrics_async,
-    list_sectors_async,
-    update_pattern_async,
-    update_pattern_feature_async,
-)
+from src.apps.patterns.services import PatternAdminService
 from src.apps.signals.schemas import SignalRead
-from src.core.db.session import get_db
+from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 
 router = APIRouter(tags=["patterns"])
+DB_UOW = Depends(get_uow)
 
 
 @router.get("/patterns", response_model=list[PatternRead])
-async def read_patterns(db: AsyncSession = Depends(get_db)) -> list[PatternRead]:
-    return list(await list_patterns_async(db))
+async def read_patterns(uow: BaseAsyncUnitOfWork = DB_UOW) -> list[PatternRead]:
+    items = await PatternQueryService(uow.session).list_patterns()
+    return [PatternRead.model_validate(item) for item in items]
 
 
 @router.get("/patterns/features", response_model=list[PatternFeatureRead])
-async def read_pattern_features(db: AsyncSession = Depends(get_db)) -> list[PatternFeatureRead]:
-    return list(await list_pattern_features_async(db))
+async def read_pattern_features(uow: BaseAsyncUnitOfWork = DB_UOW) -> list[PatternFeatureRead]:
+    items = await PatternQueryService(uow.session).list_pattern_features()
+    return [PatternFeatureRead.model_validate(item) for item in items]
 
 
 @router.patch("/patterns/features/{feature_slug}", response_model=PatternFeatureRead)
 async def patch_pattern_feature(
     feature_slug: str,
     payload: PatternFeatureUpdate,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> PatternFeatureRead:
-    row = await update_pattern_feature_async(db, feature_slug, enabled=payload.enabled)
+    row = await PatternAdminService(uow).update_pattern_feature(feature_slug, enabled=payload.enabled)
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -57,11 +50,10 @@ async def patch_pattern_feature(
 async def patch_pattern(
     slug: str,
     payload: PatternUpdate,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> PatternRead:
     try:
-        row = await update_pattern_async(
-            db,
+        row = await PatternAdminService(uow).update_pattern(
             slug,
             enabled=payload.enabled,
             lifecycle_state=payload.lifecycle_state,
@@ -81,23 +73,25 @@ async def patch_pattern(
 async def read_discovered_patterns(
     timeframe: int | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> list[DiscoveredPatternRead]:
-    return list(await list_discovered_patterns_async(db, timeframe=timeframe, limit=limit))
+    items = await PatternQueryService(uow.session).list_discovered_patterns(timeframe=timeframe, limit=limit)
+    return [DiscoveredPatternRead.model_validate(item) for item in items]
 
 
 @router.get("/coins/{symbol}/patterns", response_model=list[SignalRead])
 async def read_coin_patterns(
     symbol: str,
     limit: int = Query(default=200, ge=1, le=1000),
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> list[SignalRead]:
-    return list(await list_coin_patterns_async(db, symbol, limit=limit))
+    items = await PatternQueryService(uow.session).list_coin_patterns(symbol, limit=limit)
+    return [SignalRead.model_validate(item) for item in items]
 
 
 @router.get("/coins/{symbol}/regime", response_model=CoinRegimeRead)
-async def read_coin_regime(symbol: str, db: AsyncSession = Depends(get_db)) -> CoinRegimeRead:
-    payload = await get_coin_regimes_async(db, symbol)
+async def read_coin_regime(symbol: str, uow: BaseAsyncUnitOfWork = DB_UOW) -> CoinRegimeRead:
+    payload = await PatternQueryService(uow.session).get_coin_regime_read_by_symbol(symbol)
     if payload is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -107,13 +101,16 @@ async def read_coin_regime(symbol: str, db: AsyncSession = Depends(get_db)) -> C
 
 
 @router.get("/sectors", response_model=list[SectorRead], tags=["sectors"])
-async def read_sectors(db: AsyncSession = Depends(get_db)) -> list[SectorRead]:
-    return list(await list_sectors_async(db))
+async def read_sectors(uow: BaseAsyncUnitOfWork = DB_UOW) -> list[SectorRead]:
+    items = await PatternQueryService(uow.session).list_sectors()
+    return [SectorRead.model_validate(item) for item in items]
 
 
 @router.get("/sectors/metrics", response_model=SectorMetricsResponse, tags=["sectors"])
 async def read_sector_metrics(
     timeframe: int | None = Query(default=None),
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> SectorMetricsResponse:
-    return SectorMetricsResponse.model_validate(await list_sector_metrics_async(db, timeframe=timeframe))
+    return SectorMetricsResponse.model_validate(
+        await PatternQueryService(uow.session).list_sector_metrics(timeframe=timeframe)
+    )

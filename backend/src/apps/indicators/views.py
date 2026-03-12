@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, Query
 
 from src.apps.indicators.query_services import IndicatorQueryService
 from src.apps.indicators.schemas import CoinMetricsRead, MarketFlowRead, MarketRadarRead
+from src.apps.patterns.query_services import PatternQueryService
 from src.apps.patterns.schemas import MarketCycleRead
-from src.apps.patterns.services import list_market_cycles_async
 from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 
 router = APIRouter(tags=["indicators"])
@@ -22,7 +22,8 @@ async def read_market_cycles(
     timeframe: int | None = Query(default=None),
     uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> list[MarketCycleRead]:
-    return list(await list_market_cycles_async(uow.session, symbol=symbol, timeframe=timeframe))
+    items = await PatternQueryService(uow.session).list_market_cycles(symbol=symbol, timeframe=timeframe)
+    return [MarketCycleRead.model_validate(item) for item in items]
 
 
 @router.get("/market/radar", response_model=MarketRadarRead, tags=["market"])
