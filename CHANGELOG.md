@@ -83,6 +83,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- README and architecture docs now document the end-to-end control-plane routing model, draft/apply workflow, visual topology UI and the migration from legacy worker subscriptions into DB-backed topology state.
 - Frontend API contracts now include typed control-plane graph, draft and observability payloads so the visual topology editor consumes the same declarative backend model as the runtime.
 - Draft application now promotes a new published topology snapshot in `topology_config_versions`, making the control plane the canonical runtime routing source instead of leaving draft diffs as side data.
 - Runtime delivery workers now emit control-plane consumer metrics on successful and failed route deliveries, so observability is sourced from the new topology model instead of ad hoc worker-local state.

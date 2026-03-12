@@ -335,6 +335,72 @@ Each worker only ACKs after processing. Stale pending messages are reclaimed wit
 
 There is no parallel legacy analytics trigger path. Runtime candle analytics now enters the system only through `iris_events`.
 
+## Event Control Plane
+
+IRIS now routes runtime events through a DB-backed Event Control Plane instead of relying on a hardcoded in-process subscription map.
+
+Source of truth:
+
+- `event_definitions`
+- `event_consumers`
+- `event_routes`
+- `event_route_audit_logs`
+- `topology_config_versions`
+- `topology_drafts`
+- `topology_draft_changes`
+
+Runtime model:
+
+1. Producers still publish into the canonical ingress stream `iris_events`.
+2. `control_plane_dispatcher` reads the hot topology snapshot from Redis/in-process cache, not from SQL on every event.
+3. The dispatcher evaluates compatibility, scope, filters, status, shadow and throttle rules.
+4. Matching routes fan out into per-consumer delivery streams such as `iris:deliveries:decision_workers`.
+5. Domain workers consume only their delivery stream, keeping routing policy outside domain code.
+
+Control events:
+
+- `control.route_created`
+- `control.route_updated`
+- `control.route_status_changed`
+- `control.topology_published`
+- `control.cache_invalidated`
+
+### Draft / apply flow
+
+- Live topology is represented by the latest `published` row in `topology_config_versions`.
+- UI and API mutations stage draft changes first; they do not mutate the runtime graph immediately.
+- Applying a draft creates a new published topology version, snapshots the resulting graph and emits publish/invalidation control events.
+- Discarding a draft leaves live routes untouched but still writes discard audit rows.
+- Stale drafts are rejected on apply if they are not based on the current published version.
+
+### Visual topology UI
+
+The frontend now exposes `/control-plane` as the operator workbench.
+
+- The canvas reads `/control-plane/topology/graph`.
+- Drag an event node onto a compatible consumer node to stage a `route_created` draft change.
+- Use the inspector to stage `route_status_changed` changes for an existing live route.
+- Apply or discard the active draft explicitly; the live runtime only changes after apply.
+
+### Adding new events or consumers
+
+When extending the runtime, keep the migration path explicit:
+
+1. Add the producer or consumer implementation in the relevant backend domain/runtime package.
+2. Register the new event definition or consumer in the control-plane seed/migration path.
+3. Define compatibility through the consumer registry entry.
+4. Create the initial route through a migration/bootstrap step or through the draft/apply workflow.
+5. Verify the route through `/control-plane/observability` and the `/control-plane` UI.
+
+### Access control
+
+Control-plane read APIs can be used in observe mode. Mutating endpoints require:
+
+- `X-IRIS-Actor`
+- `X-IRIS-Access-Mode: control`
+- optional `X-IRIS-Reason`
+- optional `X-IRIS-Control-Token` when `IRIS_CONTROL_TOKEN` is configured
+
 ### Incremental path
 
 1. New closed candle is written into `candles` by polling.

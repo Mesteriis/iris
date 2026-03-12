@@ -137,6 +137,12 @@ Draft publish semantics are now explicit:
 - discard leaves live routes untouched, marks the draft as `discarded` and still records discard audit rows for traceability
 - publish emits `control.topology_published` plus `control.cache_invalidated`, making the new version the runtime source of truth
 
+Legacy routing migration is complete at the architecture level:
+
+- the old `runtime/streams/router.py` worker subscription map is now bootstrapped into control-plane tables by migration
+- domain workers no longer decide interest by local event-type filtering against the ingress stream
+- new routing behavior must be introduced through the control-plane registry/topology model, then surfaced through draft/apply or bootstrap migrations
+
 ## Database
 
 The database includes the market-data core plus higher-level analytical domains. Key persisted areas now include:
