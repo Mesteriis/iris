@@ -205,6 +205,7 @@ Initial rollout completed in this refactor pass:
   - `apps/indicators`
   - `apps/predictions` on the active async API and scheduled evaluation surface
   - `apps/signals` on the active async/public API read surface
+  - `apps/portfolio` on the active async/public API and scheduled sync surface
   - `apps/cross_market` on the active async worker/runtime surface
   - `apps/patterns` on the async/public API surface and TaskIQ orchestration layer
   - repository/query split
@@ -212,4 +213,4 @@ Initial rollout completed in this refactor pass:
   - centralized transaction ownership in services/tasks/views/consumers
   - persistence logging hooks
 
-Remaining domains are tracked in [docs/persistence-audit.md](/Users/avm/projects/Personal/iris/docs/persistence-audit.md).
+Remaining domains are tracked in [docs/persistence-audit.md](docs/persistence-audit.md).

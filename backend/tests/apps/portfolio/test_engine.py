@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import select
 
 from src.core.db.session import SessionLocal
+from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
 from src.apps.portfolio.models import PortfolioAction
@@ -14,6 +15,34 @@ from src.apps.portfolio.models import PortfolioPosition
 from src.apps.portfolio.engine import evaluate_portfolio_action
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_market_decision
+
+
+def _run_dispatcher_loop() -> None:
+    consumer = create_topology_dispatcher_consumer()
+    try:
+        consumer.run()
+    finally:
+        consumer.close()
+
+
+def _start_portfolio_pipeline_processes() -> tuple[multiprocessing.Process, multiprocessing.Process]:
+    ctx = multiprocessing.get_context("spawn")
+    dispatcher = ctx.Process(target=_run_dispatcher_loop, daemon=True)
+    worker = ctx.Process(
+        target=run_worker_loop,
+        args=("portfolio_workers",),
+        daemon=True,
+    )
+    dispatcher.start()
+    worker.start()
+    return dispatcher, worker
+
+
+def _stop_processes(*processes: multiprocessing.Process) -> None:
+    for process in processes:
+        process.terminate()
+    for process in processes:
+        process.join(timeout=2.0)
 
 
 def test_portfolio_engine_opens_position_from_buy_decision(db_session) -> None:
@@ -61,13 +90,7 @@ async def test_portfolio_worker_consumes_signal_fusion_decision_event(db_session
     )
     timestamp = datetime(2026, 3, 11, 14, 15, tzinfo=timezone.utc)
 
-    ctx = multiprocessing.get_context("spawn")
-    worker = ctx.Process(
-        target=run_worker_loop,
-        args=("portfolio_workers",),
-        daemon=True,
-    )
-    worker.start()
+    dispatcher, worker = _start_portfolio_pipeline_processes()
     try:
         publish_event(
             "decision_generated",
@@ -96,5 +119,4 @@ async def test_portfolio_worker_consumes_signal_fusion_decision_event(db_session
 
         await wait_until(_action_created, timeout=10.0, interval=0.2)
     finally:
-        worker.terminate()
-        worker.join(timeout=2.0)
+        _stop_processes(dispatcher, worker)

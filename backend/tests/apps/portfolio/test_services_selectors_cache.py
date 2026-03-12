@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from dataclasses import replace
-from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import delete, select
 
-from src.apps.market_data.models import Coin
 from src.apps.indicators.models import CoinMetrics
 from src.apps.portfolio import cache, tasks
 from src.apps.portfolio.cache import (
@@ -22,21 +19,11 @@ from src.apps.portfolio.cache import (
     read_cached_portfolio_state,
     read_cached_portfolio_state_async,
 )
-from src.apps.portfolio.models import ExchangeAccount, PortfolioBalance, PortfolioPosition, PortfolioState
+from src.apps.portfolio.models import ExchangeAccount, PortfolioPosition, PortfolioState
+from src.apps.portfolio.query_services import PortfolioQueryService
 from src.apps.portfolio.selectors import get_portfolio_state, list_portfolio_actions, list_portfolio_positions
-from src.apps.portfolio.services import (
-    _apply_auto_watch,
-    _ensure_coin_for_balance_async,
-    _ensure_portfolio_state_async,
-    _refresh_portfolio_state_async,
-    _sync_balance_position_async,
-    _sync_balance_row_async,
-    get_portfolio_state_async,
-    list_portfolio_actions_async,
-    list_portfolio_positions_async,
-    sync_exchange_balances_async,
-)
-from tests.portfolio_support import create_exchange_account
+from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
+from src.core.db.uow import SessionUnitOfWork
 
 
 class _SyncCacheClient:
@@ -80,17 +67,6 @@ class _FixturePlugin:
 
     async def fetch_trades(self):
         return []
-
-
-class _AsyncDbContext:
-    def __init__(self, db: object) -> None:
-        self.db = db
-
-    async def __aenter__(self) -> object:
-        return self.db
-
-    async def __aexit__(self, exc_type, exc, tb) -> bool:
-        return False
 
 
 @asynccontextmanager
@@ -168,175 +144,256 @@ def test_portfolio_cache_and_selectors_cover_cached_and_uncached_paths(db_sessio
 
 
 @pytest.mark.asyncio
-async def test_portfolio_async_services_cover_balance_sync_and_task_wrapper(async_db_session, db_session, seeded_api_state, monkeypatch) -> None:
+async def test_portfolio_async_query_service_service_and_task_wrapper(
+    async_db_session,
+    db_session,
+    seeded_api_state,
+    monkeypatch,
+) -> None:
     btc = seeded_api_state["btc"]
     account = db_session.scalar(select(ExchangeAccount).limit(1))
     assert account is not None
 
-    positions = await list_portfolio_positions_async(async_db_session, limit=5)
-    assert positions[0]["symbol"] == "BTCUSD_EVT"
-    assert positions[0]["regime"] == "bull_trend"
+    positions = await PortfolioQueryService(async_db_session).list_positions(limit=5)
+    assert positions[0].symbol == "BTCUSD_EVT"
+    assert positions[0].regime == "bull_trend"
 
-    actions = await list_portfolio_actions_async(async_db_session, limit=5)
-    assert actions[0]["action"] == "OPEN_POSITION"
+    actions = await PortfolioQueryService(async_db_session).list_actions(limit=5)
+    assert actions[0].action == "OPEN_POSITION"
 
-    monkeypatch.setattr("src.apps.portfolio.services.read_cached_portfolio_state_async", lambda: __import__("asyncio").sleep(0, result={"cached": True}))
-    assert await get_portfolio_state_async(async_db_session) == {"cached": True}
+    monkeypatch.setattr(
+        "src.apps.portfolio.query_services.read_cached_portfolio_state_async",
+        lambda: __import__("asyncio").sleep(
+            0,
+            result={
+                "total_capital": 1.0,
+                "allocated_capital": 0.2,
+                "available_capital": 0.8,
+                "updated_at": "2026-03-12T10:00:00+00:00",
+                "open_positions": 4,
+                "max_positions": 7,
+            },
+        ),
+    )
+    cached_state = await PortfolioQueryService(async_db_session).get_state()
+    assert cached_state.total_capital == 1.0
+    assert cached_state.open_positions == 4
 
-    cached_states: list[dict[str, object]] = []
-    monkeypatch.setattr("src.apps.portfolio.services.read_cached_portfolio_state_async", lambda: __import__("asyncio").sleep(0, result=None))
-    monkeypatch.setattr("src.apps.portfolio.services.cache_portfolio_state_async", lambda payload: __import__("asyncio").sleep(0, result=cached_states.append(payload)))
-    state = await get_portfolio_state_async(async_db_session)
-    assert state["open_positions"] == 1
-    assert cached_states
+    cached_state_payloads: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "src.apps.portfolio.query_services.read_cached_portfolio_state_async",
+        lambda: __import__("asyncio").sleep(0, result=None),
+    )
+    monkeypatch.setattr(
+        "src.apps.portfolio.query_services.cache_portfolio_state_async",
+        lambda payload: __import__("asyncio").sleep(0, result=cached_state_payloads.append(payload)),
+    )
+    state = await PortfolioQueryService(async_db_session).get_state()
+    assert state.open_positions == 1
+    assert cached_state_payloads[-1]["max_positions"] == state.max_positions
 
     await async_db_session.execute(delete(PortfolioState))
     await async_db_session.execute(delete(PortfolioPosition))
     await async_db_session.commit()
-    missing_state = await get_portfolio_state_async(async_db_session)
-    assert missing_state["total_capital"] == 0.0
+    missing_state = await PortfolioQueryService(async_db_session).get_state()
+    assert missing_state.total_capital == 0.0
+    assert missing_state.open_positions == 0
 
-    ensured_state = await _ensure_portfolio_state_async(async_db_session)
-    assert ensured_state.id == 1
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = PortfolioService(uow)
+        ensured_state = await service._ensure_portfolio_state()
+        assert ensured_state.id == 1
 
-    existing_coin = await _ensure_coin_for_balance_async(async_db_session, symbol="BTCUSD_EVT", exchange_name="fixture")
-    assert existing_coin.id == btc.id
-    new_coin = await _ensure_coin_for_balance_async(async_db_session, symbol="NEWUSD_EVT", exchange_name="fixture")
-    assert new_coin.symbol == "NEWUSD_EVT"
-    assert new_coin.enabled is False
+        existing_coin = await service._ensure_coin_for_balance(symbol="BTCUSD_EVT", exchange_name="fixture")
+        assert existing_coin.id == btc.id
+        new_coin = await service._ensure_coin_for_balance(symbol="NEWUSD_EVT", exchange_name="fixture")
+        assert new_coin.symbol == "NEWUSD_EVT"
+        assert new_coin.enabled is False
 
-    metrics = await async_db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(btc.id)))
-    assert metrics is not None
-    metrics.price_current = 500.0
-    metrics.atr_14 = 15.0
-    await async_db_session.commit()
+        metrics = await async_db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(btc.id)))
+        assert metrics is not None
+        metrics.price_current = 500.0
+        metrics.atr_14 = 15.0
+        await uow.flush()
 
-    await _sync_balance_position_async(
-        async_db_session,
-        account=account,
-        coin=existing_coin,
-        value_usd=900.0,
-        balance=1.8,
-    )
-    await async_db_session.commit()
-    position = await async_db_session.scalar(
-        select(PortfolioPosition)
-        .where(PortfolioPosition.exchange_account_id == int(account.id), PortfolioPosition.coin_id == int(existing_coin.id))
-        .limit(1)
-    )
-    assert position is not None
-    assert float(position.position_value) == 900.0
+        await service._sync_balance_position(
+            account=account,
+            coin=existing_coin,
+            value_usd=900.0,
+            balance=1.8,
+        )
+        position = await async_db_session.scalar(
+            select(PortfolioPosition)
+            .where(PortfolioPosition.exchange_account_id == int(account.id), PortfolioPosition.coin_id == int(existing_coin.id))
+            .limit(1)
+        )
+        assert position is not None
+        assert float(position.position_value) == 900.0
 
-    await _sync_balance_position_async(
-        async_db_session,
-        account=account,
-        coin=existing_coin,
-        value_usd=0.0,
-        balance=0.0,
-    )
-    await async_db_session.commit()
-    closed_position = await async_db_session.scalar(
-        select(PortfolioPosition)
-        .where(PortfolioPosition.exchange_account_id == int(account.id), PortfolioPosition.coin_id == int(existing_coin.id))
-        .order_by(PortfolioPosition.id.desc())
-        .limit(1)
-    )
-    assert closed_position is not None
-    assert closed_position.status == "closed"
+        await service._sync_balance_position(
+            account=account,
+            coin=existing_coin,
+            value_usd=0.0,
+            balance=0.0,
+        )
+        closed_position = await async_db_session.scalar(
+            select(PortfolioPosition)
+            .where(PortfolioPosition.exchange_account_id == int(account.id), PortfolioPosition.coin_id == int(existing_coin.id))
+            .order_by(PortfolioPosition.id.desc())
+            .limit(1)
+        )
+        assert closed_position is not None
+        assert closed_position.status == "closed"
 
-    zero_coin = await _ensure_coin_for_balance_async(async_db_session, symbol="ZEROUSD_EVT", exchange_name="fixture")
-    await _sync_balance_position_async(
-        async_db_session,
-        account=account,
-        coin=zero_coin,
-        value_usd=0.0,
-        balance=0.0,
-    )
-    await async_db_session.commit()
-    assert await async_db_session.scalar(
-        select(PortfolioPosition)
-        .where(PortfolioPosition.exchange_account_id == int(account.id), PortfolioPosition.coin_id == int(zero_coin.id))
-        .limit(1)
-    ) is None
+        zero_coin = await service._ensure_coin_for_balance(symbol="ZEROUSD_EVT", exchange_name="fixture")
+        await service._sync_balance_position(
+            account=account,
+            coin=zero_coin,
+            value_usd=0.0,
+            balance=0.0,
+        )
+        assert await async_db_session.scalar(
+            select(PortfolioPosition)
+            .where(PortfolioPosition.exchange_account_id == int(account.id), PortfolioPosition.coin_id == int(zero_coin.id))
+            .limit(1)
+        ) is None
 
-    assert not _apply_auto_watch(coin=btc, value_usd=10.0)
-    btc.enabled = False
-    btc.auto_watch_enabled = False
-    changed = _apply_auto_watch(coin=btc, value_usd=1000.0)
-    assert changed
-    assert btc.enabled is True
+        assert not service._apply_auto_watch(coin=existing_coin, value_usd=10.0)
+        existing_coin.enabled = False
+        existing_coin.auto_watch_enabled = False
+        changed = service._apply_auto_watch(coin=existing_coin, value_usd=1000.0)
+        assert changed
+        assert existing_coin.enabled is True
 
-    published_events: list[str] = []
-    monkeypatch.setattr("src.apps.portfolio.services.publish_event", lambda event_type, payload: published_events.append(event_type))
-    none_row = await _sync_balance_row_async(
-        async_db_session,
-        account_id=999999,
-        exchange_name="fixture",
-        balance_row={"symbol": "BTCUSD_EVT", "balance": 1.0, "value_usd": 500.0},
-        emit_events=True,
-    )
-    assert none_row == (None, None)
-    blank_row = await _sync_balance_row_async(
-        async_db_session,
-        account_id=int(account.id),
-        exchange_name="fixture",
-        balance_row={"symbol": "", "balance": 1.0, "value_usd": 500.0},
-        emit_events=True,
-    )
-    assert blank_row == (None, None)
+        blank_row = await service._sync_balance_row(
+            account=account,
+            balance_row={"symbol": "", "balance": 1.0, "value_usd": 500.0},
+            emit_events=True,
+        )
+        assert blank_row is None
 
-    cached_row, payload = await _sync_balance_row_async(
-        async_db_session,
-        account_id=int(account.id),
-        exchange_name="fixture",
-        balance_row={"symbol": "AUTOUSD_EVT", "balance": 2.0, "value_usd": 650.0},
-        emit_events=True,
-    )
-    assert cached_row is not None and payload is not None
-    assert cached_row["auto_watch_enabled"] is True
-    assert payload["timeframe"] == 1440
-    assert "coin_auto_watch_enabled" in published_events
+        outcome = await service._sync_balance_row(
+            account=account,
+            balance_row={"symbol": "AUTOUSD_EVT", "balance": 2.0, "value_usd": 650.0},
+            emit_events=True,
+        )
+        assert outcome is not None
+        assert outcome.cached_row.auto_watch_enabled is True
+        assert {event.event_type for event in outcome.pending_events} == {
+            "coin_auto_watch_enabled",
+            "portfolio_balance_updated",
+            "portfolio_position_changed",
+        }
 
-    updated_cached_row, quiet_payload = await _sync_balance_row_async(
-        async_db_session,
-        account_id=int(account.id),
-        exchange_name="fixture",
-        balance_row={"symbol": "AUTOUSD_EVT", "balance": 3.0, "value_usd": 900.0},
-        emit_events=False,
-    )
-    assert updated_cached_row is not None
-    assert quiet_payload == {
-        "exchange_account_id": int(account.id),
-        "symbol": "AUTOUSD_EVT",
-        "balance": 3.0,
-        "value_usd": 900.0,
-    }
+        quiet_outcome = await service._sync_balance_row(
+            account=account,
+            balance_row={"symbol": "AUTOUSD_EVT", "balance": 3.0, "value_usd": 900.0},
+            emit_events=False,
+        )
+        assert quiet_outcome is not None
+        assert quiet_outcome.item.symbol == "AUTOUSD_EVT"
+        assert quiet_outcome.item.value_usd == 900.0
+        assert quiet_outcome.pending_events == ()
 
-    cached_state_payloads: list[dict[str, object]] = []
-    monkeypatch.setattr("src.apps.portfolio.services.cache_portfolio_state_async", lambda payload: __import__("asyncio").sleep(0, result=cached_state_payloads.append(payload)))
-    await _refresh_portfolio_state_async(async_db_session)
-    assert cached_state_payloads
+        refreshed_state = await service._refresh_portfolio_state()
+        assert refreshed_state.total_capital > 0
+        assert refreshed_state.updated_at is not None
 
     cached_balance_payloads: list[list[dict[str, object]]] = []
-    monkeypatch.setattr("src.apps.portfolio.services.create_exchange_plugin", lambda account: _FixturePlugin(account))
-    monkeypatch.setattr("src.apps.portfolio.services.cache_portfolio_balances_async", lambda payload: __import__("asyncio").sleep(0, result=cached_balance_payloads.append(payload)))
-    published_events.clear()
-    sync_result = await sync_exchange_balances_async(async_db_session, emit_events=True)
-    assert sync_result["status"] == "ok"
-    assert sync_result["accounts"] >= 1
-    assert sync_result["balances"] >= 2
+    cached_sync_state_payloads: list[dict[str, object]] = []
+    published_events: list[str] = []
+    monkeypatch.setattr("src.apps.portfolio.services.create_exchange_plugin", lambda item: _FixturePlugin(item))
+    monkeypatch.setattr(
+        "src.apps.portfolio.services.cache_portfolio_balances_async",
+        lambda payload: __import__("asyncio").sleep(0, result=cached_balance_payloads.append(payload)),
+    )
+    monkeypatch.setattr(
+        "src.apps.portfolio.services.cache_portfolio_state_async",
+        lambda payload: __import__("asyncio").sleep(0, result=cached_sync_state_payloads.append(payload)),
+    )
+    monkeypatch.setattr(
+        "src.apps.portfolio.services.publish_event",
+        lambda event_type, payload: published_events.append(event_type),
+    )
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        sync_result = await PortfolioService(uow).sync_exchange_balances(emit_events=True)
+        assert sync_result.status == "ok"
+        assert sync_result.accounts >= 1
+        assert sync_result.balances >= 2
+        assert sync_result.cached_rows
+        assert "portfolio_balance_updated" in {event.event_type for event in sync_result.pending_events}
+        await uow.commit()
+
+    await PortfolioSideEffectDispatcher().apply_sync_result(sync_result)
     assert cached_balance_payloads
+    assert cached_sync_state_payloads
     assert "portfolio_balance_updated" in published_events
     assert "portfolio_position_changed" in published_events
 
-    quiet_sync_result = await sync_exchange_balances_async(async_db_session, emit_events=False)
-    assert quiet_sync_result["status"] == "ok"
-    assert quiet_sync_result["items"]
+    async with SessionUnitOfWork(async_db_session) as uow:
+        quiet_sync_result = await PortfolioService(uow).sync_exchange_balances(emit_events=False)
+        assert quiet_sync_result.status == "ok"
+        assert quiet_sync_result.items
+        assert all(
+            event.event_type not in {"portfolio_balance_updated", "portfolio_position_changed"}
+            for event in quiet_sync_result.pending_events
+        )
 
-    fake_db = object()
-    monkeypatch.setattr(tasks, "AsyncSessionLocal", lambda: _AsyncDbContext(fake_db))
-    monkeypatch.setattr(tasks, "async_redis_task_lock", lambda *args, **kwargs: _async_lock(False))
-    assert (await tasks.portfolio_sync_job())["reason"] == "portfolio_sync_in_progress"
-    monkeypatch.setattr(tasks, "async_redis_task_lock", lambda *args, **kwargs: _async_lock(True))
-    monkeypatch.setattr(tasks, "sync_exchange_balances_async", lambda db, emit_events=True: __import__("asyncio").sleep(0, result={"status": "ok", "db": db is fake_db, "emit": emit_events}))
-    assert await tasks.portfolio_sync_job() == {"status": "ok", "db": True, "emit": True}
+    events: list[str] = []
+
+    @asynccontextmanager
+    async def _lock(acquired: bool):
+        events.append(f"lock:{acquired}")
+        yield acquired
+
+    monkeypatch.setattr(tasks, "async_redis_task_lock", lambda *args, **kwargs: _lock(False))
+    skipped = await tasks.portfolio_sync_job()
+    assert skipped == {"status": "skipped", "reason": "portfolio_sync_in_progress"}
+
+    class _Result:
+        def to_payload(self) -> dict[str, object]:
+            return {"status": "ok", "accounts": 1, "balances": 2, "items": []}
+
+    class _UowContext:
+        async def __aenter__(self):
+            events.append("uow_enter")
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> bool:
+            events.append("uow_exit")
+            return False
+
+        @property
+        def session(self):
+            return "async-db"
+
+        async def commit(self) -> None:
+            events.append("uow_commit")
+
+    class _PortfolioService:
+        def __init__(self, uow) -> None:
+            self._uow = uow
+
+        async def sync_exchange_balances(self, *, emit_events: bool):
+            events.append(f"sync:{self._uow.session}:{emit_events}")
+            return _Result()
+
+    class _PortfolioSideEffectDispatcher:
+        async def apply_sync_result(self, result) -> None:
+            events.append(f"side_effects:{result.to_payload()['status']}")
+
+    monkeypatch.setattr(tasks, "async_redis_task_lock", lambda *args, **kwargs: _lock(True))
+    monkeypatch.setattr(tasks, "AsyncUnitOfWork", lambda: _UowContext())
+    monkeypatch.setattr(tasks, "PortfolioService", _PortfolioService)
+    monkeypatch.setattr(tasks, "PortfolioSideEffectDispatcher", _PortfolioSideEffectDispatcher)
+    executed = await tasks.portfolio_sync_job()
+    assert executed == {"status": "ok", "accounts": 1, "balances": 2, "items": []}
+    assert events[1:6] == [
+        "lock:True",
+        "uow_enter",
+        "sync:async-db:True",
+        "uow_commit",
+        "uow_exit",
+    ]
+    assert events[-1] == "side_effects:ok"
