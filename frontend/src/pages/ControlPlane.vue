@@ -56,6 +56,20 @@ const routeComposer = reactive({
   throttleWindowSeconds: 60,
 });
 
+const updateComposer = reactive({
+  status: "active" as ControlPlaneRouteStatus,
+  scopeType: "global" as ControlPlaneRouteScope,
+  scopeValue: "",
+  environment: "*",
+  priority: 100,
+  notes: "",
+  shadowEnabled: false,
+  shadowObserveOnly: true,
+  sampleRate: 1,
+  throttleLimit: "",
+  throttleWindowSeconds: 60,
+});
+
 const statusComposer = reactive({
   status: "active" as ControlPlaneRouteStatus,
   notes: "",
@@ -102,6 +116,50 @@ function buildRouteKey(eventType: string, consumerKey: string): string {
   return `${eventType}:${consumerKey}:${routeComposer.scopeType}:${scopeValue}:${environment}`;
 }
 
+function syncUpdateComposer(route: ControlPlaneEdge) {
+  updateComposer.status = route.status;
+  updateComposer.scopeType = route.scope_type;
+  updateComposer.scopeValue = route.scope_value ?? "";
+  updateComposer.environment = route.environment;
+  updateComposer.priority = route.priority;
+  updateComposer.notes = route.notes ?? "";
+  updateComposer.shadowEnabled = route.shadow.enabled;
+  updateComposer.shadowObserveOnly = route.shadow.observe_only;
+  updateComposer.sampleRate = route.shadow.sample_rate;
+  updateComposer.throttleLimit = route.throttle.limit === null ? "" : String(route.throttle.limit);
+  updateComposer.throttleWindowSeconds = route.throttle.window_seconds;
+}
+
+function buildDraftRoutePayload(
+  eventKey: string,
+  consumerKey: string,
+  source: typeof routeComposer | typeof updateComposer,
+) {
+  return {
+    event_type: eventKey,
+    consumer_key: consumerKey,
+    status: source.status,
+    scope_type: source.scopeType,
+    scope_value: source.scopeType === "global" ? null : source.scopeValue.trim() || null,
+    environment: source.environment.trim() || "*",
+    notes: source.notes.trim() || null,
+    priority: source.priority,
+    shadow: source.shadowEnabled
+      ? {
+          enabled: true,
+          sample_rate: source.sampleRate,
+          observe_only: source.shadowObserveOnly,
+        }
+      : {},
+    throttle: source.throttleLimit.trim()
+      ? {
+          limit: Number(source.throttleLimit),
+          window_seconds: source.throttleWindowSeconds,
+        }
+      : {},
+  };
+}
+
 function selectRoute(routeKey: string) {
   selectedRouteKey.value = routeKey;
   const route = liveEdges.value.find((item) => item.route_key === routeKey);
@@ -112,6 +170,7 @@ function selectRoute(routeKey: string) {
   selectedConsumerKey.value = route.target.replace("consumer:", "");
   statusComposer.status = route.status;
   statusComposer.notes = route.notes ?? "";
+  syncUpdateComposer(route);
 }
 
 function selectEvent(eventKey: string) {
@@ -224,29 +283,7 @@ async function stageRouteCreation(eventKey: string, consumerKey: string) {
       draftId,
       {
         change_type: "route_created",
-        payload: {
-          event_type: eventKey,
-          consumer_key: consumerKey,
-          status: routeComposer.status,
-          scope_type: routeComposer.scopeType,
-          scope_value: routeComposer.scopeType === "global" ? null : routeComposer.scopeValue.trim() || null,
-          environment: routeComposer.environment.trim() || "*",
-          notes: routeComposer.notes.trim() || null,
-          priority: routeComposer.priority,
-          shadow: routeComposer.shadowEnabled
-            ? {
-                enabled: true,
-                sample_rate: routeComposer.sampleRate,
-                observe_only: routeComposer.shadowObserveOnly,
-              }
-            : {},
-          throttle: routeComposer.throttleLimit.trim()
-            ? {
-                limit: Number(routeComposer.throttleLimit),
-                window_seconds: routeComposer.throttleWindowSeconds,
-              }
-            : {},
-        },
+        payload: buildDraftRoutePayload(eventKey, consumerKey, routeComposer),
       },
       controlHeaders(),
     );
@@ -294,6 +331,67 @@ async function stageStatusChange() {
     flashMessage.value = `Staged ${statusComposer.status} for ${selectedRoute.value.route_key}.`;
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "Failed to stage route status.";
+  } finally {
+    mutating.value = false;
+  }
+}
+
+async function stageRouteUpdate() {
+  if (!selectedRoute.value) {
+    errorMessage.value = "Select a live route before staging a route update.";
+    return;
+  }
+
+  const eventKey = selectedRoute.value.source.replace("event:", "");
+  const consumerKey = selectedRoute.value.target.replace("consumer:", "");
+
+  mutating.value = true;
+  flashMessage.value = "";
+  errorMessage.value = "";
+  try {
+    const draftId = await ensureActiveDraft();
+    await irisApi.createControlPlaneDraftChange(
+      draftId,
+      {
+        change_type: "route_updated",
+        target_route_key: selectedRoute.value.route_key,
+        payload: buildDraftRoutePayload(eventKey, consumerKey, updateComposer),
+      },
+      controlHeaders(),
+    );
+    await loadDraftDiff();
+    flashMessage.value = `Staged route update for ${selectedRoute.value.route_key}.`;
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "Failed to stage route update.";
+  } finally {
+    mutating.value = false;
+  }
+}
+
+async function stageRouteDelete() {
+  if (!selectedRoute.value) {
+    errorMessage.value = "Select a live route before staging route deletion.";
+    return;
+  }
+
+  mutating.value = true;
+  flashMessage.value = "";
+  errorMessage.value = "";
+  try {
+    const draftId = await ensureActiveDraft();
+    await irisApi.createControlPlaneDraftChange(
+      draftId,
+      {
+        change_type: "route_deleted",
+        target_route_key: selectedRoute.value.route_key,
+        payload: {},
+      },
+      controlHeaders(),
+    );
+    await loadDraftDiff();
+    flashMessage.value = `Staged route deletion for ${selectedRoute.value.route_key}.`;
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "Failed to stage route deletion.";
   } finally {
     mutating.value = false;
   }
@@ -737,6 +835,75 @@ onMounted(() => {
             <button class="action-chip" type="button" :disabled="mutating" @click="stageStatusChange()">
               Stage status change
             </button>
+          </div>
+
+          <div class="topology-inspector__status">
+            <label>
+              <span>Route status</span>
+              <select v-model="updateComposer.status">
+                <option value="active">active</option>
+                <option value="muted">muted</option>
+                <option value="paused">paused</option>
+                <option value="throttled">throttled</option>
+                <option value="shadow">shadow</option>
+                <option value="disabled">disabled</option>
+              </select>
+            </label>
+            <label>
+              <span>Scope</span>
+              <select v-model="updateComposer.scopeType">
+                <option value="global">global</option>
+                <option value="domain">domain</option>
+                <option value="symbol">symbol</option>
+                <option value="exchange">exchange</option>
+                <option value="timeframe">timeframe</option>
+                <option value="environment">environment</option>
+              </select>
+            </label>
+            <label>
+              <span>Scope value</span>
+              <input v-model="updateComposer.scopeValue" type="text" placeholder="BTCUSD / 60 / prod" />
+            </label>
+            <label>
+              <span>Environment</span>
+              <input v-model="updateComposer.environment" type="text" placeholder="*" />
+            </label>
+            <label>
+              <span>Priority</span>
+              <input v-model.number="updateComposer.priority" type="number" min="1" step="1" />
+            </label>
+            <label>
+              <span>Throttle limit</span>
+              <input v-model="updateComposer.throttleLimit" type="number" min="1" placeholder="optional" />
+            </label>
+            <label>
+              <span>Throttle window</span>
+              <input v-model.number="updateComposer.throttleWindowSeconds" type="number" min="1" step="1" />
+            </label>
+            <label>
+              <span>Sample rate</span>
+              <input v-model.number="updateComposer.sampleRate" type="number" min="0" max="1" step="0.1" />
+            </label>
+            <label class="topology-toggle">
+              <input v-model="updateComposer.shadowEnabled" type="checkbox" />
+              <span>Shadow delivery</span>
+            </label>
+            <label class="topology-toggle">
+              <input v-model="updateComposer.shadowObserveOnly" type="checkbox" />
+              <span>Observe only</span>
+            </label>
+            <label class="topology-composer__notes">
+              <span>Route notes</span>
+              <input v-model="updateComposer.notes" type="text" placeholder="Update declarative route notes" />
+            </label>
+            <div class="topology-inspector__actions">
+              <button class="action-chip" type="button" :disabled="mutating" @click="stageRouteUpdate()">
+                Stage route update
+              </button>
+              <button class="action-chip action-chip--danger" type="button" :disabled="mutating" @click="stageRouteDelete()">
+                Stage route delete
+              </button>
+            </div>
           </div>
         </div>
 

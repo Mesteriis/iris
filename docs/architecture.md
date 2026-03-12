@@ -58,7 +58,7 @@ Worker processes are spawned from the backend lifespan hook and currently implem
 
 ## Event Control Plane
 
-IRIS now includes a DB-backed Event Control Plane storage layer. The runtime cutover happens in subsequent stages, but the topology source of truth already exists in the schema and is seeded from the current hardcoded routing graph.
+IRIS now includes a DB-backed Event Control Plane that owns both the topology source of truth and the runtime routing path. The schema is seeded from the legacy hardcoded routing graph so the migration stays backward-compatible without leaving a parallel live router behind.
 
 Control-plane entities:
 
@@ -114,6 +114,7 @@ The frontend now includes a first-party control-plane workbench at `/control-pla
 - palette uses event and consumer nodes from the graph payload rather than UI-hardcoded wiring
 - drag-and-drop from event node to consumer node stages a `route_created` draft change
 - inspector stages `route_status_changed` draft changes for selected live edges
+- inspector can also stage `route_updated` and `route_deleted` draft changes for existing edges
 - apply/discard are explicit UI actions against the draft lifecycle endpoints
 - the canvas edits declarative route rules and draft changes only; it does not execute any visual low-code graph at runtime
 

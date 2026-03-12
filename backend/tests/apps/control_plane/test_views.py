@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+from src.apps.control_plane.contracts import build_route_key
+from src.apps.control_plane.enums import EventRouteScope
 from src.apps.control_plane.metrics import consumer_metric_key, route_metric_key
 from src.apps.market_data.domain import utc_now
 from src.core.settings import get_settings
@@ -220,7 +222,13 @@ async def test_control_plane_draft_apply_and_discard_endpoints(api_app_client, i
     assert draft_response.status_code == 201
     apply_draft_id = int(draft_response.json()["id"])
 
-    route_key = "market_regime_changed:portfolio_workers:global:*:*"
+    route_key = build_route_key(
+        "market_regime_changed",
+        "portfolio_workers",
+        EventRouteScope.GLOBAL,
+        None,
+        "*",
+    )
     change_response = await client.post(
         f"/control-plane/drafts/{apply_draft_id}/changes",
         json={

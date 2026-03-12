@@ -334,3 +334,180 @@ async def test_topology_draft_discard_marks_state_and_audits(async_db_session, i
         )
     ).scalars().all()
     assert [row.action for row in audit_rows] == ["draft_discarded"]
+
+
+@pytest.mark.asyncio
+async def test_topology_draft_preview_supports_route_update_and_delete(
+    async_db_session,
+    isolated_control_plane_state,
+) -> None:
+    draft_service = TopologyDraftService(async_db_session)
+    existing_route_key = build_route_key(
+        "market_regime_changed",
+        "portfolio_workers",
+        EventRouteScope.GLOBAL,
+        None,
+        "*",
+    )
+    delete_route_key = build_route_key(
+        "decision_generated",
+        "portfolio_workers",
+        EventRouteScope.GLOBAL,
+        None,
+        "*",
+    )
+
+    draft = await draft_service.create_draft(
+        DraftCreateCommand(
+            name="Update and delete preview",
+            description="Preview route update and delete support.",
+            access_mode=TopologyAccessMode.CONTROL,
+            created_by="ops",
+        )
+    )
+    await draft_service.add_change(
+        int(draft.id),
+        DraftChangeCommand(
+            change_type=TopologyDraftChangeType.ROUTE_UPDATED,
+            target_route_key=existing_route_key,
+            payload={
+                "event_type": "market_regime_changed",
+                "consumer_key": "portfolio_workers",
+                "status": EventRouteStatus.THROTTLED.value,
+                "scope_type": EventRouteScope.SYMBOL.value,
+                "scope_value": "BTCUSD",
+                "environment": "development",
+                "priority": 25,
+                "notes": "Updated in draft",
+                "shadow": {"enabled": True, "observe_only": True, "sample_rate": 0.5},
+                "throttle": {"limit": 2, "window_seconds": 120},
+            },
+            created_by="ops",
+        ),
+    )
+    await draft_service.add_change(
+        int(draft.id),
+        DraftChangeCommand(
+            change_type=TopologyDraftChangeType.ROUTE_DELETED,
+            target_route_key=delete_route_key,
+            payload={},
+            created_by="ops",
+        ),
+    )
+
+    diff = await draft_service.preview_diff(int(draft.id))
+    diff_by_type = {item.change_type: item for item in diff}
+
+    updated = diff_by_type[TopologyDraftChangeType.ROUTE_UPDATED]
+    assert updated.after["scope_type"] == EventRouteScope.SYMBOL.value
+    assert updated.after["scope_value"] == "BTCUSD"
+    assert updated.after["throttle"] == {"limit": 2, "window_seconds": 120}
+    assert updated.after["shadow"] == {"enabled": True, "sample_rate": 0.5, "observe_only": True}
+
+    deleted = diff_by_type[TopologyDraftChangeType.ROUTE_DELETED]
+    assert deleted.route_key == delete_route_key
+    assert deleted.before["route_key"] == delete_route_key
+    assert deleted.after == {}
+
+
+@pytest.mark.asyncio
+async def test_topology_draft_apply_supports_route_update_and_delete(
+    async_db_session,
+    isolated_control_plane_state,
+) -> None:
+    draft_service = TopologyDraftService(async_db_session)
+    existing_route_key = build_route_key(
+        "market_regime_changed",
+        "portfolio_workers",
+        EventRouteScope.GLOBAL,
+        None,
+        "*",
+    )
+    delete_route_key = build_route_key(
+        "decision_generated",
+        "portfolio_workers",
+        EventRouteScope.GLOBAL,
+        None,
+        "*",
+    )
+
+    draft = await draft_service.create_draft(
+        DraftCreateCommand(
+            name="Apply update and delete",
+            description="Publish route update and delete changes.",
+            access_mode=TopologyAccessMode.CONTROL,
+            created_by="ops",
+        )
+    )
+    await draft_service.add_change(
+        int(draft.id),
+        DraftChangeCommand(
+            change_type=TopologyDraftChangeType.ROUTE_UPDATED,
+            target_route_key=existing_route_key,
+            payload={
+                "event_type": "market_regime_changed",
+                "consumer_key": "portfolio_workers",
+                "status": EventRouteStatus.THROTTLED.value,
+                "scope_type": EventRouteScope.EXCHANGE.value,
+                "scope_value": "fixture",
+                "environment": "development",
+                "priority": 10,
+                "notes": "Updated through apply",
+                "shadow": {"enabled": True, "observe_only": True, "sample_rate": 0.25},
+                "throttle": {"limit": 1, "window_seconds": 300},
+            },
+            created_by="ops",
+        ),
+    )
+    await draft_service.add_change(
+        int(draft.id),
+        DraftChangeCommand(
+            change_type=TopologyDraftChangeType.ROUTE_DELETED,
+            target_route_key=delete_route_key,
+            payload={},
+            created_by="ops",
+        ),
+    )
+
+    applied_draft, version = await draft_service.apply_draft(int(draft.id), actor=AuditActor(actor="ops"))
+
+    assert applied_draft.status == "applied"
+    assert int(version.version_number) == 2
+
+    updated_route_key = build_route_key(
+        "market_regime_changed",
+        "portfolio_workers",
+        EventRouteScope.EXCHANGE,
+        "fixture",
+        "development",
+    )
+    updated_route = (
+        await async_db_session.execute(select(EventRoute).where(EventRoute.route_key == updated_route_key).limit(1))
+    ).scalar_one()
+    assert updated_route.status == EventRouteStatus.THROTTLED.value
+    assert updated_route.scope_type == EventRouteScope.EXCHANGE.value
+    assert updated_route.scope_value == "fixture"
+    assert updated_route.environment == "development"
+    assert updated_route.priority == 10
+    assert updated_route.notes == "Updated through apply"
+    assert updated_route.shadow_config_json == {"enabled": True, "sample_rate": 0.25, "observe_only": True}
+    assert updated_route.throttle_config_json == {"limit": 1, "window_seconds": 300}
+
+    deleted_route = (
+        await async_db_session.execute(select(EventRoute).where(EventRoute.route_key == delete_route_key).limit(1))
+    ).scalar_one_or_none()
+    assert deleted_route is None
+    original_route = (
+        await async_db_session.execute(select(EventRoute).where(EventRoute.route_key == existing_route_key).limit(1))
+    ).scalar_one_or_none()
+    assert original_route is None
+
+    audit_rows = (
+        await async_db_session.execute(
+            select(EventRouteAuditLog)
+            .where(EventRouteAuditLog.draft_id == int(draft.id))
+            .order_by(EventRouteAuditLog.id.asc())
+        )
+    ).scalars().all()
+    assert {row.action for row in audit_rows} == {"updated", "deleted"}
+    assert {int(row.topology_version_id) for row in audit_rows if row.topology_version_id is not None} == {int(version.id)}

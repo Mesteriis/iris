@@ -31,6 +31,8 @@ get_settings.cache_clear()
 
 from src.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
 from src.apps.control_plane.models import (
+    EventConsumer,
+    EventDefinition,
     EventRoute,
     EventRouteAuditLog,
     TopologyConfigVersion,
@@ -66,6 +68,7 @@ TEST_SYMBOLS = {
     "ETHUSD_EVT": ("ETHUSD", "Ethereum Event Test"),
     "SOLUSD_EVT": ("SOLUSD", "Solana Event Test"),
 }
+_CONTROL_PLANE_BOOTSTRAP_NOTES = "Bootstrapped from legacy runtime router"
 
 
 @pytest.fixture
@@ -291,49 +294,84 @@ def cleanup_hypothesis_state() -> Iterator[None]:
 def isolated_control_plane_state() -> Iterator[None]:
     db = SessionLocal()
     try:
-        baseline_routes = {
-            route.route_key: {
-                "status": route.status,
-                "scope_type": route.scope_type,
-                "scope_value": route.scope_value,
-                "environment": route.environment,
-                "filters_json": dict(route.filters_json or {}),
-                "throttle_config_json": dict(route.throttle_config_json or {}),
-                "shadow_config_json": dict(route.shadow_config_json or {}),
-                "notes": route.notes,
-                "priority": int(route.priority),
-                "system_managed": bool(route.system_managed),
-                "event_definition_id": int(route.event_definition_id),
-                "consumer_id": int(route.consumer_id),
-            }
-            for route in db.scalars(select(EventRoute).order_by(EventRoute.id.asc())).all()
-        }
+        _restore_control_plane_baseline(db)
         yield
     finally:
-        db.execute(delete(EventRouteAuditLog))
-        db.execute(delete(TopologyDraftChange))
-        db.execute(delete(TopologyDraft))
-        db.execute(delete(EventRoute).where(EventRoute.system_managed.is_(False)))
-        db.execute(delete(TopologyConfigVersion).where(TopologyConfigVersion.version_number > 1))
-        routes = db.scalars(select(EventRoute).order_by(EventRoute.id.asc())).all()
-        for route in routes:
-            snapshot = baseline_routes.get(route.route_key)
-            if snapshot is None:
-                continue
-            route.status = str(snapshot["status"])
-            route.scope_type = str(snapshot["scope_type"])
-            route.scope_value = snapshot["scope_value"]
-            route.environment = str(snapshot["environment"])
-            route.filters_json = dict(snapshot["filters_json"])
-            route.throttle_config_json = dict(snapshot["throttle_config_json"])
-            route.shadow_config_json = dict(snapshot["shadow_config_json"])
-            route.notes = snapshot["notes"]
-            route.priority = int(snapshot["priority"])
-            route.system_managed = bool(snapshot["system_managed"])
-            route.event_definition_id = int(snapshot["event_definition_id"])
-            route.consumer_id = int(snapshot["consumer_id"])
-        db.commit()
+        _restore_control_plane_baseline(db)
         db.close()
+
+
+def _restore_control_plane_baseline(db) -> None:
+    version = db.scalar(select(TopologyConfigVersion).where(TopologyConfigVersion.version_number == 1).limit(1))
+    if version is None:
+        db.commit()
+        return
+
+    snapshot_routes = list(version.snapshot_json.get("routes") or [])
+    event_definition_id_by_type = {
+        str(row.event_type): int(row.id)
+        for row in db.execute(select(EventDefinition.id, EventDefinition.event_type))
+    }
+    consumer_id_by_key = {
+        str(row.consumer_key): int(row.id)
+        for row in db.execute(select(EventConsumer.id, EventConsumer.consumer_key))
+    }
+
+    db.execute(delete(EventRouteAuditLog))
+    db.execute(delete(TopologyDraftChange))
+    db.execute(delete(TopologyDraft))
+    db.execute(delete(EventRoute))
+    db.execute(delete(TopologyConfigVersion).where(TopologyConfigVersion.version_number > 1))
+    db.flush()
+
+    restored_routes: list[EventRoute] = []
+    for route in snapshot_routes:
+        route_key = str(route["route_key"])
+        event_type = str(route["event_type"])
+        consumer_key = str(route["consumer_key"])
+        scope_value = route.get("scope_value")
+        restored_route = EventRoute(
+            route_key=route_key,
+            event_definition_id=event_definition_id_by_type[event_type],
+            consumer_id=consumer_id_by_key[consumer_key],
+            status=str(route.get("status", "active")),
+            scope_type=str(route.get("scope_type", "global")),
+            scope_value=None if scope_value in (None, "*", "") else str(scope_value),
+            environment=str(route.get("environment", "*")),
+            filters_json=dict(route.get("filters") or {}),
+            throttle_config_json=dict(route.get("throttle") or {}),
+            shadow_config_json=dict(route.get("shadow") or {}),
+            notes=str(route.get("notes") or _CONTROL_PLANE_BOOTSTRAP_NOTES),
+            priority=int(route.get("priority", 100)),
+            system_managed=bool(route.get("system_managed", True)),
+        )
+        db.add(restored_route)
+        restored_routes.append(restored_route)
+    db.flush()
+
+    for restored_route, snapshot_route in zip(restored_routes, snapshot_routes, strict=True):
+        db.add(
+            EventRouteAuditLog(
+                route_id=int(restored_route.id),
+                route_key_snapshot=restored_route.route_key,
+                draft_id=None,
+                topology_version_id=int(version.id),
+                action="bootstrapped",
+                actor="system",
+                actor_mode="control",
+                reason="legacy_runtime_router_import",
+                before_json={},
+                after_json={
+                    "event_type": str(snapshot_route["event_type"]),
+                    "consumer_key": str(snapshot_route["consumer_key"]),
+                    "status": restored_route.status,
+                    "scope_type": restored_route.scope_type,
+                    "environment": restored_route.environment,
+                },
+                context_json={"source": "legacy_runtime_router", "test_rehydrated": True},
+            )
+        )
+    db.commit()
 
 
 @pytest.fixture(autouse=True)
