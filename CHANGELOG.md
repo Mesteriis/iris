@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Control-plane repositories and application services for event registry reads, route management, audit logging, topology snapshots and draft preview workflows, with pytest coverage for compatibility validation and change tracking.
 - Event Control Plane storage foundation under `backend/src/apps/control_plane` with persisted `event_definitions`, `event_consumers`, `event_routes`, `event_route_audit_logs`, `topology_config_versions`, `topology_drafts` and `topology_draft_changes`.
 - Alembic migration `20260312_000029` bootstrapping the current hardcoded Redis-stream worker topology into DB-backed event/consumer/route registries plus an initial published topology version and audit trail.
 - Hypothesis Engine under `backend/src/apps/hypothesis_engine` with prompt CRUD APIs, event-driven hypothesis generation from signals/anomalies/decisions/portfolio events, scheduled evaluation jobs, AI insight SSE streaming, heuristic/OpenAI-like/local HTTP providers, persistence for `ai_prompts` / `ai_hypotheses` / `ai_hypothesis_evals` / `ai_weights`, and dedicated pytest coverage.

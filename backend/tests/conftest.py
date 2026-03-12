@@ -31,6 +31,13 @@ get_settings.cache_clear()
 from src.core.db.session import AsyncSessionLocal, SessionLocal
 from src.runtime.streams.publisher import flush_publisher, reset_event_publisher
 from src.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
+from src.apps.control_plane.models import (
+    EventRoute,
+    EventRouteAuditLog,
+    TopologyConfigVersion,
+    TopologyDraft,
+    TopologyDraftChange,
+)
 from src.apps.market_data.models import Coin
 from src.apps.cross_market.models import CoinRelation
 from src.apps.market_structure.models import MarketStructureSource
@@ -272,6 +279,55 @@ def cleanup_hypothesis_state() -> Iterator[None]:
         db.execute(delete(AIHypothesis))
         db.execute(delete(AIPrompt))
         db.execute(delete(AIWeight))
+        db.commit()
+        db.close()
+
+
+@pytest.fixture
+def isolated_control_plane_state() -> Iterator[None]:
+    db = SessionLocal()
+    try:
+        baseline_routes = {
+            route.route_key: {
+                "status": route.status,
+                "scope_type": route.scope_type,
+                "scope_value": route.scope_value,
+                "environment": route.environment,
+                "filters_json": dict(route.filters_json or {}),
+                "throttle_config_json": dict(route.throttle_config_json or {}),
+                "shadow_config_json": dict(route.shadow_config_json or {}),
+                "notes": route.notes,
+                "priority": int(route.priority),
+                "system_managed": bool(route.system_managed),
+                "event_definition_id": int(route.event_definition_id),
+                "consumer_id": int(route.consumer_id),
+            }
+            for route in db.scalars(select(EventRoute).order_by(EventRoute.id.asc())).all()
+        }
+        yield
+    finally:
+        db.execute(delete(EventRouteAuditLog))
+        db.execute(delete(TopologyDraftChange))
+        db.execute(delete(TopologyDraft))
+        db.execute(delete(EventRoute).where(EventRoute.system_managed.is_(False)))
+        db.execute(delete(TopologyConfigVersion).where(TopologyConfigVersion.version_number > 1))
+        routes = db.scalars(select(EventRoute).order_by(EventRoute.id.asc())).all()
+        for route in routes:
+            snapshot = baseline_routes.get(route.route_key)
+            if snapshot is None:
+                continue
+            route.status = str(snapshot["status"])
+            route.scope_type = str(snapshot["scope_type"])
+            route.scope_value = snapshot["scope_value"]
+            route.environment = str(snapshot["environment"])
+            route.filters_json = dict(snapshot["filters_json"])
+            route.throttle_config_json = dict(snapshot["throttle_config_json"])
+            route.shadow_config_json = dict(snapshot["shadow_config_json"])
+            route.notes = snapshot["notes"]
+            route.priority = int(snapshot["priority"])
+            route.system_managed = bool(snapshot["system_managed"])
+            route.event_definition_id = int(snapshot["event_definition_id"])
+            route.consumer_id = int(snapshot["consumer_id"])
         db.commit()
         db.close()
 

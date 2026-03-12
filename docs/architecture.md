@@ -72,6 +72,13 @@ Control-plane entities:
 
 The initial published topology is generated from the current worker subscription map so the migration path stays backward-compatible.
 
+The control-plane application layer now includes repositories and services for:
+
+- event and consumer registry reads
+- route create/update/status changes with audit logging
+- topology snapshot assembly
+- draft storage and preview diffs before publish
+
 ## Database
 
 The database includes the market-data core plus higher-level analytical domains. Key persisted areas now include:
