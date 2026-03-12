@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Draft lifecycle endpoints and services for `apply` / `discard`, including stale-draft protection, published topology version bumps and audit linkage between drafts, routes and published versions.
 - Control-plane FastAPI surface under `/control-plane` covering registry reads, route mutations, topology snapshot/graph payloads, draft staging, audit history and observability projections.
 - Redis-backed control-plane observability store for route dispatch counters plus worker heartbeat/success/failure metrics, with API coverage for throughput, latency, lag and dead-consumer detection.
 - Topology cache manager with Redis-backed snapshot storage, local hot cache, snapshot codec and control-event-driven refresh logic, plus runtime bridge code for delivery-stream fan-out.
@@ -81,6 +82,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- Draft application now promotes a new published topology snapshot in `topology_config_versions`, making the control plane the canonical runtime routing source instead of leaving draft diffs as side data.
 - Runtime delivery workers now emit control-plane consumer metrics on successful and failed route deliveries, so observability is sourced from the new topology model instead of ad hoc worker-local state.
 - Backend bootstrap now mounts the control-plane router, and control-mode mutations can be protected by `IRIS_CONTROL_TOKEN` plus `X-IRIS-Access-Mode`.
 - Local bootstrap/test migrations now fall back cleanly when TimescaleDB is unavailable, preserving the canonical schema on plain PostgreSQL while still using Timescale features when the extension exists.

@@ -104,6 +104,7 @@ The HTTP surface now exposes the control plane as a first-class backend boundary
 - `/control-plane/routes*` for route CRUD/status mutations guarded by observe/control mode headers
 - `/control-plane/topology/snapshot` and `/control-plane/topology/graph` for canvas/inspector data
 - `/control-plane/drafts*` for draft creation, staged route changes and diff previews
+- `/control-plane/drafts/{id}/apply` and `/control-plane/drafts/{id}/discard` for lifecycle transitions
 - `/control-plane/audit` for route audit history
 - `/control-plane/observability` for route/consumer throughput, failure, latency, lag and dead-consumer state
 
@@ -118,6 +119,14 @@ Observability is now split across two layers:
 
 - dispatcher metrics track route evaluations/deliveries/shadow counts
 - delivery workers emit consumer success/failure heartbeats keyed by `consumer_key` and `route_key`
+
+Draft publish semantics are now explicit:
+
+- each draft is pinned to the latest published topology version at creation time
+- apply is rejected for stale drafts, preventing silent overwrite of a newer published topology
+- apply creates a new `topology_config_versions` row, snapshots the resulting graph and marks the draft as `applied`
+- discard leaves live routes untouched, marks the draft as `discarded` and still records discard audit rows for traceability
+- publish emits `control.topology_published` plus `control.cache_invalidated`, making the new version the runtime source of truth
 
 ## Database
 

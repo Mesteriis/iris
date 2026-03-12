@@ -201,3 +201,68 @@ async def test_control_plane_mutations_require_token_when_configured(
     assert allowed_response.status_code == 201
 
     monkeypatch.setattr(settings, "control_plane_token", previous_token)
+
+
+@pytest.mark.asyncio
+async def test_control_plane_draft_apply_and_discard_endpoints(api_app_client, isolated_control_plane_state) -> None:
+    _, client = api_app_client
+    headers = {
+        "X-IRIS-Actor": "ops",
+        "X-IRIS-Access-Mode": "control",
+        "X-IRIS-Reason": "draft-lifecycle-test",
+    }
+
+    draft_response = await client.post(
+        "/control-plane/drafts",
+        json={"name": "Apply lifecycle", "access_mode": "control"},
+        headers=headers,
+    )
+    assert draft_response.status_code == 201
+    apply_draft_id = int(draft_response.json()["id"])
+
+    route_key = "market_regime_changed:portfolio_workers:global:*:*"
+    change_response = await client.post(
+        f"/control-plane/drafts/{apply_draft_id}/changes",
+        json={
+            "change_type": "route_status_changed",
+            "target_route_key": route_key,
+            "payload": {"status": "paused", "notes": "Paused via apply endpoint"},
+        },
+        headers=headers,
+    )
+    assert change_response.status_code == 201
+
+    apply_response = await client.post(f"/control-plane/drafts/{apply_draft_id}/apply", headers=headers)
+    assert apply_response.status_code == 200
+    apply_payload = apply_response.json()
+    assert apply_payload["draft"]["status"] == "applied"
+    assert apply_payload["published_version_number"] == 2
+
+    snapshot_response = await client.get("/control-plane/topology/snapshot")
+    assert snapshot_response.status_code == 200
+    assert snapshot_response.json()["version_number"] == 2
+    applied_route = {row["route_key"]: row for row in snapshot_response.json()["routes"]}[route_key]
+    assert applied_route["status"] == "paused"
+
+    discard_response = await client.post(
+        "/control-plane/drafts",
+        json={"name": "Discard lifecycle", "access_mode": "control"},
+        headers=headers,
+    )
+    assert discard_response.status_code == 201
+    discard_draft_id = int(discard_response.json()["id"])
+
+    discard_change_response = await client.post(
+        f"/control-plane/drafts/{discard_draft_id}/changes",
+        json={
+            "change_type": "route_status_changed",
+            "target_route_key": route_key,
+            "payload": {"status": "muted", "notes": "Discarded change"},
+        },
+        headers=headers,
+    )
+    assert discard_change_response.status_code == 201
+
+    discard_apply_response = await client.post(f"/control-plane/drafts/{discard_draft_id}/discard", headers=headers)
+    assert discard_apply_response.status_code == 200
+    assert discard_apply_response.json()["draft"]["status"] == "discarded"

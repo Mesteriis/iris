@@ -47,6 +47,7 @@ class EventAuditAction(str, Enum):
     BOOTSTRAPPED = "bootstrapped"
     CREATED = "created"
     UPDATED = "updated"
+    DELETED = "deleted"
     STATUS_CHANGED = "status_changed"
     DRAFT_APPLIED = "draft_applied"
     DRAFT_DISCARDED = "draft_discarded"

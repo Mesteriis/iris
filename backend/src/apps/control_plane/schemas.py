@@ -191,6 +191,11 @@ class TopologyDraftCreateWrite(BaseModel):
     access_mode: TopologyAccessMode = TopologyAccessMode.OBSERVE
 
 
+class TopologyDraftLifecycleRead(BaseModel):
+    draft: TopologyDraftRead
+    published_version_number: int | None = None
+
+
 class TopologyDraftChangeWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -272,4 +277,3 @@ class ObservabilityOverviewRead(BaseModel):
     dead_consumer_count: int
     routes: list[RouteObservabilityRead]
     consumers: list[ConsumerObservabilityRead]
-

@@ -40,6 +40,7 @@ from src.apps.control_plane.schemas import (
     TopologyDraftChangeRead,
     TopologyDraftChangeWrite,
     TopologyDraftCreateWrite,
+    TopologyDraftLifecycleRead,
     TopologyDraftRead,
     TopologyGraphRead,
     TopologySnapshotRead,
@@ -368,6 +369,41 @@ async def read_draft_diff(draft_id: int, db: AsyncSession = DB_SESSION) -> list[
         )
         for item in diff
     ]
+
+
+@router.post("/drafts/{draft_id}/apply", response_model=TopologyDraftLifecycleRead)
+async def apply_draft(
+    draft_id: int,
+    actor: AuditActor = CONTROL_ACTOR,
+    db: AsyncSession = DB_SESSION,
+) -> TopologyDraftLifecycleRead:
+    service = TopologyDraftService(db)
+    try:
+        draft, version = await service.apply_draft(draft_id, actor=actor)
+    except TopologyDraftNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except TopologyDraftStateError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return TopologyDraftLifecycleRead(
+        draft=_draft_read(draft),
+        published_version_number=int(version.version_number),
+    )
+
+
+@router.post("/drafts/{draft_id}/discard", response_model=TopologyDraftLifecycleRead)
+async def discard_draft(
+    draft_id: int,
+    actor: AuditActor = CONTROL_ACTOR,
+    db: AsyncSession = DB_SESSION,
+) -> TopologyDraftLifecycleRead:
+    service = TopologyDraftService(db)
+    try:
+        draft = await service.discard_draft(draft_id, actor=actor)
+    except TopologyDraftNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except TopologyDraftStateError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return TopologyDraftLifecycleRead(draft=_draft_read(draft), published_version_number=None)
 
 
 @router.get("/audit", response_model=list[EventRouteAuditLogRead])
