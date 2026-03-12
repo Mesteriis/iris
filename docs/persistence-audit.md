@@ -230,11 +230,12 @@ Status: migrated on the async/public API read surface plus signal-fusion and sig
 - [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py) now refreshes signal history through the shared async UoW instead of calling `refresh_recent_signal_history()` inside the sync decision flow
 - [backend/src/apps/patterns/task_service_history.py](backend/src/apps/patterns/task_service_history.py) now delegates signal-history refresh to `SignalHistoryService`, removing the duplicated async history persistence path
 - active async query/service code now uses [backend/src/apps/signals/backtest_support.py](backend/src/apps/signals/backtest_support.py), [backend/src/apps/signals/fusion_support.py](backend/src/apps/signals/fusion_support.py) and [backend/src/apps/signals/history_support.py](backend/src/apps/signals/history_support.py) instead of importing pure helper logic from the legacy sync compatibility modules directly
+- sync compatibility readers in [backend/src/apps/signals/backtests.py](backend/src/apps/signals/backtests.py) and [backend/src/apps/signals/strategies.py](backend/src/apps/signals/strategies.py) now use class-based adapters with structured deprecation logs
 - market-decision detail reads keep their cache-first behavior but the fallback and DB projection are now logged through the shared persistence logger inside `SignalQueryService`
 - remaining follow-up:
   - legacy sync compatibility helpers inside [backend/src/apps/signals/fusion.py](backend/src/apps/signals/fusion.py) still remain and should be retired once all remaining callers move to `SignalFusionService`
   - legacy sync compatibility helpers inside [backend/src/apps/signals/history.py](backend/src/apps/signals/history.py) still remain and should be retired once all remaining callers move to `SignalHistoryService`
-  - [backend/src/apps/signals/backtests.py](backend/src/apps/signals/backtests.py) and [backend/src/apps/signals/strategies.py](backend/src/apps/signals/strategies.py) still own sync analytical compatibility logic that should eventually be removed in favor of `SignalQueryService`
+  - [backend/src/apps/signals/backtests.py](backend/src/apps/signals/backtests.py) and [backend/src/apps/signals/strategies.py](backend/src/apps/signals/strategies.py) remain sync compatibility adapters and should eventually be removed in favor of `SignalQueryService`
 
 Classification:
 

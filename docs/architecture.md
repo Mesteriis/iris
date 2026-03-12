@@ -184,6 +184,7 @@ Current implementation coverage:
 - `apps/predictions` now exposes immutable prediction read models plus query services, while API reads, scheduled evaluation and cross-market leader detection all execute under the shared async UoW on the active runtime path
 - `apps/signals` now exposes immutable signal/decision/backtest/strategy read models plus `SignalQueryService`, while `signals/views.py` no longer injects `AsyncSession` directly and active fusion/history runtime paths execute through class-based `SignalFusionService` / `SignalHistoryService`
 - pure `signals` backtest/fusion/history math and constants are now isolated in dedicated support modules, so active async query/service code no longer imports from the legacy sync compatibility modules directly
+- sync compatibility entrypoints in `apps/signals/backtests.py` and `apps/signals/strategies.py` now run through class-based compatibility adapters with structured deprecation logs
 - `apps/portfolio` now exposes immutable portfolio read models plus `PortfolioQueryService`, while `/portfolio/*` reads and `portfolio_sync_job` execute under the shared async UoW and defer cache/event side effects until after commit
 - `patterns` API/read-write and TaskIQ orchestration surface now use repositories, async task services, query services, immutable read models and UoW-owned handlers
 - `apps/market_data` keeps legacy sync adapters only for Timescale-specific aggregate/resampling access and not for new async callers

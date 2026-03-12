@@ -7,9 +7,11 @@ import pytest
 from sqlalchemy import select
 
 import src.apps.signals.services as signal_services_module
+from src.apps.signals.backtests import list_backtests
 from src.apps.signals.models import MarketDecision, Signal, SignalHistory
 from src.apps.signals.query_services import SignalQueryService
 from src.apps.signals.services import SignalFusionService, SignalHistoryService
+from src.apps.signals.strategies import list_strategies
 from src.core.db.persistence import PERSISTENCE_LOGGER
 from src.core.db.uow import SessionUnitOfWork
 from tests.cross_market_support import DEFAULT_START, seed_candles
@@ -252,3 +254,20 @@ def test_signal_services_exports_no_public_async_query_wrappers() -> None:
 
     for export_name in forbidden_exports:
         assert not hasattr(signal_services_module, export_name), export_name
+
+
+def test_signal_legacy_compatibility_queries_emit_deprecation_logs(db_session, seeded_api_state, monkeypatch) -> None:
+    del seeded_api_state
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+
+    assert list_backtests(db_session, limit=5)
+    assert list_strategies(db_session, enabled_only=False, limit=5)
+
+    assert "compat.list_backtests.deprecated" in events
+    assert "compat.list_strategies.deprecated" in events
