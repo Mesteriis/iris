@@ -78,6 +78,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Market regime engine with `bull_trend`, `bear_trend`, `sideways_range`, `high_volatility` and `low_volatility` outputs wired back into `coin_metrics.market_regime`.
 - Market Narrative engine for sectors plus Market Cycle engine with stored phase/confidence per coin and timeframe.
 - Pattern Discovery engine that clusters rolling window shapes, hashes candidate structures and stores review-only rows in `discovered_patterns`.
+
+### Changed
+- `indicators` no longer exposes module-level persistence facades for reads or snapshot writes; callers now instantiate class-based services/query adapters and own UoW commits explicitly.
 - New API surfaces for patterns, per-coin regimes, sector metrics, market cycles and top-ranked signals, plus dashboard/detail page updates for pattern intelligence.
 - Manual feature-flag and pattern lifecycle management via API, plus discovery review endpoint for `discovered_patterns`.
 - Dashboard now surfaces feature-flag state and discovery candidates, and maintenance jobs re-enrich recent signal context after market structure/statistics updates.

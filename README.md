@@ -47,6 +47,7 @@ IRIS is standardizing database access behind an explicit persistence layer:
 - use query services for read-only list/detail/dashboard responses
 - treat `core/db/uow.py` as the transaction owner for commit/rollback/flush
 - prefer immutable typed read models over ORM entities or ad-hoc dictionaries
+- keep persistence-facing read/write services class-based; avoid module-level DB helper APIs
 - avoid direct `AsyncSession` usage from routes and other application-surface code
 - keep raw SQL isolated to documented infrastructure exceptions such as Timescale aggregate maintenance
 

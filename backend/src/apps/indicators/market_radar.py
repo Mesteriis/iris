@@ -13,16 +13,19 @@ from src.apps.indicators.read_models import (
 )
 
 
-def _metric_rows(rows: Sequence[Mapping[str, object]]) -> tuple[MarketRadarCoinReadModel, ...]:
-    return tuple(market_radar_coin_read_model_from_mapping(row) for row in rows)
+class MarketRadarQueryService:
+    def __init__(self, session: AsyncSession) -> None:
+        self._queries = IndicatorQueryService(session)
+
+    @staticmethod
+    def metric_rows(rows: Sequence[Mapping[str, object]]) -> tuple[MarketRadarCoinReadModel, ...]:
+        return tuple(market_radar_coin_read_model_from_mapping(row) for row in rows)
+
+    async def list_recent_regime_changes(self, *, limit: int) -> tuple[MarketRegimeChangeReadModel, ...]:
+        return await self._queries.list_recent_regime_changes(limit=limit)
+
+    async def get_market_radar(self, *, limit: int = 8) -> MarketRadarReadModel:
+        return await self._queries.get_market_radar(limit=limit)
 
 
-async def _recent_regime_changes(db: AsyncSession, *, limit: int) -> tuple[MarketRegimeChangeReadModel, ...]:
-    return await IndicatorQueryService(db).list_recent_regime_changes(limit=limit)
-
-
-async def get_market_radar(db: AsyncSession, *, limit: int = 8) -> MarketRadarReadModel:
-    return await IndicatorQueryService(db).get_market_radar(limit=limit)
-
-
-__all__ = ["_metric_rows", "_recent_regime_changes", "get_market_radar"]
+__all__ = ["MarketRadarQueryService"]

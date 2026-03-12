@@ -32,7 +32,7 @@ from src.apps.indicators.repositories import (
     IndicatorMetricsRepository,
     IndicatorSignalRepository,
 )
-from src.apps.indicators.services import IndicatorAnalyticsService, IndicatorMetricsUpdate
+from src.apps.indicators.services import IndicatorAnalyticsService, IndicatorMetricsUpdate, IndicatorReadService
 from src.apps.market_data.models import Coin
 from src.apps.market_data.repos import CandlePoint
 from src.apps.signals.models import Signal
@@ -41,7 +41,9 @@ from src.core.db.uow import SessionUnitOfWork
 from tests.factories.market_data import build_candle_points
 
 
-def _snapshot(*, timeframe: int = 15, timestamp: datetime | None = None, feature_source: str = "candles", **overrides) -> TimeframeSnapshot:
+def _snapshot(
+    *, timeframe: int = 15, timestamp: datetime | None = None, feature_source: str = "candles", **overrides
+) -> TimeframeSnapshot:
     base_timestamp = timestamp or datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
     payload = {
         "timeframe": timeframe,
@@ -140,7 +142,19 @@ async def test_indicator_analytics_math_and_signal_helpers(monkeypatch) -> None:
     assert _compute_volume_metrics([], 15) == (None, None, None)
     assert _compute_volume_metrics(build_candle_points(closes=[100.0], volumes=[50.0]), 15)[2] is None
 
-    low_info = _snapshot(ema_20=None, ema_50=None, sma_50=None, sma_200=None, rsi_14=None, macd=None, macd_signal=None, macd_histogram=None, atr_14=None, bb_width=None, adx_14=None)
+    low_info = _snapshot(
+        ema_20=None,
+        ema_50=None,
+        sma_50=None,
+        sma_200=None,
+        rsi_14=None,
+        macd=None,
+        macd_signal=None,
+        macd_histogram=None,
+        atr_14=None,
+        bb_width=None,
+        adx_14=None,
+    )
     high_info = _snapshot(timeframe=60)
     assert _snapshot_completeness(low_info) == 0
     assert _select_primary_snapshot({}) is None
@@ -165,16 +179,19 @@ async def test_indicator_analytics_math_and_signal_helpers(monkeypatch) -> None:
         -20.0,
     )
     assert bearish_score == 0
-    assert _compute_trend_score(
-        _snapshot(
-            ema_20=None,
-            price_current=None,
-            macd_histogram=None,
-            rsi_14=None,
-            adx_14=None,
-        ),
-        None,
-    ) == 50
+    assert (
+        _compute_trend_score(
+            _snapshot(
+                ema_20=None,
+                price_current=None,
+                macd_histogram=None,
+                rsi_14=None,
+                adx_14=None,
+            ),
+            None,
+        )
+        == 50
+    )
     neutral_score = _compute_trend_score(
         _snapshot(
             rsi_14=50.0,
@@ -188,14 +205,27 @@ async def test_indicator_analytics_math_and_signal_helpers(monkeypatch) -> None:
     monkeypatch.setattr(analytics, "calculate_activity_score", lambda **kwargs: 88.8)
     monkeypatch.setattr(analytics, "assign_activity_bucket", lambda score: "HOT")
     monkeypatch.setattr(analytics, "analysis_priority_for_bucket", lambda bucket: 1)
-    assert _activity_fields(price_change_24h=5.0, volatility=0.2, volume_change_24h=10.0, price_current=100.0) == (88.8, "HOT", 1)
+    assert _activity_fields(price_change_24h=5.0, volatility=0.2, volume_change_24h=10.0, price_current=100.0) == (
+        88.8,
+        "HOT",
+        1,
+    )
 
     assert _compute_market_regime(_snapshot(sma_200=None), "sideways", 0.0) is None
     assert _compute_market_regime(_snapshot(), "bullish", 20.0) == "bull_market"
     assert _compute_market_regime(_snapshot(price_current=90.0, macd=-1.0), "bearish", -15.0) == "bear_market"
-    assert _compute_market_regime(_snapshot(price_current=102.0, sma_200=101.0, macd=0.0, bb_width=0.05), "sideways", 2.0) == "accumulation"
-    assert _compute_market_regime(_snapshot(price_current=102.0, sma_200=101.0, macd=0.0, bb_width=0.1), "sideways", -5.0) == "distribution"
-    assert _compute_market_regime(_snapshot(price_current=102.0, sma_200=101.0, macd=0.0), "bullish", 0.0) == "accumulation"
+    assert (
+        _compute_market_regime(_snapshot(price_current=102.0, sma_200=101.0, macd=0.0, bb_width=0.05), "sideways", 2.0)
+        == "accumulation"
+    )
+    assert (
+        _compute_market_regime(_snapshot(price_current=102.0, sma_200=101.0, macd=0.0, bb_width=0.1), "sideways", -5.0)
+        == "distribution"
+    )
+    assert (
+        _compute_market_regime(_snapshot(price_current=102.0, sma_200=101.0, macd=0.0), "bullish", 0.0)
+        == "accumulation"
+    )
 
     bullish_signals = _detect_signals(_snapshot(rsi_14=25.0))
     assert {item["signal_type"] for item in bullish_signals} == {
@@ -226,20 +256,23 @@ async def test_indicator_analytics_math_and_signal_helpers(monkeypatch) -> None:
         "volume_spike",
         "rsi_overbought",
     }
-    assert _detect_signals(
-        _snapshot(
-            prev_sma_50=None,
-            prev_sma_200=None,
-            range_high_20=120.0,
-            range_low_20=90.0,
-            current_volume=None,
-            average_volume_20=None,
-            prev_macd_histogram=None,
-            macd_histogram=None,
-            prev_rsi_14=None,
-            rsi_14=None,
+    assert (
+        _detect_signals(
+            _snapshot(
+                prev_sma_50=None,
+                prev_sma_200=None,
+                range_high_20=120.0,
+                range_low_20=90.0,
+                current_volume=None,
+                average_volume_20=None,
+                prev_macd_histogram=None,
+                macd_histogram=None,
+                prev_rsi_14=None,
+                rsi_14=None,
+            )
         )
-    ) == []
+        == []
+    )
 
     monkeypatch.setattr(analytics.httpx, "AsyncClient", lambda **kwargs: _FakeAsyncClient())
 
@@ -277,8 +310,7 @@ async def test_indicator_async_repositories_cover_cache_signal_and_metric_paths(
     cache_repo = IndicatorCacheRepository(async_db_session)
     signals_repo = IndicatorSignalRepository(async_db_session)
 
-    seeded_signal_types = await indicator_services.list_signal_types_at_timestamp(
-        async_db_session,
+    seeded_signal_types = await IndicatorReadService(async_db_session).list_signal_types_at_timestamp(
         coin_id=btc_id,
         timeframe=15,
         candle_timestamp=seeded_api_state["signal_timestamp"],
@@ -307,12 +339,12 @@ async def test_indicator_async_repositories_cover_cache_signal_and_metric_paths(
     )
     await async_db_session.commit()
     volume_row = await async_db_session.scalar(
-            select(IndicatorCache)
-            .where(
-                IndicatorCache.coin_id == btc_id,
-                IndicatorCache.timeframe == 15,
-                IndicatorCache.indicator == "volume_24h",
-                IndicatorCache.timestamp == timestamp,
+        select(IndicatorCache)
+        .where(
+            IndicatorCache.coin_id == btc_id,
+            IndicatorCache.timeframe == 15,
+            IndicatorCache.indicator == "volume_24h",
+            IndicatorCache.timestamp == timestamp,
         )
         .limit(1)
     )
@@ -328,12 +360,12 @@ async def test_indicator_async_repositories_cover_cache_signal_and_metric_paths(
     )
     await async_db_session.commit()
     updated_row = await async_db_session.scalar(
-            select(IndicatorCache)
-            .where(
-                IndicatorCache.coin_id == btc_id,
-                IndicatorCache.timeframe == 15,
-                IndicatorCache.indicator == "price_current",
-                IndicatorCache.timestamp == timestamp,
+        select(IndicatorCache)
+        .where(
+            IndicatorCache.coin_id == btc_id,
+            IndicatorCache.timeframe == 15,
+            IndicatorCache.indicator == "price_current",
+            IndicatorCache.timestamp == timestamp,
         )
         .limit(1)
     )
@@ -362,7 +394,9 @@ async def test_indicator_async_repositories_cover_cache_signal_and_metric_paths(
         candle_timestamp=timestamp,
     ) >= {"golden_cross"}
 
-    filtered_signals = await IndicatorQueryService(async_db_session).list_signals(symbol="BTCUSD_EVT", timeframe=15, limit=200)
+    filtered_signals = await IndicatorQueryService(async_db_session).list_signals(
+        symbol="BTCUSD_EVT", timeframe=15, limit=200
+    )
     assert any(row.signal_type == "golden_cross" for row in filtered_signals)
     assert await IndicatorQueryService(async_db_session).list_signals(symbol="BTCUSD_EVT", limit=1)
     assert await IndicatorQueryService(async_db_session).list_signals(timeframe=15, limit=1)
@@ -396,7 +430,9 @@ async def test_indicator_async_repositories_cover_cache_signal_and_metric_paths(
         timeframe_minutes=15,
         start=timestamp - timedelta(minutes=15 * 79),
     )
-    monkeypatch.setattr(indicator_services, "_fetch_market_cap", lambda symbol: __import__("asyncio").sleep(0, result=987654321.0))
+    monkeypatch.setattr(
+        indicator_services, "_fetch_market_cap", lambda symbol: __import__("asyncio").sleep(0, result=987654321.0)
+    )
     monkeypatch.setattr(indicator_services, "utc_now", lambda: timestamp + timedelta(minutes=1))
 
     async with SessionUnitOfWork(async_db_session) as uow:
@@ -503,11 +539,21 @@ async def test_process_indicator_event_orchestrates_affected_timeframes_and_sign
         monkeypatch.setattr(service._signals, "insert_known_signals", _insert_known_signals)
         monkeypatch.setattr(service._signals, "list_types_at_timestamp", _list_signal_types)
         monkeypatch.setattr(indicator_services, "determine_affected_timeframes", lambda **kwargs: [15, 60, 240, 1440])
-        monkeypatch.setattr(indicator_services, "_calculate_snapshot", lambda candles, timeframe, feature_source: snapshot_map.get(timeframe))
-        monkeypatch.setattr(indicator_services, "_compute_volume_metrics", lambda candles, base_timeframe: (6000.0, 12.0, 4.2))
-        monkeypatch.setattr(indicator_services, "_compute_price_change", lambda candles, delta: 18.0 if delta.days >= 7 else 5.0)
+        monkeypatch.setattr(
+            indicator_services,
+            "_calculate_snapshot",
+            lambda candles, timeframe, feature_source: snapshot_map.get(timeframe),
+        )
+        monkeypatch.setattr(
+            indicator_services, "_compute_volume_metrics", lambda candles, base_timeframe: (6000.0, 12.0, 4.2)
+        )
+        monkeypatch.setattr(
+            indicator_services, "_compute_price_change", lambda candles, delta: 18.0 if delta.days >= 7 else 5.0
+        )
         monkeypatch.setattr(indicator_services, "_select_primary_snapshot", lambda snapshots: snapshots[60])
-        monkeypatch.setattr(service._feature_flags, "is_enabled", lambda feature_slug: __import__("asyncio").sleep(0, result=True))
+        monkeypatch.setattr(
+            service._feature_flags, "is_enabled", lambda feature_slug: __import__("asyncio").sleep(0, result=True)
+        )
         monkeypatch.setattr(
             indicator_services,
             "calculate_regime_map",
@@ -526,8 +572,16 @@ async def test_process_indicator_event_orchestrates_affected_timeframes_and_sign
             indicator_services,
             "_detect_signals",
             lambda snapshot: [
-                {"signal_type": "golden_cross", "confidence": 0.91, "candle_timestamp": snapshot.candle_close_timestamp},
-                {"signal_type": "volume_spike", "confidence": 0.70, "candle_timestamp": snapshot.candle_close_timestamp},
+                {
+                    "signal_type": "golden_cross",
+                    "confidence": 0.91,
+                    "candle_timestamp": snapshot.candle_close_timestamp,
+                },
+                {
+                    "signal_type": "volume_spike",
+                    "confidence": 0.70,
+                    "candle_timestamp": snapshot.candle_close_timestamp,
+                },
             ],
         )
 
@@ -566,12 +620,20 @@ async def test_process_indicator_event_covers_missing_bounds_existing_aggregates
             return [CandlePoint(base_timestamp, 1.0, 1.0, 1.0, 1.0, 1.0)]
 
         monkeypatch.setattr(service._candles, "fetch_points", _fetch_points)
-        monkeypatch.setattr(service._candles, "has_direct_candles", lambda **kwargs: __import__("asyncio").sleep(0, result=kwargs["timeframe"] == 15))
+        monkeypatch.setattr(
+            service._candles,
+            "has_direct_candles",
+            lambda **kwargs: __import__("asyncio").sleep(0, result=kwargs["timeframe"] == 15),
+        )
         monkeypatch.setattr(indicator_services, "determine_affected_timeframes", lambda **kwargs: [15, 60, 240])
-        monkeypatch.setattr(indicator_services, "_compute_volume_metrics", lambda candles, base_timeframe: (1000.0, 5.0, 1.2))
+        monkeypatch.setattr(
+            indicator_services, "_compute_volume_metrics", lambda candles, base_timeframe: (1000.0, 5.0, 1.2)
+        )
         monkeypatch.setattr(indicator_services, "_compute_price_change", lambda candles, delta: 3.0)
         monkeypatch.setattr(indicator_services, "_select_primary_snapshot", lambda snapshots: snapshots[15])
-        monkeypatch.setattr(service._feature_flags, "is_enabled", lambda feature_slug: __import__("asyncio").sleep(0, result=False))
+        monkeypatch.setattr(
+            service._feature_flags, "is_enabled", lambda feature_slug: __import__("asyncio").sleep(0, result=False)
+        )
         monkeypatch.setattr(
             service,
             "_upsert_coin_metrics",
@@ -592,11 +654,21 @@ async def test_process_indicator_event_covers_missing_bounds_existing_aggregates
         monkeypatch.setattr(service._cache, "upsert_snapshots", lambda **kwargs: __import__("asyncio").sleep(0))
         monkeypatch.setattr(indicator_services, "_detect_signals", lambda snapshot: [])
         monkeypatch.setattr(service._signals, "insert_known_signals", lambda **kwargs: __import__("asyncio").sleep(0))
-        monkeypatch.setattr(service._signals, "list_types_at_timestamp", lambda **kwargs: __import__("asyncio").sleep(0, result=set()))
+        monkeypatch.setattr(
+            service._signals, "list_types_at_timestamp", lambda **kwargs: __import__("asyncio").sleep(0, result=set())
+        )
 
         aggregate_refreshes: list[tuple[int, datetime, datetime]] = []
-        monkeypatch.setattr(service._candles, "get_base_bounds", lambda **kwargs: __import__("asyncio").sleep(0, result=(base_timestamp - timedelta(days=1), base_timestamp)))
-        monkeypatch.setattr(service._candles, "aggregate_has_rows", lambda **kwargs: __import__("asyncio").sleep(0, result=True))
+        monkeypatch.setattr(
+            service._candles,
+            "get_base_bounds",
+            lambda **kwargs: __import__("asyncio").sleep(
+                0, result=(base_timestamp - timedelta(days=1), base_timestamp)
+            ),
+        )
+        monkeypatch.setattr(
+            service._candles, "aggregate_has_rows", lambda **kwargs: __import__("asyncio").sleep(0, result=True)
+        )
         monkeypatch.setattr(
             service._aggregates,
             "refresh_range",
@@ -619,7 +691,9 @@ async def test_process_indicator_event_covers_missing_bounds_existing_aggregates
         assert len(aggregate_refreshes) == 2
         assert [item.timeframe for item in result_with_existing_aggregates.items] == [15, 60]
 
-        monkeypatch.setattr(service._candles, "get_base_bounds", lambda **kwargs: __import__("asyncio").sleep(0, result=(None, None)))
+        monkeypatch.setattr(
+            service._candles, "get_base_bounds", lambda **kwargs: __import__("asyncio").sleep(0, result=(None, None))
+        )
         monkeypatch.setattr(
             indicator_services,
             "_calculate_snapshot",

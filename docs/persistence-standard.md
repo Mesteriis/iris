@@ -39,6 +39,7 @@ Rules:
 - query services never call `commit()`.
 - query services must not leak session-bound ORM entities to callers.
 - list/detail APIs should consume query services directly rather than raw sessions.
+- public persistence-facing services stay class-based; module-level DB helper functions are private implementation details, not caller contracts.
 
 ### Unit of Work
 

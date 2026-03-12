@@ -55,7 +55,7 @@ from src.apps.patterns.domain.regime import (
 )
 from src.apps.patterns.domain.semantics import is_cluster_signal, is_pattern_signal
 from src.core.db.session import async_engine
-from src.core.db.uow import BaseAsyncUnitOfWork, SessionUnitOfWork
+from src.core.db.uow import BaseAsyncUnitOfWork
 
 
 @dataclass(slots=True, frozen=True)
@@ -128,6 +128,43 @@ def _regime_for_timeframe(
     if regime is None:
         return fallback, None
     return str(regime.regime), float(regime.confidence)
+
+
+class IndicatorReadService:
+    def __init__(self, session: AsyncSession) -> None:
+        self._queries = IndicatorQueryService(session)
+        self._signals = IndicatorSignalRepository(session)
+
+    async def list_coin_metrics(self) -> tuple[CoinMetricsReadModel, ...]:
+        return await self._queries.list_coin_metrics()
+
+    async def list_signals(
+        self,
+        *,
+        symbol: str | None = None,
+        timeframe: int | None = None,
+        limit: int = 100,
+    ) -> tuple[SignalSummaryReadModel, ...]:
+        return await self._queries.list_signals(symbol=symbol, timeframe=timeframe, limit=limit)
+
+    async def list_signal_types_at_timestamp(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        candle_timestamp: object,
+    ) -> set[str]:
+        return await self._signals.list_types_at_timestamp(
+            coin_id=coin_id,
+            timeframe=timeframe,
+            candle_timestamp=candle_timestamp,
+        )
+
+    async def get_market_radar(self, *, limit: int = 8) -> MarketRadarReadModel:
+        return await self._queries.get_market_radar(limit=limit)
+
+    async def get_market_flow(self, *, limit: int = 8, timeframe: int = 60) -> MarketFlowReadModel:
+        return await self._queries.get_market_flow(limit=limit, timeframe=timeframe)
 
 
 class IndicatorAnalyticsService:
@@ -227,7 +264,11 @@ class IndicatorAnalyticsService:
         )
         await self._cache.upsert_snapshots(
             coin_id=int(coin.id),
-            snapshots=[snapshots[current_timeframe] for current_timeframe in affected_timeframes if current_timeframe in snapshots],
+            snapshots=[
+                snapshots[current_timeframe]
+                for current_timeframe in affected_timeframes
+                if current_timeframe in snapshots
+            ],
             volume_24h=volume_24h,
             volume_change_24h=volume_change_24h,
         )
@@ -354,7 +395,9 @@ class IndicatorAnalyticsService:
             "volume_24h": volume_24h,
             "volume_change_24h": volume_change_24h,
             "volatility": volatility,
-            "market_cap": await _fetch_market_cap(coin.symbol) if refresh_market_cap or existing_market_cap is None else existing_market_cap,
+            "market_cap": await _fetch_market_cap(coin.symbol)
+            if refresh_market_cap or existing_market_cap is None
+            else existing_market_cap,
             "trend": trend,
             "trend_score": trend_score,
             "activity_score": activity_score,
@@ -475,86 +518,6 @@ class FeatureSnapshotService:
         )
 
 
-async def list_coin_metrics_async(db: AsyncSession) -> tuple[CoinMetricsReadModel, ...]:
-    return await IndicatorQueryService(db).list_coin_metrics()
-
-
-async def list_signals_async(
-    db: AsyncSession,
-    *,
-    symbol: str | None = None,
-    timeframe: int | None = None,
-    limit: int = 100,
-) -> tuple[SignalSummaryReadModel, ...]:
-    return await IndicatorQueryService(db).list_signals(symbol=symbol, timeframe=timeframe, limit=limit)
-
-
-async def list_signal_types_at_timestamp(
-    db: AsyncSession,
-    *,
-    coin_id: int,
-    timeframe: int,
-    candle_timestamp: object,
-) -> set[str]:
-    return await IndicatorSignalRepository(db).list_types_at_timestamp(
-        coin_id=coin_id,
-        timeframe=timeframe,
-        candle_timestamp=candle_timestamp,
-    )
-
-
-async def get_market_radar_async(db: AsyncSession, *, limit: int = 8) -> MarketRadarReadModel:
-    return await IndicatorQueryService(db).get_market_radar(limit=limit)
-
-
-async def get_market_flow_async(db: AsyncSession, *, limit: int = 8, timeframe: int = 60) -> MarketFlowReadModel:
-    return await IndicatorQueryService(db).get_market_flow(limit=limit, timeframe=timeframe)
-
-
-async def process_indicator_event(
-    db: AsyncSession,
-    *,
-    coin_id: int,
-    timeframe: int,
-    timestamp: datetime,
-    commit: bool = True,
-) -> IndicatorEventResult:
-    uow = SessionUnitOfWork(db)
-    result = await IndicatorAnalyticsService(uow).process_event(
-        coin_id=coin_id,
-        timeframe=timeframe,
-        timestamp=timestamp,
-    )
-    if commit and result.status == "ok":
-        await uow.commit()
-    return result
-
-
-async def capture_feature_snapshot(
-    db: AsyncSession,
-    *,
-    coin_id: int,
-    timeframe: int,
-    timestamp: datetime,
-    price_current: float | None,
-    rsi_14: float | None,
-    macd: float | None,
-    commit: bool = True,
-) -> FeatureSnapshotCaptureResult:
-    uow = SessionUnitOfWork(db)
-    result = await FeatureSnapshotService(uow).capture_snapshot(
-        coin_id=coin_id,
-        timeframe=timeframe,
-        timestamp=timestamp,
-        price_current=price_current,
-        rsi_14=rsi_14,
-        macd=macd,
-    )
-    if commit and result.status == "ok":
-        await uow.commit()
-    return result
-
-
 __all__ = [
     "FeatureSnapshotCaptureResult",
     "FeatureSnapshotService",
@@ -562,12 +525,6 @@ __all__ = [
     "IndicatorEventItem",
     "IndicatorEventResult",
     "IndicatorMetricsUpdate",
-    "capture_feature_snapshot",
     "determine_affected_timeframes",
-    "get_market_flow_async",
-    "get_market_radar_async",
-    "list_coin_metrics_async",
-    "list_signal_types_at_timestamp",
-    "list_signals_async",
-    "process_indicator_event",
+    "IndicatorReadService",
 ]
