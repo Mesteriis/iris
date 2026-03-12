@@ -1,3 +1,3 @@
-from src.apps.hypothesis_engine.repos.hypothesis_repo import HypothesisRepo
+from src.apps.hypothesis_engine.repos.hypothesis_repo import HypothesisRepo, HypothesisRepository
 
-__all__ = ["HypothesisRepo"]
+__all__ = ["HypothesisRepo", "HypothesisRepository"]

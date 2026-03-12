@@ -3,6 +3,7 @@ from __future__ import annotations
 from src.apps.hypothesis_engine.constants import SUPPORTED_HYPOTHESIS_SOURCE_EVENTS
 from src.apps.hypothesis_engine.services import HypothesisService
 from src.core.db.session import AsyncSessionLocal
+from src.core.db.uow import AsyncUnitOfWork
 from src.runtime.streams.types import IrisEvent
 
 
@@ -13,5 +14,5 @@ class HypothesisConsumer:
     async def handle_event(self, event: IrisEvent) -> None:
         if event.event_type not in SUPPORTED_HYPOTHESIS_SOURCE_EVENTS or event.coin_id <= 0:
             return
-        async with self._session_factory() as db:
-            await HypothesisService(db).create_from_event(event)
+        async with AsyncUnitOfWork(session_factory=self._session_factory) as uow:
+            await HypothesisService(uow).create_from_event(event)

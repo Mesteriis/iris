@@ -7,18 +7,24 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import ResponseError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.hypothesis_engine.constants import AI_STREAM_PREFIXES, FRONTEND_AI_SSE_GROUP
 from src.apps.hypothesis_engine.exceptions import InvalidPromptPayloadError, PromptNotFoundError
-from src.apps.hypothesis_engine.schemas import AIPromptCreate, AIPromptRead, AIPromptUpdate, AIHypothesisEvalRead, AIHypothesisRead
+from src.apps.hypothesis_engine.query_services import HypothesisQueryService
+from src.apps.hypothesis_engine.schemas import (
+    AIHypothesisEvalRead,
+    AIHypothesisRead,
+    AIPromptCreate,
+    AIPromptRead,
+    AIPromptUpdate,
+)
 from src.apps.hypothesis_engine.services import PromptService
-from src.apps.hypothesis_engine.repos import HypothesisRepo
-from src.core.db.session import get_db
+from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 from src.core.settings import get_settings
 from src.runtime.streams.types import parse_stream_message
 
 router = APIRouter(tags=["hypothesis"])
+DB_UOW = Depends(get_uow)
 
 
 def _event_payload(message) -> dict[str, object]:
@@ -81,18 +87,18 @@ async def _iter_ai_stream(request: Request, *, cursor: str | None, once: bool):
 @router.get("/hypothesis/prompts", response_model=list[AIPromptRead])
 async def read_ai_prompts(
     name: str | None = Query(default=None),
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> list[AIPromptRead]:
-    return await PromptService(db).list_prompts(name=name)
+    return await PromptService(uow).list_prompts(name=name)
 
 
 @router.post("/hypothesis/prompts", response_model=AIPromptRead, status_code=status.HTTP_201_CREATED)
 async def create_ai_prompt(
     payload: AIPromptCreate,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> AIPromptRead:
     try:
-        return await PromptService(db).create_prompt(payload)
+        return await PromptService(uow).create_prompt(payload)
     except InvalidPromptPayloadError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -101,18 +107,18 @@ async def create_ai_prompt(
 async def patch_ai_prompt(
     prompt_id: int,
     payload: AIPromptUpdate,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> AIPromptRead:
     try:
-        return await PromptService(db).update_prompt(prompt_id, payload)
+        return await PromptService(uow).update_prompt(prompt_id, payload)
     except PromptNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.post("/hypothesis/prompts/{prompt_id}/activate", response_model=AIPromptRead)
-async def activate_ai_prompt(prompt_id: int, db: AsyncSession = Depends(get_db)) -> AIPromptRead:
+async def activate_ai_prompt(prompt_id: int, uow: BaseAsyncUnitOfWork = DB_UOW) -> AIPromptRead:
     try:
-        return await PromptService(db).activate_prompt(prompt_id)
+        return await PromptService(uow).activate_prompt(prompt_id)
     except PromptNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -122,9 +128,9 @@ async def read_hypotheses(
     limit: int = Query(default=50, ge=1, le=500),
     status: str | None = Query(default=None),
     coin_id: int | None = Query(default=None, ge=1),
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> list[AIHypothesisRead]:
-    items = await HypothesisRepo(db).list_hypotheses(limit=limit, status=status, coin_id=coin_id)
+    items = await HypothesisQueryService(uow.session).list_hypotheses(limit=limit, status=status, coin_id=coin_id)
     return [AIHypothesisRead.model_validate(item) for item in items]
 
 
@@ -132,9 +138,9 @@ async def read_hypotheses(
 async def read_hypothesis_evals(
     limit: int = Query(default=50, ge=1, le=500),
     hypothesis_id: int | None = Query(default=None, ge=1),
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> list[AIHypothesisEvalRead]:
-    items = await HypothesisRepo(db).list_evals(limit=limit, hypothesis_id=hypothesis_id)
+    items = await HypothesisQueryService(uow.session).list_evals(limit=limit, hypothesis_id=hypothesis_id)
     return [AIHypothesisEvalRead.model_validate(item) for item in items]
 
 

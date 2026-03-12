@@ -7,14 +7,13 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
-from fastapi import FastAPI
-
 import src.core.bootstrap.app as bootstrap_app_module
 import src.core.bootstrap.lifespan as lifespan_module
 import src.core.db.session as session_module
 import src.core.db.uow as uow_module
 import src.core.settings.base as settings_base_module
 import src.main as main_module
+from fastapi import FastAPI
 
 
 def test_bootstrap_app_builds_config_runs_migrations_and_enters_deferred_lifespan(monkeypatch) -> None:
@@ -156,15 +155,21 @@ async def test_db_session_helpers_wait_logic_and_async_uow(monkeypatch) -> None:
             self.closed = 0
             self.commits = 0
             self.rollbacks = 0
+            self.transaction_open = True
 
         async def close(self) -> None:
             self.closed += 1
 
         async def commit(self) -> None:
             self.commits += 1
+            self.transaction_open = False
 
         async def rollback(self) -> None:
             self.rollbacks += 1
+            self.transaction_open = False
+
+        def in_transaction(self) -> bool:
+            return self.transaction_open
 
     dummy_session = _DummyAsyncSession()
     monkeypatch.setattr(session_module, "AsyncSessionLocal", lambda: dummy_session)
@@ -231,6 +236,7 @@ async def test_db_session_helpers_wait_logic_and_async_uow(monkeypatch) -> None:
 
     async with uow_module.AsyncUnitOfWork() as uow:
         assert uow.session is commit_session
+        await uow.commit()
     assert commit_session.commits == 1
     assert commit_session.rollbacks == 0
     assert commit_session.closed == 1
@@ -244,8 +250,9 @@ async def test_db_session_helpers_wait_logic_and_async_uow(monkeypatch) -> None:
 
     async with uow_module.async_session_scope() as session:
         assert session is scoped_session
-    assert scoped_session.commits == 1
-    assert scoped_session.closed == 2
+    assert scoped_session.commits == 0
+    assert scoped_session.rollbacks == 1
+    assert scoped_session.closed == 1
 
 
 def test_main_run_invokes_uvicorn(monkeypatch) -> None:

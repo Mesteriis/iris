@@ -3,27 +3,32 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.apps.hypothesis_engine.agents import ReasoningService
-from src.apps.hypothesis_engine.constants import AI_EVENT_HYPOTHESIS_CREATED, AI_EVENT_INSIGHT, SUPPORTED_HYPOTHESIS_SOURCE_EVENTS
+from src.apps.hypothesis_engine.constants import (
+    AI_EVENT_HYPOTHESIS_CREATED,
+    AI_EVENT_INSIGHT,
+    SUPPORTED_HYPOTHESIS_SOURCE_EVENTS,
+)
 from src.apps.hypothesis_engine.models import AIHypothesis
-from src.apps.hypothesis_engine.repos import HypothesisRepo
+from src.apps.hypothesis_engine.query_services import HypothesisQueryService
+from src.apps.hypothesis_engine.repositories import HypothesisRepository
 from src.apps.market_data.domain import ensure_utc
+from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
 from src.runtime.streams.types import IrisEvent
 
 
 class HypothesisService:
-    def __init__(self, db: AsyncSession) -> None:
-        self._db = db
-        self._repo = HypothesisRepo(db)
-        self._reasoning = ReasoningService(db)
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        self._uow = uow
+        self._repo = HypothesisRepository(uow.session)
+        self._queries = HypothesisQueryService(uow.session)
+        self._reasoning = ReasoningService(uow.session)
 
     async def create_from_event(self, event: IrisEvent) -> int:
         if event.event_type not in SUPPORTED_HYPOTHESIS_SOURCE_EVENTS or event.coin_id <= 0:
             return 0
-        coin = await self._repo.get_coin(event.coin_id)
+        coin = await self._queries.get_coin_context(event.coin_id)
         if coin is None:
             return 0
         effective_timeframe = int(event.timeframe) if int(event.timeframe) > 0 else 15
@@ -69,6 +74,7 @@ class HypothesisService:
                 source_stream_id=event.stream_id,
             )
         )
+        await self._uow.commit()
         publish_event(
             AI_EVENT_HYPOTHESIS_CREATED,
             {

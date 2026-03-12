@@ -3,13 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.apps.hypothesis_engine.constants import AI_EVENT_HYPOTHESIS_EVALUATED, AI_EVENT_INSIGHT, HYPOTHESIS_STATUS_EVALUATED
+from src.apps.hypothesis_engine.constants import (
+    AI_EVENT_HYPOTHESIS_EVALUATED,
+    AI_EVENT_INSIGHT,
+    HYPOTHESIS_STATUS_EVALUATED,
+)
 from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval
-from src.apps.hypothesis_engine.repos import HypothesisRepo
+from src.apps.hypothesis_engine.query_services import HypothesisQueryService
+from src.apps.hypothesis_engine.repositories import HypothesisRepository
 from src.apps.hypothesis_engine.services.weight_update_service import WeightUpdateService
 from src.apps.market_data.domain import ensure_utc
+from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
 
 
@@ -33,19 +37,21 @@ def _outcome_score(*, direction: str, realized_return: float, target_move: float
 
 
 class EvaluationService:
-    def __init__(self, db: AsyncSession) -> None:
-        self._db = db
-        self._repo = HypothesisRepo(db)
-        self._weights = WeightUpdateService(db)
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        self._uow = uow
+        self._repo = HypothesisRepository(uow.session)
+        self._queries = HypothesisQueryService(uow.session)
+        self._weights = WeightUpdateService(uow)
 
     async def evaluate_due(self, now: datetime) -> list[int]:
-        due_hypotheses = await self._repo.list_due_hypotheses(ensure_utc(now), limit=200)
+        due_hypotheses = await self._repo.list_due_hypotheses_for_update(ensure_utc(now), limit=200)
         created_eval_ids: list[int] = []
+        pending_events: list[tuple[str, dict[str, object]]] = []
         for hypothesis in due_hypotheses:
             outcome = await self._evaluate_hypothesis(hypothesis, now=ensure_utc(now))
             if outcome is None:
                 continue
-            evaluation = await self._repo.create_eval(
+            evaluation = await self._repo.add_eval(
                 AIHypothesisEval(
                     hypothesis_id=int(hypothesis.id),
                     success=outcome.success,
@@ -55,38 +61,46 @@ class EvaluationService:
                 )
             )
             hypothesis.status = HYPOTHESIS_STATUS_EVALUATED
-            await self._db.commit()
-            await self._db.refresh(hypothesis)
-            publish_event(
-                AI_EVENT_HYPOTHESIS_EVALUATED,
-                {
-                    "coin_id": int(hypothesis.coin_id),
-                    "timeframe": int(hypothesis.timeframe),
-                    "timestamp": ensure_utc(now),
-                    "hypothesis_id": int(hypothesis.id),
-                    "success": bool(evaluation.success),
-                    "score": float(evaluation.score),
-                    "type": hypothesis.hypothesis_type,
-                    "details": dict(evaluation.details_json or {}),
-                },
+            pending_events.append(
+                (
+                    AI_EVENT_HYPOTHESIS_EVALUATED,
+                    {
+                        "coin_id": int(hypothesis.coin_id),
+                        "timeframe": int(hypothesis.timeframe),
+                        "timestamp": ensure_utc(now),
+                        "hypothesis_id": int(hypothesis.id),
+                        "success": bool(evaluation.success),
+                        "score": float(evaluation.score),
+                        "type": hypothesis.hypothesis_type,
+                        "details": dict(evaluation.details_json or {}),
+                    },
+                )
             )
-            publish_event(
-                AI_EVENT_INSIGHT,
-                {
-                    "coin_id": int(hypothesis.coin_id),
-                    "timeframe": int(hypothesis.timeframe),
-                    "timestamp": ensure_utc(now),
-                    "kind": "evaluation",
-                    "text": (
-                        f"Hypothesis {int(hypothesis.id)} evaluated as "
-                        f"{'successful' if evaluation.success else 'unsuccessful'}."
-                    ),
-                    "confidence": float(hypothesis.confidence),
-                    "hypothesis_id": int(hypothesis.id),
-                },
+            pending_events.append(
+                (
+                    AI_EVENT_INSIGHT,
+                    {
+                        "coin_id": int(hypothesis.coin_id),
+                        "timeframe": int(hypothesis.timeframe),
+                        "timestamp": ensure_utc(now),
+                        "kind": "evaluation",
+                        "text": (
+                            f"Hypothesis {int(hypothesis.id)} evaluated as "
+                            f"{'successful' if evaluation.success else 'unsuccessful'}."
+                        ),
+                        "confidence": float(hypothesis.confidence),
+                        "hypothesis_id": int(hypothesis.id),
+                    },
+                )
             )
-            await self._weights.apply(int(evaluation.id))
+            weight_event = await self._weights.apply_to_evaluation(evaluation)
+            if weight_event is not None:
+                pending_events.append(weight_event)
             created_eval_ids.append(int(evaluation.id))
+        if created_eval_ids:
+            await self._uow.commit()
+            for event_type, payload in pending_events:
+                publish_event(event_type, payload)
         return created_eval_ids
 
     async def _evaluate_hypothesis(self, hypothesis: AIHypothesis, *, now: datetime) -> HypothesisOutcome | None:
@@ -95,7 +109,7 @@ class EvaluationService:
             return None
         start = ensure_utc(datetime.fromisoformat(trigger_raw))
         end = min(ensure_utc(now), ensure_utc(hypothesis.eval_due_at))
-        candles = await self._repo.get_candles_between(
+        candles = await self._queries.get_candle_window(
             coin_id=int(hypothesis.coin_id),
             timeframe=int(hypothesis.timeframe),
             start=start,

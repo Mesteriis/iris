@@ -5,12 +5,12 @@ from datetime import timedelta
 import httpx
 import pytest
 from sqlalchemy import select
-
 from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AIPrompt, AIWeight
 from src.apps.hypothesis_engine.prompts import PromptLoader
 from src.apps.hypothesis_engine.providers import LocalHTTPProvider, OpenAILikeProvider
 from src.apps.hypothesis_engine.services.weight_update_service import WeightUpdateService, posterior_mean
 from src.apps.market_data.domain import utc_now
+from src.core.db.uow import SessionUnitOfWork
 
 
 @pytest.mark.asyncio
@@ -155,7 +155,8 @@ async def test_weight_update_service_applies_decayed_bayes(async_db_session, see
     published: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr("src.apps.hypothesis_engine.services.weight_update_service.publish_event", lambda event_type, payload: published.append((event_type, payload)))
 
-    await WeightUpdateService(async_db_session).apply(int(evaluation.id))
+    async with SessionUnitOfWork(async_db_session) as uow:
+        await WeightUpdateService(uow).apply(int(evaluation.id))
 
     weight = await async_db_session.scalar(
         select(AIWeight).where(AIWeight.scope == "hypothesis_type", AIWeight.weight_key == "signal_follow_through")

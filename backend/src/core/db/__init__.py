@@ -6,15 +6,18 @@ from src.core.db.session import (
     ping_database,
     wait_for_database,
 )
-from src.core.db.uow import AsyncUnitOfWork, async_session_scope
+from src.core.db.uow import AsyncUnitOfWork, BaseAsyncUnitOfWork, SessionUnitOfWork, async_session_scope, get_uow
 
 __all__ = [
     "AsyncSessionLocal",
     "AsyncUnitOfWork",
+    "BaseAsyncUnitOfWork",
     "Base",
+    "SessionUnitOfWork",
     "async_engine",
     "async_session_scope",
     "get_db",
+    "get_uow",
     "ping_database",
     "wait_for_database",
 ]
