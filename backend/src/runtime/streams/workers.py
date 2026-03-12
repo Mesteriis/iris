@@ -6,16 +6,34 @@ from collections.abc import Sequence
 from sqlalchemy import select
 
 from src.apps.anomalies.consumers import CandleAnomalyConsumer, SectorAnomalyConsumer
+from src.apps.control_plane.metrics import ControlPlaneMetricsStore
 from src.apps.cross_market.engine import process_cross_market_event
 from src.apps.hypothesis_engine.consumers import HypothesisConsumer
+from src.apps.indicators.analytics import process_indicator_event
+from src.apps.indicators.models import CoinMetrics
+from src.apps.indicators.snapshots import capture_feature_snapshot
+from src.apps.market_data.models import Coin
 from src.apps.news.consumers import NewsCorrelationConsumer, NewsNormalizationConsumer
-from src.apps.signals.fusion import evaluate_market_decision
-from src.apps.signals.fusion import evaluate_news_fusion_event
+from src.apps.patterns.cache import cache_regime_snapshot_async, read_cached_regime_async
+from src.apps.patterns.domain.clusters import build_pattern_clusters
+from src.apps.patterns.domain.context import enrich_signal_context
+from src.apps.patterns.domain.cycle import update_market_cycle
+from src.apps.patterns.domain.decision import evaluate_investment_decision
+from src.apps.patterns.domain.engine import PatternEngine
+from src.apps.patterns.domain.hierarchy import build_hierarchy_signals
+from src.apps.patterns.domain.narrative import refresh_sector_metrics
+from src.apps.patterns.domain.risk import evaluate_final_signal
+from src.apps.patterns.domain.scheduler import should_request_analysis
+from src.apps.patterns.models import MarketCycle
+from src.apps.portfolio.engine import evaluate_portfolio_action
+from src.apps.signals.fusion import evaluate_market_decision, evaluate_news_fusion_event
+from src.apps.signals.history import refresh_recent_signal_history
+from src.apps.signals.models import Signal
 from src.core.db.session import AsyncSessionLocal
 from src.core.settings import get_settings
+from src.runtime.control_plane.worker import build_delivery_stream_name
 from src.runtime.streams.consumer import EventConsumer, EventConsumerConfig, default_consumer_name
 from src.runtime.streams.publisher import publish_event
-from src.runtime.control_plane.worker import build_delivery_stream_name
 from src.runtime.streams.types import (
     ANALYSIS_SCHEDULER_WORKER_GROUP,
     ANOMALY_SECTOR_WORKER_GROUP,
@@ -26,31 +44,13 @@ from src.runtime.streams.types import (
     FUSION_WORKER_GROUP,
     HYPOTHESIS_WORKER_GROUP,
     INDICATOR_WORKER_GROUP,
-    IrisEvent,
     NEWS_CORRELATION_WORKER_GROUP,
     NEWS_NORMALIZATION_WORKER_GROUP,
     PATTERN_WORKER_GROUP,
     PORTFOLIO_WORKER_GROUP,
     REGIME_WORKER_GROUP,
+    IrisEvent,
 )
-from src.apps.market_data.models import Coin
-from src.apps.indicators.models import CoinMetrics
-from src.apps.patterns.models import MarketCycle
-from src.apps.signals.models import Signal
-from src.apps.patterns.domain.clusters import build_pattern_clusters
-from src.apps.patterns.domain.context import enrich_signal_context
-from src.apps.patterns.domain.cycle import update_market_cycle
-from src.apps.patterns.domain.decision import evaluate_investment_decision
-from src.apps.patterns.domain.engine import PatternEngine
-from src.apps.patterns.domain.hierarchy import build_hierarchy_signals
-from src.apps.patterns.domain.narrative import refresh_sector_metrics
-from src.apps.patterns.domain.risk import evaluate_final_signal
-from src.apps.patterns.domain.scheduler import should_request_analysis
-from src.apps.portfolio.engine import evaluate_portfolio_action
-from src.apps.indicators.analytics import process_indicator_event
-from src.apps.indicators.snapshots import capture_feature_snapshot
-from src.apps.patterns.cache import cache_regime_snapshot_async, read_cached_regime_async
-from src.apps.signals.history import refresh_recent_signal_history
 
 LOGGER = logging.getLogger(__name__)
 _PATTERN_ENGINE = PatternEngine()
@@ -59,6 +59,7 @@ _ANOMALY_SECTOR_CONSUMER = SectorAnomalyConsumer()
 _NEWS_NORMALIZATION_CONSUMER = NewsNormalizationConsumer()
 _NEWS_CORRELATION_CONSUMER = NewsCorrelationConsumer()
 _HYPOTHESIS_CONSUMER = HypothesisConsumer()
+_CONTROL_PLANE_METRICS = ControlPlaneMetricsStore()
 
 # NOTE:
 # These stream workers now use async Redis/consumer orchestration, but the
@@ -476,29 +477,29 @@ def create_worker(group_name: str, consumer_name: str | None = None) -> EventCon
         pending_idle_milliseconds=settings.event_worker_pending_idle_milliseconds,
     )
     if group_name == INDICATOR_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_indicator_event, interested_event_types=None)
+        return EventConsumer(config, handler=_handle_indicator_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
     if group_name == ANALYSIS_SCHEDULER_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_analysis_scheduler_event, interested_event_types=None)
+        return EventConsumer(config, handler=_handle_analysis_scheduler_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
     if group_name == PATTERN_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_pattern_event, interested_event_types=None)
+        return EventConsumer(config, handler=_handle_pattern_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
     if group_name == REGIME_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_regime_event, interested_event_types=None)
+        return EventConsumer(config, handler=_handle_regime_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
     if group_name == DECISION_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_decision_event, interested_event_types=None)
+        return EventConsumer(config, handler=_handle_decision_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
     if group_name == FUSION_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_fusion_event, interested_event_types=None)
+        return EventConsumer(config, handler=_handle_fusion_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
     if group_name == CROSS_MARKET_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_cross_market_event, interested_event_types=None)
+        return EventConsumer(config, handler=_handle_cross_market_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
     if group_name == PORTFOLIO_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_portfolio_event, interested_event_types=None)
+        return EventConsumer(config, handler=_handle_portfolio_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
     if group_name == ANOMALY_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_anomaly_event, interested_event_types=None)
+        return EventConsumer(config, handler=_handle_anomaly_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
     if group_name == ANOMALY_SECTOR_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_anomaly_sector_event, interested_event_types=None)
+        return EventConsumer(config, handler=_handle_anomaly_sector_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
     if group_name == NEWS_NORMALIZATION_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_news_normalization_event, interested_event_types=None)
+        return EventConsumer(config, handler=_handle_news_normalization_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
     if group_name == NEWS_CORRELATION_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_news_correlation_event, interested_event_types=None)
+        return EventConsumer(config, handler=_handle_news_correlation_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
     if group_name == HYPOTHESIS_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_hypothesis_event, interested_event_types=None)
+        return EventConsumer(config, handler=_handle_hypothesis_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
     raise ValueError(f"Unsupported event worker group '{group_name}'.")

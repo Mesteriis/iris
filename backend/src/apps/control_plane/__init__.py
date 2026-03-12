@@ -52,6 +52,7 @@ from src.apps.control_plane.services import (
     EventRegistryService,
     RouteManagementService,
     TopologyDraftService,
+    TopologyObservabilityService,
     TopologyService,
     route_to_snapshot,
 )
@@ -99,6 +100,7 @@ __all__ = [
     "TopologyDraftService",
     "TopologyDraftStateError",
     "TopologyDraftStatus",
+    "TopologyObservabilityService",
     "TopologyService",
     "TopologyVersionRepository",
     "TopologyVersionStatus",

@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 
 import pytest
 from redis.exceptions import RedisError, ResponseError
-
 from src.runtime.streams import consumer
 from src.runtime.streams.types import IrisEvent, build_event_fields
 
@@ -90,6 +89,50 @@ async def test_event_consumer_process_message_branches(monkeypatch) -> None:
     assert fake_redis.set_calls[0][0].startswith("iris:events:processed:runtime-test:")
     await instance.close_async()
     assert fake_redis.closed is True
+
+
+@pytest.mark.asyncio
+async def test_event_consumer_records_metrics_for_success_and_failure(monkeypatch) -> None:
+    fake_redis = _FakeAsyncRedis()
+    fake_redis.exists_effects = [0, 0]
+    calls: list[tuple[str, str | None, bool, str | None]] = []
+
+    class MetricsStore:
+        async def record_consumer_result(self, *, consumer_key, route_key, occurred_at, succeeded, error=None) -> None:
+            del occurred_at
+            calls.append((consumer_key, route_key, succeeded, error))
+
+    monkeypatch.setattr(consumer.Redis, "from_url", lambda *args, **kwargs: fake_redis)
+
+    success_instance = consumer.EventConsumer(
+        consumer.EventConsumerConfig(group_name="decision_workers", consumer_name="worker-a"),
+        handler=lambda event: None,
+        metrics_store=MetricsStore(),
+    )
+    failure_instance = consumer.EventConsumer(
+        consumer.EventConsumerConfig(group_name="decision_workers", consumer_name="worker-b"),
+        handler=lambda event: (_ for _ in ()).throw(RuntimeError("boom")),
+        metrics_store=MetricsStore(),
+    )
+
+    success_fields = build_event_fields(
+        "signal_created",
+        {
+            "coin_id": 7,
+            "timeframe": 15,
+            "timestamp": "2026-03-12T11:45:00+00:00",
+            "metadata": {"route_key": "signal_created:decision_workers:global:*:*"},
+        },
+    )
+    await success_instance._process_message("1-0", success_fields)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await failure_instance._process_message("1-1", success_fields)
+
+    assert calls == [
+        ("decision_workers", "signal_created:decision_workers:global:*:*", True, None),
+        ("decision_workers", "signal_created:decision_workers:global:*:*", False, "boom"),
+    ]
 
 
 @pytest.mark.asyncio

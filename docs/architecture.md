@@ -78,6 +78,8 @@ The control-plane application layer now includes repositories and services for:
 - route create/update/status changes with audit logging
 - topology snapshot assembly
 - draft storage and preview diffs before publish
+- topology graph assembly for visual editors
+- observability projections backed by Redis metrics plus DB topology state
 
 The runtime side now also has a dedicated dispatcher/evaluator layer that can consume a topology snapshot and decide delivery based on:
 
@@ -95,6 +97,27 @@ Topology snapshots are now loaded through a dedicated cache manager:
 - the runtime keeps an in-process snapshot copy
 - control events trigger cache refresh/invalidation
 - downstream domain workers now consume per-consumer delivery streams instead of filtering the ingress stream locally
+
+The HTTP surface now exposes the control plane as a first-class backend boundary:
+
+- `/control-plane/registry/*` for event and consumer registry reads plus compatibility discovery
+- `/control-plane/routes*` for route CRUD/status mutations guarded by observe/control mode headers
+- `/control-plane/topology/snapshot` and `/control-plane/topology/graph` for canvas/inspector data
+- `/control-plane/drafts*` for draft creation, staged route changes and diff previews
+- `/control-plane/audit` for route audit history
+- `/control-plane/observability` for route/consumer throughput, failure, latency, lag and dead-consumer state
+
+Control mode protection currently uses request headers:
+
+- `X-IRIS-Actor`
+- `X-IRIS-Access-Mode: observe|control`
+- optional `X-IRIS-Reason`
+- optional `X-IRIS-Control-Token` when `IRIS_CONTROL_TOKEN` is configured
+
+Observability is now split across two layers:
+
+- dispatcher metrics track route evaluations/deliveries/shadow counts
+- delivery workers emit consumer success/failure heartbeats keyed by `consumer_key` and `route_key`
 
 ## Database
 

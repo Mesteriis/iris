@@ -6,6 +6,7 @@ from redis.asyncio import Redis as AsyncRedis
 
 from src.apps.control_plane.cache import TopologyCacheManager
 from src.apps.control_plane.control_events import CONTROL_EVENT_TYPES
+from src.apps.control_plane.metrics import ControlPlaneMetricsStore
 from src.core.settings import get_settings
 from src.runtime.control_plane.dispatcher import InMemoryDispatchTracker, TopologyDispatcher, TopologyRouteEvaluator
 from src.runtime.streams.consumer import EventConsumer, EventConsumerConfig, default_consumer_name
@@ -63,11 +64,13 @@ class TopologyDispatchService:
         *,
         cache_manager: TopologyCacheManager | None = None,
         publisher: RedisRouteDeliveryPublisher | None = None,
+        metrics_store: ControlPlaneMetricsStore | None = None,
         environment: str | None = None,
     ) -> None:
         settings = get_settings()
         self._cache_manager = cache_manager or TopologyCacheManager()
         self._publisher = publisher or RedisRouteDeliveryPublisher()
+        self._metrics = metrics_store or ControlPlaneMetricsStore()
         self._environment = environment or settings.app_env
         self._evaluator = TopologyRouteEvaluator(environment=self._environment)
         self._tracker = InMemoryDispatchTracker()
@@ -83,6 +86,15 @@ class TopologyDispatchService:
             tracker=self._tracker,
         )
         report = await dispatcher.dispatch(event)
+        for decision in report.decisions:
+            await self._metrics.record_route_dispatch(
+                route_key=decision.route.route_key,
+                consumer_key=decision.consumer.consumer_key,
+                delivered=decision.deliver,
+                shadow=decision.shadow,
+                reason=decision.reason,
+                occurred_at=event.occurred_at,
+            )
         return {
             "event_id": report.event_id,
             "event_type": report.event_type,

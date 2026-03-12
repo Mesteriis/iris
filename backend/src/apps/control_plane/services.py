@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +38,7 @@ from src.apps.control_plane.exceptions import (
     TopologyDraftNotFound,
     TopologyDraftStateError,
 )
+from src.apps.control_plane.metrics import ControlPlaneMetricsStore
 from src.apps.control_plane.models import (
     EventConsumer,
     EventDefinition,
@@ -56,6 +58,7 @@ from src.apps.control_plane.repositories import (
     TopologyVersionRepository,
 )
 from src.apps.market_data.domain import utc_now
+from src.core.settings import get_settings
 
 
 def route_to_snapshot(route: EventRoute) -> dict[str, Any]:
@@ -86,6 +89,32 @@ def _coerce_throttle(payload: dict[str, Any]) -> RouteThrottle:
 
 def _coerce_shadow(payload: dict[str, Any]) -> RouteShadow:
     return RouteShadow.from_json(payload)
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    return datetime.fromisoformat(value)
+
+
+def _int_value(payload: dict[str, str], key: str) -> int:
+    raw = payload.get(key)
+    return int(raw) if raw is not None else 0
+
+
+def _average_latency(payload: dict[str, str]) -> float | None:
+    count = _int_value(payload, "latency_count")
+    if count <= 0:
+        return None
+    total_raw = payload.get("latency_total_ms")
+    total = float(total_raw) if total_raw is not None else 0.0
+    return round(total / count, 2)
+
+
+def _lag_seconds(now: datetime, observed_at: datetime | None) -> int | None:
+    if observed_at is None:
+        return None
+    return max(int((now - observed_at).total_seconds()), 0)
 
 
 class AuditLogService:
@@ -120,6 +149,9 @@ class AuditLogService:
                 context_json=dict(actor.context),
             )
         )
+
+    async def list_recent(self, *, limit: int = 100) -> list[EventRouteAuditLog]:
+        return await self._repository.list_recent(limit=limit)
 
 
 class EventRegistryService:
@@ -367,6 +399,173 @@ class TopologyService:
             "routes": [route_to_snapshot(route) for route in routes],
         }
 
+    async def build_graph(self) -> dict[str, Any]:
+        latest_version = await self._versions.get_latest_published()
+        routes = await self._routes.list_all()
+        events = await self._events.list_all()
+        consumers = await self._consumers.list_all()
+
+        nodes = [
+            {
+                "id": f"event:{event.event_type}",
+                "node_type": "event",
+                "key": event.event_type,
+                "label": event.display_name,
+                "domain": event.domain,
+                "metadata": {
+                    "description": event.description,
+                    "is_control_event": bool(event.is_control_event),
+                },
+            }
+            for event in events
+        ]
+        nodes.extend(
+            {
+                "id": f"consumer:{consumer.consumer_key}",
+                "node_type": "consumer",
+                "key": consumer.consumer_key,
+                "label": consumer.display_name,
+                "domain": consumer.domain,
+                "metadata": {
+                    "delivery_stream": consumer.delivery_stream,
+                    "delivery_mode": consumer.delivery_mode,
+                    "supports_shadow": bool(consumer.supports_shadow),
+                    "supported_filter_fields": list(consumer.supported_filter_fields_json or []),
+                    "supported_scopes": list(consumer.supported_scopes_json or []),
+                    "compatible_event_types": list(consumer.compatible_event_types_json or []),
+                },
+            }
+            for consumer in consumers
+        )
+
+        compatibility = {
+            event.event_type: [
+                consumer.consumer_key
+                for consumer in consumers
+                if event.event_type in set(consumer.compatible_event_types_json or [])
+            ]
+            for event in events
+        }
+        edges = [
+            {
+                "id": route.route_key,
+                "route_key": route.route_key,
+                "source": f"event:{route.event_definition.event_type}",
+                "target": f"consumer:{route.consumer.consumer_key}",
+                "status": route.status,
+                "scope_type": route.scope_type,
+                "scope_value": route.scope_value,
+                "environment": route.environment,
+                "filters": dict(route.filters_json or {}),
+                "throttle": dict(route.throttle_config_json or {}),
+                "shadow": dict(route.shadow_config_json or {}),
+                "notes": route.notes,
+                "priority": int(route.priority),
+                "system_managed": bool(route.system_managed),
+                "compatible": route.consumer.consumer_key in compatibility.get(route.event_definition.event_type, []),
+            }
+            for route in routes
+        ]
+        return {
+            "version_number": int(latest_version.version_number) if latest_version is not None else 0,
+            "created_at": latest_version.created_at.isoformat() if latest_version is not None else None,
+            "nodes": nodes,
+            "edges": edges,
+            "palette": {
+                "events": [event.event_type for event in events],
+                "consumers": [consumer.consumer_key for consumer in consumers],
+            },
+            "compatibility": compatibility,
+        }
+
+
+class TopologyObservabilityService:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        metrics_store: ControlPlaneMetricsStore | None = None,
+        dead_consumer_after_seconds: int | None = None,
+    ) -> None:
+        settings = get_settings()
+        self._routes = EventRouteRepository(session)
+        self._consumers = EventConsumerRepository(session)
+        self._versions = TopologyVersionRepository(session)
+        self._metrics = metrics_store or ControlPlaneMetricsStore()
+        self._dead_consumer_after_seconds = (
+            int(dead_consumer_after_seconds)
+            if dead_consumer_after_seconds is not None
+            else int(settings.control_plane_dead_consumer_after_seconds)
+        )
+
+    async def build_overview(self) -> dict[str, Any]:
+        latest_version = await self._versions.get_latest_published()
+        routes = await self._routes.list_all()
+        consumers = await self._consumers.list_all()
+        generated_at = utc_now()
+
+        route_metrics = [
+            await self._build_route_metrics(route, generated_at=generated_at)
+            for route in routes
+        ]
+        consumer_metrics = [
+            await self._build_consumer_metrics(consumer, generated_at=generated_at)
+            for consumer in consumers
+        ]
+        return {
+            "version_number": int(latest_version.version_number) if latest_version is not None else 0,
+            "generated_at": generated_at.isoformat(),
+            "throughput": sum(int(metric["throughput"]) for metric in route_metrics),
+            "failure_count": sum(int(metric["failure_count"]) for metric in route_metrics),
+            "shadow_route_count": sum(1 for route in routes if route.status == EventRouteStatus.SHADOW.value),
+            "muted_route_count": sum(1 for route in routes if route.status == EventRouteStatus.MUTED.value),
+            "dead_consumer_count": sum(1 for consumer in consumer_metrics if bool(consumer["dead"])),
+            "routes": route_metrics,
+            "consumers": consumer_metrics,
+        }
+
+    async def _build_route_metrics(self, route: EventRoute, *, generated_at: datetime) -> dict[str, Any]:
+        raw = await self._metrics.read_route_metrics(route.route_key)
+        last_delivered_at = _parse_datetime(raw.get("last_delivered_at"))
+        last_completed_at = _parse_datetime(raw.get("last_completed_at"))
+        avg_latency_ms = _average_latency(raw)
+        return {
+            "route_key": route.route_key,
+            "event_type": route.event_definition.event_type if route.event_definition is not None else "",
+            "consumer_key": route.consumer.consumer_key if route.consumer is not None else "",
+            "status": route.status,
+            "throughput": _int_value(raw, "delivered_total"),
+            "failure_count": _int_value(raw, "failure_total"),
+            "avg_latency_ms": avg_latency_ms,
+            "last_delivered_at": last_delivered_at.isoformat() if last_delivered_at is not None else None,
+            "last_completed_at": last_completed_at.isoformat() if last_completed_at is not None else None,
+            "lag_seconds": _lag_seconds(generated_at, last_delivered_at),
+            "shadow_count": _int_value(raw, "shadow_total"),
+            "muted": route.status == EventRouteStatus.MUTED.value,
+            "last_reason": raw.get("last_reason"),
+        }
+
+    async def _build_consumer_metrics(self, consumer: EventConsumer, *, generated_at: datetime) -> dict[str, Any]:
+        raw = await self._metrics.read_consumer_metrics(consumer.consumer_key)
+        last_seen_at = _parse_datetime(raw.get("last_seen_at"))
+        last_failure_at = _parse_datetime(raw.get("last_failure_at"))
+        lag_seconds = _lag_seconds(generated_at, last_seen_at)
+        dead = lag_seconds is None or lag_seconds > self._dead_consumer_after_seconds
+        return {
+            "consumer_key": consumer.consumer_key,
+            "domain": consumer.domain,
+            "processed_total": _int_value(raw, "processed_total"),
+            "failure_count": _int_value(raw, "failure_total"),
+            "avg_latency_ms": _average_latency(raw),
+            "last_seen_at": last_seen_at.isoformat() if last_seen_at is not None else None,
+            "last_failure_at": last_failure_at.isoformat() if last_failure_at is not None else None,
+            "lag_seconds": lag_seconds,
+            "dead": dead,
+            "supports_shadow": bool(consumer.supports_shadow),
+            "delivery_stream": consumer.delivery_stream,
+            "last_error": raw.get("last_error"),
+        }
+
 
 class TopologyDraftService:
     def __init__(self, session: AsyncSession) -> None:
@@ -515,6 +714,7 @@ __all__ = [
     "EventRegistryService",
     "RouteManagementService",
     "TopologyDraftService",
+    "TopologyObservabilityService",
     "TopologyService",
     "route_to_snapshot",
 ]

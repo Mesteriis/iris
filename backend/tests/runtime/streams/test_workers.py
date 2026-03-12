@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-
-from src.runtime.streams import workers
 from src.runtime.control_plane.worker import build_delivery_stream_name
+from src.runtime.streams import workers
 from src.runtime.streams.types import (
     ANALYSIS_SCHEDULER_WORKER_GROUP,
     ANOMALY_SECTOR_WORKER_GROUP,
@@ -16,12 +15,12 @@ from src.runtime.streams.types import (
     FUSION_WORKER_GROUP,
     HYPOTHESIS_WORKER_GROUP,
     INDICATOR_WORKER_GROUP,
+    NEWS_CORRELATION_WORKER_GROUP,
+    NEWS_NORMALIZATION_WORKER_GROUP,
     PATTERN_WORKER_GROUP,
     PORTFOLIO_WORKER_GROUP,
     REGIME_WORKER_GROUP,
     IrisEvent,
-    NEWS_CORRELATION_WORKER_GROUP,
-    NEWS_NORMALIZATION_WORKER_GROUP,
 )
 
 
@@ -37,7 +36,7 @@ def _event(
         event_type=event_type,
         coin_id=coin_id,
         timeframe=timeframe,
-        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
         payload=payload or {},
     )
 
@@ -404,7 +403,8 @@ def test_worker_domain_helpers_and_factory(monkeypatch) -> None:
     created: list[tuple[str, object, object]] = []
 
     class FakeConsumer:
-        def __init__(self, config, *, handler, interested_event_types):
+        def __init__(self, config, *, handler, interested_event_types, **kwargs):
+            del kwargs
             created.append((config.group_name, config.stream_name, handler, interested_event_types))
 
     monkeypatch.setattr(

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
-
 from src.apps.control_plane.contracts import (
     EventConsumerSnapshot,
     EventDefinitionSnapshot,
@@ -25,7 +24,7 @@ def _snapshot() -> TopologySnapshot:
     )
     return TopologySnapshot(
         version_number=3,
-        created_at=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+        created_at=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
         events={"signal_created": EventDefinitionSnapshot(event_type="signal_created", domain="signals")},
         consumers={
             "hypothesis_workers": EventConsumerSnapshot(
@@ -72,7 +71,19 @@ async def test_topology_dispatch_service_uses_cache_manager_and_refreshes_contro
 
     cache = CacheManager()
     publisher = Publisher()
-    service = TopologyDispatchService(cache_manager=cache, publisher=publisher, environment="development")
+    metrics_calls: list[tuple[str, str, bool]] = []
+
+    class MetricsStore:
+        async def record_route_dispatch(self, *, route_key, consumer_key, delivered, shadow, reason, occurred_at) -> None:
+            del shadow, reason, occurred_at
+            metrics_calls.append((route_key, consumer_key, delivered))
+
+    service = TopologyDispatchService(
+        cache_manager=cache,
+        publisher=publisher,
+        metrics_store=MetricsStore(),
+        environment="development",
+    )
 
     result = await service.handle_event(
         IrisEvent(
@@ -80,7 +91,7 @@ async def test_topology_dispatch_service_uses_cache_manager_and_refreshes_contro
             event_type="control.cache_invalidated",
             coin_id=0,
             timeframe=0,
-            timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
             payload={},
         )
     )
@@ -90,7 +101,7 @@ async def test_topology_dispatch_service_uses_cache_manager_and_refreshes_contro
             event_type="signal_created",
             coin_id=1,
             timeframe=15,
-            timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
             payload={},
         )
     )
@@ -99,3 +110,4 @@ async def test_topology_dispatch_service_uses_cache_manager_and_refreshes_contro
     assert cache.refresh_calls == 1
     assert cache.snapshot_calls == 2
     assert publisher.calls == [("signal_created:hypothesis_workers:global:*:*", "hypothesis_workers")]
+    assert metrics_calls == [("signal_created:hypothesis_workers:global:*:*", "hypothesis_workers", True)]

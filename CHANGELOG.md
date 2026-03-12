@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Control-plane FastAPI surface under `/control-plane` covering registry reads, route mutations, topology snapshot/graph payloads, draft staging, audit history and observability projections.
+- Redis-backed control-plane observability store for route dispatch counters plus worker heartbeat/success/failure metrics, with API coverage for throughput, latency, lag and dead-consumer detection.
 - Topology cache manager with Redis-backed snapshot storage, local hot cache, snapshot codec and control-event-driven refresh logic, plus runtime bridge code for delivery-stream fan-out.
 - Runtime control-plane dispatcher and route evaluator under `backend/src/runtime/control_plane` with route-status handling, filter evaluation, shadow/throttle decisions, in-memory dispatch metrics and dedicated pytest coverage.
 - Control-plane repositories and application services for event registry reads, route management, audit logging, topology snapshots and draft preview workflows, with pytest coverage for compatibility validation and change tracking.
@@ -79,6 +81,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- Runtime delivery workers now emit control-plane consumer metrics on successful and failed route deliveries, so observability is sourced from the new topology model instead of ad hoc worker-local state.
+- Backend bootstrap now mounts the control-plane router, and control-mode mutations can be protected by `IRIS_CONTROL_TOKEN` plus `X-IRIS-Access-Mode`.
 - Local bootstrap/test migrations now fall back cleanly when TimescaleDB is unavailable, preserving the canonical schema on plain PostgreSQL while still using Timescale features when the extension exists.
 - Runtime stream routing, analytics worker loading and embedded scheduler wiring now optionally enable `hypothesis_workers`, `evaluate_hypotheses_job` and `/hypothesis/*` routes behind `enable_hypothesis_engine`, with dedicated AI provider settings and isolated Redis/test cleanup for `iris:ai:*`.
 - Backend package root was renamed from `backend/app` to `backend/src`, and Alembic scripts were moved from `backend/alembic` to `backend/src/migrations` with matching updates in imports, bootstrap, Docker, service entrypoints and test tooling.

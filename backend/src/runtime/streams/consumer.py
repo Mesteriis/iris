@@ -7,6 +7,8 @@ import os
 import socket
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Protocol
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError, ResponseError
@@ -32,6 +34,18 @@ class EventConsumerConfig:
     processed_ttl_seconds: int = 604_800
 
 
+class ConsumerMetricsRecorder(Protocol):
+    async def record_consumer_result(
+        self,
+        *,
+        consumer_key: str,
+        route_key: str | None,
+        occurred_at: datetime,
+        succeeded: bool,
+        error: str | None = None,
+    ) -> None: ...
+
+
 class EventConsumer:
     def __init__(
         self,
@@ -40,12 +54,16 @@ class EventConsumer:
         handler: Callable[[IrisEvent], object],
         interested_event_types: set[str] | None = None,
         redis_url: str | None = None,
+        metrics_store: ConsumerMetricsRecorder | None = None,
+        metrics_consumer_key: str | None = None,
     ) -> None:
         settings = get_settings()
         self._config = config
         self._handler = handler
         self._interested_event_types = interested_event_types
         self._redis = Redis.from_url(redis_url or settings.redis_url, decode_responses=True)
+        self._metrics_store = metrics_store
+        self._metrics_consumer_key = metrics_consumer_key or config.group_name
         self._stop_requested = False
 
     def _processed_key(self, event: IrisEvent) -> str:
@@ -94,7 +112,7 @@ class EventConsumer:
         except RedisError:
             return []
         del message_id
-        return [(entry_id, fields) for entry_id, fields in entries]
+        return list(entries)
 
     async def _iter_new_messages(self) -> list[tuple[str, dict[str, str]]]:
         try:
@@ -132,9 +150,42 @@ class EventConsumer:
             await self._mark_processed(event)
             await self._redis.xack(self._config.stream_name, self._config.group_name, message_id)
             return
-        await self._invoke_handler(event)
+        route_key = str(event.metadata.get("route_key")) if event.metadata.get("route_key") is not None else None
+        try:
+            await self._invoke_handler(event)
+        except Exception as exc:
+            await self._record_consumer_metrics(
+                route_key=route_key,
+                occurred_at=event.occurred_at,
+                succeeded=False,
+                error=str(exc),
+            )
+            raise
         await self._mark_processed(event)
         await self._redis.xack(self._config.stream_name, self._config.group_name, message_id)
+        await self._record_consumer_metrics(
+            route_key=route_key,
+            occurred_at=event.occurred_at,
+            succeeded=True,
+        )
+
+    async def _record_consumer_metrics(
+        self,
+        *,
+        route_key: str | None,
+        occurred_at: datetime,
+        succeeded: bool,
+        error: str | None = None,
+    ) -> None:
+        if self._metrics_store is None:
+            return
+        await self._metrics_store.record_consumer_result(
+            consumer_key=self._metrics_consumer_key,
+            route_key=route_key,
+            occurred_at=occurred_at,
+            succeeded=succeeded,
+            error=error,
+        )
 
     async def run_async(self, *, stop_checker: Callable[[], bool] | None = None) -> None:
         await self._ensure_group()

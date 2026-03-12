@@ -16,8 +16,9 @@ sys.path = [
     for path in _ORIGINAL_SYS_PATH
     if Path(path or ".").resolve() != _BACKEND_ROOT
 ]
-from alembic.config import Config
 import alembic.command as command
+from alembic.config import Config
+
 sys.path = _ORIGINAL_SYS_PATH
 from redis import Redis
 from sqlalchemy import delete, func, select
@@ -28,8 +29,6 @@ from src.core.settings import get_settings
 
 get_settings.cache_clear()
 
-from src.core.db.session import AsyncSessionLocal, SessionLocal
-from src.runtime.streams.publisher import flush_publisher, reset_event_publisher
 from src.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
 from src.apps.control_plane.models import (
     EventRoute,
@@ -38,27 +37,28 @@ from src.apps.control_plane.models import (
     TopologyDraft,
     TopologyDraftChange,
 )
-from src.apps.market_data.models import Coin
-from src.apps.cross_market.models import CoinRelation
-from src.apps.market_structure.models import MarketStructureSource
-from src.apps.news.models import NewsItem, NewsItemLink, NewsSource
-from src.apps.portfolio.models import ExchangeAccount
-from src.apps.predictions.models import MarketPrediction
-from src.apps.patterns.models import PatternFeature
-from src.apps.patterns.models import PatternRegistry
-from src.apps.patterns.models import PatternStatistic
+from src.apps.cross_market.models import CoinRelation, SectorMetric
 from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AIPrompt, AIWeight
-from src.apps.portfolio.models import PortfolioAction
-from src.apps.portfolio.models import PortfolioBalance
-from src.apps.portfolio.models import PortfolioPosition
-from src.apps.portfolio.models import PortfolioState
-from src.apps.predictions.models import PredictionResult
-from src.apps.cross_market.models import SectorMetric
+from src.apps.market_data.domain import utc_now
+from src.apps.market_data.models import Coin
+from src.apps.market_data.repos import upsert_base_candles
 from src.apps.market_data.schemas import CoinCreate
 from src.apps.market_data.service_layer import create_coin
-from src.apps.market_data.domain import utc_now
 from src.apps.market_data.sources.base import MarketBar
-from src.apps.market_data.repos import upsert_base_candles
+from src.apps.market_structure.models import MarketStructureSource
+from src.apps.news.models import NewsItem, NewsItemLink, NewsSource
+from src.apps.patterns.models import PatternFeature, PatternRegistry, PatternStatistic
+from src.apps.portfolio.models import (
+    ExchangeAccount,
+    PortfolioAction,
+    PortfolioBalance,
+    PortfolioPosition,
+    PortfolioState,
+)
+from src.apps.predictions.models import MarketPrediction, PredictionResult
+from src.core.db.session import AsyncSessionLocal, SessionLocal
+from src.runtime.streams.publisher import flush_publisher, reset_event_publisher
+
 from tests.factories.market_data import CoinCreateFactory
 
 TEST_SYMBOLS = {
@@ -127,6 +127,8 @@ def isolated_event_stream(redis_client: Redis, settings) -> Iterator[None]:
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:ai:*"):
         redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:control_plane:*"):
+        redis_client.delete(key)
     yield
     flush_publisher(timeout=2.0)
     redis_client.delete(settings.event_stream_name)
@@ -141,6 +143,8 @@ def isolated_event_stream(redis_client: Redis, settings) -> Iterator[None]:
     for key in redis_client.scan_iter("iris:prediction:*"):
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:ai:*"):
+        redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:control_plane:*"):
         redis_client.delete(key)
     reset_event_publisher()
 

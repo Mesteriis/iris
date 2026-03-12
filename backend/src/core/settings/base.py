@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     event_worker_block_milliseconds: int = 1000
     event_worker_pending_idle_milliseconds: int = 30000
     event_worker_batch_size: int = 10
+    control_plane_token: str = Field(default="", alias="IRIS_CONTROL_TOKEN")
+    control_plane_dead_consumer_after_seconds: int = 300
     enable_hypothesis_engine: bool = False
     ai_openai_base_url: str = "https://api.openai.com/v1"
     ai_openai_api_key: str = ""
