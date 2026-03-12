@@ -1,371 +1,573 @@
 from __future__ import annotations
 
-import json
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any
 
-from redis.asyncio import Redis
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
 
-from src.core.settings import get_settings
-from src.apps.market_data.models import Coin
 from src.apps.indicators.analytics import (
+    INDICATOR_VERSION,
+    PRICE_HISTORY_LOOKBACK_BARS,
+    CandleAnalyticsEvent,
+    TimeframeSnapshot,
+    _activity_fields,
+    _calculate_snapshot,
+    _coin_base_timeframe,
+    _compute_market_regime,
+    _compute_price_change,
+    _compute_trend,
+    _compute_trend_score,
+    _compute_volume_metrics,
+    _detect_signals,
+    _fetch_market_cap,
+    _select_primary_snapshot,
     determine_affected_timeframes,
-    list_signal_types_at_timestamp,
-    process_indicator_event,
 )
-from src.apps.indicators.domain import adx_series, atr_series, bollinger_bands, ema_series, macd_series, rsi_series, sma_series
-from src.apps.indicators.models import CoinMetrics
-from src.apps.indicators.schemas import CoinRelationRead, MarketFlowRead, MarketLeaderRead, MarketRadarCoinRead, MarketRadarRead, MarketRegimeChangeRead, SectorMomentumRead, SectorRotationRead
-from src.apps.cross_market.models import CoinRelation, Sector, SectorMetric
-from src.apps.indicators.snapshots import capture_feature_snapshot
-from src.apps.market_data.domain import ensure_utc
+from src.apps.indicators.query_services import IndicatorQueryService
+from src.apps.indicators.read_models import (
+    CoinMetricsReadModel,
+    MarketFlowReadModel,
+    MarketRadarReadModel,
+    SignalSummaryReadModel,
+)
+from src.apps.indicators.repositories import (
+    FeatureSnapshotPayload,
+    IndicatorCacheRepository,
+    IndicatorCandleRepository,
+    IndicatorCoinRepository,
+    IndicatorFeatureFlagRepository,
+    IndicatorFeatureSnapshotRepository,
+    IndicatorMarketCycleRepository,
+    IndicatorMetricsRepository,
+    IndicatorSectorMetricRepository,
+    IndicatorSignalRepository,
+)
+from src.apps.market_data.domain import ensure_utc, utc_now
+from src.apps.market_data.models import Coin
+from src.apps.market_data.repos import AGGREGATE_VIEW_BY_TIMEFRAME, BASE_TIMEFRAME_MINUTES, TIMEFRAME_INTERVALS
+from src.apps.market_data.repositories import TimescaleContinuousAggregateRepository
+from src.apps.patterns.domain.regime import (
+    calculate_regime_map,
+    primary_regime,
+    read_regime_details,
+    serialize_regime_map,
+)
+from src.apps.patterns.domain.semantics import is_cluster_signal, is_pattern_signal
+from src.core.db.session import async_engine
+from src.core.db.uow import BaseAsyncUnitOfWork, SessionUnitOfWork
 
 
-def _stream_client() -> Redis:
-    settings = get_settings()
-    return Redis.from_url(settings.redis_url, decode_responses=True)
+@dataclass(slots=True, frozen=True)
+class IndicatorMetricsUpdate:
+    coin_id: int
+    activity_score: float | None = None
+    activity_bucket: str | None = None
+    analysis_priority: int | None = None
+    market_regime: str | None = None
+    market_regime_details: dict[str, object] | None = None
+    price_change_24h: float | None = None
+    price_change_7d: float | None = None
+    volatility: float | None = None
 
 
-async def list_coin_metrics_async(db: AsyncSession):
-    rows = (
-        await db.execute(
-            select(
-                Coin.id.label("coin_id"),
-                Coin.symbol,
-                Coin.name,
-                CoinMetrics.price_current,
-                CoinMetrics.price_change_1h,
-                CoinMetrics.price_change_24h,
-                CoinMetrics.price_change_7d,
-                CoinMetrics.ema_20,
-                CoinMetrics.ema_50,
-                CoinMetrics.sma_50,
-                CoinMetrics.sma_200,
-                CoinMetrics.rsi_14,
-                CoinMetrics.macd,
-                CoinMetrics.macd_signal,
-                CoinMetrics.macd_histogram,
-                CoinMetrics.atr_14,
-                CoinMetrics.bb_upper,
-                CoinMetrics.bb_middle,
-                CoinMetrics.bb_lower,
-                CoinMetrics.bb_width,
-                CoinMetrics.adx_14,
-                CoinMetrics.volume_24h,
-                CoinMetrics.volume_change_24h,
-                CoinMetrics.volatility,
-                CoinMetrics.market_cap,
-                CoinMetrics.trend,
-                CoinMetrics.trend_score,
-                CoinMetrics.activity_score,
-                CoinMetrics.activity_bucket,
-                CoinMetrics.analysis_priority,
-                CoinMetrics.last_analysis_at,
-                CoinMetrics.market_regime,
-                CoinMetrics.market_regime_details,
-                CoinMetrics.indicator_version,
-                CoinMetrics.updated_at,
+@dataclass(slots=True, frozen=True)
+class IndicatorEventItem:
+    coin_id: int
+    timeframe: int
+    timestamp: datetime
+    feature_source: str
+    activity_score: float | None
+    activity_bucket: str | None
+    analysis_priority: int | None
+    market_regime: str | None
+    regime_confidence: float | None
+    price_change_24h: float | None
+    price_change_7d: float | None
+    volatility: float | None
+    classic_signals: tuple[str, ...]
+
+
+@dataclass(slots=True, frozen=True)
+class IndicatorEventResult:
+    status: str
+    coin_id: int
+    symbol: str | None = None
+    reason: str | None = None
+    timeframes: tuple[int, ...] = ()
+    indicator_version: int = INDICATOR_VERSION
+    items: tuple[IndicatorEventItem, ...] = ()
+
+
+@dataclass(slots=True, frozen=True)
+class FeatureSnapshotCaptureResult:
+    status: str
+    coin_id: int
+    timeframe: int
+    timestamp: datetime
+    reason: str | None = None
+    price_current: float | None = None
+    rsi_14: float | None = None
+    macd: float | None = None
+    trend_score: int | None = None
+    volatility: float | None = None
+    sector_strength: float | None = None
+    market_regime: str | None = None
+    cycle_phase: str | None = None
+    pattern_density: int = 0
+    cluster_score: float = 0.0
+
+
+def _regime_for_timeframe(
+    *,
+    timeframe: int,
+    regime_map: dict[int, object],
+    fallback: str | None,
+) -> tuple[str | None, float | None]:
+    regime = regime_map.get(timeframe)
+    if regime is None:
+        return fallback, None
+    return str(regime.regime), float(regime.confidence)
+
+
+class IndicatorAnalyticsService:
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        self._uow = uow
+        self._coins = IndicatorCoinRepository(uow.session)
+        self._candles = IndicatorCandleRepository(uow.session)
+        self._metrics = IndicatorMetricsRepository(uow.session)
+        self._cache = IndicatorCacheRepository(uow.session)
+        self._signals = IndicatorSignalRepository(uow.session)
+        self._feature_flags = IndicatorFeatureFlagRepository(uow.session)
+        self._aggregates = TimescaleContinuousAggregateRepository(async_engine)
+
+    async def process_event(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        timestamp: datetime,
+    ) -> IndicatorEventResult:
+        event = CandleAnalyticsEvent(
+            coin_id=int(coin_id),
+            timeframe=int(timeframe),
+            timestamp=ensure_utc(timestamp),
+        )
+        coin = await self._coins.get_by_id(event.coin_id)
+        if coin is None or coin.deleted_at is not None:
+            return IndicatorEventResult(status="skipped", coin_id=event.coin_id, reason="coin_not_found")
+
+        base_timeframe = _coin_base_timeframe(coin)
+        base_window_start, base_window_end = await self._candles.get_base_bounds(coin_id=int(coin.id))
+        if base_window_start is not None and base_window_end is not None:
+            for aggregate_timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
+                if not await self._candles.aggregate_has_rows(coin_id=int(coin.id), timeframe=aggregate_timeframe):
+                    await self._aggregates.refresh_range(
+                        timeframe=aggregate_timeframe,
+                        window_start=base_window_start,
+                        window_end=base_window_end,
+                    )
+
+        affected_timeframes = determine_affected_timeframes(timeframe=event.timeframe, timestamp=event.timestamp)
+        for affected_timeframe in affected_timeframes:
+            if affected_timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
+                await self._aggregates.refresh_range(
+                    timeframe=affected_timeframe,
+                    window_start=event.timestamp,
+                    window_end=event.timestamp,
+                )
+
+        snapshots: dict[int, TimeframeSnapshot] = {}
+        for current_timeframe in TIMEFRAME_INTERVALS:
+            candles = await self._candles.fetch_points(
+                coin_id=int(coin.id),
+                timeframe=current_timeframe,
+                limit=PRICE_HISTORY_LOOKBACK_BARS,
             )
-            .join(CoinMetrics, CoinMetrics.coin_id == Coin.id)
-            .where(Coin.deleted_at.is_(None))
-            .order_by(Coin.sort_order.asc(), Coin.symbol.asc())
+            feature_source = (
+                "candles"
+                if await self._candles.has_direct_candles(coin_id=int(coin.id), timeframe=current_timeframe)
+                or base_timeframe != BASE_TIMEFRAME_MINUTES
+                else AGGREGATE_VIEW_BY_TIMEFRAME.get(current_timeframe, "candles")
+            )
+            snapshot = _calculate_snapshot(candles, current_timeframe, feature_source=feature_source)
+            if snapshot is not None:
+                snapshots[current_timeframe] = snapshot
+
+        base_candles = await self._candles.fetch_points(
+            coin_id=int(coin.id),
+            timeframe=base_timeframe,
+            limit=800,
         )
-    ).all()
-    return [dict(row._mapping) for row in rows]
-
-
-def _metric_projection():
-    return (
-        Coin.id.label("coin_id"),
-        Coin.symbol,
-        Coin.name,
-        CoinMetrics.activity_score,
-        CoinMetrics.activity_bucket,
-        CoinMetrics.analysis_priority,
-        CoinMetrics.price_change_24h,
-        CoinMetrics.price_change_7d,
-        CoinMetrics.volatility,
-        CoinMetrics.market_regime,
-        CoinMetrics.updated_at,
-        CoinMetrics.last_analysis_at,
-    )
-
-
-def _serialize_metric_rows(rows) -> list[MarketRadarCoinRead]:
-    return [
-        MarketRadarCoinRead(
-            coin_id=int(row.coin_id),
-            symbol=str(row.symbol),
-            name=str(row.name),
-            activity_score=float(row.activity_score) if row.activity_score is not None else None,
-            activity_bucket=row.activity_bucket,
-            analysis_priority=int(row.analysis_priority) if row.analysis_priority is not None else None,
-            price_change_24h=float(row.price_change_24h) if row.price_change_24h is not None else None,
-            price_change_7d=float(row.price_change_7d) if row.price_change_7d is not None else None,
-            volatility=float(row.volatility) if row.volatility is not None else None,
-            market_regime=row.market_regime,
-            updated_at=row.updated_at,
-            last_analysis_at=row.last_analysis_at,
+        volume_24h, volume_change_24h, volatility = _compute_volume_metrics(base_candles, base_timeframe)
+        primary = _select_primary_snapshot(snapshots)
+        base_snapshot = snapshots.get(base_timeframe)
+        price_change_7d = _compute_price_change(base_candles, timedelta(days=7))
+        regime_map = (
+            calculate_regime_map(snapshots, volatility=volatility, price_change_7d=price_change_7d)
+            if await self._feature_flags.is_enabled("market_regime_engine")
+            else {}
         )
-        for row in rows
-    ]
+        metrics_payload = await self._upsert_coin_metrics(
+            coin=coin,
+            base_timeframe=base_timeframe,
+            primary=primary,
+            base_snapshot=base_snapshot,
+            base_candles=base_candles,
+            volume_24h=volume_24h,
+            volume_change_24h=volume_change_24h,
+            volatility=volatility,
+            refresh_market_cap=240 in affected_timeframes or 1440 in affected_timeframes,
+            market_regime=(
+                str(regime_map[primary.timeframe].regime)
+                if primary is not None and primary.timeframe in regime_map
+                else primary_regime(regime_map)
+            ),
+            market_regime_details=serialize_regime_map(regime_map) if regime_map else None,
+        )
+        await self._cache.upsert_snapshots(
+            coin_id=int(coin.id),
+            snapshots=[snapshots[current_timeframe] for current_timeframe in affected_timeframes if current_timeframe in snapshots],
+            volume_24h=volume_24h,
+            volume_change_24h=volume_change_24h,
+        )
+
+        items: list[IndicatorEventItem] = []
+        for affected_timeframe in affected_timeframes:
+            snapshot = snapshots.get(affected_timeframe)
+            if snapshot is None:
+                continue
+            before_signal_types = await self._signals.list_types_at_timestamp(
+                coin_id=int(coin.id),
+                timeframe=affected_timeframe,
+                candle_timestamp=snapshot.candle_close_timestamp,
+            )
+            await self._signals.insert_known_signals(
+                coin_id=int(coin.id),
+                timeframe=affected_timeframe,
+                signals=_detect_signals(snapshot),
+            )
+            after_signal_types = await self._signals.list_types_at_timestamp(
+                coin_id=int(coin.id),
+                timeframe=affected_timeframe,
+                candle_timestamp=snapshot.candle_close_timestamp,
+            )
+            regime_name, regime_confidence = _regime_for_timeframe(
+                timeframe=affected_timeframe,
+                regime_map=regime_map,
+                fallback=metrics_payload.market_regime,
+            )
+            items.append(
+                IndicatorEventItem(
+                    coin_id=int(coin.id),
+                    timeframe=affected_timeframe,
+                    timestamp=snapshot.candle_close_timestamp,
+                    feature_source=snapshot.feature_source,
+                    activity_score=metrics_payload.activity_score,
+                    activity_bucket=metrics_payload.activity_bucket,
+                    analysis_priority=metrics_payload.analysis_priority,
+                    market_regime=regime_name,
+                    regime_confidence=regime_confidence,
+                    price_change_24h=metrics_payload.price_change_24h,
+                    price_change_7d=metrics_payload.price_change_7d,
+                    volatility=metrics_payload.volatility,
+                    classic_signals=tuple(
+                        sorted(
+                            signal_type
+                            for signal_type in (after_signal_types - before_signal_types)
+                            if signal_type in self._known_signal_types
+                        )
+                    ),
+                )
+            )
+
+        return IndicatorEventResult(
+            status="ok",
+            coin_id=int(coin.id),
+            symbol=str(coin.symbol),
+            timeframes=tuple(affected_timeframes),
+            items=tuple(items),
+        )
+
+    @property
+    def _known_signal_types(self) -> set[str]:
+        from src.apps.indicators.analytics import SIGNAL_TYPES
+
+        return SIGNAL_TYPES
+
+    async def _upsert_coin_metrics(
+        self,
+        *,
+        coin: Coin,
+        base_timeframe: int,
+        primary: TimeframeSnapshot | None,
+        base_snapshot: TimeframeSnapshot | None,
+        base_candles: list[object],
+        volume_24h: float | None,
+        volume_change_24h: float | None,
+        volatility: float | None,
+        refresh_market_cap: bool,
+        market_regime: str | None,
+        market_regime_details: dict[str, object] | None,
+    ) -> IndicatorMetricsUpdate:
+        await self._metrics.ensure_row(int(coin.id))
+        if primary is None:
+            return IndicatorMetricsUpdate(
+                coin_id=int(coin.id),
+                market_regime=market_regime,
+                market_regime_details=market_regime_details,
+            )
+
+        trend = _compute_trend(primary)
+        trend_score = _compute_trend_score(primary, volume_change_24h)
+        existing_market_cap = await self._metrics.get_market_cap(int(coin.id))
+        price_current = base_snapshot.price_current if base_snapshot is not None else primary.price_current
+        price_change_1h = _compute_price_change(base_candles, timedelta(hours=1))
+        price_change_24h = _compute_price_change(base_candles, timedelta(hours=24))
+        price_change_7d = _compute_price_change(base_candles, timedelta(days=7))
+        activity_score, activity_bucket, analysis_priority = _activity_fields(
+            price_change_24h=price_change_24h,
+            volatility=volatility,
+            volume_change_24h=volume_change_24h,
+            price_current=price_current,
+        )
+        payload = {
+            "coin_id": int(coin.id),
+            "price_current": price_current,
+            "price_change_1h": price_change_1h,
+            "price_change_24h": price_change_24h,
+            "price_change_7d": price_change_7d,
+            "ema_20": primary.ema_20,
+            "ema_50": primary.ema_50,
+            "sma_50": primary.sma_50,
+            "sma_200": primary.sma_200,
+            "rsi_14": primary.rsi_14,
+            "macd": primary.macd,
+            "macd_signal": primary.macd_signal,
+            "macd_histogram": primary.macd_histogram,
+            "atr_14": primary.atr_14,
+            "bb_upper": primary.bb_upper,
+            "bb_middle": primary.bb_middle,
+            "bb_lower": primary.bb_lower,
+            "bb_width": primary.bb_width,
+            "adx_14": primary.adx_14,
+            "volume_24h": volume_24h,
+            "volume_change_24h": volume_change_24h,
+            "volatility": volatility,
+            "market_cap": await _fetch_market_cap(coin.symbol) if refresh_market_cap or existing_market_cap is None else existing_market_cap,
+            "trend": trend,
+            "trend_score": trend_score,
+            "activity_score": activity_score,
+            "activity_bucket": activity_bucket,
+            "analysis_priority": analysis_priority,
+            "market_regime": market_regime or _compute_market_regime(primary, trend, volume_change_24h),
+            "market_regime_details": market_regime_details,
+            "indicator_version": INDICATOR_VERSION,
+            "updated_at": utc_now(),
+        }
+        await self._metrics.upsert(payload)
+        return IndicatorMetricsUpdate(
+            coin_id=int(coin.id),
+            activity_score=activity_score,
+            activity_bucket=activity_bucket,
+            analysis_priority=analysis_priority,
+            market_regime=str(payload["market_regime"]) if payload["market_regime"] is not None else None,
+            market_regime_details=market_regime_details,
+            price_change_24h=price_change_24h,
+            price_change_7d=price_change_7d,
+            volatility=volatility,
+        )
 
 
-async def _recent_regime_changes_async(db: AsyncSession, *, limit: int) -> list[MarketRegimeChangeRead]:
-    settings = get_settings()
-    redis = _stream_client()
-    try:
-        messages = await redis.xrevrange(settings.event_stream_name, "+", "-", count=max(limit * 40, 100))
-    finally:
-        await redis.aclose()
+class FeatureSnapshotService:
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        self._uow = uow
+        self._coins = IndicatorCoinRepository(uow.session)
+        self._metrics = IndicatorMetricsRepository(uow.session)
+        self._signals = IndicatorSignalRepository(uow.session)
+        self._feature_snapshots = IndicatorFeatureSnapshotRepository(uow.session)
+        self._sector_metrics = IndicatorSectorMetricRepository(uow.session)
+        self._market_cycles = IndicatorMarketCycleRepository(uow.session)
 
-    changes: list[tuple[int, int, str, float, datetime]] = []
-    seen: set[tuple[int, int, str]] = set()
-    for _, fields in messages:
-        if fields.get("event_type") != "market_regime_changed":
-            continue
-        coin_id = int(fields["coin_id"])
-        timeframe = int(fields["timeframe"])
-        timestamp = ensure_utc(datetime.fromisoformat(fields["timestamp"]))
-        payload = fields.get("payload") or "{}"
-        regime = "unknown"
-        confidence = 0.0
-        if "\"regime\"" in payload:
-            data = json.loads(payload)
-            regime = str(data.get("regime") or regime)
-            confidence = float(data.get("confidence") or 0.0)
-        key = (coin_id, timeframe, regime)
-        if key in seen:
-            continue
-        seen.add(key)
-        changes.append((coin_id, timeframe, regime, confidence, timestamp))
-        if len(changes) >= limit:
-            break
+    async def capture_snapshot(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        timestamp: datetime,
+        price_current: float | None,
+        rsi_14: float | None,
+        macd: float | None,
+    ) -> FeatureSnapshotCaptureResult:
+        normalized_timestamp = ensure_utc(timestamp)
+        coin = await self._coins.get_by_id(coin_id)
+        if coin is None or coin.deleted_at is not None:
+            return FeatureSnapshotCaptureResult(
+                status="skipped",
+                reason="coin_not_found",
+                coin_id=coin_id,
+                timeframe=timeframe,
+                timestamp=normalized_timestamp,
+            )
 
-    if not changes:
-        return []
-
-    coin_ids = sorted({coin_id for coin_id, _, _, _, _ in changes})
-    coin_rows = (await db.execute(select(Coin.id, Coin.symbol, Coin.name).where(Coin.id.in_(coin_ids)))).all()
-    coin_map = {int(row.id): (str(row.symbol), str(row.name)) for row in coin_rows}
-    return [
-        MarketRegimeChangeRead(
+        metrics = await self._metrics.get_by_coin_id(coin_id)
+        sector_metric = (
+            await self._sector_metrics.get_by_key(sector_id=int(coin.sector_id), timeframe=timeframe)
+            if coin.sector_id is not None
+            else None
+        )
+        cycle = await self._market_cycles.get_by_key(coin_id=coin_id, timeframe=timeframe)
+        signal_rows = await self._signals.list_pattern_signal_rows(
             coin_id=coin_id,
-            symbol=coin_map.get(coin_id, ("UNKNOWN", "Unknown"))[0],
-            name=coin_map.get(coin_id, ("UNKNOWN", "Unknown"))[1],
             timeframe=timeframe,
-            regime=regime,
-            confidence=confidence,
-            timestamp=timestamp,
+            timestamp=normalized_timestamp,
         )
-        for coin_id, timeframe, regime, confidence, timestamp in changes
-    ]
+        pattern_density = sum(1 for row in signal_rows if is_pattern_signal(str(row.signal_type)))
+        cluster_score = sum(
+            float(row.priority_score or row.confidence or 0.0)
+            for row in signal_rows
+            if is_cluster_signal(str(row.signal_type))
+        )
+        regime_snapshot = (
+            read_regime_details(metrics.market_regime_details, timeframe)
+            if metrics is not None and metrics.market_regime_details
+            else None
+        )
+        payload = FeatureSnapshotPayload(
+            coin_id=coin_id,
+            timeframe=timeframe,
+            timestamp=normalized_timestamp,
+            price_current=price_current,
+            rsi_14=rsi_14,
+            macd=macd,
+            trend_score=metrics.trend_score if metrics is not None else None,
+            volatility=float(metrics.volatility) if metrics is not None and metrics.volatility is not None else None,
+            sector_strength=(
+                float(sector_metric.sector_strength)
+                if sector_metric is not None and sector_metric.sector_strength is not None
+                else None
+            ),
+            market_regime=(
+                str(regime_snapshot.regime)
+                if regime_snapshot is not None
+                else (str(metrics.market_regime) if metrics is not None and metrics.market_regime is not None else None)
+            ),
+            cycle_phase=str(cycle.cycle_phase) if cycle is not None and cycle.cycle_phase is not None else None,
+            pattern_density=pattern_density,
+            cluster_score=cluster_score,
+        )
+        await self._feature_snapshots.upsert(payload)
+        return FeatureSnapshotCaptureResult(
+            status="ok",
+            coin_id=coin_id,
+            timeframe=timeframe,
+            timestamp=normalized_timestamp,
+            price_current=payload.price_current,
+            rsi_14=payload.rsi_14,
+            macd=payload.macd,
+            trend_score=payload.trend_score,
+            volatility=payload.volatility,
+            sector_strength=payload.sector_strength,
+            market_regime=payload.market_regime,
+            cycle_phase=payload.cycle_phase,
+            pattern_density=payload.pattern_density,
+            cluster_score=payload.cluster_score,
+        )
 
 
-async def get_market_radar_async(db: AsyncSession, *, limit: int = 8) -> MarketRadarRead:
-    base_stmt = (
-        select(*_metric_projection())
-        .join(CoinMetrics, CoinMetrics.coin_id == Coin.id)
-        .where(Coin.deleted_at.is_(None), Coin.enabled.is_(True))
+async def list_coin_metrics_async(db: AsyncSession) -> tuple[CoinMetricsReadModel, ...]:
+    return await IndicatorQueryService(db).list_coin_metrics()
+
+
+async def list_signals_async(
+    db: AsyncSession,
+    *,
+    symbol: str | None = None,
+    timeframe: int | None = None,
+    limit: int = 100,
+) -> tuple[SignalSummaryReadModel, ...]:
+    return await IndicatorQueryService(db).list_signals(symbol=symbol, timeframe=timeframe, limit=limit)
+
+
+async def list_signal_types_at_timestamp(
+    db: AsyncSession,
+    *,
+    coin_id: int,
+    timeframe: int,
+    candle_timestamp: object,
+) -> set[str]:
+    return await IndicatorSignalRepository(db).list_types_at_timestamp(
+        coin_id=coin_id,
+        timeframe=timeframe,
+        candle_timestamp=candle_timestamp,
     )
-    hot_rows = (
-        await db.execute(
-            base_stmt.where(CoinMetrics.activity_bucket == "HOT")
-            .order_by(CoinMetrics.activity_score.desc().nullslast(), Coin.symbol.asc())
-            .limit(max(limit, 1))
-        )
-    ).all()
-    emerging_rows = (
-        await db.execute(
-            base_stmt.where(
-                CoinMetrics.activity_bucket.in_(("HOT", "WARM")),
-                CoinMetrics.price_change_24h.is_not(None),
-                CoinMetrics.price_change_24h > 0,
-                CoinMetrics.price_change_7d.is_not(None),
-                CoinMetrics.price_change_7d >= 0,
-                CoinMetrics.market_regime.in_(("bull_trend", "sideways_range", "high_volatility")),
-            )
-            .order_by(
-                CoinMetrics.activity_score.desc().nullslast(),
-                CoinMetrics.price_change_24h.desc().nullslast(),
-                Coin.symbol.asc(),
-            )
-            .limit(max(limit, 1))
-        )
-    ).all()
-    volatility_rows = (
-        await db.execute(
-            base_stmt.where(
-                CoinMetrics.volatility.is_not(None),
-                CoinMetrics.activity_bucket.in_(("HOT", "WARM", "COLD")),
-            )
-            .order_by(
-                CoinMetrics.market_regime.desc().nullslast(),
-                CoinMetrics.volatility.desc().nullslast(),
-                Coin.symbol.asc(),
-            )
-            .limit(max(limit, 1))
-        )
-    ).all()
-    regime_changes = await _recent_regime_changes_async(db, limit=max(limit, 1))
-    return MarketRadarRead(
-        hot_coins=_serialize_metric_rows(hot_rows),
-        emerging_coins=_serialize_metric_rows(emerging_rows),
-        regime_changes=regime_changes,
-        volatility_spikes=_serialize_metric_rows(volatility_rows),
+
+
+async def get_market_radar_async(db: AsyncSession, *, limit: int = 8) -> MarketRadarReadModel:
+    return await IndicatorQueryService(db).get_market_radar(limit=limit)
+
+
+async def get_market_flow_async(db: AsyncSession, *, limit: int = 8, timeframe: int = 60) -> MarketFlowReadModel:
+    return await IndicatorQueryService(db).get_market_flow(limit=limit, timeframe=timeframe)
+
+
+async def process_indicator_event(
+    db: AsyncSession,
+    *,
+    coin_id: int,
+    timeframe: int,
+    timestamp: datetime,
+    commit: bool = True,
+) -> IndicatorEventResult:
+    uow = SessionUnitOfWork(db)
+    result = await IndicatorAnalyticsService(uow).process_event(
+        coin_id=coin_id,
+        timeframe=timeframe,
+        timestamp=timestamp,
     )
-
-
-async def _recent_market_leaders_async(db: AsyncSession, *, limit: int) -> list[MarketLeaderRead]:
-    settings = get_settings()
-    redis = _stream_client()
-    try:
-        messages = await redis.xrevrange(settings.event_stream_name, "+", "-", count=max(limit * 30, 100))
-    finally:
-        await redis.aclose()
-
-    seen: set[int] = set()
-    leaders: list[tuple[int, float, datetime]] = []
-    for _, fields in messages:
-        if fields.get("event_type") != "market_leader_detected":
-            continue
-        coin_id = int(fields["coin_id"])
-        if coin_id in seen:
-            continue
-        seen.add(coin_id)
-        payload = json.loads(fields.get("payload") or "{}")
-        leaders.append(
-            (
-                coin_id,
-                float(payload.get("confidence") or 0.0),
-                ensure_utc(datetime.fromisoformat(fields["timestamp"])),
-            )
-        )
-        if len(leaders) >= limit:
-            break
-
-    result: list[MarketLeaderRead] = []
-    for coin_id, confidence, timestamp in leaders:
-        coin = await db.get(Coin, coin_id)
-        metrics = (
-            await db.execute(select(CoinMetrics).where(CoinMetrics.coin_id == coin_id))
-        ).scalar_one_or_none()
-        if coin is None:
-            continue
-        result.append(
-            MarketLeaderRead(
-                leader_coin_id=coin_id,
-                symbol=coin.symbol,
-                name=coin.name,
-                sector=coin.sector_code,
-                regime=metrics.market_regime if metrics is not None else None,
-                confidence=confidence,
-                price_change_24h=float(metrics.price_change_24h) if metrics is not None and metrics.price_change_24h is not None else None,
-                volume_change_24h=float(metrics.volume_change_24h) if metrics is not None and metrics.volume_change_24h is not None else None,
-                timestamp=timestamp,
-            )
-        )
+    if commit and result.status == "ok":
+        await uow.commit()
     return result
 
 
-async def _recent_sector_rotations_async(*, limit: int) -> list[SectorRotationRead]:
-    settings = get_settings()
-    redis = _stream_client()
-    try:
-        messages = await redis.xrevrange(settings.event_stream_name, "+", "-", count=max(limit * 20, 100))
-    finally:
-        await redis.aclose()
-
-    rotations: list[SectorRotationRead] = []
-    seen: set[tuple[str, str, int]] = set()
-    for _, fields in messages:
-        if fields.get("event_type") != "sector_rotation_detected":
-            continue
-        payload = json.loads(fields.get("payload") or "{}")
-        source_sector = str(payload.get("source_sector") or "")
-        target_sector = str(payload.get("target_sector") or "")
-        timeframe = int(fields["timeframe"])
-        key = (source_sector, target_sector, timeframe)
-        if not source_sector or not target_sector or key in seen:
-            continue
-        seen.add(key)
-        rotations.append(
-            SectorRotationRead(
-                source_sector=source_sector,
-                target_sector=target_sector,
-                timeframe=timeframe,
-                timestamp=ensure_utc(datetime.fromisoformat(fields["timestamp"])),
-            )
-        )
-        if len(rotations) >= limit:
-            break
-    return rotations
-
-
-async def get_market_flow_async(db: AsyncSession, *, limit: int = 8, timeframe: int = 60) -> MarketFlowRead:
-    follower_coin = aliased(Coin)
-    relation_rows = (
-        await db.execute(
-            select(
-                CoinRelation.leader_coin_id,
-                Coin.symbol.label("leader_symbol"),
-                CoinRelation.follower_coin_id,
-                follower_coin.symbol.label("follower_symbol"),
-                CoinRelation.correlation,
-                CoinRelation.lag_hours,
-                CoinRelation.confidence,
-                CoinRelation.updated_at,
-            )
-            .join(Coin, Coin.id == CoinRelation.leader_coin_id)
-            .join(follower_coin, CoinRelation.follower_coin_id == follower_coin.id)
-            .order_by(CoinRelation.confidence.desc(), CoinRelation.correlation.desc(), CoinRelation.updated_at.desc())
-            .limit(max(limit, 1))
-        )
-    ).all()
-    sector_rows = (
-        await db.execute(
-            select(
-                SectorMetric.sector_id,
-                Sector.name.label("sector"),
-                SectorMetric.timeframe,
-                SectorMetric.avg_price_change_24h,
-                SectorMetric.avg_volume_change_24h,
-                SectorMetric.volatility,
-                SectorMetric.trend,
-                SectorMetric.relative_strength,
-                SectorMetric.capital_flow,
-                SectorMetric.updated_at,
-            )
-            .join(Sector, Sector.id == SectorMetric.sector_id)
-            .where(SectorMetric.timeframe == timeframe)
-            .order_by(SectorMetric.relative_strength.desc(), Sector.name.asc())
-            .limit(max(limit, 1))
-        )
-    ).all()
-    return MarketFlowRead(
-        leaders=await _recent_market_leaders_async(db, limit=max(limit, 1)),
-        relations=[CoinRelationRead.model_validate(dict(row._mapping)) for row in relation_rows],
-        sectors=[SectorMomentumRead.model_validate(dict(row._mapping)) for row in sector_rows],
-        rotations=await _recent_sector_rotations_async(limit=max(limit, 1)),
+async def capture_feature_snapshot(
+    db: AsyncSession,
+    *,
+    coin_id: int,
+    timeframe: int,
+    timestamp: datetime,
+    price_current: float | None,
+    rsi_14: float | None,
+    macd: float | None,
+    commit: bool = True,
+) -> FeatureSnapshotCaptureResult:
+    uow = SessionUnitOfWork(db)
+    result = await FeatureSnapshotService(uow).capture_snapshot(
+        coin_id=coin_id,
+        timeframe=timeframe,
+        timestamp=timestamp,
+        price_current=price_current,
+        rsi_14=rsi_14,
+        macd=macd,
     )
+    if commit and result.status == "ok":
+        await uow.commit()
+    return result
 
 
 __all__ = [
-    "adx_series",
-    "atr_series",
-    "bollinger_bands",
+    "FeatureSnapshotCaptureResult",
+    "FeatureSnapshotService",
+    "IndicatorAnalyticsService",
+    "IndicatorEventItem",
+    "IndicatorEventResult",
+    "IndicatorMetricsUpdate",
     "capture_feature_snapshot",
     "determine_affected_timeframes",
-    "ema_series",
     "get_market_flow_async",
     "get_market_radar_async",
-    "list_coin_metrics",
     "list_coin_metrics_async",
     "list_signal_types_at_timestamp",
-    "macd_series",
+    "list_signals_async",
     "process_indicator_event",
-    "rsi_series",
-    "sma_series",
 ]

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import select
-
 import src.apps.indicators.analytics as analytics
+import src.apps.indicators.services as indicator_services
+from sqlalchemy import select
 from src.apps.indicators.analytics import (
     TimeframeSnapshot,
     _activity_fields,
@@ -20,30 +20,29 @@ from src.apps.indicators.analytics import (
     _compute_volume_metrics,
     _detect_signals,
     _fetch_market_cap,
-    _has_direct_candles,
-    _insert_signals,
     _select_primary_snapshot,
     _series_value_pair,
     _snapshot_completeness,
-    _store_indicator_cache,
-    _upsert_coin_metrics,
-    delete_coin_metrics_row,
     determine_affected_timeframes,
-    ensure_coin_metrics_row,
-    list_coin_metrics,
-    list_signal_types_at_timestamp,
-    list_signals,
-    process_indicator_event,
 )
 from src.apps.indicators.models import CoinMetrics, IndicatorCache
+from src.apps.indicators.query_services import IndicatorQueryService
+from src.apps.indicators.repositories import (
+    IndicatorCacheRepository,
+    IndicatorMetricsRepository,
+    IndicatorSignalRepository,
+)
+from src.apps.indicators.services import IndicatorAnalyticsService, IndicatorMetricsUpdate
 from src.apps.market_data.models import Coin
 from src.apps.market_data.repos import CandlePoint
 from src.apps.signals.models import Signal
+from src.core.db.uow import SessionUnitOfWork
+
 from tests.factories.market_data import build_candle_points
 
 
 def _snapshot(*, timeframe: int = 15, timestamp: datetime | None = None, feature_source: str = "candles", **overrides) -> TimeframeSnapshot:
-    base_timestamp = timestamp or datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+    base_timestamp = timestamp or datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
     payload = {
         "timeframe": timeframe,
         "feature_source": feature_source,
@@ -94,21 +93,22 @@ class _FakeResponse:
         return self._payload
 
 
-class _FakeClient:
-    def __enter__(self):
+class _FakeAsyncClient:
+    async def __aenter__(self):
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> bool:
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
         return False
 
 
-def test_indicator_analytics_math_and_signal_helpers(monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_indicator_analytics_math_and_signal_helpers(monkeypatch) -> None:
     assert _coin_base_timeframe(SimpleNamespace(candles_config=None)) == analytics.BASE_TIMEFRAME_MINUTES
     assert _coin_base_timeframe(SimpleNamespace(candles_config=[{"interval": "1h"}, {"interval": "15m"}])) == 15
 
-    midnight_source = datetime(2026, 3, 11, 23, 45, tzinfo=timezone.utc)
+    midnight_source = datetime(2026, 3, 11, 23, 45, tzinfo=UTC)
     assert determine_affected_timeframes(timeframe=15, timestamp=midnight_source) == [15, 60, 240, 1440]
-    assert determine_affected_timeframes(timeframe=60, timestamp=datetime(2026, 3, 11, 1, 0, tzinfo=timezone.utc)) == [60]
+    assert determine_affected_timeframes(timeframe=60, timestamp=datetime(2026, 3, 11, 1, 0, tzinfo=UTC)) == [60]
 
     assert _series_value_pair([]) == (None, None)
     assert _series_value_pair([4.2]) == (4.2, None)
@@ -241,48 +241,78 @@ def test_indicator_analytics_math_and_signal_helpers(monkeypatch) -> None:
         )
     ) == []
 
-    monkeypatch.setattr(analytics.httpx, "Client", lambda **kwargs: _FakeClient())
-    monkeypatch.setattr(analytics, "rate_limited_get", lambda *args, **kwargs: _FakeResponse([{"market_cap": 321000000.0}]))
-    assert _fetch_market_cap("BTCUSD") == 321000000.0
-    monkeypatch.setattr(analytics, "rate_limited_get", lambda *args, **kwargs: _FakeResponse([]))
-    assert _fetch_market_cap("BTCUSD") is None
-    assert _fetch_market_cap("UNKNOWN_EVT") is None
+    monkeypatch.setattr(analytics.httpx, "AsyncClient", lambda **kwargs: _FakeAsyncClient())
+
+    async def _response(*args, **kwargs):
+        del args, kwargs
+        return _FakeResponse([{"market_cap": 321000000.0}])
+
+    monkeypatch.setattr(analytics, "rate_limited_get", _response)
+    assert await _fetch_market_cap("BTCUSD") == 321000000.0
+
+    async def _empty_response(*args, **kwargs):
+        del args, kwargs
+        return _FakeResponse([])
+
+    monkeypatch.setattr(analytics, "rate_limited_get", _empty_response)
+    assert await _fetch_market_cap("BTCUSD") is None
+    assert await _fetch_market_cap("UNKNOWN_EVT") is None
 
 
-def test_indicator_analytics_db_helpers_cover_cache_signal_and_metric_paths(db_session, seeded_api_state, seeded_market, monkeypatch) -> None:
-    btc = db_session.scalar(select(Coin).where(Coin.symbol == "BTCUSD_EVT").limit(1))
+@pytest.mark.asyncio
+async def test_indicator_async_repositories_cover_cache_signal_and_metric_paths(
+    async_db_session,
+    seeded_api_state,
+    seeded_market,
+    monkeypatch,
+) -> None:
+    del seeded_market
+    btc = await async_db_session.scalar(select(Coin).where(Coin.symbol == "BTCUSD_EVT").limit(1))
     sol = seeded_api_state["sol"]
     assert btc is not None
+    btc_id = int(btc.id)
+    sol_id = int(sol.id)
 
-    assert _has_direct_candles(db_session, int(btc.id), 15) is True
-    assert _has_direct_candles(db_session, int(btc.id), 60) is False
+    metrics_repo = IndicatorMetricsRepository(async_db_session)
+    cache_repo = IndicatorCacheRepository(async_db_session)
+    signals_repo = IndicatorSignalRepository(async_db_session)
 
-    delete_coin_metrics_row(db_session, int(sol.id))
-    db_session.commit()
-    assert db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(sol.id))) is None
-    ensure_coin_metrics_row(db_session, int(sol.id))
-    db_session.commit()
-    assert db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(sol.id))) is not None
+    seeded_signal_types = await indicator_services.list_signal_types_at_timestamp(
+        async_db_session,
+        coin_id=btc_id,
+        timeframe=15,
+        candle_timestamp=seeded_api_state["signal_timestamp"],
+    )
+    assert seeded_signal_types
+    assert any(signal_type.startswith("pattern_") for signal_type in seeded_signal_types)
+
+    await metrics_repo.delete_by_coin_id(sol_id)
+    await async_db_session.commit()
+    assert await async_db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == sol_id)) is None
+
+    await metrics_repo.ensure_row(sol_id)
+    await async_db_session.commit()
+    assert await async_db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == sol_id)) is not None
 
     timestamp = seeded_api_state["signal_timestamp"] + timedelta(hours=6)
     base_snapshot = _snapshot(timeframe=15, timestamp=timestamp, feature_source="candles")
     aggregate_snapshot = _snapshot(timeframe=60, timestamp=timestamp, feature_source="candles_1h")
 
-    _store_indicator_cache(db_session, int(btc.id), [], volume_24h=1.0, volume_change_24h=2.0)
-    _store_indicator_cache(
-        db_session,
-        int(btc.id),
-        [base_snapshot, aggregate_snapshot],
+    await cache_repo.upsert_snapshots(coin_id=btc_id, snapshots=[], volume_24h=1.0, volume_change_24h=2.0)
+    await cache_repo.upsert_snapshots(
+        coin_id=btc_id,
+        snapshots=[base_snapshot, aggregate_snapshot],
         volume_24h=5000.0,
         volume_change_24h=12.5,
     )
-    volume_row = db_session.scalar(
-        select(IndicatorCache)
-        .where(
-            IndicatorCache.coin_id == int(btc.id),
-            IndicatorCache.timeframe == 15,
-            IndicatorCache.indicator == "volume_24h",
-            IndicatorCache.timestamp == timestamp,
+    await async_db_session.commit()
+    volume_row = await async_db_session.scalar(
+            select(IndicatorCache)
+            .where(
+                IndicatorCache.coin_id == btc_id,
+                IndicatorCache.timeframe == 15,
+                IndicatorCache.indicator == "volume_24h",
+                IndicatorCache.timestamp == timestamp,
         )
         .limit(1)
     )
@@ -290,20 +320,20 @@ def test_indicator_analytics_db_helpers_cover_cache_signal_and_metric_paths(db_s
     assert float(volume_row.value) == 5000.0
 
     updated_snapshot = replace(base_snapshot, feature_source="recomputed", price_current=222.0)
-    _store_indicator_cache(
-        db_session,
-        int(btc.id),
-        [updated_snapshot],
+    await cache_repo.upsert_snapshots(
+        coin_id=btc_id,
+        snapshots=[updated_snapshot],
         volume_24h=7000.0,
         volume_change_24h=22.5,
     )
-    updated_row = db_session.scalar(
-        select(IndicatorCache)
-        .where(
-            IndicatorCache.coin_id == int(btc.id),
-            IndicatorCache.timeframe == 15,
-            IndicatorCache.indicator == "price_current",
-            IndicatorCache.timestamp == timestamp,
+    await async_db_session.commit()
+    updated_row = await async_db_session.scalar(
+            select(IndicatorCache)
+            .where(
+                IndicatorCache.coin_id == btc_id,
+                IndicatorCache.timeframe == 15,
+                IndicatorCache.indicator == "price_current",
+                IndicatorCache.timestamp == timestamp,
         )
         .limit(1)
     )
@@ -311,51 +341,54 @@ def test_indicator_analytics_db_helpers_cover_cache_signal_and_metric_paths(db_s
     assert float(updated_row.value) == 222.0
     assert updated_row.feature_source == "recomputed"
 
-    _insert_signals(db_session, int(btc.id), 15, [])
-    _insert_signals(
-        db_session,
-        int(btc.id),
-        15,
-        [
+    await signals_repo.insert_known_signals(coin_id=btc_id, timeframe=15, signals=[])
+    await signals_repo.insert_known_signals(
+        coin_id=btc_id,
+        timeframe=15,
+        signals=[
             {"signal_type": "golden_cross", "confidence": 0.91, "candle_timestamp": timestamp},
             {"signal_type": "unknown_signal", "confidence": 0.50, "candle_timestamp": timestamp},
         ],
     )
-    _insert_signals(
-        db_session,
-        int(btc.id),
-        15,
-        [{"signal_type": "unknown_signal", "confidence": 0.5, "candle_timestamp": timestamp}],
+    await signals_repo.insert_known_signals(
+        coin_id=btc_id,
+        timeframe=15,
+        signals=[{"signal_type": "golden_cross", "confidence": 0.91, "candle_timestamp": timestamp}],
     )
-    _insert_signals(
-        db_session,
-        int(btc.id),
-        15,
-        [{"signal_type": "golden_cross", "confidence": 0.91, "candle_timestamp": timestamp}],
-    )
-    assert list_signal_types_at_timestamp(db_session, coin_id=int(btc.id), timeframe=15, candle_timestamp=timestamp) >= {"golden_cross"}
-    filtered_signals = list_signals(db_session, symbol="BTCUSD_EVT", timeframe=15, limit=200)
-    assert any(row["signal_type"] == "golden_cross" for row in filtered_signals)
-    assert list_signals(db_session, symbol="BTCUSD_EVT", limit=1)
-    assert list_signals(db_session, timeframe=15, limit=1)
-    metrics_rows = list_coin_metrics(db_session)
-    assert any(row["symbol"] == "BTCUSD_EVT" for row in metrics_rows)
+    await async_db_session.commit()
+    assert await signals_repo.list_types_at_timestamp(
+        coin_id=btc_id,
+        timeframe=15,
+        candle_timestamp=timestamp,
+    ) >= {"golden_cross"}
 
-    minimal_payload = _upsert_coin_metrics(
-        db_session,
-        sol,
-        base_timeframe=15,
-        primary=None,
-        base_snapshot=None,
-        volume_24h=None,
-        volume_change_24h=None,
-        volatility=None,
-        refresh_market_cap=False,
-        market_regime="sideways_range",
-        market_regime_details={"15": {"regime": "sideways_range"}},
-    )
-    assert minimal_payload["coin_id"] == int(sol.id)
-    assert minimal_payload["market_regime"] == "sideways_range"
+    filtered_signals = await IndicatorQueryService(async_db_session).list_signals(symbol="BTCUSD_EVT", timeframe=15, limit=200)
+    assert any(row.signal_type == "golden_cross" for row in filtered_signals)
+    assert await IndicatorQueryService(async_db_session).list_signals(symbol="BTCUSD_EVT", limit=1)
+    assert await IndicatorQueryService(async_db_session).list_signals(timeframe=15, limit=1)
+
+    metrics_rows = await IndicatorQueryService(async_db_session).list_coin_metrics()
+    assert any(row.symbol == "BTCUSD_EVT" for row in metrics_rows)
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = IndicatorAnalyticsService(uow)
+        sol_current = await uow.session.get(Coin, sol_id)
+        assert sol_current is not None
+        minimal_payload = await service._upsert_coin_metrics(
+            coin=sol_current,
+            base_timeframe=15,
+            primary=None,
+            base_snapshot=None,
+            base_candles=[],
+            volume_24h=None,
+            volume_change_24h=None,
+            volatility=None,
+            refresh_market_cap=False,
+            market_regime="sideways_range",
+            market_regime_details={"15": {"regime": "sideways_range"}},
+        )
+    assert minimal_payload.coin_id == sol_id
+    assert minimal_payload.market_regime == "sideways_range"
 
     base_candles = build_candle_points(
         closes=[100 + index for index in range(80)],
@@ -363,31 +396,40 @@ def test_indicator_analytics_db_helpers_cover_cache_signal_and_metric_paths(db_s
         timeframe_minutes=15,
         start=timestamp - timedelta(minutes=15 * 79),
     )
-    monkeypatch.setattr(analytics, "fetch_candle_points", lambda db, coin_id, timeframe, limit: base_candles)
-    monkeypatch.setattr(analytics, "_fetch_market_cap", lambda symbol: 987654321.0)
-    monkeypatch.setattr(analytics, "utc_now", lambda: timestamp + timedelta(minutes=1))
+    monkeypatch.setattr(indicator_services, "_fetch_market_cap", lambda symbol: __import__("asyncio").sleep(0, result=987654321.0))
+    monkeypatch.setattr(indicator_services, "utc_now", lambda: timestamp + timedelta(minutes=1))
 
-    full_payload = _upsert_coin_metrics(
-        db_session,
-        btc,
-        base_timeframe=15,
-        primary=_snapshot(timeframe=60, timestamp=timestamp, price_current=210.0, feature_source="candles_1h"),
-        base_snapshot=_snapshot(timeframe=15, timestamp=timestamp, price_current=205.0),
-        volume_24h=8000.0,
-        volume_change_24h=14.0,
-        volatility=4.5,
-        refresh_market_cap=True,
-        market_regime=None,
-        market_regime_details={"15": {"regime": "bull_trend", "confidence": 0.81}},
-    )
-    assert full_payload["market_regime"] == "bull_market"
-    refreshed_metrics = db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(btc.id)).limit(1))
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = IndicatorAnalyticsService(uow)
+        btc_current = await uow.session.get(Coin, btc_id)
+        assert btc_current is not None
+        full_payload = await service._upsert_coin_metrics(
+            coin=btc_current,
+            base_timeframe=15,
+            primary=_snapshot(timeframe=60, timestamp=timestamp, price_current=210.0, feature_source="candles_1h"),
+            base_snapshot=_snapshot(timeframe=15, timestamp=timestamp, price_current=205.0),
+            base_candles=base_candles,
+            volume_24h=8000.0,
+            volume_change_24h=14.0,
+            volatility=4.5,
+            refresh_market_cap=True,
+            market_regime=None,
+            market_regime_details={"15": {"regime": "bull_trend", "confidence": 0.81}},
+        )
+        await uow.commit()
+    assert full_payload.market_regime == "bull_market"
+    refreshed_metrics = await async_db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == btc_id).limit(1))
     assert refreshed_metrics is not None
     assert float(refreshed_metrics.price_current) == 205.0
     assert float(refreshed_metrics.market_cap) == 987654321.0
 
 
-def test_process_indicator_event_orchestrates_affected_timeframes_and_signal_diff(db_session, seeded_api_state, monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_process_indicator_event_orchestrates_affected_timeframes_and_signal_diff(
+    async_db_session,
+    seeded_api_state,
+    monkeypatch,
+) -> None:
     btc = seeded_api_state["btc"]
     base_timestamp = seeded_api_state["signal_timestamp"]
     snapshot_map = {
@@ -397,145 +439,193 @@ def test_process_indicator_event_orchestrates_affected_timeframes_and_signal_dif
         1440: _snapshot(timeframe=1440, timestamp=base_timestamp, feature_source="candles_1d"),
     }
 
-    assert process_indicator_event(db_session, coin_id=999999, timeframe=15, timestamp=base_timestamp)["reason"] == "coin_not_found"
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = IndicatorAnalyticsService(uow)
+        skipped = await service.process_event(coin_id=999999, timeframe=15, timestamp=base_timestamp)
+        assert skipped.reason == "coin_not_found"
 
-    range_refreshes: list[tuple[int, datetime, datetime]] = []
-    window_refreshes: list[tuple[int, datetime]] = []
-    cache_calls: list[tuple[int, list[int], float | None, float | None]] = []
-    inserted_signals: list[tuple[int, int, list[dict[str, object]]]] = []
-    list_calls: dict[int, int] = {}
+        range_refreshes: list[tuple[int, datetime, datetime]] = []
+        cache_calls: list[tuple[int, list[int], float | None, float | None]] = []
+        inserted_signals: list[tuple[int, int, list[dict[str, object]]]] = []
+        list_calls: dict[int, int] = {}
 
-    monkeypatch.setattr(analytics, "get_base_candle_bounds", lambda db, coin_id: (base_timestamp - timedelta(days=1), base_timestamp))
-    monkeypatch.setattr(analytics, "aggregate_has_rows", lambda db, coin_id, timeframe: False)
-    monkeypatch.setattr(analytics, "refresh_continuous_aggregate_range", lambda db, timeframe, start, end: range_refreshes.append((timeframe, start, end)))
-    monkeypatch.setattr(analytics, "determine_affected_timeframes", lambda **kwargs: [15, 60, 240, 1440])
-    monkeypatch.setattr(analytics, "refresh_continuous_aggregate_window", lambda db, timeframe, ts: window_refreshes.append((timeframe, ts)))
-    monkeypatch.setattr(analytics, "fetch_candle_points", lambda db, coin_id, timeframe, limit: [CandlePoint(base_timestamp, 1.0, 1.0, 1.0, 1.0, 1.0)])
-    monkeypatch.setattr(analytics, "_has_direct_candles", lambda db, coin_id, timeframe: timeframe == 15)
-    monkeypatch.setattr(analytics, "_calculate_snapshot", lambda candles, timeframe, feature_source: snapshot_map.get(timeframe))
-    monkeypatch.setattr(analytics, "_compute_volume_metrics", lambda candles, base_timeframe: (6000.0, 12.0, 4.2))
-    monkeypatch.setattr(analytics, "_compute_price_change", lambda candles, delta: 18.0 if delta.days >= 7 else 5.0)
-    monkeypatch.setattr(analytics, "_select_primary_snapshot", lambda snapshots: snapshots[60])
-    monkeypatch.setattr(analytics, "feature_enabled", lambda db, feature_slug: True)
-    monkeypatch.setattr(
-        analytics,
-        "calculate_regime_map",
-        lambda snapshots, volatility, price_change_7d: {
-            15: SimpleNamespace(regime="bull_trend", confidence=0.81),
-            60: SimpleNamespace(regime="bull_trend", confidence=0.84),
-        },
-    )
-    monkeypatch.setattr(analytics, "primary_regime", lambda regime_map: "fallback_regime")
-    monkeypatch.setattr(analytics, "serialize_regime_map", lambda regime_map: {"15": {"regime": "bull_trend", "confidence": 0.81}})
-    monkeypatch.setattr(
-        analytics,
-        "_upsert_coin_metrics",
-        lambda *args, **kwargs: {
-            "activity_score": 91.0,
-            "activity_bucket": "HOT",
-            "analysis_priority": 1,
-            "market_regime": "fallback_regime",
-            "price_change_24h": 5.0,
-            "price_change_7d": 18.0,
-            "volatility": 4.2,
-        },
-    )
-    monkeypatch.setattr(
-        analytics,
-        "_store_indicator_cache",
-        lambda db, coin_id, snapshots, volume_24h, volume_change_24h: cache_calls.append(
-            (coin_id, [snapshot.timeframe for snapshot in snapshots], volume_24h, volume_change_24h)
-        ),
-    )
-    monkeypatch.setattr(
-        analytics,
-        "_detect_signals",
-        lambda snapshot: [
-            {"signal_type": "golden_cross", "confidence": 0.91, "candle_timestamp": snapshot.candle_close_timestamp},
-            {"signal_type": "volume_spike", "confidence": 0.70, "candle_timestamp": snapshot.candle_close_timestamp},
-        ],
-    )
-    monkeypatch.setattr(
-        analytics,
-        "_insert_signals",
-        lambda db, coin_id, timeframe, signals: inserted_signals.append((coin_id, timeframe, list(signals))),
-    )
+        async def _base_bounds(*, coin_id: int):
+            assert coin_id == int(btc.id)
+            return base_timestamp - timedelta(days=1), base_timestamp
 
-    def _list_signal_types(_db, *, coin_id: int, timeframe: int, candle_timestamp: object):
-        count = list_calls.get(timeframe, 0)
-        list_calls[timeframe] = count + 1
-        return set() if count == 0 else {"existing", "golden_cross", "volume_spike"}
+        async def _aggregate_has_rows(*, coin_id: int, timeframe: int):
+            del coin_id
+            return False
 
-    monkeypatch.setattr(analytics, "list_signal_types_at_timestamp", _list_signal_types)
+        async def _refresh_range(*, timeframe: int, window_start: datetime, window_end: datetime):
+            range_refreshes.append((timeframe, window_start, window_end))
 
-    result = process_indicator_event(db_session, coin_id=int(btc.id), timeframe=15, timestamp=base_timestamp)
-    assert result["status"] == "ok"
-    assert result["coin_id"] == int(btc.id)
-    assert result["timeframes"] == [15, 60, 240, 1440]
-    assert len(range_refreshes) == len(analytics.AGGREGATE_VIEW_BY_TIMEFRAME)
-    assert {timeframe for timeframe, _ in window_refreshes} == {60, 240, 1440}
+        async def _fetch_points(*, coin_id: int, timeframe: int, limit: int):
+            del coin_id, limit
+            return [CandlePoint(base_timestamp, 1.0, 1.0, 1.0, 1.0, 1.0)]
+
+        async def _has_direct_candles(*, coin_id: int, timeframe: int):
+            del coin_id
+            return timeframe == 15
+
+        async def _upsert_metrics(**kwargs):
+            del kwargs
+            return IndicatorMetricsUpdate(
+                coin_id=int(btc.id),
+                activity_score=91.0,
+                activity_bucket="HOT",
+                analysis_priority=1,
+                market_regime="fallback_regime",
+                price_change_24h=5.0,
+                price_change_7d=18.0,
+                volatility=4.2,
+            )
+
+        async def _cache_upsert(*, coin_id: int, snapshots, volume_24h: float | None, volume_change_24h: float | None):
+            cache_calls.append((coin_id, [snapshot.timeframe for snapshot in snapshots], volume_24h, volume_change_24h))
+
+        async def _insert_known_signals(*, coin_id: int, timeframe: int, signals):
+            inserted_signals.append((coin_id, timeframe, list(signals)))
+
+        async def _list_signal_types(*, coin_id: int, timeframe: int, candle_timestamp: object):
+            del coin_id, candle_timestamp
+            count = list_calls.get(timeframe, 0)
+            list_calls[timeframe] = count + 1
+            return set() if count == 0 else {"existing", "golden_cross", "volume_spike"}
+
+        monkeypatch.setattr(service._candles, "get_base_bounds", _base_bounds)
+        monkeypatch.setattr(service._candles, "aggregate_has_rows", _aggregate_has_rows)
+        monkeypatch.setattr(service._aggregates, "refresh_range", _refresh_range)
+        monkeypatch.setattr(service._candles, "fetch_points", _fetch_points)
+        monkeypatch.setattr(service._candles, "has_direct_candles", _has_direct_candles)
+        monkeypatch.setattr(service, "_upsert_coin_metrics", _upsert_metrics)
+        monkeypatch.setattr(service._cache, "upsert_snapshots", _cache_upsert)
+        monkeypatch.setattr(service._signals, "insert_known_signals", _insert_known_signals)
+        monkeypatch.setattr(service._signals, "list_types_at_timestamp", _list_signal_types)
+        monkeypatch.setattr(indicator_services, "determine_affected_timeframes", lambda **kwargs: [15, 60, 240, 1440])
+        monkeypatch.setattr(indicator_services, "_calculate_snapshot", lambda candles, timeframe, feature_source: snapshot_map.get(timeframe))
+        monkeypatch.setattr(indicator_services, "_compute_volume_metrics", lambda candles, base_timeframe: (6000.0, 12.0, 4.2))
+        monkeypatch.setattr(indicator_services, "_compute_price_change", lambda candles, delta: 18.0 if delta.days >= 7 else 5.0)
+        monkeypatch.setattr(indicator_services, "_select_primary_snapshot", lambda snapshots: snapshots[60])
+        monkeypatch.setattr(service._feature_flags, "is_enabled", lambda feature_slug: __import__("asyncio").sleep(0, result=True))
+        monkeypatch.setattr(
+            indicator_services,
+            "calculate_regime_map",
+            lambda snapshots, volatility, price_change_7d: {
+                15: SimpleNamespace(regime="bull_trend", confidence=0.81),
+                60: SimpleNamespace(regime="bull_trend", confidence=0.84),
+            },
+        )
+        monkeypatch.setattr(indicator_services, "primary_regime", lambda regime_map: "fallback_regime")
+        monkeypatch.setattr(
+            indicator_services,
+            "serialize_regime_map",
+            lambda regime_map: {"15": {"regime": "bull_trend", "confidence": 0.81}},
+        )
+        monkeypatch.setattr(
+            indicator_services,
+            "_detect_signals",
+            lambda snapshot: [
+                {"signal_type": "golden_cross", "confidence": 0.91, "candle_timestamp": snapshot.candle_close_timestamp},
+                {"signal_type": "volume_spike", "confidence": 0.70, "candle_timestamp": snapshot.candle_close_timestamp},
+            ],
+        )
+
+        result = await service.process_event(coin_id=int(btc.id), timeframe=15, timestamp=base_timestamp)
+
+    assert result.status == "ok"
+    assert result.coin_id == int(btc.id)
+    assert result.timeframes == (15, 60, 240, 1440)
+    assert len(range_refreshes) == len(indicator_services.AGGREGATE_VIEW_BY_TIMEFRAME) + 3
     assert cache_calls == [(int(btc.id), [15, 60, 240, 1440], 6000.0, 12.0)]
     assert len(inserted_signals) == 4
-    assert result["items"][0]["feature_source"] == "candles"
-    assert result["items"][1]["feature_source"] == "candles_1h"
-    assert result["items"][0]["market_regime"] == "bull_trend"
-    assert result["items"][2]["market_regime"] == "fallback_regime"
-    assert result["items"][0]["classic_signals"] == ["golden_cross", "volume_spike"]
+    assert result.items[0].feature_source == "candles"
+    assert result.items[1].feature_source == "candles_1h"
+    assert result.items[0].market_regime == "bull_trend"
+    assert result.items[2].market_regime == "fallback_regime"
+    assert result.items[0].classic_signals == ("golden_cross", "volume_spike")
 
 
-def test_process_indicator_event_covers_missing_bounds_existing_aggregates_and_snapshot_gaps(db_session, seeded_api_state, monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_process_indicator_event_covers_missing_bounds_existing_aggregates_and_snapshot_gaps(
+    async_db_session,
+    seeded_api_state,
+    monkeypatch,
+) -> None:
     btc = seeded_api_state["btc"]
     base_timestamp = seeded_api_state["signal_timestamp"]
 
     snapshot_15 = _snapshot(timeframe=15, timestamp=base_timestamp, feature_source="candles")
     snapshot_60 = _snapshot(timeframe=60, timestamp=base_timestamp, feature_source="candles_1h")
 
-    monkeypatch.setattr(analytics, "determine_affected_timeframes", lambda **kwargs: [15, 60, 240])
-    monkeypatch.setattr(analytics, "refresh_continuous_aggregate_window", lambda db, timeframe, ts: None)
-    monkeypatch.setattr(analytics, "_compute_volume_metrics", lambda candles, base_timeframe: (1000.0, 5.0, 1.2))
-    monkeypatch.setattr(analytics, "_compute_price_change", lambda candles, delta: 3.0)
-    monkeypatch.setattr(analytics, "_select_primary_snapshot", lambda snapshots: snapshots[15])
-    monkeypatch.setattr(analytics, "feature_enabled", lambda db, feature_slug: False)
-    monkeypatch.setattr(
-        analytics,
-        "_upsert_coin_metrics",
-        lambda *args, **kwargs: {
-            "activity_score": 60.0,
-            "activity_bucket": "WARM",
-            "analysis_priority": 2,
-            "market_regime": "sideways_range",
-            "price_change_24h": 2.0,
-            "price_change_7d": 3.0,
-            "volatility": 1.2,
-        },
-    )
-    monkeypatch.setattr(analytics, "_store_indicator_cache", lambda *args, **kwargs: None)
-    monkeypatch.setattr(analytics, "_detect_signals", lambda snapshot: [])
-    monkeypatch.setattr(analytics, "_insert_signals", lambda *args, **kwargs: None)
-    monkeypatch.setattr(analytics, "list_signal_types_at_timestamp", lambda *args, **kwargs: set())
-    monkeypatch.setattr(analytics, "fetch_candle_points", lambda db, coin_id, timeframe, limit: [CandlePoint(base_timestamp, 1.0, 1.0, 1.0, 1.0, 1.0)])
-    monkeypatch.setattr(analytics, "_has_direct_candles", lambda db, coin_id, timeframe: timeframe == 15)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = IndicatorAnalyticsService(uow)
 
-    aggregate_refreshes: list[tuple[int, datetime, datetime]] = []
-    monkeypatch.setattr(analytics, "get_base_candle_bounds", lambda db, coin_id: (base_timestamp - timedelta(days=1), base_timestamp))
-    monkeypatch.setattr(analytics, "aggregate_has_rows", lambda db, coin_id, timeframe: True)
-    monkeypatch.setattr(analytics, "refresh_continuous_aggregate_range", lambda db, timeframe, start, end: aggregate_refreshes.append((timeframe, start, end)))
-    monkeypatch.setattr(
-        analytics,
-        "_calculate_snapshot",
-        lambda candles, timeframe, feature_source: {15: snapshot_15, 60: snapshot_60, 240: None}.get(timeframe),
-    )
-    result_with_existing_aggregates = process_indicator_event(db_session, coin_id=int(btc.id), timeframe=15, timestamp=base_timestamp)
-    assert result_with_existing_aggregates["status"] == "ok"
-    assert aggregate_refreshes == []
-    assert [item["timeframe"] for item in result_with_existing_aggregates["items"]] == [15, 60]
+        async def _fetch_points(*, coin_id: int, timeframe: int, limit: int):
+            del coin_id, timeframe, limit
+            return [CandlePoint(base_timestamp, 1.0, 1.0, 1.0, 1.0, 1.0)]
 
-    monkeypatch.setattr(analytics, "get_base_candle_bounds", lambda db, coin_id: (None, None))
-    monkeypatch.setattr(
-        analytics,
-        "_calculate_snapshot",
-        lambda candles, timeframe, feature_source: {15: snapshot_15, 60: None, 240: None}.get(timeframe),
-    )
-    result_without_bounds = process_indicator_event(db_session, coin_id=int(btc.id), timeframe=15, timestamp=base_timestamp)
-    assert result_without_bounds["status"] == "ok"
-    assert [item["timeframe"] for item in result_without_bounds["items"]] == [15]
+        monkeypatch.setattr(service._candles, "fetch_points", _fetch_points)
+        monkeypatch.setattr(service._candles, "has_direct_candles", lambda **kwargs: __import__("asyncio").sleep(0, result=kwargs["timeframe"] == 15))
+        monkeypatch.setattr(indicator_services, "determine_affected_timeframes", lambda **kwargs: [15, 60, 240])
+        monkeypatch.setattr(indicator_services, "_compute_volume_metrics", lambda candles, base_timeframe: (1000.0, 5.0, 1.2))
+        monkeypatch.setattr(indicator_services, "_compute_price_change", lambda candles, delta: 3.0)
+        monkeypatch.setattr(indicator_services, "_select_primary_snapshot", lambda snapshots: snapshots[15])
+        monkeypatch.setattr(service._feature_flags, "is_enabled", lambda feature_slug: __import__("asyncio").sleep(0, result=False))
+        monkeypatch.setattr(
+            service,
+            "_upsert_coin_metrics",
+            lambda **kwargs: __import__("asyncio").sleep(
+                0,
+                result=IndicatorMetricsUpdate(
+                    coin_id=int(btc.id),
+                    activity_score=60.0,
+                    activity_bucket="WARM",
+                    analysis_priority=2,
+                    market_regime="sideways_range",
+                    price_change_24h=2.0,
+                    price_change_7d=3.0,
+                    volatility=1.2,
+                ),
+            ),
+        )
+        monkeypatch.setattr(service._cache, "upsert_snapshots", lambda **kwargs: __import__("asyncio").sleep(0))
+        monkeypatch.setattr(indicator_services, "_detect_signals", lambda snapshot: [])
+        monkeypatch.setattr(service._signals, "insert_known_signals", lambda **kwargs: __import__("asyncio").sleep(0))
+        monkeypatch.setattr(service._signals, "list_types_at_timestamp", lambda **kwargs: __import__("asyncio").sleep(0, result=set()))
+
+        aggregate_refreshes: list[tuple[int, datetime, datetime]] = []
+        monkeypatch.setattr(service._candles, "get_base_bounds", lambda **kwargs: __import__("asyncio").sleep(0, result=(base_timestamp - timedelta(days=1), base_timestamp)))
+        monkeypatch.setattr(service._candles, "aggregate_has_rows", lambda **kwargs: __import__("asyncio").sleep(0, result=True))
+        monkeypatch.setattr(
+            service._aggregates,
+            "refresh_range",
+            lambda **kwargs: __import__("asyncio").sleep(
+                0,
+                result=aggregate_refreshes.append((kwargs["timeframe"], kwargs["window_start"], kwargs["window_end"])),
+            ),
+        )
+        monkeypatch.setattr(
+            indicator_services,
+            "_calculate_snapshot",
+            lambda candles, timeframe, feature_source: {15: snapshot_15, 60: snapshot_60, 240: None}.get(timeframe),
+        )
+        result_with_existing_aggregates = await service.process_event(
+            coin_id=int(btc.id),
+            timeframe=15,
+            timestamp=base_timestamp,
+        )
+        assert result_with_existing_aggregates.status == "ok"
+        assert len(aggregate_refreshes) == 2
+        assert [item.timeframe for item in result_with_existing_aggregates.items] == [15, 60]
+
+        monkeypatch.setattr(service._candles, "get_base_bounds", lambda **kwargs: __import__("asyncio").sleep(0, result=(None, None)))
+        monkeypatch.setattr(
+            indicator_services,
+            "_calculate_snapshot",
+            lambda candles, timeframe, feature_source: {15: snapshot_15, 60: None, 240: None}.get(timeframe),
+        )
+        result_without_bounds = await service.process_event(coin_id=int(btc.id), timeframe=15, timestamp=base_timestamp)
+
+    assert result_without_bounds.status == "ok"
+    assert [item.timeframe for item in result_without_bounds.items] == [15]

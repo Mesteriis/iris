@@ -131,12 +131,16 @@ class MarketRegimeChangeRead(BaseModel):
     confidence: float
     timestamp: datetime
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class MarketRadarRead(BaseModel):
     hot_coins: list[MarketRadarCoinRead]
     emerging_coins: list[MarketRadarCoinRead]
     regime_changes: list[MarketRegimeChangeRead]
     volatility_spikes: list[MarketRadarCoinRead]
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 __all__ = [

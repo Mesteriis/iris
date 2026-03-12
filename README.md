@@ -58,8 +58,9 @@ Reference docs:
 Current rollout:
 
 - shared UoW and structured persistence logging in `backend/src/core/db`
-- migrated repository/query boundaries in `hypothesis_engine`, `control_plane`, `news`, `market_structure` and `market_data`
+- migrated repository/query boundaries in `hypothesis_engine`, `control_plane`, `news`, `market_structure`, `market_data` and `indicators`
 - `market_data` keeps documented Timescale-specific raw SQL only inside legacy infrastructure adapters while async callers use UoW-backed repositories/query services
+- `indicator_workers` now execute indicator persistence through async repositories/UoW; remaining sync analytical backlog starts with `patterns`
 - remaining domains tracked in the persistence audit backlog
 
 ## Stack

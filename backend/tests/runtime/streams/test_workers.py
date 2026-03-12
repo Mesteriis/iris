@@ -90,20 +90,26 @@ async def test_worker_db_and_helper_functions(monkeypatch) -> None:
     assert result == "used:sync-db"
     assert signal_types == {"pattern_a", "pattern_b"}
     assert published[0][0] == "signal_created"
-    assert workers._latest_indicator_value(
-        SyncDb(),
-        coin_id=7,
-        timeframe=15,
-        indicator="price_current",
-        timestamp=_event().timestamp,
-    ) == 1.25
-    assert workers._latest_indicator_value(
-        EmptyValueDb(),
-        coin_id=7,
-        timeframe=15,
-        indicator="price_current",
-        timestamp=_event().timestamp,
-    ) is None
+    assert (
+        workers._latest_indicator_value(
+            SyncDb(),
+            coin_id=7,
+            timeframe=15,
+            indicator="price_current",
+            timestamp=_event().timestamp,
+        )
+        == 1.25
+    )
+    assert (
+        workers._latest_indicator_value(
+            EmptyValueDb(),
+            coin_id=7,
+            timeframe=15,
+            indicator="price_current",
+            timestamp=_event().timestamp,
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -111,35 +117,51 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
     published: list[tuple[str, dict[str, object]]] = []
     emitted: list[tuple[int, int, object, list[str]]] = []
     calls: list[tuple[str, object]] = []
+    snapshots: list[dict[str, object]] = []
 
     monkeypatch.setattr(workers, "publish_event", lambda event_type, payload: published.append((event_type, payload)))
     monkeypatch.setattr(
         workers,
         "_emit_signal_created_events",
-        lambda *, coin_id, timeframe, timestamp, signal_types: emitted.append((coin_id, timeframe, timestamp, signal_types)),
+        lambda *, coin_id, timeframe, timestamp, signal_types: emitted.append(
+            (coin_id, timeframe, timestamp, signal_types)
+        ),
     )
 
-    async def run_indicator(_fn):
-        return {
-            "status": "ok",
-            "items": [
-                {
-                    "coin_id": 7,
-                    "timeframe": 15,
-                    "timestamp": _event().timestamp,
-                    "classic_signals": ["rsi_reversal"],
-                    "activity_bucket": "HOT",
-                }
-            ],
-        }
+    async def process_indicator(_event_obj):
+        del _event_obj
+        return SimpleNamespace(
+            status="ok",
+            items=(
+                SimpleNamespace(
+                    coin_id=7,
+                    timeframe=15,
+                    timestamp=_event().timestamp,
+                    feature_source="candles",
+                    activity_score=None,
+                    activity_bucket="HOT",
+                    analysis_priority=None,
+                    market_regime=None,
+                    regime_confidence=None,
+                    price_change_24h=None,
+                    price_change_7d=None,
+                    volatility=None,
+                    classic_signals=("rsi_reversal",),
+                ),
+            ),
+        )
 
-    monkeypatch.setattr(workers, "_run_worker_db", run_indicator)
+    monkeypatch.setattr(workers, "_process_indicator_event", process_indicator)
     await workers._handle_indicator_event(_event())
     assert published[0][0] == "indicator_updated"
     assert emitted == [(7, 15, _event().timestamp, ["rsi_reversal"])]
 
     published.clear()
-    monkeypatch.setattr(workers, "_run_worker_db", lambda _fn: __import__("asyncio").sleep(0, result={"status": "skipped"}))
+    monkeypatch.setattr(
+        workers,
+        "_process_indicator_event",
+        lambda _event_obj: __import__("asyncio").sleep(0, result=SimpleNamespace(status="skipped", items=())),
+    )
     await workers._handle_indicator_event(_event())
     assert published == []
 
@@ -156,14 +178,49 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
     assert published == []
 
     async def run_decision(_fn):
-        return {"status": "ok", "decision": "BUY", "score": 0.91}
+        return {
+            "status": "ok",
+            "decision": "BUY",
+            "score": 0.91,
+            "_feature_snapshot": {
+                "coin_id": 7,
+                "timeframe": 15,
+                "timestamp": _event().timestamp,
+                "price_current": 101.0,
+                "rsi_14": 52.0,
+                "macd": 1.5,
+            },
+        }
 
     monkeypatch.setattr(workers, "_run_worker_db", run_decision)
+    monkeypatch.setattr(
+        workers,
+        "_capture_feature_snapshot_async",
+        lambda **kwargs: __import__("asyncio").sleep(0, result=snapshots.append(kwargs)),
+    )
     await workers._handle_decision_event(_event(event_type="pattern_detected"))
     assert published[-1][0] == "decision_generated"
+    assert snapshots[-1]["price_current"] == 101.0
 
     published.clear()
-    monkeypatch.setattr(workers, "_run_worker_db", lambda _fn: __import__("asyncio").sleep(0, result={"status": "skip"}))
+    monkeypatch.setattr(
+        workers,
+        "_run_worker_db",
+        lambda _fn: __import__("asyncio").sleep(
+            0,
+            result={
+                "status": "skip",
+                "_feature_snapshot": {
+                    "coin_id": 7,
+                    "timeframe": 15,
+                    "timestamp": _event().timestamp,
+                    "price_current": None,
+                    "rsi_14": None,
+                    "macd": None,
+                },
+            },
+        ),
+    )
     await workers._handle_decision_event(_event(event_type="pattern_detected"))
     assert published == []
 
@@ -247,7 +304,9 @@ async def test_analysis_scheduler_and_regime_handlers(monkeypatch) -> None:
     assert session.commits == 0
 
     monkeypatch.setattr(workers, "should_request_analysis", lambda **kwargs: True)
-    await workers._handle_analysis_scheduler_event(_event(event_type="indicator_updated", payload={"activity_score": 88.0}))
+    await workers._handle_analysis_scheduler_event(
+        _event(event_type="indicator_updated", payload={"activity_score": 88.0})
+    )
     assert published[-1][0] == "analysis_requested"
     assert session.commits == 1
     assert metrics.last_analysis_at == event.timestamp
@@ -256,19 +315,27 @@ async def test_analysis_scheduler_and_regime_handlers(monkeypatch) -> None:
 
     empty_session = AsyncSession(None)
     monkeypatch.setattr(workers, "AsyncSessionLocal", lambda: _AsyncContext(empty_session))
-    await workers._handle_analysis_scheduler_event(_event(event_type="indicator_updated", payload={"activity_score": 55.0}))
+    await workers._handle_analysis_scheduler_event(
+        _event(event_type="indicator_updated", payload={"activity_score": 55.0})
+    )
     assert published[-1][1]["activity_bucket"] is None
     assert empty_session.commits == 0
 
     published.clear()
-    monkeypatch.setattr(workers, "read_cached_regime_async", lambda **kwargs: __import__("asyncio").sleep(0, result=SimpleNamespace(regime="bull_trend")))
+    monkeypatch.setattr(
+        workers,
+        "read_cached_regime_async",
+        lambda **kwargs: __import__("asyncio").sleep(0, result=SimpleNamespace(regime="bull_trend")),
+    )
     monkeypatch.setattr(workers, "_run_worker_db", lambda _fn: __import__("asyncio").sleep(0, result=None))
     monkeypatch.setattr(
         workers,
         "cache_regime_snapshot_async",
         lambda **kwargs: __import__("asyncio").sleep(0, result=cached.append(kwargs)),
     )
-    await workers._handle_regime_event(_event(event_type="indicator_updated", payload={"market_regime": "bull_trend", "regime_confidence": 0.8}))
+    await workers._handle_regime_event(
+        _event(event_type="indicator_updated", payload={"market_regime": "bull_trend", "regime_confidence": 0.8})
+    )
     assert published == []
 
     async def changed_cycle(_fn):
@@ -280,7 +347,9 @@ async def test_analysis_scheduler_and_regime_handlers(monkeypatch) -> None:
         }
 
     monkeypatch.setattr(workers, "_run_worker_db", changed_cycle)
-    await workers._handle_regime_event(_event(event_type="indicator_updated", payload={"market_regime": "bear_trend", "regime_confidence": 0.66}))
+    await workers._handle_regime_event(
+        _event(event_type="indicator_updated", payload={"market_regime": "bear_trend", "regime_confidence": 0.66})
+    )
     assert {event_type for event_type, _ in published} == {"market_regime_changed", "market_cycle_changed"}
     assert cached[-1]["regime"] == "bear_trend"
 
@@ -294,7 +363,9 @@ async def test_analysis_scheduler_and_regime_handlers(monkeypatch) -> None:
             "previous_cycle": "distribution",
         }
 
-    monkeypatch.setattr(workers, "read_cached_regime_async", lambda **kwargs: __import__("asyncio").sleep(0, result=None))
+    monkeypatch.setattr(
+        workers, "read_cached_regime_async", lambda **kwargs: __import__("asyncio").sleep(0, result=None)
+    )
     monkeypatch.setattr(workers, "_run_worker_db", same_cycle_without_regime)
     await workers._handle_regime_event(_event(event_type="indicator_updated"))
     assert published == []
@@ -362,15 +433,21 @@ def test_worker_domain_helpers_and_factory(monkeypatch) -> None:
         "detect_incremental",
         lambda _db, **kwargs: detection_calls.append(("detect", kwargs["regime"])),
     )
-    monkeypatch.setattr(workers, "build_pattern_clusters", lambda _db, **kwargs: helper_calls.append(("cluster", kwargs["coin_id"])))
-    monkeypatch.setattr(workers, "build_hierarchy_signals", lambda _db, **kwargs: helper_calls.append(("hierarchy", kwargs["coin_id"])))
+    monkeypatch.setattr(
+        workers, "build_pattern_clusters", lambda _db, **kwargs: helper_calls.append(("cluster", kwargs["coin_id"]))
+    )
+    monkeypatch.setattr(
+        workers, "build_hierarchy_signals", lambda _db, **kwargs: helper_calls.append(("hierarchy", kwargs["coin_id"]))
+    )
 
     new_signals = workers._detect_pattern_signals(db, event)
     assert new_signals == ["pattern_b", "pattern_cluster_breakout"]
     assert detection_calls == [("detect", "bull_trend")]
     assert helper_calls == [("cluster", 7), ("hierarchy", 7)]
 
-    monkeypatch.setattr(workers, "refresh_sector_metrics", lambda _db, timeframe: helper_calls.append(("refresh", timeframe)))
+    monkeypatch.setattr(
+        workers, "refresh_sector_metrics", lambda _db, timeframe: helper_calls.append(("refresh", timeframe))
+    )
     monkeypatch.setattr(
         workers,
         "update_market_cycle",
@@ -386,19 +463,36 @@ def test_worker_domain_helpers_and_factory(monkeypatch) -> None:
     assert workers._refresh_regime_state(SimpleNamespace(get=lambda *_args, **_kwargs: None), event) is None
 
     flow_calls: list[tuple[str, object]] = []
-    monkeypatch.setattr(workers, "enrich_signal_context", lambda _db, **kwargs: flow_calls.append(("context", kwargs["commit"])))
-    monkeypatch.setattr(workers, "evaluate_investment_decision", lambda _db, **kwargs: flow_calls.append(("decision", kwargs["emit_event"])) or {"status": "ok", "decision": "BUY"})
-    monkeypatch.setattr(workers, "evaluate_final_signal", lambda _db, **kwargs: flow_calls.append(("final", kwargs["emit_event"])))
-    monkeypatch.setattr(workers, "refresh_recent_signal_history", lambda _db, **kwargs: flow_calls.append(("history", kwargs["commit"])))
-    monkeypatch.setattr(workers, "_latest_indicator_value", lambda _db, **kwargs: {"price_current": 101.0, "rsi_14": 52.0, "macd": 1.5}[kwargs["indicator"]])
+    monkeypatch.setattr(
+        workers, "enrich_signal_context", lambda _db, **kwargs: flow_calls.append(("context", kwargs["commit"]))
+    )
     monkeypatch.setattr(
         workers,
-        "capture_feature_snapshot",
-        lambda _db, **kwargs: flow_calls.append(("snapshot", (kwargs["price_current"], kwargs["rsi_14"], kwargs["macd"], kwargs["commit"]))),
+        "evaluate_investment_decision",
+        lambda _db, **kwargs: flow_calls.append(("decision", kwargs["emit_event"]))
+        or {"status": "ok", "decision": "BUY"},
+    )
+    monkeypatch.setattr(
+        workers, "evaluate_final_signal", lambda _db, **kwargs: flow_calls.append(("final", kwargs["emit_event"]))
+    )
+    monkeypatch.setattr(
+        workers, "refresh_recent_signal_history", lambda _db, **kwargs: flow_calls.append(("history", kwargs["commit"]))
+    )
+    monkeypatch.setattr(
+        workers,
+        "_latest_indicator_value",
+        lambda _db, **kwargs: {"price_current": 101.0, "rsi_14": 52.0, "macd": 1.5}[kwargs["indicator"]],
     )
     decision_result = workers._evaluate_decision_flow(object(), event)
     assert decision_result["status"] == "ok"
-    assert ("snapshot", (101.0, 52.0, 1.5, True)) in flow_calls
+    assert decision_result["_feature_snapshot"] == {
+        "coin_id": 7,
+        "timeframe": 15,
+        "timestamp": event.timestamp,
+        "price_current": 101.0,
+        "rsi_14": 52.0,
+        "macd": 1.5,
+    }
 
     created: list[tuple[str, object, object]] = []
 

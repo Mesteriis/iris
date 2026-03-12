@@ -9,9 +9,8 @@ from src.apps.anomalies.consumers import CandleAnomalyConsumer, SectorAnomalyCon
 from src.apps.control_plane.metrics import ControlPlaneMetricsStore
 from src.apps.cross_market.engine import process_cross_market_event
 from src.apps.hypothesis_engine.consumers import HypothesisConsumer
-from src.apps.indicators.analytics import process_indicator_event
 from src.apps.indicators.models import CoinMetrics
-from src.apps.indicators.snapshots import capture_feature_snapshot
+from src.apps.indicators.services import FeatureSnapshotService, IndicatorAnalyticsService
 from src.apps.market_data.models import Coin
 from src.apps.news.consumers import NewsCorrelationConsumer, NewsNormalizationConsumer
 from src.apps.patterns.cache import cache_regime_snapshot_async, read_cached_regime_async
@@ -30,6 +29,7 @@ from src.apps.signals.fusion import evaluate_market_decision, evaluate_news_fusi
 from src.apps.signals.history import refresh_recent_signal_history
 from src.apps.signals.models import Signal
 from src.core.db.session import AsyncSessionLocal
+from src.core.db.uow import AsyncUnitOfWork
 from src.core.settings import get_settings
 from src.runtime.control_plane.worker import build_delivery_stream_name
 from src.runtime.streams.consumer import EventConsumer, EventConsumerConfig, default_consumer_name
@@ -62,15 +62,48 @@ _HYPOTHESIS_CONSUMER = HypothesisConsumer()
 _CONTROL_PLANE_METRICS = ControlPlaneMetricsStore()
 
 # NOTE:
-# These stream workers now use async Redis/consumer orchestration, but the
-# deeper analytics/domain core they call is still largely synchronous.
-# NOTE: that sync core remains intentionally isolated behind AsyncSession.run_sync
-# inside dedicated worker processes, outside the main FastAPI request path.
+# These stream workers now use async Redis/consumer orchestration.
+# Indicator persistence has been migrated to async repositories/UoW.
+# Other domains still rely on legacy sync cores behind AsyncSession.run_sync.
 
 
 async def _run_worker_db(fn):
     async with AsyncSessionLocal() as db:
         return await db.run_sync(fn)
+
+
+async def _process_indicator_event(event: IrisEvent):
+    async with AsyncUnitOfWork() as uow:
+        result = await IndicatorAnalyticsService(uow).process_event(
+            coin_id=event.coin_id,
+            timeframe=event.timeframe,
+            timestamp=event.timestamp,
+        )
+        if result.status == "ok":
+            await uow.commit()
+        return result
+
+
+async def _capture_feature_snapshot_async(
+    *,
+    coin_id: int,
+    timeframe: int,
+    timestamp: object,
+    price_current: float | None,
+    rsi_14: float | None,
+    macd: float | None,
+) -> None:
+    async with AsyncUnitOfWork() as uow:
+        await FeatureSnapshotService(uow).capture_snapshot(
+            coin_id=coin_id,
+            timeframe=timeframe,
+            timestamp=timestamp,
+            price_current=price_current,
+            rsi_14=rsi_14,
+            macd=macd,
+        )
+        await uow.commit()
+
 
 def _signal_types_at_timestamp(db, *, coin_id: int, timeframe: int, timestamp: object) -> set[str]:
     return set(
@@ -104,39 +137,32 @@ def _emit_signal_created_events(
 
 
 async def _handle_indicator_event(event: IrisEvent) -> None:
-    result = await _run_worker_db(
-        lambda db: process_indicator_event(
-            db,
-            coin_id=event.coin_id,
-            timeframe=event.timeframe,
-            timestamp=event.timestamp,
-        )
-    )
-    if result.get("status") != "ok":
+    result = await _process_indicator_event(event)
+    if result.status != "ok":
         return
-    for item in result.get("items", []):
+    for item in result.items:
         publish_event(
             "indicator_updated",
             {
-                "coin_id": item["coin_id"],
-                "timeframe": item["timeframe"],
-                "timestamp": item["timestamp"],
-                "feature_source": item.get("feature_source"),
-                "activity_score": item.get("activity_score"),
-                "activity_bucket": item.get("activity_bucket"),
-                "analysis_priority": item.get("analysis_priority"),
-                "market_regime": item.get("market_regime"),
-                "regime_confidence": item.get("regime_confidence"),
-                "price_change_24h": item.get("price_change_24h"),
-                "price_change_7d": item.get("price_change_7d"),
-                "volatility": item.get("volatility"),
+                "coin_id": item.coin_id,
+                "timeframe": item.timeframe,
+                "timestamp": item.timestamp,
+                "feature_source": item.feature_source,
+                "activity_score": item.activity_score,
+                "activity_bucket": item.activity_bucket,
+                "analysis_priority": item.analysis_priority,
+                "market_regime": item.market_regime,
+                "regime_confidence": item.regime_confidence,
+                "price_change_24h": item.price_change_24h,
+                "price_change_7d": item.price_change_7d,
+                "volatility": item.volatility,
             },
         )
         _emit_signal_created_events(
-            coin_id=int(item["coin_id"]),
-            timeframe=int(item["timeframe"]),
-            timestamp=item["timestamp"],
-            signal_types=list(item.get("classic_signals", [])),
+            coin_id=int(item.coin_id),
+            timeframe=int(item.timeframe),
+            timestamp=item.timestamp,
+            signal_types=list(item.classic_signals),
         )
 
 
@@ -175,9 +201,7 @@ async def _handle_analysis_scheduler_event(event: IrisEvent) -> None:
 
 
 async def _handle_pattern_event(event: IrisEvent) -> None:
-    new_signal_types = await _run_worker_db(
-        lambda db: _detect_pattern_signals(db, event)
-    )
+    new_signal_types = await _run_worker_db(lambda db: _detect_pattern_signals(db, event))
     if not new_signal_types:
         return
     for signal_type in new_signal_types:
@@ -264,6 +288,9 @@ def _latest_indicator_value(db, *, coin_id: int, timeframe: int, indicator: str,
 
 async def _handle_decision_event(event: IrisEvent) -> None:
     decision_result = await _run_worker_db(lambda db: _evaluate_decision_flow(db, event))
+    snapshot_payload = decision_result.pop("_feature_snapshot", None)
+    if snapshot_payload is not None:
+        await _capture_feature_snapshot_async(**snapshot_payload)
     if decision_result.get("status") == "ok":
         publish_event(
             "decision_generated",
@@ -399,11 +426,7 @@ def _refresh_regime_state(db, event: IrisEvent) -> dict[str, object] | None:
     return {
         "previous_cycle": cycle_before.cycle_phase if cycle_before is not None else None,
         "next_cycle": cycle_result.get("cycle_phase"),
-        "regime": (
-            str(event.payload.get("market_regime"))
-            if event.payload.get("market_regime") is not None
-            else None
-        ),
+        "regime": (str(event.payload.get("market_regime")) if event.payload.get("market_regime") is not None else None),
         "regime_confidence": float(event.payload.get("regime_confidence") or 0.0),
     }
 
@@ -434,35 +457,35 @@ def _evaluate_decision_flow(db, event: IrisEvent) -> dict[str, object]:
         timeframe=event.timeframe,
         commit=True,
     )
-    capture_feature_snapshot(
-        db,
-        coin_id=event.coin_id,
-        timeframe=event.timeframe,
-        timestamp=event.timestamp,
-        price_current=_latest_indicator_value(
-            db,
-            coin_id=event.coin_id,
-            timeframe=event.timeframe,
-            indicator="price_current",
-            timestamp=event.timestamp,
-        ),
-        rsi_14=_latest_indicator_value(
-            db,
-            coin_id=event.coin_id,
-            timeframe=event.timeframe,
-            indicator="rsi_14",
-            timestamp=event.timestamp,
-        ),
-        macd=_latest_indicator_value(
-            db,
-            coin_id=event.coin_id,
-            timeframe=event.timeframe,
-            indicator="macd",
-            timestamp=event.timestamp,
-        ),
-        commit=True,
-    )
-    return decision_result
+    return {
+        **decision_result,
+        "_feature_snapshot": {
+            "coin_id": event.coin_id,
+            "timeframe": event.timeframe,
+            "timestamp": event.timestamp,
+            "price_current": _latest_indicator_value(
+                db,
+                coin_id=event.coin_id,
+                timeframe=event.timeframe,
+                indicator="price_current",
+                timestamp=event.timestamp,
+            ),
+            "rsi_14": _latest_indicator_value(
+                db,
+                coin_id=event.coin_id,
+                timeframe=event.timeframe,
+                indicator="rsi_14",
+                timestamp=event.timestamp,
+            ),
+            "macd": _latest_indicator_value(
+                db,
+                coin_id=event.coin_id,
+                timeframe=event.timeframe,
+                indicator="macd",
+                timestamp=event.timestamp,
+            ),
+        },
+    }
 
 
 def create_worker(group_name: str, consumer_name: str | None = None) -> EventConsumer:
@@ -477,29 +500,70 @@ def create_worker(group_name: str, consumer_name: str | None = None) -> EventCon
         pending_idle_milliseconds=settings.event_worker_pending_idle_milliseconds,
     )
     if group_name == INDICATOR_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_indicator_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
+        return EventConsumer(
+            config, handler=_handle_indicator_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS
+        )
     if group_name == ANALYSIS_SCHEDULER_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_analysis_scheduler_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
+        return EventConsumer(
+            config,
+            handler=_handle_analysis_scheduler_event,
+            interested_event_types=None,
+            metrics_store=_CONTROL_PLANE_METRICS,
+        )
     if group_name == PATTERN_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_pattern_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
+        return EventConsumer(
+            config, handler=_handle_pattern_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS
+        )
     if group_name == REGIME_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_regime_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
+        return EventConsumer(
+            config, handler=_handle_regime_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS
+        )
     if group_name == DECISION_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_decision_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
+        return EventConsumer(
+            config, handler=_handle_decision_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS
+        )
     if group_name == FUSION_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_fusion_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
+        return EventConsumer(
+            config, handler=_handle_fusion_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS
+        )
     if group_name == CROSS_MARKET_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_cross_market_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
+        return EventConsumer(
+            config,
+            handler=_handle_cross_market_event,
+            interested_event_types=None,
+            metrics_store=_CONTROL_PLANE_METRICS,
+        )
     if group_name == PORTFOLIO_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_portfolio_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
+        return EventConsumer(
+            config, handler=_handle_portfolio_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS
+        )
     if group_name == ANOMALY_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_anomaly_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
+        return EventConsumer(
+            config, handler=_handle_anomaly_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS
+        )
     if group_name == ANOMALY_SECTOR_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_anomaly_sector_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
+        return EventConsumer(
+            config,
+            handler=_handle_anomaly_sector_event,
+            interested_event_types=None,
+            metrics_store=_CONTROL_PLANE_METRICS,
+        )
     if group_name == NEWS_NORMALIZATION_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_news_normalization_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
+        return EventConsumer(
+            config,
+            handler=_handle_news_normalization_event,
+            interested_event_types=None,
+            metrics_store=_CONTROL_PLANE_METRICS,
+        )
     if group_name == NEWS_CORRELATION_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_news_correlation_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
+        return EventConsumer(
+            config,
+            handler=_handle_news_correlation_event,
+            interested_event_types=None,
+            metrics_store=_CONTROL_PLANE_METRICS,
+        )
     if group_name == HYPOTHESIS_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_hypothesis_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS)
+        return EventConsumer(
+            config, handler=_handle_hypothesis_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS
+        )
     raise ValueError(f"Unsupported event worker group '{group_name}'.")

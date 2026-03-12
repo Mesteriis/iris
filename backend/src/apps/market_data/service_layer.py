@@ -9,20 +9,15 @@ from sqlalchemy import Select, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from src.runtime.streams.messages import (
-    publish_coin_analysis_messages,
-    publish_coin_history_loaded_message,
-    publish_coin_history_progress_message,
+from src.apps.indicators.models import CoinMetrics, IndicatorCache
+from src.apps.market_data.domain import (
+    history_window_start,
+    interval_delta,
+    latest_completed_timestamp,
+    normalize_interval,
+    utc_now,
 )
-from src.runtime.streams.publisher import publish_event
-from src.core.watched_assets import WATCHED_ASSETS
-from src.apps.market_data.models import Candle
-from src.apps.market_data.models import Coin
-from src.apps.indicators.models import IndicatorCache
-from src.apps.signals.models import Signal
-from src.apps.market_data.schemas import CandleConfig, CoinCreate
-from src.apps.market_data.schemas import PriceHistoryCreate
-from src.apps.indicators.analytics import delete_coin_metrics_row, ensure_coin_metrics_row
+from src.apps.market_data.models import Candle, Coin
 from src.apps.market_data.repos import (
     AGGREGATE_VIEW_BY_TIMEFRAME,
     BASE_TIMEFRAME_MINUTES,
@@ -32,16 +27,28 @@ from src.apps.market_data.repos import (
     interval_to_timeframe,
     upsert_base_candles,
 )
-from src.apps.market_data.domain import (
-    history_window_start,
-    interval_delta,
-    latest_completed_timestamp,
-    normalize_interval,
-    utc_now,
-)
+from src.apps.market_data.schemas import CandleConfig, CoinCreate, PriceHistoryCreate
 from src.apps.market_data.sources import get_market_source_carousel
+from src.apps.signals.models import Signal
+from src.core.watched_assets import WATCHED_ASSETS
+from src.runtime.streams.messages import (
+    publish_coin_analysis_messages,
+    publish_coin_history_loaded_message,
+    publish_coin_history_progress_message,
+)
+from src.runtime.streams.publisher import publish_event
 
 PRICE_HISTORY_UPSERT_BATCH_SIZE = 5000
+
+
+def ensure_coin_metrics_row(db: Session, coin_id: int) -> None:
+    stmt = insert(CoinMetrics).values({"coin_id": coin_id, "updated_at": utc_now(), "indicator_version": 1})
+    stmt = stmt.on_conflict_do_nothing(index_elements=["coin_id"])
+    db.execute(stmt)
+
+
+def delete_coin_metrics_row(db: Session, coin_id: int) -> None:
+    db.execute(delete(CoinMetrics).where(CoinMetrics.coin_id == coin_id))
 
 
 def publish_candle_events(

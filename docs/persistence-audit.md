@@ -143,11 +143,27 @@ Classification:
 - `keep as justified raw SQL exception` for Timescale continuous aggregate refresh and dynamic aggregate-view reads/resampling in the legacy sync adapters
 - `later migration` for sync-heavy analytical callers still consuming the legacy sync service layer
 
+#### `apps/indicators`
+
+Status: migrated on the async API/application surface and indicator worker path
+
+- repositories now isolate mutable indicator metrics/cache/signals/feature-snapshot writes plus feature-flag lookups and candle/aggregate reads in [backend/src/apps/indicators/repositories.py](/Users/avm/projects/Personal/iris/backend/src/apps/indicators/repositories.py)
+- read-only metrics/radar/flow projections now go through [backend/src/apps/indicators/query_services.py](/Users/avm/projects/Personal/iris/backend/src/apps/indicators/query_services.py)
+- immutable dataclass read models now live in [backend/src/apps/indicators/read_models.py](/Users/avm/projects/Personal/iris/backend/src/apps/indicators/read_models.py)
+- class-based async write orchestration now lives in [backend/src/apps/indicators/services.py](/Users/avm/projects/Personal/iris/backend/src/apps/indicators/services.py)
+- views now depend on the shared async UoW instead of owning `AsyncSession` directly
+- `indicator_workers` now execute indicator persistence through async repositories/UoW instead of `AsyncSession.run_sync`
+- market-radar/flow leader reads batch coin+metrics lookups, removing the old leader-path N+1 follow-up reads
+- legacy sync analytical helpers were reduced to pure computation only in [backend/src/apps/indicators/analytics.py](/Users/avm/projects/Personal/iris/backend/src/apps/indicators/analytics.py); DB access no longer lives there
+
+Classification:
+
+- `OK`
+
 ### Sync-Heavy Analytical Domains
 
 These domains are still dominated by synchronous `Session` access inside selectors/engines and represent the largest remaining migration surface:
 
-- `apps/indicators`
 - `apps/patterns`
 - `apps/signals`
 - `apps/portfolio`
@@ -184,7 +200,6 @@ Direct session injection exists in multiple route modules, including:
 - [backend/src/apps/market_structure/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_structure/views.py)
 - [backend/src/apps/market_data/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/views.py)
 - [backend/src/apps/predictions/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/predictions/views.py)
-- [backend/src/apps/indicators/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/indicators/views.py)
 - [backend/src/apps/patterns/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/views.py)
 
 Required action:
@@ -246,8 +261,9 @@ Recommended rollout order:
 4. completed: `apps/news`
 5. completed: `apps/market_structure`
 6. completed: `apps/market_data`
-7. next: sync-heavy analytical domains starting with `apps/indicators`
-8. later: `patterns`, `signals`, `portfolio`, `predictions`, `cross_market`
+7. completed: `apps/indicators`
+8. next: sync-heavy analytical domains starting with `apps/patterns`
+9. later: `signals`, `portfolio`, `predictions`, `cross_market`
 
 ## Current Behavior To Preserve
 
