@@ -11,10 +11,39 @@ from sqlalchemy import func, select
 from src.apps.news.models import NewsItem, NewsItemLink, NewsSource
 from src.apps.signals.fusion import evaluate_market_decision
 from src.core.db.session import SessionLocal
+from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
 from src.apps.signals.models import MarketDecision
 from tests.fusion_support import create_test_coin, insert_signals, replace_pattern_statistics, upsert_coin_metrics
+
+
+def _run_dispatcher_loop() -> None:
+    consumer = create_topology_dispatcher_consumer()
+    try:
+        consumer.run()
+    finally:
+        consumer.close()
+
+
+def _start_fusion_pipeline_processes() -> tuple[multiprocessing.Process, multiprocessing.Process]:
+    ctx = multiprocessing.get_context("spawn")
+    dispatcher = ctx.Process(target=_run_dispatcher_loop, daemon=True)
+    worker = ctx.Process(
+        target=run_worker_loop,
+        args=("signal_fusion_workers",),
+        daemon=True,
+    )
+    dispatcher.start()
+    worker.start()
+    return dispatcher, worker
+
+
+def _stop_processes(*processes: multiprocessing.Process) -> None:
+    for process in processes:
+        process.terminate()
+    for process in processes:
+        process.join(timeout=2.0)
 
 
 def test_signal_fusion_aggregates_bullish_stack_into_buy(db_session) -> None:
@@ -171,13 +200,7 @@ async def test_signal_fusion_worker_publishes_decision_event(db_session, setting
     finally:
         db.close()
 
-    ctx = multiprocessing.get_context("spawn")
-    worker = ctx.Process(
-        target=run_worker_loop,
-        args=("signal_fusion_workers",),
-        daemon=True,
-    )
-    worker.start()
+    dispatcher, worker = _start_fusion_pipeline_processes()
     try:
         publish_event(
             "signal_created",
@@ -219,8 +242,7 @@ async def test_signal_fusion_worker_publishes_decision_event(db_session, setting
         finally:
             db.close()
     finally:
-        worker.terminate()
-        worker.join(timeout=2.0)
+        _stop_processes(dispatcher, worker)
 
 
 @pytest.mark.asyncio
@@ -286,13 +308,7 @@ async def test_signal_fusion_worker_reacts_to_news_symbol_correlation_event(db_s
     )
     db_session.commit()
 
-    ctx = multiprocessing.get_context("spawn")
-    worker = ctx.Process(
-        target=run_worker_loop,
-        args=("signal_fusion_workers",),
-        daemon=True,
-    )
-    worker.start()
+    dispatcher, worker = _start_fusion_pipeline_processes()
     try:
         publish_event(
             "news_symbol_correlation_updated",
@@ -337,5 +353,4 @@ async def test_signal_fusion_worker_reacts_to_news_symbol_correlation_event(db_s
         assert latest is not None
         assert latest.decision == "BUY"
     finally:
-        worker.terminate()
-        worker.join(timeout=2.0)
+        _stop_processes(dispatcher, worker)

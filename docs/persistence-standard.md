@@ -204,7 +204,7 @@ Initial rollout completed in this refactor pass:
   - `apps/market_data`
   - `apps/indicators`
   - `apps/predictions` on the active async API and scheduled evaluation surface
-  - `apps/signals` on the active async/public API read surface
+  - `apps/signals` on the active async/public API read surface and signal-fusion worker/runtime surface
   - `apps/portfolio` on the active async/public API and scheduled sync surface
   - `apps/cross_market` on the active async worker/runtime surface
   - `apps/patterns` on the async/public API surface and TaskIQ orchestration layer

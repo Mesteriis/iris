@@ -25,9 +25,9 @@ from src.apps.patterns.domain.risk import evaluate_final_signal
 from src.apps.patterns.domain.scheduler import should_request_analysis
 from src.apps.patterns.models import MarketCycle
 from src.apps.portfolio.engine import evaluate_portfolio_action
-from src.apps.signals.fusion import evaluate_market_decision, evaluate_news_fusion_event
 from src.apps.signals.history import refresh_recent_signal_history
 from src.apps.signals.models import Signal
+from src.apps.signals.services import SignalFusionService, SignalFusionSideEffectDispatcher
 from src.core.db.session import AsyncSessionLocal
 from src.core.db.uow import AsyncUnitOfWork
 from src.core.settings import get_settings
@@ -63,8 +63,8 @@ _CONTROL_PLANE_METRICS = ControlPlaneMetricsStore()
 
 # NOTE:
 # These stream workers now use async Redis/consumer orchestration.
-# Indicator and cross-market persistence now run through async repositories/UoW.
-# Other domains still rely on legacy sync cores behind AsyncSession.run_sync.
+# Indicator, cross-market and signal-fusion persistence now run through async repositories/UoW.
+# Remaining decision/history orchestration still relies on legacy sync cores behind AsyncSession.run_sync.
 
 
 async def _run_worker_db(fn):
@@ -305,25 +305,23 @@ async def _handle_decision_event(event: IrisEvent) -> None:
 
 
 async def _handle_fusion_event(event: IrisEvent) -> None:
-    if event.event_type == "news_symbol_correlation_updated":
-        await _run_worker_db(
-            lambda db: evaluate_news_fusion_event(
-                db,
+    async with AsyncUnitOfWork() as uow:
+        service = SignalFusionService(uow)
+        if event.event_type == "news_symbol_correlation_updated":
+            result = await service.evaluate_news_fusion_event(
                 coin_id=event.coin_id,
                 reference_timestamp=event.timestamp,
                 emit_event=True,
             )
-        )
-        return
-    await _run_worker_db(
-        lambda db: evaluate_market_decision(
-            db,
-            coin_id=event.coin_id,
-            timeframe=event.timeframe,
-            trigger_timestamp=None if event.event_type == "market_regime_changed" else event.timestamp,
-            emit_event=True,
-        )
-    )
+        else:
+            result = await service.evaluate_market_decision(
+                coin_id=event.coin_id,
+                timeframe=event.timeframe,
+                trigger_timestamp=None if event.event_type == "market_regime_changed" else event.timestamp,
+                emit_event=True,
+            )
+        await uow.commit()
+    await SignalFusionSideEffectDispatcher().apply(result)
 
 
 async def _handle_cross_market_event(event: IrisEvent) -> None:

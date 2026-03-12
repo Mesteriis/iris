@@ -63,10 +63,10 @@ Current rollout:
 - `anomalies` now uses immutable read models, query-service compatibility adapters, UoW-owned worker/task writes and batched peer-candle loading on the sector scan path
 - `cross_market` now uses immutable read models, query services, repository-backed async worker writes and batched leader-candle loading on the active runtime path; legacy sync engine helpers remain only for compatibility callers
 - `predictions` now uses immutable read models, query services, UoW-owned evaluation jobs and batched pending-window lookups on the active async API/background path; legacy sync engine helpers remain only for compatibility callers
-- `signals` public read APIs now use `SignalQueryService`, immutable dataclass read models and UoW-owned route boundaries; `services.py` is limited to legacy sync compatibility exports
+- `signals` public read APIs now use `SignalQueryService`, immutable dataclass read models and UoW-owned route boundaries, while `signal_fusion_workers` now execute through class-based `SignalFusionService` and `SignalFusionRepository`
 - `portfolio` public APIs and `portfolio_sync_job` now use `PortfolioQueryService`, `PortfolioService`, immutable dataclass read models and UoW-owned transaction boundaries; cache writes and published events are deferred until after commit
 - `market_data` keeps documented Timescale-specific raw SQL only inside legacy infrastructure adapters while async callers use UoW-backed repositories/query services
-- `indicator_workers` and `patterns` TaskIQ entrypoints now execute persistence through async repositories/UoW; the remaining sync analytical backlog is confined to `apps/signals/fusion.py`, `apps/signals/history.py`, `apps/signals/backtests.py`, `apps/signals/strategies.py`, legacy helper modules under `apps/patterns/domain`, plus `apps/portfolio/engine.py` and `apps/portfolio/selectors.py`
+- `indicator_workers`, `signal_fusion_workers` and `patterns` TaskIQ entrypoints now execute persistence through async repositories/UoW; the remaining sync analytical backlog is confined to legacy `apps/signals/fusion.py` compatibility helpers, `apps/signals/history.py`, `apps/signals/backtests.py`, `apps/signals/strategies.py`, legacy helper modules under `apps/patterns/domain`, plus `apps/portfolio/engine.py` and `apps/portfolio/selectors.py`
 - remaining domains tracked in the persistence audit backlog
 
 ## Stack
@@ -308,7 +308,7 @@ This keeps the portfolio engine open for `Kraken`, `Coinbase`, `OKX` and other e
 
 ## Signal Fusion Engine
 
-The fusion layer lives under `backend/src/apps/signals/fusion.py` and sits on top of stored `signals`. It does not replace pattern signals or investment decisions. It adds a separate aggregation layer that turns recent signal stacks into a unified market stance.
+The active fusion runtime now goes through `backend/src/apps/signals/services.py` via the class-based `SignalFusionService`, backed by `SignalFusionRepository` and the shared async UoW. `backend/src/apps/signals/fusion.py` still keeps the legacy sync scoring helpers and compatibility entrypoints, but `signal_fusion_workers` no longer own transactions there directly. The fusion layer sits on top of stored `signals`. It does not replace pattern signals or investment decisions. It adds a separate aggregation layer that turns recent signal stacks into a unified market stance.
 
 Responsibilities:
 
@@ -316,8 +316,8 @@ Responsibilities:
 - weight each signal by confidence, historical pattern success, signal context and regime compatibility
 - resolve agreement vs conflict across bullish and bearish signals
 - persist fused rows into `market_decisions`
-- mirror latest decisions into Redis cache keys `iris:decision:{coin_id}:{timeframe}`
-- emit `decision_generated` with `source=signal_fusion`
+- mirror latest decisions into Redis cache keys `iris:decision:{coin_id}:{timeframe}` after commit
+- emit `decision_generated` with `source=signal_fusion` after commit
 
 Fusion also consumes Cross-Market Intelligence weights so a follower asset can inherit conviction from a live leader regime/decision stack when the rolling leader -> follower relation is strong enough.
 
@@ -366,7 +366,7 @@ The internal pipeline is event-driven and producer/consumer decoupled:
 7. `regime_workers` consume `indicator_updated`, refresh market regime context and emit `market_regime_changed`.
 8. `cross_market_workers` consume `candle_closed` / `indicator_updated`, refresh rolling correlations, sector momentum and leader events.
 9. `decision_workers` consume pattern/regime/signal events, enrich context, generate decisions/final signals and emit `decision_generated`.
-10. `signal_fusion_workers` consume recent signal/regime/correlation events, fuse recent stacks and persist `market_decisions`.
+10. `signal_fusion_workers` consume recent signal/regime/correlation events, run `SignalFusionService` under the shared async UoW and persist `market_decisions`.
 11. `portfolio_workers` consume fused decisions, regime changes and portfolio balance events to maintain positions and actions.
 
 Workers use Redis Streams consumer groups:
@@ -467,7 +467,7 @@ Control-plane read APIs can be used in observe mode. Mutating endpoints require:
    `priority_score = confidence * temperature * regime_alignment * volatility_alignment * liquidity_score * sector_alignment * cycle_alignment * cluster_bonus`
 13. Lazy Investor Decision Engine converts the current stack into an investment decision.
 14. Liquidity & Risk Engine converts that decision into a tradable `final_signal`.
-15. `signal_fusion_workers` aggregate the last 1-3 signal groups into `market_decisions`, apply cross-market alignment and cache them under `iris:decision:{coin_id}:{timeframe}`.
+15. `signal_fusion_workers` aggregate the last 1-3 signal groups into `market_decisions`, apply cross-market alignment and publish cache/event side effects only after commit.
 16. Cross-Market leader events create `market_predictions`, and the scheduled prediction memory job evaluates them into `prediction_results` while feeding confidence back into `coin_relations`.
 17. `signal_history` refresh evaluates matured signals and persists 24h / 72h return windows plus drawdown outcomes.
 18. `feature_snapshots` capture the closed-candle feature vector for ML, research and backtests.
