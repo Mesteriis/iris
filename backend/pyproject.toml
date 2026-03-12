@@ -24,12 +24,57 @@ dev = [
     "pytest-asyncio>=0.24.0,<1.0.0",
     "pytest-cov>=6.0.0,<7.0.0",
     "polyfactory>=2.18.1,<3.0.0",
+    "deptry>=0.23.1,<1.0.0",
     "faker>=37.0.0,<38.0.0",
+    "bandit>=1.8.3,<2.0.0",
+    "import-linter>=2.11,<3.0.0",
+    "mypy>=1.18.2,<2.0.0",
+    "pip-audit>=2.9.0,<3.0.0",
+    "pre-commit>=4.2.0,<5.0.0",
+    "eradicate>=3.0.1,<4.0.0",
+    "semgrep>=1.155.0,<2.0.0",
+    "tryceratops>=2.4.1,<3.0.0",
+    "vulture>=2.14,<3.0.0",
+    "xenon>=0.9.3,<1.0.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["src", "tests"]
+extend-exclude = ["src/migrations"]
+
+[tool.ruff.lint]
+select = ["E9", "F811", "F821", "F822", "F823", "B", "I", "UP", "SIM", "C4", "RET", "RUF", "PERF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+explicit_package_bases = true
+namespace_packages = true
+show_error_codes = true
+pretty = true
+warn_unused_configs = true
+
+[tool.deptry]
+known_first_party = ["src"]
+
+[tool.importlinter]
+root_package = "src"
+exclude_type_checking_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Enforce backend layer boundaries"
+type = "layers"
+layers = ["runtime", "apps", "core"]
+containers = ["src"]
+exhaustive = true
+exhaustive_ignores = ["main", "migrations"]
 
 [tool.coverage.run]
 branch = true

@@ -106,12 +106,31 @@ uv run alembic upgrade head
 uv run pytest
 ```
 
+4. Run the repository checks manually through `pre-commit` from the repository root:
+
+```bash
+uv run --project backend --group dev pre-commit run --all-files --hook-stage manual
+```
+
+This manual pipeline includes:
+
+- file hygiene hooks from `pre-commit-hooks`
+- backend `ruff` with a broader ruleset (`B`, `I`, `UP`, `SIM`, `C4`, `RET`, `RUF`, `PERF`)
+- backend `pyupgrade --py313-plus`
+- backend `import-linter` with the `runtime -> apps -> core` layer contract
+- backend `mypy` in strict mode
+- backend security and hygiene checks via `bandit`, `pip-audit`, `deptry`, `eradicate`, `tryceratops`, `vulture`, `xenon` and `semgrep`
+- frontend `vue-tsc`
+- frontend `npm audit`
+
 Notes:
 
 - `backend/.env.example` is configured for host-side execution with `localhost` DB and Redis URLs.
 - Host-side infrastructure ports are published as `55432` for Postgres and `56379` for Redis to avoid conflicts with already-running local services.
 - Docker Compose still injects container-specific `db` / `redis` hostnames into the backend container, so the containerized flow keeps working.
 - If these host ports are already occupied too, adjust the published ports in `docker-compose.yml` and update `backend/.env`.
+- `pre-commit` is configured for the `manual` stage only, so it does not install or run as a git hook unless you explicitly wire that up yourself.
+- `pyupgrade` is configured with `--py313-plus` as a forward-looking modernization check; this is still stricter than the current backend runtime declaration `>=3.11,<3.13`.
 
 ## Core data model
 
