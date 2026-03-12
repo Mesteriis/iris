@@ -245,20 +245,21 @@ Classification:
 
 #### `apps/portfolio`
 
-Status: migrated on the async/public API read surface and scheduled balance-sync path; legacy sync engine/selectors still remain for compatibility callers/tests
+Status: migrated on the async/public API read surface, scheduled balance-sync path and runtime worker action path; legacy sync engine/selectors still remain for compatibility callers/tests
 
 - read-only portfolio projections now go through [backend/src/apps/portfolio/query_services.py](backend/src/apps/portfolio/query_services.py)
 - immutable dataclass read models now live in [backend/src/apps/portfolio/read_models.py](backend/src/apps/portfolio/read_models.py)
 - write-side balance/account/state persistence now goes through [backend/src/apps/portfolio/repositories.py](backend/src/apps/portfolio/repositories.py)
 - `/portfolio/*` views now depend on the shared async UoW instead of injecting `AsyncSession` directly in [backend/src/apps/portfolio/views.py](backend/src/apps/portfolio/views.py)
 - `portfolio_sync_job` now runs through [backend/src/apps/portfolio/services.py](backend/src/apps/portfolio/services.py) under the shared async UoW, with cache writes and published events deferred until after commit
+- `portfolio_workers` now evaluate portfolio actions through the class-based async `PortfolioService` under the shared async UoW, with event/cache side effects applied post-commit
 - the active sync path no longer re-fetches `ExchangeAccount` per balance row, removing an avoidable per-item read on the balance-sync loop
 - remaining follow-up:
   - [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) and [backend/src/apps/portfolio/selectors.py](backend/src/apps/portfolio/selectors.py) still own sync analytical logic, ad-hoc dict read contracts and direct commit boundaries that require a later async/class-first pass
 
 Classification:
 
-- `OK` on the async/public API and scheduled sync surface
+- `OK` on the async/public API, scheduled sync and runtime worker surfaces
 - `later migration` for residual sync analytical helpers kept behind the compatibility engine/selector modules
 
 ### Sync-Heavy Analytical Domains

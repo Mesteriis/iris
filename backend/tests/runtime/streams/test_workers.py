@@ -332,16 +332,48 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
     assert calls == [("cross_market_session", "async-db"), ("cross_market", 9)]
 
     calls.clear()
-    monkeypatch.setattr(workers, "_run_worker_db", lambda fn: __import__("asyncio").sleep(0, result=fn("db")))
-    monkeypatch.setattr(
-        workers,
-        "evaluate_portfolio_action",
-        lambda _db, **kwargs: calls.append(("portfolio", kwargs["timeframe"])) or {"status": "ok"},
-    )
+
+    class FakePortfolioUow:
+        session = "portfolio-db"
+
+        async def __aenter__(self):
+            calls.append(("portfolio_uow_enter", self.session))
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            del exc_type, exc, tb
+            calls.append(("portfolio_uow_exit", self.session))
+            return False
+
+        async def commit(self):
+            calls.append(("portfolio_commit", self.session))
+
+    class FakePortfolioService:
+        def __init__(self, uow):
+            calls.append(("portfolio_session", uow.session))
+
+        async def evaluate_portfolio_action(self, **kwargs):
+            calls.append(("portfolio", kwargs["timeframe"]))
+            return "portfolio-result"
+
+    class FakePortfolioDispatcher:
+        async def apply_action_result(self, result):
+            calls.append(("portfolio_dispatcher", result))
+
+    monkeypatch.setattr(workers, "AsyncUnitOfWork", lambda: FakePortfolioUow())
+    monkeypatch.setattr(workers, "PortfolioService", FakePortfolioService)
+    monkeypatch.setattr(workers, "PortfolioSideEffectDispatcher", FakePortfolioDispatcher)
     await workers._handle_portfolio_event(_event(event_type="decision_generated", payload={"source": "manual"}))
     await workers._handle_portfolio_event(_event(event_type="market_regime_changed", timeframe=0))
     await workers._handle_portfolio_event(_event(event_type="decision_generated", payload={"source": "signal_fusion"}))
-    assert calls == [("portfolio", 15)]
+    assert calls == [
+        ("portfolio_uow_enter", "portfolio-db"),
+        ("portfolio_session", "portfolio-db"),
+        ("portfolio", 15),
+        ("portfolio_commit", "portfolio-db"),
+        ("portfolio_uow_exit", "portfolio-db"),
+        ("portfolio_dispatcher", "portfolio-result"),
+    ]
 
 
 @pytest.mark.asyncio

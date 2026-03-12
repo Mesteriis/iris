@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - legacy `signals` `backtests.py` and `strategies.py` sync entrypoints now execute through class-based compatibility adapters with structured deprecation logging.
 - legacy `signals` `fusion.py` and `history.py` sync write entrypoints now execute through class-based compatibility services with structured deprecation logging.
 - `portfolio` public API and scheduled balance-sync surface now use repositories, `PortfolioQueryService`, `PortfolioService`, immutable read models, UoW-owned transaction boundaries and post-commit cache/event side effects instead of direct async session helpers.
+- `portfolio_workers` now evaluate decision-driven portfolio actions through class-based async `PortfolioService` with UoW-owned transaction boundaries and post-commit side effects instead of the sync `portfolio.engine` path.
 - Persistence audit and target standard docs under `docs/persistence-audit.md` and `docs/persistence-standard.md`, formalizing repository/query/UoW boundaries, immutable read-model policy, anti-N+1 rules and raw SQL exception policy.
 - Visual topology inspector now stages `route_updated` and `route_deleted` draft changes, so existing live edges can be edited or removed declaratively before publish.
 - Frontend Event Control Plane workbench at `/control-plane` with graph/canvas topology view, draft selector, inspector, drag-and-drop route staging and apply/discard controls wired to the backend draft workflow.

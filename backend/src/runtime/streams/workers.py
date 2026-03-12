@@ -24,7 +24,7 @@ from src.apps.patterns.domain.narrative import refresh_sector_metrics
 from src.apps.patterns.domain.risk import evaluate_final_signal
 from src.apps.patterns.domain.scheduler import should_request_analysis
 from src.apps.patterns.models import MarketCycle
-from src.apps.portfolio.engine import evaluate_portfolio_action
+from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
 from src.apps.signals.models import Signal
 from src.apps.signals.services import SignalFusionService, SignalFusionSideEffectDispatcher, SignalHistoryService
 from src.core.db.session import AsyncSessionLocal
@@ -348,14 +348,14 @@ async def _handle_portfolio_event(event: IrisEvent) -> None:
     timeframe = int(event.timeframe)
     if timeframe <= 0:
         return
-    await _run_worker_db(
-        lambda db: evaluate_portfolio_action(
-            db,
+    async with AsyncUnitOfWork() as uow:
+        result = await PortfolioService(uow).evaluate_portfolio_action(
             coin_id=event.coin_id,
             timeframe=timeframe,
             emit_events=True,
         )
-    )
+        await uow.commit()
+    await PortfolioSideEffectDispatcher().apply_action_result(result)
 
 
 async def _handle_anomaly_event(event: IrisEvent) -> None:

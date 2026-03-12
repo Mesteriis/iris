@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 import src.apps.portfolio.services as portfolio_services_module
-from src.apps.portfolio.models import PortfolioBalance
+from src.apps.portfolio.models import PortfolioAction, PortfolioBalance
 from src.apps.portfolio.query_services import PortfolioQueryService
 from src.apps.portfolio.services import PortfolioService
 from src.core.db.persistence import PERSISTENCE_LOGGER
@@ -61,11 +61,49 @@ async def test_portfolio_service_defers_commit_to_uow(async_db_session, db_sessi
 
 
 @pytest.mark.asyncio
+async def test_portfolio_action_service_defers_commit_to_uow(async_db_session, db_session, seeded_api_state) -> None:
+    btc = seeded_api_state["btc"]
+    baseline = db_session.scalar(
+        select(PortfolioAction)
+        .where(PortfolioAction.coin_id == int(btc.id))
+        .order_by(PortfolioAction.id.desc())
+        .limit(1)
+    )
+    baseline_id = int(baseline.id) if baseline is not None else None
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(btc.id),
+            timeframe=15,
+            emit_events=False,
+        )
+        assert result.status == "ok"
+        visible_before_commit = db_session.scalar(
+            select(PortfolioAction)
+            .where(PortfolioAction.coin_id == int(btc.id))
+            .order_by(PortfolioAction.id.desc())
+            .limit(1)
+        )
+        assert (int(visible_before_commit.id) if visible_before_commit is not None else None) == baseline_id
+
+    db_session.expire_all()
+    visible_after_rollback = db_session.scalar(
+        select(PortfolioAction)
+        .where(PortfolioAction.coin_id == int(btc.id))
+        .order_by(PortfolioAction.id.desc())
+        .limit(1)
+    )
+    assert (int(visible_after_rollback.id) if visible_after_rollback is not None else None) == baseline_id
+
+
+@pytest.mark.asyncio
 async def test_portfolio_persistence_logs_cover_query_service_service_and_uow(
     async_db_session,
     db_session,
+    seeded_api_state,
     monkeypatch,
 ) -> None:
+    btc = seeded_api_state["btc"]
     events: list[str] = []
 
     def _debug(message: str, *args, **kwargs) -> None:
@@ -84,10 +122,16 @@ async def test_portfolio_persistence_logs_cover_query_service_service_and_uow(
     async with SessionUnitOfWork(async_db_session) as uow:
         await PortfolioQueryService(uow.session).list_positions(limit=5)
         await PortfolioService(uow).sync_exchange_balances(emit_events=False)
+        await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(btc.id),
+            timeframe=15,
+            emit_events=False,
+        )
 
     assert "uow.begin" in events
     assert "query.list_portfolio_positions" in events
     assert "service.sync_exchange_balances" in events
+    assert "service.evaluate_portfolio_action" in events
     assert "uow.rollback_uncommitted" in events
 
 
