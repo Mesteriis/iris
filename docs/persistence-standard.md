@@ -186,3 +186,19 @@ Notes:
 4. Introduce immutable read models before exposing new read boundaries.
 5. Add tests for behavior parity, transaction boundaries, and read-model safety.
 6. Update audit/doc/changelog alongside code, not afterward.
+
+## Implementation Status
+
+Initial rollout completed in this refactor pass:
+
+- shared persistence foundation under `core/db`:
+  - explicit async unit of work
+  - session-wrapping unit of work for tests and externally managed sessions
+  - shared persistence logger helpers
+- first fully migrated domain: `apps/hypothesis_engine`
+  - repository/query split
+  - immutable read models for read paths
+  - centralized transaction ownership in services/tasks/views
+  - persistence logging hooks
+
+Remaining domains are tracked in [docs/persistence-audit.md](/Users/avm/projects/Personal/iris/docs/persistence-audit.md).

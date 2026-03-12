@@ -175,6 +175,12 @@ Supporting docs:
 - [docs/persistence-audit.md](/Users/avm/projects/Personal/iris/docs/persistence-audit.md)
 - [docs/persistence-standard.md](/Users/avm/projects/Personal/iris/docs/persistence-standard.md)
 
+Current implementation coverage:
+
+- shared `core/db` unit-of-work and persistence logging foundation
+- migrated `hypothesis_engine` repository/query contracts
+- remaining domains tracked in the audit backlog
+
 ## Home Assistant
 
 The custom integration polls `GET /status` and exposes `sensor.iris_status`.
