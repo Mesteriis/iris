@@ -199,6 +199,7 @@ Initial rollout completed in this refactor pass:
   - `apps/hypothesis_engine`
   - `apps/control_plane`
   - `apps/news`
+  - `apps/market_structure`
   - repository/query split
   - immutable read models for read paths
   - centralized transaction ownership in services/tasks/views/consumers

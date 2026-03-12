@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from src.apps.anomalies.models import MarketStructureSnapshot
 from src.apps.market_structure.models import MarketStructureSource
+from src.apps.market_structure.query_services import MarketStructureQueryService
 from src.apps.market_structure.schemas import (
     ManualMarketStructureIngestRequest,
     MarketStructureSnapshotCreate,
@@ -16,6 +17,7 @@ from src.apps.market_structure.schemas import (
 )
 from src.apps.market_structure.services import MarketStructureService, MarketStructureSourceProvisioningService
 from src.apps.market_structure.exceptions import UnauthorizedMarketStructureIngestError
+from src.core.db.uow import SessionUnitOfWork
 
 
 class _FakeResponse:
@@ -71,22 +73,26 @@ class _BrokenAsyncClient:
 
 
 @pytest.mark.asyncio
-async def test_market_structure_service_polls_persists_and_publishes(async_db_session, seeded_market, monkeypatch) -> None:
+async def test_market_structure_service_polls_persists_and_publishes(
+    async_db_session, seeded_market, monkeypatch
+) -> None:
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("src.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload)))
+    monkeypatch.setattr(
+        "src.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload))
+    )
     monkeypatch.setattr("src.apps.market_structure.plugins.httpx.AsyncClient", _FakeAsyncClient)
 
-    service = MarketStructureService(async_db_session)
-    source = await service.create_source(
-        MarketStructureSourceCreate(
-            plugin_name="binance_usdm",
-            display_name="Binance ETH",
-            credentials={},
-            settings={"coin_symbol": "ETHUSD_EVT", "market_symbol": "ETHUSDT", "timeframe": 15},
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = MarketStructureService(uow)
+        source = await service.create_source(
+            MarketStructureSourceCreate(
+                plugin_name="binance_usdm",
+                display_name="Binance ETH",
+                credentials={},
+                settings={"coin_symbol": "ETHUSD_EVT", "market_symbol": "ETHUSDT", "timeframe": 15},
+            )
         )
-    )
-
-    result = await service.poll_source(source_id=source.id, limit=1)
+        result = await service.poll_source(source_id=source.id, limit=1)
 
     assert result["status"] == "ok"
     assert result["created"] == 1
@@ -120,7 +126,8 @@ async def test_market_structure_service_polls_persists_and_publishes(async_db_se
     )
     assert any(
         event_type == "market_structure_snapshot_ingested"
-        and payload == {
+        and payload
+        == {
             "coin_id": int(seeded_market["ETHUSD_EVT"]["coin_id"]),
             "timeframe": 15,
             "timestamp": snapshot.timestamp,
@@ -136,84 +143,97 @@ async def test_market_structure_service_polls_persists_and_publishes(async_db_se
 @pytest.mark.asyncio
 async def test_market_structure_service_manual_ingest_update_and_delete(async_db_session, seeded_market) -> None:
     del seeded_market
-    service = MarketStructureService(async_db_session)
-    created = await service.create_source(
-        MarketStructureSourceCreate(
-            plugin_name="manual_push",
-            display_name="Liquidation Feed",
-            settings={"coin_symbol": "ETHUSD_EVT", "timeframe": 15, "venue": "liqscope"},
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = MarketStructureService(uow)
+        query_service = MarketStructureQueryService(uow.session)
+        created = await service.create_source(
+            MarketStructureSourceCreate(
+                plugin_name="manual_push",
+                display_name="Liquidation Feed",
+                settings={"coin_symbol": "ETHUSD_EVT", "timeframe": 15, "venue": "liqscope"},
+            )
         )
-    )
 
-    result = await service.ingest_manual_snapshots(
-        source_id=created.id,
-        payload=ManualMarketStructureIngestRequest(
-            snapshots=[
-                MarketStructureSnapshotCreate(
-                    timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
-                    funding_rate=0.0009,
-                    open_interest=21000.0,
-                    liquidations_long=3300.0,
-                    liquidations_short=120.0,
-                    last_price=3150.0,
-                )
-            ]
-        ),
-    )
-    assert result == {
-        "status": "ok",
-        "source_id": created.id,
-        "plugin_name": "manual_push",
-        "created": 1,
-    }
+        result = await service.ingest_manual_snapshots(
+            source_id=created.id,
+            payload=ManualMarketStructureIngestRequest(
+                snapshots=[
+                    MarketStructureSnapshotCreate(
+                        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+                        funding_rate=0.0009,
+                        open_interest=21000.0,
+                        liquidations_long=3300.0,
+                        liquidations_short=120.0,
+                        last_price=3150.0,
+                    )
+                ]
+            ),
+        )
+        assert result == {
+            "status": "ok",
+            "source_id": created.id,
+            "plugin_name": "manual_push",
+            "created": 1,
+        }
 
-    snapshots = await service.list_snapshots(coin_symbol="ETHUSD_EVT", venue="liqscope", limit=10)
-    assert len(snapshots) == 1
-    assert snapshots[0].liquidations_long == pytest.approx(3300.0)
+        snapshots = await query_service.list_snapshots(coin_symbol="ETHUSD_EVT", venue="liqscope", limit=10)
+        assert len(snapshots) == 1
+        assert snapshots[0].liquidations_long == pytest.approx(3300.0)
 
-    updated = await service.update_source(
-        created.id,
-        MarketStructureSourceUpdate(
-            display_name="Liquidation Feed Prime",
-            enabled=False,
-            settings={"venue": "liquidations_api"},
-        ),
-    )
-    assert updated is not None
-    assert updated.display_name == "Liquidation Feed Prime"
-    assert updated.enabled is False
-    assert updated.settings["venue"] == "liquidations_api"
+        updated = await service.update_source(
+            created.id,
+            MarketStructureSourceUpdate(
+                display_name="Liquidation Feed Prime",
+                enabled=False,
+                settings={"venue": "liquidations_api"},
+            ),
+        )
+        assert updated is not None
+        assert updated.display_name == "Liquidation Feed Prime"
+        assert updated.enabled is False
+        assert updated.settings["venue"] == "liquidations_api"
 
-    assert await service.delete_source(created.id) is True
-    assert await service.delete_source(created.id) is False
+        assert await service.delete_source(created.id) is True
+        assert await service.delete_source(created.id) is False
 
 
 @pytest.mark.asyncio
 async def test_market_structure_service_refreshes_stale_health(async_db_session, seeded_market, monkeypatch) -> None:
     del seeded_market
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("src.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload)))
-
-    service = MarketStructureService(async_db_session)
-    created = await service.create_source(
-        MarketStructureSourceCreate(
-            plugin_name="manual_push",
-            display_name="Stale Webhook",
-            credentials={"ingest_token": "secret"},
-            settings={"coin_symbol": "ETHUSD_EVT", "timeframe": 15, "venue": "liqscope", "provider": "liqscope", "ingest_mode": "webhook"},
-        )
+    monkeypatch.setattr(
+        "src.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload))
     )
-    source = await async_db_session.get(MarketStructureSource, created.id)
-    assert source is not None
-    source.last_polled_at = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
-    source.last_success_at = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
-    source.last_snapshot_at = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
-    source.last_error = None
-    source.health_status = "healthy"
-    await async_db_session.commit()
 
-    monkeypatch.setattr("src.apps.market_structure.services.utc_now", lambda: datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc))
-    result = await service.refresh_source_health()
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = MarketStructureService(uow)
+        created = await service.create_source(
+            MarketStructureSourceCreate(
+                plugin_name="manual_push",
+                display_name="Stale Webhook",
+                credentials={"ingest_token": "secret"},
+                settings={
+                    "coin_symbol": "ETHUSD_EVT",
+                    "timeframe": 15,
+                    "venue": "liqscope",
+                    "provider": "liqscope",
+                    "ingest_mode": "webhook",
+                },
+            )
+        )
+        source = await async_db_session.get(MarketStructureSource, created.id)
+        assert source is not None
+        source.last_polled_at = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+        source.last_success_at = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+        source.last_snapshot_at = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+        source.last_error = None
+        source.health_status = "healthy"
+        await async_db_session.commit()
+
+        monkeypatch.setattr(
+            "src.apps.market_structure.services.utc_now", lambda: datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+        )
+        result = await service.refresh_source_health()
 
     assert result == {"status": "ok", "sources": 1, "changed": 1}
     refreshed = await async_db_session.get(MarketStructureSource, created.id)
@@ -236,10 +256,14 @@ async def test_market_structure_service_refreshes_stale_health(async_db_session,
 
 
 @pytest.mark.asyncio
-async def test_market_structure_service_applies_backoff_quarantine_and_release(async_db_session, seeded_market, monkeypatch) -> None:
+async def test_market_structure_service_applies_backoff_quarantine_and_release(
+    async_db_session, seeded_market, monkeypatch
+) -> None:
     del seeded_market
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("src.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload)))
+    monkeypatch.setattr(
+        "src.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload))
+    )
     monkeypatch.setattr("src.apps.market_structure.plugins.httpx.AsyncClient", _BrokenAsyncClient)
     monkeypatch.setattr(
         "src.apps.market_structure.services.get_settings",
@@ -251,72 +275,73 @@ async def test_market_structure_service_applies_backoff_quarantine_and_release(a
         ),
     )
 
-    service = MarketStructureService(async_db_session)
-    created = await service.create_source(
-        MarketStructureSourceCreate(
-            plugin_name="binance_usdm",
-            display_name="Binance ETH Failing",
-            settings={"coin_symbol": "ETHUSD_EVT", "market_symbol": "ETHUSDT", "timeframe": 15},
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = MarketStructureService(uow)
+        created = await service.create_source(
+            MarketStructureSourceCreate(
+                plugin_name="binance_usdm",
+                display_name="Binance ETH Failing",
+                settings={"coin_symbol": "ETHUSD_EVT", "market_symbol": "ETHUSDT", "timeframe": 15},
+            )
         )
-    )
 
-    first_failure = await service.poll_source(source_id=created.id, limit=1)
-    assert first_failure["status"] == "error"
-    assert first_failure["consecutive_failures"] == 1
-    assert first_failure["quarantined"] is False
-    assert first_failure["backoff_until"] is not None
+        first_failure = await service.poll_source(source_id=created.id, limit=1)
+        assert first_failure["status"] == "error"
+        assert first_failure["consecutive_failures"] == 1
+        assert first_failure["quarantined"] is False
+        assert first_failure["backoff_until"] is not None
 
-    backoff_skip = await service.poll_source(source_id=created.id, limit=1)
-    assert backoff_skip["status"] == "skipped"
-    assert backoff_skip["reason"] == "source_backoff"
+        backoff_skip = await service.poll_source(source_id=created.id, limit=1)
+        assert backoff_skip["status"] == "skipped"
+        assert backoff_skip["reason"] == "source_backoff"
 
-    source = await async_db_session.get(MarketStructureSource, created.id)
-    assert source is not None
-    source.backoff_until = datetime(2000, 1, 1, tzinfo=timezone.utc)
-    await async_db_session.commit()
+        source = await async_db_session.get(MarketStructureSource, created.id)
+        assert source is not None
+        source.backoff_until = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        await async_db_session.commit()
 
-    second_failure = await service.poll_source(source_id=created.id, limit=1)
-    assert second_failure["status"] == "error"
-    assert second_failure["consecutive_failures"] == 2
-    assert second_failure["quarantined"] is False
+        second_failure = await service.poll_source(source_id=created.id, limit=1)
+        assert second_failure["status"] == "error"
+        assert second_failure["consecutive_failures"] == 2
+        assert second_failure["quarantined"] is False
 
-    source = await async_db_session.get(MarketStructureSource, created.id)
-    assert source is not None
-    source.backoff_until = datetime(2000, 1, 1, tzinfo=timezone.utc)
-    await async_db_session.commit()
+        source = await async_db_session.get(MarketStructureSource, created.id)
+        assert source is not None
+        source.backoff_until = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        await async_db_session.commit()
 
-    third_failure = await service.poll_source(source_id=created.id, limit=1)
-    assert third_failure["status"] == "error"
-    assert third_failure["consecutive_failures"] == 3
-    assert third_failure["quarantined"] is True
-    assert third_failure["quarantine_reason"]
+        third_failure = await service.poll_source(source_id=created.id, limit=1)
+        assert third_failure["status"] == "error"
+        assert third_failure["consecutive_failures"] == 3
+        assert third_failure["quarantined"] is True
+        assert third_failure["quarantine_reason"]
 
-    quarantined = await async_db_session.get(MarketStructureSource, created.id)
-    assert quarantined is not None
-    assert quarantined.enabled is False
-    assert quarantined.health_status == "quarantined"
-    assert quarantined.last_alert_kind == "quarantined"
+        quarantined = await async_db_session.get(MarketStructureSource, created.id)
+        assert quarantined is not None
+        assert quarantined.enabled is False
+        assert quarantined.health_status == "quarantined"
+        assert quarantined.last_alert_kind == "quarantined"
 
-    quarantined_skip = await service.poll_source(source_id=created.id, limit=1)
-    assert quarantined_skip["status"] == "skipped"
-    assert quarantined_skip["reason"] == "source_quarantined"
+        quarantined_skip = await service.poll_source(source_id=created.id, limit=1)
+        assert quarantined_skip["status"] == "skipped"
+        assert quarantined_skip["reason"] == "source_quarantined"
 
-    released = await service.update_source(
-        created.id,
-        MarketStructureSourceUpdate(
-            enabled=True,
-            clear_error=True,
-            release_quarantine=True,
-        ),
-    )
-    assert released is not None
-    assert released.enabled is True
-    assert released.status == "active"
-    assert released.health.status == "idle"
-    assert released.consecutive_failures == 0
-    assert released.backoff_until is None
-    assert released.quarantined_at is None
-    assert released.quarantine_reason is None
+        released = await service.update_source(
+            created.id,
+            MarketStructureSourceUpdate(
+                enabled=True,
+                clear_error=True,
+                release_quarantine=True,
+            ),
+        )
+        assert released is not None
+        assert released.enabled is True
+        assert released.status == "active"
+        assert released.health.status == "idle"
+        assert released.consecutive_failures == 0
+        assert released.backoff_until is None
+        assert released.quarantined_at is None
+        assert released.quarantine_reason is None
 
     alerted_events = [payload for event_type, payload in published if event_type == "market_structure_source_alerted"]
     assert [payload["alert_kind"] for payload in alerted_events] == ["error", "quarantined"]
@@ -329,155 +354,163 @@ async def test_market_structure_service_applies_backoff_quarantine_and_release(a
 
 
 @pytest.mark.asyncio
-async def test_market_structure_service_poll_enabled_sources_skips_manual(async_db_session, seeded_market, monkeypatch) -> None:
+async def test_market_structure_service_poll_enabled_sources_skips_manual(
+    async_db_session, seeded_market, monkeypatch
+) -> None:
     del seeded_market
     monkeypatch.setattr("src.apps.market_structure.plugins.httpx.AsyncClient", _FakeAsyncClient)
-    service = MarketStructureService(async_db_session)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = MarketStructureService(uow)
 
-    await service.create_source(
-        MarketStructureSourceCreate(
-            plugin_name="binance_usdm",
-            display_name="Binance ETH",
-            settings={"coin_symbol": "ETHUSD_EVT", "market_symbol": "ETHUSDT", "timeframe": 15},
+        await service.create_source(
+            MarketStructureSourceCreate(
+                plugin_name="binance_usdm",
+                display_name="Binance ETH",
+                settings={"coin_symbol": "ETHUSD_EVT", "market_symbol": "ETHUSDT", "timeframe": 15},
+            )
         )
-    )
-    await service.create_source(
-        MarketStructureSourceCreate(
-            plugin_name="manual_push",
-            display_name="Manual ETH",
-            settings={"coin_symbol": "ETHUSD_EVT", "timeframe": 15, "venue": "liqscope"},
+        await service.create_source(
+            MarketStructureSourceCreate(
+                plugin_name="manual_push",
+                display_name="Manual ETH",
+                settings={"coin_symbol": "ETHUSD_EVT", "timeframe": 15, "venue": "liqscope"},
+            )
         )
-    )
 
-    result = await service.poll_enabled_sources(limit_per_source=1)
+        result = await service.poll_enabled_sources(limit_per_source=1)
 
     assert result["status"] == "ok"
     assert result["sources"] == 2
     assert any(item["status"] == "ok" for item in result["items"])
-    assert any(item["reason"] == "plugin_requires_manual_ingest" for item in result["items"] if item["status"] == "skipped")
+    assert any(
+        item["reason"] == "plugin_requires_manual_ingest" for item in result["items"] if item["status"] == "skipped"
+    )
 
 
 @pytest.mark.asyncio
-async def test_market_structure_provisioning_service_builds_frontend_friendly_sources(async_db_session, seeded_market) -> None:
+async def test_market_structure_provisioning_service_builds_frontend_friendly_sources(
+    async_db_session, seeded_market
+) -> None:
     del seeded_market
-    provisioning = MarketStructureSourceProvisioningService(async_db_session)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        provisioning = MarketStructureSourceProvisioningService(uow)
 
-    binance = await provisioning.create_binance_source(
-        payload={
-            "coin_symbol": "ETHUSD_EVT",
-            "timeframe": 15,
-        }
-    )
-    bybit = await provisioning.create_bybit_source(
-        payload={
-            "coin_symbol": "SOLUSD_EVT",
-            "timeframe": 60,
-            "category": "linear",
-        }
-    )
-    manual = await provisioning.create_manual_source(
-        payload={
-            "coin_symbol": "BTCUSD_EVT",
-            "timeframe": 15,
-            "venue": "liqscope",
-        }
-    )
-    webhook = await provisioning.create_liqscope_webhook_source(
-        payload={
-            "coin_symbol": "ETHUSD_EVT",
-            "timeframe": 15,
-        }
-    )
-    coinglass = await provisioning.create_coinglass_webhook_source(
-        payload={
-            "coin_symbol": "BTCUSD_EVT",
-            "timeframe": 15,
-        }
-    )
+        binance = await provisioning.create_binance_source(
+            payload={
+                "coin_symbol": "ETHUSD_EVT",
+                "timeframe": 15,
+            }
+        )
+        bybit = await provisioning.create_bybit_source(
+            payload={
+                "coin_symbol": "SOLUSD_EVT",
+                "timeframe": 60,
+                "category": "linear",
+            }
+        )
+        manual = await provisioning.create_manual_source(
+            payload={
+                "coin_symbol": "BTCUSD_EVT",
+                "timeframe": 15,
+                "venue": "liqscope",
+            }
+        )
+        webhook = await provisioning.create_liqscope_webhook_source(
+            payload={
+                "coin_symbol": "ETHUSD_EVT",
+                "timeframe": 15,
+            }
+        )
+        coinglass = await provisioning.create_coinglass_webhook_source(
+            payload={
+                "coin_symbol": "BTCUSD_EVT",
+                "timeframe": 15,
+            }
+        )
 
-    assert binance.plugin_name == "binance_usdm"
-    assert binance.settings["market_symbol"] == "ETHUSDT"
-    assert binance.display_name == "ETHUSD_EVT Binance USD-M"
+        assert binance.plugin_name == "binance_usdm"
+        assert binance.settings["market_symbol"] == "ETHUSDT"
+        assert binance.display_name == "ETHUSD_EVT Binance USD-M"
 
-    assert bybit.plugin_name == "bybit_derivatives"
-    assert bybit.settings["market_symbol"] == "SOLUSDT"
-    assert bybit.settings["category"] == "linear"
+        assert bybit.plugin_name == "bybit_derivatives"
+        assert bybit.settings["market_symbol"] == "SOLUSDT"
+        assert bybit.settings["category"] == "linear"
 
-    assert manual.plugin_name == "manual_push"
-    assert manual.settings["venue"] == "liqscope"
-    assert manual.display_name == "BTCUSD_EVT liqscope Feed"
-    assert webhook.source.plugin_name == "manual_push"
-    assert webhook.provider == "liqscope"
-    assert webhook.venue == "liqscope"
-    assert webhook.ingest_path == f"/market-structure/sources/{webhook.source.id}/snapshots"
-    assert webhook.native_ingest_path == f"/market-structure/sources/{webhook.source.id}/webhook/native"
-    assert webhook.token
-    assert webhook.native_payload_example["liquidations"]["long"] == 3300.0
-    assert webhook.source.credential_fields_present == ["ingest_token"]
-    assert coinglass.provider == "coinglass"
-    assert coinglass.venue == "coinglass"
-    assert coinglass.native_payload_example["data"][0]["longLiquidationUsd"] == 5100.0
+        assert manual.plugin_name == "manual_push"
+        assert manual.settings["venue"] == "liqscope"
+        assert manual.display_name == "BTCUSD_EVT liqscope Feed"
+        assert webhook.source.plugin_name == "manual_push"
+        assert webhook.provider == "liqscope"
+        assert webhook.venue == "liqscope"
+        assert webhook.ingest_path == f"/market-structure/sources/{webhook.source.id}/snapshots"
+        assert webhook.native_ingest_path == f"/market-structure/sources/{webhook.source.id}/webhook/native"
+        assert webhook.token
+        assert webhook.native_payload_example["liquidations"]["long"] == 3300.0
+        assert webhook.source.credential_fields_present == ["ingest_token"]
+        assert coinglass.provider == "coinglass"
+        assert coinglass.venue == "coinglass"
+        assert coinglass.native_payload_example["data"][0]["longLiquidationUsd"] == 5100.0
 
-    wizard = provisioning.wizard_spec()
-    assert wizard.presets[0].endpoint == "/market-structure/onboarding/sources/binance-usdm"
-    assert any("low-level plugin settings" in note for note in wizard.notes)
-    assert any("rotated from the frontend" in note for note in wizard.notes)
-    assert any(preset.id == "coinglass_webhook" for preset in wizard.presets)
-    assert any(preset.id == "hyblock_webhook" for preset in wizard.presets)
-    assert any(preset.id == "coinalyze_webhook" for preset in wizard.presets)
+        wizard = provisioning.wizard_spec()
+        assert wizard.presets[0].endpoint == "/market-structure/onboarding/sources/binance-usdm"
+        assert any("low-level plugin settings" in note for note in wizard.notes)
+        assert any("rotated from the frontend" in note for note in wizard.notes)
+        assert any(preset.id == "coinglass_webhook" for preset in wizard.presets)
+        assert any(preset.id == "hyblock_webhook" for preset in wizard.presets)
+        assert any(preset.id == "coinalyze_webhook" for preset in wizard.presets)
 
-    registration = await provisioning.read_webhook_registration(webhook.source.id, include_token=False)
-    assert registration is not None
-    assert registration.token is None
-    assert registration.token_required is True
-    assert registration.native_ingest_path == webhook.native_ingest_path
+        registration = await provisioning.read_webhook_registration(webhook.source.id, include_token=False)
+        assert registration is not None
+        assert registration.token is None
+        assert registration.token_required is True
+        assert registration.native_ingest_path == webhook.native_ingest_path
 
-    rotated = await provisioning.rotate_webhook_token(webhook.source.id)
-    assert rotated is not None
-    assert rotated.token
-    assert rotated.token != webhook.token
+        rotated = await provisioning.rotate_webhook_token(webhook.source.id)
+        assert rotated is not None
+        assert rotated.token
+        assert rotated.token != webhook.token
 
-    service = MarketStructureService(async_db_session)
-    with pytest.raises(UnauthorizedMarketStructureIngestError):
-        await service.ingest_manual_snapshots(
+        service = MarketStructureService(uow)
+        with pytest.raises(UnauthorizedMarketStructureIngestError):
+            await service.ingest_manual_snapshots(
+                source_id=webhook.source.id,
+                payload=ManualMarketStructureIngestRequest(
+                    snapshots=[
+                        MarketStructureSnapshotCreate(
+                            timestamp=datetime(2026, 3, 12, 12, 5, tzinfo=timezone.utc),
+                            funding_rate=0.0007,
+                            open_interest=20500.0,
+                        )
+                    ]
+                ),
+            )
+
+        result = await service.ingest_manual_snapshots(
             source_id=webhook.source.id,
+            ingest_token=rotated.token,
             payload=ManualMarketStructureIngestRequest(
                 snapshots=[
                     MarketStructureSnapshotCreate(
                         timestamp=datetime(2026, 3, 12, 12, 5, tzinfo=timezone.utc),
                         funding_rate=0.0007,
                         open_interest=20500.0,
+                        liquidations_long=900.0,
                     )
                 ]
             ),
         )
+        assert result["status"] == "ok"
+        assert result["created"] == 1
 
-    result = await service.ingest_manual_snapshots(
-        source_id=webhook.source.id,
-        ingest_token=rotated.token,
-        payload=ManualMarketStructureIngestRequest(
-            snapshots=[
-                MarketStructureSnapshotCreate(
-                    timestamp=datetime(2026, 3, 12, 12, 5, tzinfo=timezone.utc),
-                    funding_rate=0.0007,
-                    open_interest=20500.0,
-                    liquidations_long=900.0,
-                )
-            ]
-        ),
-    )
-    assert result["status"] == "ok"
-    assert result["created"] == 1
-
-    native_result = await service.ingest_native_webhook_payload(
-        source_id=webhook.source.id,
-        ingest_token=rotated.token,
-        payload={
-            "timestamp": datetime(2026, 3, 12, 12, 10, tzinfo=timezone.utc).isoformat(),
-            "price": 3160.0,
-            "open_interest": 20600.0,
-            "liquidations": {"long": 1200.0, "short": 90.0},
-        },
-    )
-    assert native_result["status"] == "ok"
-    assert native_result["created"] == 1
+        native_result = await service.ingest_native_webhook_payload(
+            source_id=webhook.source.id,
+            ingest_token=rotated.token,
+            payload={
+                "timestamp": datetime(2026, 3, 12, 12, 10, tzinfo=timezone.utc).isoformat(),
+                "price": 3160.0,
+                "open_interest": 20600.0,
+                "liquidations": {"long": 1200.0, "short": 90.0},
+            },
+        )
+        assert native_result["status"] == "ok"
+        assert native_result["created"] == 1

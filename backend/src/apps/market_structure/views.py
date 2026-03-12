@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.market_structure.exceptions import (
     InvalidMarketStructureSourceConfigurationError,
@@ -9,6 +8,7 @@ from src.apps.market_structure.exceptions import (
     UnsupportedMarketStructurePluginError,
     UnauthorizedMarketStructureIngestError,
 )
+from src.apps.market_structure.query_services import MarketStructureQueryService
 from src.apps.market_structure.schemas import (
     BinanceMarketStructureSourceCreateRequest,
     BybitMarketStructureSourceCreateRequest,
@@ -25,14 +25,40 @@ from src.apps.market_structure.schemas import (
     MarketStructureWebhookRegistrationRead,
 )
 from src.apps.market_structure.services import MarketStructureService, MarketStructureSourceProvisioningService
-from src.core.db.session import get_db
+from src.core.db.persistence import thaw_json_value
+from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 
 router = APIRouter(tags=["market-structure"])
+DB_UOW = Depends(get_uow)
+
+
+def _snapshot_schema_from_read_model(item) -> MarketStructureSnapshotRead:
+    return MarketStructureSnapshotRead.model_validate(
+        {
+            "id": item.id,
+            "coin_id": item.coin_id,
+            "symbol": item.symbol,
+            "timeframe": item.timeframe,
+            "venue": item.venue,
+            "timestamp": item.timestamp,
+            "last_price": item.last_price,
+            "mark_price": item.mark_price,
+            "index_price": item.index_price,
+            "funding_rate": item.funding_rate,
+            "open_interest": item.open_interest,
+            "basis": item.basis,
+            "liquidations_long": item.liquidations_long,
+            "liquidations_short": item.liquidations_short,
+            "volume": item.volume,
+            "payload_json": thaw_json_value(item.payload_json),
+        }
+    )
 
 
 @router.get("/market-structure/plugins", response_model=list[MarketStructurePluginRead])
-async def read_market_structure_plugins(db: AsyncSession = Depends(get_db)) -> list[MarketStructurePluginRead]:
-    return await MarketStructureService(db).list_plugins()
+async def read_market_structure_plugins(uow: BaseAsyncUnitOfWork = DB_UOW) -> list[MarketStructurePluginRead]:
+    items = await MarketStructureQueryService(uow.session).list_plugins()
+    return [MarketStructurePluginRead.model_validate(item) for item in items]
 
 
 @router.get("/market-structure/onboarding/wizard", response_model=MarketStructureOnboardingRead)
@@ -41,31 +67,32 @@ async def read_market_structure_onboarding_wizard() -> MarketStructureOnboarding
 
 
 @router.get("/market-structure/sources", response_model=list[MarketStructureSourceRead])
-async def read_market_structure_sources(db: AsyncSession = Depends(get_db)) -> list[MarketStructureSourceRead]:
-    return await MarketStructureService(db).list_sources()
+async def read_market_structure_sources(uow: BaseAsyncUnitOfWork = DB_UOW) -> list[MarketStructureSourceRead]:
+    items = await MarketStructureQueryService(uow.session).list_sources()
+    return [MarketStructureSourceRead.model_validate(item) for item in items]
 
 
 @router.get("/market-structure/sources/{source_id}/health", response_model=MarketStructureSourceHealthRead)
 async def read_market_structure_source_health(
     source_id: int,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureSourceHealthRead:
-    health = await MarketStructureService(db).read_source_health(source_id)
+    health = await MarketStructureQueryService(uow.session).get_source_health_read_by_id(source_id)
     if health is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Market structure source '{source_id}' was not found.",
         )
-    return health
+    return MarketStructureSourceHealthRead.model_validate(health)
 
 
 @router.post("/market-structure/sources", response_model=MarketStructureSourceRead, status_code=status.HTTP_201_CREATED)
 async def create_market_structure_source(
     payload: MarketStructureSourceCreate,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureSourceRead:
     try:
-        return await MarketStructureService(db).create_source(payload)
+        return await MarketStructureService(uow).create_source(payload)
     except (InvalidMarketStructureSourceConfigurationError, UnsupportedMarketStructurePluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -77,10 +104,10 @@ async def create_market_structure_source(
 )
 async def create_binance_market_structure_source(
     payload: BinanceMarketStructureSourceCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureSourceRead:
     try:
-        return await MarketStructureSourceProvisioningService(db).create_binance_source(payload)
+        return await MarketStructureSourceProvisioningService(uow).create_binance_source(payload)
     except (InvalidMarketStructureSourceConfigurationError, UnsupportedMarketStructurePluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -92,10 +119,10 @@ async def create_binance_market_structure_source(
 )
 async def create_bybit_market_structure_source(
     payload: BybitMarketStructureSourceCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureSourceRead:
     try:
-        return await MarketStructureSourceProvisioningService(db).create_bybit_source(payload)
+        return await MarketStructureSourceProvisioningService(uow).create_bybit_source(payload)
     except (InvalidMarketStructureSourceConfigurationError, UnsupportedMarketStructurePluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -107,10 +134,10 @@ async def create_bybit_market_structure_source(
 )
 async def create_manual_market_structure_source(
     payload: ManualPushMarketStructureSourceCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureSourceRead:
     try:
-        return await MarketStructureSourceProvisioningService(db).create_manual_source(payload)
+        return await MarketStructureSourceProvisioningService(uow).create_manual_source(payload)
     except (InvalidMarketStructureSourceConfigurationError, UnsupportedMarketStructurePluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -122,10 +149,10 @@ async def create_manual_market_structure_source(
 )
 async def create_liqscope_market_structure_webhook_source(
     payload: ManualWebhookMarketStructureSourceCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureWebhookRegistrationRead:
     try:
-        return await MarketStructureSourceProvisioningService(db).create_liqscope_webhook_source(payload)
+        return await MarketStructureSourceProvisioningService(uow).create_liqscope_webhook_source(payload)
     except (InvalidMarketStructureSourceConfigurationError, UnsupportedMarketStructurePluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -137,10 +164,10 @@ async def create_liqscope_market_structure_webhook_source(
 )
 async def create_liquidation_market_structure_webhook_source(
     payload: ManualWebhookMarketStructureSourceCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureWebhookRegistrationRead:
     try:
-        return await MarketStructureSourceProvisioningService(db).create_liquidation_webhook_source(payload)
+        return await MarketStructureSourceProvisioningService(uow).create_liquidation_webhook_source(payload)
     except (InvalidMarketStructureSourceConfigurationError, UnsupportedMarketStructurePluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -152,10 +179,10 @@ async def create_liquidation_market_structure_webhook_source(
 )
 async def create_derivatives_market_structure_webhook_source(
     payload: ManualWebhookMarketStructureSourceCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureWebhookRegistrationRead:
     try:
-        return await MarketStructureSourceProvisioningService(db).create_derivatives_webhook_source(payload)
+        return await MarketStructureSourceProvisioningService(uow).create_derivatives_webhook_source(payload)
     except (InvalidMarketStructureSourceConfigurationError, UnsupportedMarketStructurePluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -167,10 +194,10 @@ async def create_derivatives_market_structure_webhook_source(
 )
 async def create_coinglass_market_structure_webhook_source(
     payload: ManualWebhookMarketStructureSourceCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureWebhookRegistrationRead:
     try:
-        return await MarketStructureSourceProvisioningService(db).create_coinglass_webhook_source(payload)
+        return await MarketStructureSourceProvisioningService(uow).create_coinglass_webhook_source(payload)
     except (InvalidMarketStructureSourceConfigurationError, UnsupportedMarketStructurePluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -182,10 +209,10 @@ async def create_coinglass_market_structure_webhook_source(
 )
 async def create_hyblock_market_structure_webhook_source(
     payload: ManualWebhookMarketStructureSourceCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureWebhookRegistrationRead:
     try:
-        return await MarketStructureSourceProvisioningService(db).create_hyblock_webhook_source(payload)
+        return await MarketStructureSourceProvisioningService(uow).create_hyblock_webhook_source(payload)
     except (InvalidMarketStructureSourceConfigurationError, UnsupportedMarketStructurePluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -197,10 +224,10 @@ async def create_hyblock_market_structure_webhook_source(
 )
 async def create_coinalyze_market_structure_webhook_source(
     payload: ManualWebhookMarketStructureSourceCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureWebhookRegistrationRead:
     try:
-        return await MarketStructureSourceProvisioningService(db).create_coinalyze_webhook_source(payload)
+        return await MarketStructureSourceProvisioningService(uow).create_coinalyze_webhook_source(payload)
     except (InvalidMarketStructureSourceConfigurationError, UnsupportedMarketStructurePluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -209,10 +236,10 @@ async def create_coinalyze_market_structure_webhook_source(
 async def patch_market_structure_source(
     source_id: int,
     payload: MarketStructureSourceUpdate,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureSourceRead:
     try:
-        updated = await MarketStructureService(db).update_source(source_id, payload)
+        updated = await MarketStructureService(uow).update_source(source_id, payload)
     except (InvalidMarketStructureSourceConfigurationError, UnsupportedMarketStructurePluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if updated is None:
@@ -224,8 +251,8 @@ async def patch_market_structure_source(
 
 
 @router.delete("/market-structure/sources/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_market_structure_source(source_id: int, db: AsyncSession = Depends(get_db)) -> None:
-    deleted = await MarketStructureService(db).delete_source(source_id)
+async def delete_market_structure_source(source_id: int, uow: BaseAsyncUnitOfWork = DB_UOW) -> None:
+    deleted = await MarketStructureService(uow).delete_source(source_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -236,10 +263,10 @@ async def delete_market_structure_source(source_id: int, db: AsyncSession = Depe
 @router.get("/market-structure/sources/{source_id}/webhook", response_model=MarketStructureWebhookRegistrationRead)
 async def read_market_structure_source_webhook(
     source_id: int,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureWebhookRegistrationRead:
     try:
-        registration = await MarketStructureSourceProvisioningService(db).read_webhook_registration(
+        registration = await MarketStructureSourceProvisioningService(uow).read_webhook_registration(
             source_id,
             include_token=False,
         )
@@ -259,10 +286,10 @@ async def read_market_structure_source_webhook(
 )
 async def rotate_market_structure_source_webhook_token(
     source_id: int,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> MarketStructureWebhookRegistrationRead:
     try:
-        registration = await MarketStructureSourceProvisioningService(db).rotate_webhook_token(source_id)
+        registration = await MarketStructureSourceProvisioningService(uow).rotate_webhook_token(source_id)
     except InvalidMarketStructureSourceConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if registration is None:
@@ -278,20 +305,23 @@ async def read_market_structure_snapshots(
     coin_symbol: str | None = Query(default=None),
     venue: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> list[MarketStructureSnapshotRead]:
-    return await MarketStructureService(db).list_snapshots(coin_symbol=coin_symbol, venue=venue, limit=limit)
+    items = await MarketStructureQueryService(uow.session).list_snapshots(
+        coin_symbol=coin_symbol, venue=venue, limit=limit
+    )
+    return [_snapshot_schema_from_read_model(item) for item in items]
 
 
 @router.post("/market-structure/sources/{source_id}/jobs/run", status_code=status.HTTP_202_ACCEPTED)
 async def run_market_structure_source_job(
     source_id: int,
     limit: int = Query(default=1, ge=1, le=10),
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> dict[str, object]:
     from src.apps.market_structure.tasks import poll_market_structure_source_job
 
-    source = await MarketStructureService(db).get_source(source_id)
+    source = await MarketStructureQueryService(uow.session).get_source_read_by_id(source_id)
     if source is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -320,10 +350,10 @@ async def ingest_market_structure_snapshots(
     payload: ManualMarketStructureIngestRequest,
     token: str | None = Query(default=None),
     x_iris_ingest_token: str | None = Header(default=None, alias="X-IRIS-Ingest-Token"),
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> dict[str, object]:
     try:
-        result = await MarketStructureService(db).ingest_manual_snapshots(
+        result = await MarketStructureService(uow).ingest_manual_snapshots(
             source_id=source_id,
             payload=payload,
             ingest_token=x_iris_ingest_token or token,
@@ -331,7 +361,9 @@ async def ingest_market_structure_snapshots(
     except UnauthorizedMarketStructureIngestError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     if result["status"] == "error":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Market structure source '{source_id}' was not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Market structure source '{source_id}' was not found."
+        )
     if result["status"] == "skipped":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(result["reason"]))
     return result
@@ -343,10 +375,10 @@ async def ingest_market_structure_native_webhook_payload(
     payload: dict[str, object],
     token: str | None = Query(default=None),
     x_iris_ingest_token: str | None = Header(default=None, alias="X-IRIS-Ingest-Token"),
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> dict[str, object]:
     try:
-        result = await MarketStructureService(db).ingest_native_webhook_payload(
+        result = await MarketStructureService(uow).ingest_native_webhook_payload(
             source_id=source_id,
             payload=dict(payload),
             ingest_token=x_iris_ingest_token or token,
@@ -356,7 +388,9 @@ async def ingest_market_structure_native_webhook_payload(
     except (InvalidMarketStructureSourceConfigurationError, InvalidMarketStructureWebhookPayloadError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if result["status"] == "error":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Market structure source '{source_id}' was not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Market structure source '{source_id}' was not found."
+        )
     if result["status"] == "skipped":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(result["reason"]))
     return result

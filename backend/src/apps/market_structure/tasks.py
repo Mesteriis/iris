@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from src.apps.market_structure.services import MarketStructureService
-from src.core.db.session import AsyncSessionLocal
+from src.core.db.uow import AsyncUnitOfWork
 from src.runtime.orchestration.broker import broker
 from src.runtime.orchestration.locks import async_redis_task_lock
 
@@ -22,8 +22,8 @@ async def poll_market_structure_source_job(source_id: int, limit: int = 1) -> di
                 "reason": "market_structure_source_poll_in_progress",
                 "source_id": int(source_id),
             }
-        async with AsyncSessionLocal() as db:
-            return await MarketStructureService(db).poll_source(source_id=int(source_id), limit=int(limit))
+        async with AsyncUnitOfWork() as uow:
+            return await MarketStructureService(uow).poll_source(source_id=int(source_id), limit=int(limit))
 
 
 @broker.task
@@ -34,8 +34,8 @@ async def poll_enabled_market_structure_sources_job(limit_per_source: int = 1) -
     ) as acquired:
         if not acquired:
             return {"status": "skipped", "reason": "market_structure_enabled_poll_in_progress"}
-        async with AsyncSessionLocal() as db:
-            return await MarketStructureService(db).poll_enabled_sources(limit_per_source=int(limit_per_source))
+        async with AsyncUnitOfWork() as uow:
+            return await MarketStructureService(uow).poll_enabled_sources(limit_per_source=int(limit_per_source))
 
 
 @broker.task
@@ -46,5 +46,5 @@ async def refresh_market_structure_source_health_job() -> dict[str, object]:
     ) as acquired:
         if not acquired:
             return {"status": "skipped", "reason": "market_structure_health_refresh_in_progress"}
-        async with AsyncSessionLocal() as db:
-            return await MarketStructureService(db).refresh_source_health(emit_events=True)
+        async with AsyncUnitOfWork() as uow:
+            return await MarketStructureService(uow).refresh_source_health(emit_events=True)

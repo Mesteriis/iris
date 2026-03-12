@@ -58,7 +58,7 @@ Reference docs:
 Current rollout:
 
 - shared UoW and structured persistence logging in `backend/src/core/db`
-- migrated repository/query boundaries in `hypothesis_engine`, `control_plane` and `news`
+- migrated repository/query boundaries in `hypothesis_engine`, `control_plane`, `news` and `market_structure`
 - remaining domains tracked in the persistence audit backlog
 
 ## Stack

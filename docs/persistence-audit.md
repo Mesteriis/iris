@@ -112,26 +112,18 @@ Classification:
 
 #### `apps/market_structure`
 
-Primary files:
+Status: migrated on the API/application surface and scheduled entrypoints
 
-- [backend/src/apps/market_structure/services.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_structure/services.py)
-- [backend/src/apps/market_structure/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_structure/views.py)
-
-Issues:
-
-- one large service owns persistence, orchestration, serialization, and event publishing.
-- direct commits across multiple write paths.
-- read methods still return ORM-backed results after inline serialization.
-- no repository/query service separation.
+- repositories now isolate source locking, coin resolution and Core snapshot upserts in [backend/src/apps/market_structure/repositories.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_structure/repositories.py)
+- read-only plugin/source/health/snapshot/webhook flows now go through [backend/src/apps/market_structure/query_services.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_structure/query_services.py)
+- immutable dataclass read models now live in [backend/src/apps/market_structure/read_models.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_structure/read_models.py)
+- views and tasks now depend on the shared async UoW instead of owning `AsyncSession` directly
+- source CRUD, polling, manual ingest, webhook ingest and provisioning flows now commit through the shared UoW and repositories instead of direct session commits
+- snapshot persistence stays on SQLAlchemy Core upsert, but is now isolated behind a repository and logged as an explicit bulk/Core write path
 
 Classification:
 
-- `move to repository`
-- `move to query service`
-- `fix transaction boundary`
-- `fix N+1/loading contract`
-- `replace ORM leakage with typed model`
-- `add logging`
+- `OK`
 
 #### `apps/market_data`
 
@@ -226,7 +218,7 @@ Required action:
 
 Representative offenders:
 
-- `market_structure` and `market_data` still serialize ORM-backed state inside service/view logic.
+- `market_data` still serializes ORM-backed state inside service/view logic.
 - `anomalies` selectors still return ORM entities.
 - selectors in `patterns`, `signals`, and `portfolio` return `dict[str, Any]`.
 
@@ -259,7 +251,7 @@ Recommended rollout order:
 2. completed: `apps/hypothesis_engine`
 3. completed: `apps/control_plane`
 4. completed: `apps/news`
-5. next: `apps/market_structure`
+5. completed: `apps/market_structure`
 6. next: `apps/market_data`
 7. later: sync-heavy analytical domains (`indicators`, `patterns`, `signals`, `portfolio`, `predictions`, `cross_market`)
 

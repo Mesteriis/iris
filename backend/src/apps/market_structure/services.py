@@ -4,11 +4,6 @@ import secrets
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.apps.anomalies.models import MarketStructureSnapshot
 from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.market_data.models import Coin
 from src.apps.market_structure.constants import (
@@ -56,13 +51,22 @@ from src.apps.market_structure.exceptions import (
 from src.apps.market_structure.models import MarketStructureSource
 from src.apps.market_structure.normalizers import (
     create_market_structure_webhook_normalizer,
-    get_market_structure_webhook_normalizer_class,
 )
 from src.apps.market_structure.plugins import (
     FetchedMarketStructureSnapshot,
     create_market_structure_plugin,
     get_market_structure_plugin,
-    list_registered_market_structure_plugins,
+)
+from src.apps.market_structure.query_services import MarketStructureQueryService
+from src.apps.market_structure.read_models import (
+    market_structure_source_read_model_from_orm,
+    market_structure_webhook_registration_read_model_from_orm,
+)
+from src.apps.market_structure.repositories import (
+    MarketStructureCoinRepository,
+    MarketStructureSnapshotPersistResult,
+    MarketStructureSnapshotRepository,
+    MarketStructureSourceRepository,
 )
 from src.apps.market_structure.schemas import (
     BinanceMarketStructureSourceCreateRequest,
@@ -82,6 +86,8 @@ from src.apps.market_structure.schemas import (
     MarketStructureSourceUpdate,
     MarketStructureWebhookRegistrationRead,
 )
+from src.core.db.persistence import thaw_json_value
+from src.core.db.uow import BaseAsyncUnitOfWork
 from src.core.settings import get_settings
 from src.runtime.streams.publisher import publish_event
 
@@ -96,6 +102,26 @@ def _merge_mapping(base: dict[str, Any], patch: dict[str, Any] | None) -> dict[s
         else:
             merged[key] = value
     return merged
+
+
+def _webhook_registration_schema_from_read_model(item) -> MarketStructureWebhookRegistrationRead:
+    return MarketStructureWebhookRegistrationRead.model_validate(
+        {
+            "source": MarketStructureSourceRead.model_validate(item.source),
+            "provider": item.provider,
+            "venue": item.venue,
+            "ingest_path": item.ingest_path,
+            "native_ingest_path": item.native_ingest_path,
+            "method": item.method,
+            "token_header": item.token_header,
+            "token_query_parameter": item.token_query_parameter,
+            "token_required": bool(item.token_required),
+            "token": item.token,
+            "sample_payload": thaw_json_value(item.sample_payload),
+            "native_payload_example": thaw_json_value(item.native_payload_example),
+            "notes": list(item.notes),
+        }
+    )
 
 
 def _source_status(source: MarketStructureSource) -> str:
@@ -324,46 +350,50 @@ def _build_source_health(
 
 
 class MarketStructureService:
-    def __init__(self, db: AsyncSession) -> None:
-        self._db = db
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        self._uow = uow
+        self._queries = MarketStructureQueryService(uow.session)
+        self._sources = MarketStructureSourceRepository(uow.session)
+        self._coins = MarketStructureCoinRepository(uow.session)
+        self._snapshots = MarketStructureSnapshotRepository(uow.session)
 
-    async def list_plugins(self) -> list[MarketStructurePluginRead]:
-        return [_serialize_plugin(plugin_cls) for _, plugin_cls in list_registered_market_structure_plugins().items()]
+    async def list_plugins(self):
+        return await self._queries.list_plugins()
 
-    async def list_sources(self) -> list[MarketStructureSourceRead]:
-        items = (
-            await self._db.execute(
-                select(MarketStructureSource).order_by(MarketStructureSource.plugin_name.asc(), MarketStructureSource.display_name.asc())
-            )
-        ).scalars().all()
-        return [_serialize_source(item) for item in items]
+    async def list_sources(self):
+        return await self._queries.list_sources()
 
     async def get_source(self, source_id: int) -> MarketStructureSource | None:
-        return await self._db.get(MarketStructureSource, source_id)
+        return await self._sources.get_by_id(source_id)
 
     async def read_source_health(self, source_id: int) -> MarketStructureSourceHealthRead | None:
-        source = await self.get_source(source_id)
-        if source is None:
+        item = await self._queries.get_source_health_read_by_id(source_id)
+        if item is None:
             return None
-        return _build_source_health(source)
+        return MarketStructureSourceHealthRead.model_validate(item)
 
     async def refresh_source_health(self, *, emit_events: bool = True) -> dict[str, object]:
-        rows = (
-            await self._db.execute(
-                select(MarketStructureSource).order_by(MarketStructureSource.updated_at.asc(), MarketStructureSource.id.asc())
-            )
-        ).scalars().all()
+        rows = await self._sources.list_all_for_update()
         now = utc_now()
         changed_sources: list[tuple[MarketStructureSource, str | None]] = []
         for source in rows:
             previous_health_status = source.health_status
             if self._sync_source_health_fields(source, now=now):
-                changed_sources.append((source, previous_health_status))
-        await self._db.commit()
+                alert_kind = (
+                    self._apply_alert_transition(
+                        source,
+                        previous_health_status=previous_health_status,
+                        now=now,
+                    )
+                    if emit_events
+                    else None
+                )
+                changed_sources.append((source, alert_kind))
+        await self._uow.commit()
         if emit_events:
-            for source, previous_health_status in changed_sources:
+            for source, alert_kind in changed_sources:
                 await self._emit_source_health_event(source, now=now)
-                await self._emit_source_alert_event(source, previous_health_status=previous_health_status, now=now)
+                await self._emit_source_alert_event(source, alert_kind=alert_kind, now=now)
         return {
             "status": "ok",
             "sources": len(rows),
@@ -378,38 +408,38 @@ class MarketStructureService:
                 f"Unsupported market structure plugin '{payload.plugin_name}'."
             )
         plugin_cls.validate_configuration(credentials=payload.credentials, settings=payload.settings)
-        existing = (
-            await self._db.execute(
-                select(MarketStructureSource)
-                .where(
-                    MarketStructureSource.plugin_name == plugin_name,
-                    MarketStructureSource.display_name == payload.display_name.strip(),
-                )
-                .limit(1)
-            )
-        ).scalar_one_or_none()
+        existing = await self._sources.get_by_plugin_display_name(
+            plugin_name=plugin_name,
+            display_name=payload.display_name.strip(),
+        )
         if existing is not None:
             raise InvalidMarketStructureSourceConfigurationError(
                 f"Market structure source '{payload.display_name.strip()}' already exists for plugin '{plugin_name}'."
             )
-        source = MarketStructureSource(
-            plugin_name=plugin_name,
-            display_name=payload.display_name.strip(),
-            enabled=payload.enabled,
-            auth_mode=plugin_cls.descriptor.auth_mode,
-            credentials_json=dict(payload.credentials),
-            settings_json=dict(payload.settings),
-            cursor_json={},
+        source = await self._sources.add(
+            MarketStructureSource(
+                plugin_name=plugin_name,
+                display_name=payload.display_name.strip(),
+                enabled=payload.enabled,
+                auth_mode=plugin_cls.descriptor.auth_mode,
+                credentials_json=dict(payload.credentials),
+                settings_json=dict(payload.settings),
+                cursor_json={},
+            )
         )
         self._sync_source_health_fields(source, now=utc_now())
-        self._db.add(source)
-        await self._db.commit()
-        await self._db.refresh(source)
+        await self._uow.commit()
+        await self._sources.refresh(source)
         await self._emit_source_health_event(source)
-        return _serialize_source(source)
+        item = await self._queries.get_source_read_by_id(int(source.id))
+        return MarketStructureSourceRead.model_validate(
+            item if item is not None else market_structure_source_read_model_from_orm(source)
+        )
 
-    async def update_source(self, source_id: int, payload: MarketStructureSourceUpdate) -> MarketStructureSourceRead | None:
-        source = await self.get_source(source_id)
+    async def update_source(
+        self, source_id: int, payload: MarketStructureSourceUpdate
+    ) -> MarketStructureSourceRead | None:
+        source = await self._sources.get_for_update(source_id)
         if source is None:
             return None
 
@@ -425,17 +455,11 @@ class MarketStructureService:
         plugin_cls.validate_configuration(credentials=merged_credentials, settings=merged_settings)
 
         if display_name != source.display_name:
-            existing = (
-                await self._db.execute(
-                    select(MarketStructureSource)
-                    .where(
-                        MarketStructureSource.plugin_name == source.plugin_name,
-                        MarketStructureSource.display_name == display_name,
-                        MarketStructureSource.id != int(source.id),
-                    )
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
+            existing = await self._sources.get_by_plugin_display_name(
+                plugin_name=source.plugin_name,
+                display_name=display_name,
+                exclude_source_id=int(source.id),
+            )
             if existing is not None:
                 raise InvalidMarketStructureSourceConfigurationError(
                     f"Market structure source '{display_name}' already exists for plugin '{source.plugin_name}'."
@@ -460,21 +484,25 @@ class MarketStructureService:
         now = utc_now()
         previous_health_status = source.health_status
         self._sync_source_health_fields(source, now=now)
+        alert_kind = self._apply_alert_transition(source, previous_health_status=previous_health_status, now=now)
 
-        await self._db.commit()
-        await self._db.refresh(source)
+        await self._uow.commit()
+        await self._sources.refresh(source)
         await self._emit_source_health_event(source, now=now)
-        await self._emit_source_alert_event(source, previous_health_status=previous_health_status, now=now)
-        return _serialize_source(source)
+        await self._emit_source_alert_event(source, alert_kind=alert_kind, now=now)
+        item = await self._queries.get_source_read_by_id(int(source.id))
+        return MarketStructureSourceRead.model_validate(
+            item if item is not None else market_structure_source_read_model_from_orm(source, now=now)
+        )
 
     async def delete_source(self, source_id: int) -> bool:
-        source = await self.get_source(source_id)
+        source = await self._sources.get_for_update(source_id)
         if source is None:
             return False
         event_context = await self._source_event_context(source)
         payload = self._source_health_event_payload(source, now=utc_now())
-        await self._db.delete(source)
-        await self._db.commit()
+        await self._sources.delete(source)
+        await self._uow.commit()
         if event_context is not None:
             publish_event(
                 MARKET_STRUCTURE_EVENT_SOURCE_DELETED,
@@ -492,16 +520,7 @@ class MarketStructureService:
         venue: str | None = None,
         limit: int = 50,
     ) -> list[MarketStructureSnapshotRead]:
-        stmt = (
-            select(MarketStructureSnapshot)
-            .order_by(MarketStructureSnapshot.timestamp.desc())
-            .limit(limit)
-        )
-        if coin_symbol is not None:
-            stmt = stmt.where(MarketStructureSnapshot.symbol == coin_symbol.upper())
-        if venue is not None:
-            stmt = stmt.where(MarketStructureSnapshot.venue == venue.lower())
-        items = (await self._db.execute(stmt)).scalars().all()
+        items = await self._queries.list_snapshots(coin_symbol=coin_symbol, venue=venue, limit=limit)
         return [MarketStructureSnapshotRead.model_validate(item) for item in items]
 
     async def poll_source(
@@ -510,7 +529,7 @@ class MarketStructureService:
         source_id: int,
         limit: int = DEFAULT_MARKET_STRUCTURE_POLL_LIMIT,
     ) -> dict[str, object]:
-        source = await self.get_source(source_id)
+        source = await self._sources.get_for_update(source_id)
         if source is None:
             return {"status": "error", "reason": "source_not_found", "source_id": source_id}
         if _is_quarantined(source):
@@ -549,9 +568,14 @@ class MarketStructureService:
             previous_health_status = source.health_status
             self._mark_poll_failure(source, error_message=str(exc), now=source.last_polled_at)
             self._sync_source_health_fields(source, now=source.last_polled_at)
-            await self._db.commit()
+            alert_kind = self._apply_alert_transition(
+                source,
+                previous_health_status=previous_health_status,
+                now=source.last_polled_at,
+            )
+            await self._uow.commit()
             await self._emit_source_health_event(source, now=source.last_polled_at)
-            await self._emit_source_alert_event(source, previous_health_status=previous_health_status, now=source.last_polled_at)
+            await self._emit_source_alert_event(source, alert_kind=alert_kind, now=source.last_polled_at)
             return {
                 "status": "error",
                 "reason": "poll_failed",
@@ -566,33 +590,33 @@ class MarketStructureService:
 
         source.cursor_json = dict(result.next_cursor)
         source.last_polled_at = utc_now()
-        created, latest_snapshot_at = await self._persist_snapshots(source=source, snapshots=result.snapshots)
+        persisted = await self._persist_snapshots(source=source, snapshots=result.snapshots)
         previous_health_status = source.health_status
-        self._mark_source_success(source, now=source.last_polled_at, latest_snapshot_at=latest_snapshot_at)
+        self._mark_source_success(source, now=source.last_polled_at, latest_snapshot_at=persisted.latest_snapshot_at)
         self._sync_source_health_fields(source, now=source.last_polled_at)
-        await self._db.commit()
+        alert_kind = self._apply_alert_transition(
+            source, previous_health_status=previous_health_status, now=source.last_polled_at
+        )
+        await self._uow.commit()
+        self._publish_snapshot_events(persisted)
         await self._emit_source_health_event(source, now=source.last_polled_at)
-        await self._emit_source_alert_event(source, previous_health_status=previous_health_status, now=source.last_polled_at)
+        await self._emit_source_alert_event(source, alert_kind=alert_kind, now=source.last_polled_at)
         return {
             "status": "ok",
             "source_id": int(source.id),
             "plugin_name": source.plugin_name,
             "fetched": len(result.snapshots),
-            "created": created,
+            "created": persisted.created,
             "cursor": dict(source.cursor_json or {}),
         }
 
-    async def poll_enabled_sources(self, *, limit_per_source: int = DEFAULT_MARKET_STRUCTURE_POLL_LIMIT) -> dict[str, object]:
-        rows = (
-            await self._db.execute(
-                select(MarketStructureSource)
-                .where(MarketStructureSource.enabled.is_(True))
-                .order_by(MarketStructureSource.updated_at.asc(), MarketStructureSource.id.asc())
-            )
-        ).scalars().all()
+    async def poll_enabled_sources(
+        self, *, limit_per_source: int = DEFAULT_MARKET_STRUCTURE_POLL_LIMIT
+    ) -> dict[str, object]:
+        rows = await self._sources.list_enabled_ids()
         items = []
-        for source in rows:
-            items.append(await self.poll_source(source_id=int(source.id), limit=limit_per_source))
+        for source_id in rows:
+            items.append(await self.poll_source(source_id=int(source_id), limit=limit_per_source))
         return {
             "status": "ok",
             "sources": len(rows),
@@ -607,7 +631,7 @@ class MarketStructureService:
         payload: ManualMarketStructureIngestRequest,
         ingest_token: str | None = None,
     ) -> dict[str, object]:
-        source = await self.get_source(source_id)
+        source = await self._sources.get_for_update(source_id)
         if source is None:
             return {"status": "error", "reason": "source_not_found", "source_id": source_id}
         plugin_cls = get_market_structure_plugin(source.plugin_name)
@@ -641,19 +665,23 @@ class MarketStructureService:
             )
             for item in payload.snapshots
         ]
-        created, latest_snapshot_at = await self._persist_snapshots(source=source, snapshots=snapshots)
+        persisted = await self._persist_snapshots(source=source, snapshots=snapshots)
         source.last_polled_at = utc_now()
         previous_health_status = source.health_status
-        self._mark_source_success(source, now=source.last_polled_at, latest_snapshot_at=latest_snapshot_at)
+        self._mark_source_success(source, now=source.last_polled_at, latest_snapshot_at=persisted.latest_snapshot_at)
         self._sync_source_health_fields(source, now=source.last_polled_at)
-        await self._db.commit()
+        alert_kind = self._apply_alert_transition(
+            source, previous_health_status=previous_health_status, now=source.last_polled_at
+        )
+        await self._uow.commit()
+        self._publish_snapshot_events(persisted)
         await self._emit_source_health_event(source, now=source.last_polled_at)
-        await self._emit_source_alert_event(source, previous_health_status=previous_health_status, now=source.last_polled_at)
+        await self._emit_source_alert_event(source, alert_kind=alert_kind, now=source.last_polled_at)
         return {
             "status": "ok",
             "source_id": int(source.id),
             "plugin_name": source.plugin_name,
-            "created": created,
+            "created": persisted.created,
         }
 
     async def ingest_native_webhook_payload(
@@ -663,7 +691,7 @@ class MarketStructureService:
         payload: dict[str, Any],
         ingest_token: str | None = None,
     ) -> dict[str, object]:
-        source = await self.get_source(source_id)
+        source = await self._sources.get_by_id(source_id)
         if source is None:
             return {"status": "error", "reason": "source_not_found", "source_id": source_id}
         provider = _source_provider(source)
@@ -726,10 +754,32 @@ class MarketStructureService:
                 else None
             )
         if current_health_status == MARKET_STRUCTURE_HEALTH_STATUS_ERROR:
-            return MARKET_STRUCTURE_ALERT_KIND_ERROR if previous_health_status != MARKET_STRUCTURE_HEALTH_STATUS_ERROR else None
+            return (
+                MARKET_STRUCTURE_ALERT_KIND_ERROR
+                if previous_health_status != MARKET_STRUCTURE_HEALTH_STATUS_ERROR
+                else None
+            )
         if current_health_status == MARKET_STRUCTURE_HEALTH_STATUS_STALE:
-            return MARKET_STRUCTURE_ALERT_KIND_STALE if previous_health_status != MARKET_STRUCTURE_HEALTH_STATUS_STALE else None
+            return (
+                MARKET_STRUCTURE_ALERT_KIND_STALE
+                if previous_health_status != MARKET_STRUCTURE_HEALTH_STATUS_STALE
+                else None
+            )
         return None
+
+    def _apply_alert_transition(
+        self,
+        source: MarketStructureSource,
+        *,
+        previous_health_status: str | None,
+        now,
+    ) -> str | None:
+        alert_kind = self._next_alert_kind(previous_health_status, _build_source_health(source, now=now).status)
+        if alert_kind is None:
+            return None
+        source.last_alert_kind = alert_kind
+        source.last_alerted_at = ensure_utc(now)
+        return alert_kind
 
     async def _source_event_context(self, source: MarketStructureSource) -> dict[str, Any] | None:
         coin_symbol = str((source.settings_json or {}).get("coin_symbol") or "").strip().upper()
@@ -824,18 +874,12 @@ class MarketStructureService:
         self,
         source: MarketStructureSource,
         *,
-        previous_health_status: str | None,
+        alert_kind: str | None,
         now=None,
     ) -> None:
-        emitted_at = ensure_utc(now or utc_now())
-        current_health_status = _build_source_health(source, now=emitted_at).status
-        alert_kind = self._next_alert_kind(previous_health_status, current_health_status)
         if alert_kind is None:
             return
-
-        source.last_alert_kind = alert_kind
-        source.last_alerted_at = emitted_at
-        await self._db.commit()
+        emitted_at = ensure_utc(now or utc_now())
         context = await self._source_event_context(source)
         if context is None:
             return
@@ -849,15 +893,9 @@ class MarketStructureService:
             publish_event(MARKET_STRUCTURE_EVENT_SOURCE_QUARANTINED, payload)
 
     async def _resolve_coin(self, coin_symbol: str) -> Coin:
-        coin = (
-            await self._db.execute(
-                select(Coin).where(Coin.symbol == coin_symbol.upper(), Coin.deleted_at.is_(None))
-            )
-        ).scalar_one_or_none()
+        coin = await self._coins.get_by_symbol(coin_symbol)
         if coin is None:
-            raise InvalidMarketStructureSourceConfigurationError(
-                f"Coin '{coin_symbol.upper()}' was not found."
-            )
+            raise InvalidMarketStructureSourceConfigurationError(f"Coin '{coin_symbol.upper()}' was not found.")
         return coin
 
     async def _persist_snapshots(
@@ -865,80 +903,36 @@ class MarketStructureService:
         *,
         source: MarketStructureSource,
         snapshots: list[FetchedMarketStructureSnapshot],
-    ) -> tuple[int, Any | None]:
+    ) -> MarketStructureSnapshotPersistResult:
         if not snapshots:
-            return 0, None
+            return MarketStructureSnapshotPersistResult(created=0, latest_snapshot_at=None, events=())
         coin = await self._resolve_coin(str(source.settings_json.get("coin_symbol") or ""))
         timeframe = int(source.settings_json.get("timeframe") or 15)
-        created = 0
-        latest_snapshot_at = None
-        for snapshot in snapshots:
-            payload_json = dict(snapshot.payload_json or {})
-            payload_json.update(
-                {
-                    "source_id": int(source.id),
-                    "source_display_name": source.display_name,
-                    "plugin_name": source.plugin_name,
-                }
-            )
-            stmt = (
-                insert(MarketStructureSnapshot)
-                .values(
-                    coin_id=int(coin.id),
-                    symbol=str(coin.symbol),
-                    timeframe=timeframe,
-                    venue=str(snapshot.venue).lower(),
-                    timestamp=ensure_utc(snapshot.timestamp),
-                    last_price=snapshot.last_price,
-                    mark_price=snapshot.mark_price,
-                    index_price=snapshot.index_price,
-                    funding_rate=snapshot.funding_rate,
-                    open_interest=snapshot.open_interest,
-                    basis=snapshot.basis,
-                    liquidations_long=snapshot.liquidations_long,
-                    liquidations_short=snapshot.liquidations_short,
-                    volume=snapshot.volume,
-                    payload_json=payload_json,
-                )
-                .on_conflict_do_update(
-                    index_elements=["coin_id", "timeframe", "venue", "timestamp"],
-                    set_={
-                        "last_price": snapshot.last_price,
-                        "mark_price": snapshot.mark_price,
-                        "index_price": snapshot.index_price,
-                        "funding_rate": snapshot.funding_rate,
-                        "open_interest": snapshot.open_interest,
-                        "basis": snapshot.basis,
-                        "liquidations_long": snapshot.liquidations_long,
-                        "liquidations_short": snapshot.liquidations_short,
-                        "volume": snapshot.volume,
-                        "payload_json": payload_json,
-                    },
-                )
-            )
-            await self._db.execute(stmt)
-            created += 1
-            snapshot_timestamp = ensure_utc(snapshot.timestamp)
-            if latest_snapshot_at is None or snapshot_timestamp > latest_snapshot_at:
-                latest_snapshot_at = snapshot_timestamp
+        return await self._snapshots.upsert_many(coin=coin, timeframe=timeframe, source=source, snapshots=snapshots)
+
+    @staticmethod
+    def _publish_snapshot_events(result: MarketStructureSnapshotPersistResult) -> None:
+        for item in result.events:
             publish_event(
                 MARKET_STRUCTURE_EVENT_SNAPSHOT_INGESTED,
                 {
-                    "coin_id": int(coin.id),
-                    "timeframe": timeframe,
-                    "timestamp": snapshot_timestamp,
-                    "source_id": int(source.id),
-                    "plugin_name": source.plugin_name,
-                    "symbol": str(coin.symbol),
-                    "venue": str(snapshot.venue).lower(),
+                    "coin_id": int(item.coin_id),
+                    "timeframe": int(item.timeframe),
+                    "timestamp": item.timestamp,
+                    "source_id": int(item.source_id),
+                    "plugin_name": item.plugin_name,
+                    "symbol": item.symbol,
+                    "venue": item.venue,
                 },
             )
-        return created, latest_snapshot_at
 
 
 class MarketStructureSourceProvisioningService:
-    def __init__(self, db: AsyncSession) -> None:
-        self._service = MarketStructureService(db)
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        self._uow = uow
+        self._service = MarketStructureService(uow)
+        self._queries = MarketStructureQueryService(uow.session)
+        self._sources = MarketStructureSourceRepository(uow.session)
 
     async def create_binance_source(
         self,
@@ -984,7 +978,9 @@ class MarketStructureSourceProvisioningService:
         payload = ManualPushMarketStructureSourceCreateRequest.model_validate(payload)
         request = MarketStructureSourceCreate(
             plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
-            display_name=(payload.display_name or f"{payload.coin_symbol.upper()} {payload.venue.strip()} Feed").strip(),
+            display_name=(
+                payload.display_name or f"{payload.coin_symbol.upper()} {payload.venue.strip()} Feed"
+            ).strip(),
             enabled=bool(payload.enabled),
             settings={
                 "coin_symbol": payload.coin_symbol.upper(),
@@ -1066,23 +1062,27 @@ class MarketStructureSourceProvisioningService:
         *,
         include_token: bool = False,
     ) -> MarketStructureWebhookRegistrationRead | None:
-        source = await self._service.get_source(source_id)
-        if source is None:
+        item = await self._queries.get_webhook_registration_read_by_id(source_id, include_token=include_token)
+        if item is None:
             return None
-        self._ensure_webhook_capable_source(source)
-        return self._build_webhook_registration(source, include_token=include_token)
+        return _webhook_registration_schema_from_read_model(item)
 
     async def rotate_webhook_token(self, source_id: int) -> MarketStructureWebhookRegistrationRead | None:
-        source = await self._service.get_source(source_id)
+        source = await self._sources.get_for_update(source_id)
         if source is None:
             return None
         self._ensure_webhook_capable_source(source)
         credentials = dict(source.credentials_json or {})
         credentials["ingest_token"] = self._issue_ingest_token()
         source.credentials_json = credentials
-        await self._service._db.commit()
-        await self._service._db.refresh(source)
-        return self._build_webhook_registration(source, include_token=True)
+        await self._uow.commit()
+        await self._sources.refresh(source)
+        item = await self._queries.get_webhook_registration_read_by_id(source_id, include_token=True)
+        return _webhook_registration_schema_from_read_model(
+            item
+            if item is not None
+            else market_structure_webhook_registration_read_model_from_orm(source, include_token=True)
+        )
 
     @staticmethod
     def wizard_spec() -> MarketStructureOnboardingRead:
@@ -1097,10 +1097,26 @@ class MarketStructureSourceProvisioningService:
                     endpoint="/market-structure/onboarding/sources/binance-usdm",
                     method="POST",
                     fields=[
-                        MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True, description="Internal IRIS coin symbol, e.g. ETHUSD_EVT."),
-                        MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
-                        MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
-                        MarketStructureOnboardingFieldRead(id="market_symbol", label="Exchange Symbol", type="text", required=False, description="Optional. Defaults to inferred USDT perpetual symbol."),
+                        MarketStructureOnboardingFieldRead(
+                            id="coin_symbol",
+                            label="Coin Symbol",
+                            type="text",
+                            required=True,
+                            description="Internal IRIS coin symbol, e.g. ETHUSD_EVT.",
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="timeframe", label="Timeframe", type="number", required=True, default=15
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="display_name", label="Display Name", type="text", required=False
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="market_symbol",
+                            label="Exchange Symbol",
+                            type="text",
+                            required=False,
+                            description="Optional. Defaults to inferred USDT perpetual symbol.",
+                        ),
                     ],
                     source_payload_example={
                         "coin_symbol": "ETHUSD_EVT",
@@ -1116,11 +1132,25 @@ class MarketStructureSourceProvisioningService:
                     endpoint="/market-structure/onboarding/sources/bybit-derivatives",
                     method="POST",
                     fields=[
-                        MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True, description="Internal IRIS coin symbol, e.g. ETHUSD_EVT."),
-                        MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
-                        MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
-                        MarketStructureOnboardingFieldRead(id="market_symbol", label="Exchange Symbol", type="text", required=False),
-                        MarketStructureOnboardingFieldRead(id="category", label="Category", type="text", required=False, default="linear"),
+                        MarketStructureOnboardingFieldRead(
+                            id="coin_symbol",
+                            label="Coin Symbol",
+                            type="text",
+                            required=True,
+                            description="Internal IRIS coin symbol, e.g. ETHUSD_EVT.",
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="timeframe", label="Timeframe", type="number", required=True, default=15
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="display_name", label="Display Name", type="text", required=False
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="market_symbol", label="Exchange Symbol", type="text", required=False
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="category", label="Category", type="text", required=False, default="linear"
+                        ),
                     ],
                     source_payload_example={
                         "coin_symbol": "ETHUSD_EVT",
@@ -1137,10 +1167,22 @@ class MarketStructureSourceProvisioningService:
                     endpoint="/market-structure/onboarding/sources/manual-push",
                     method="POST",
                     fields=[
-                        MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True),
-                        MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
-                        MarketStructureOnboardingFieldRead(id="venue", label="Venue", type="text", required=True, description="Logical source name, e.g. liqscope or liquidation_api."),
-                        MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
+                        MarketStructureOnboardingFieldRead(
+                            id="coin_symbol", label="Coin Symbol", type="text", required=True
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="timeframe", label="Timeframe", type="number", required=True, default=15
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="venue",
+                            label="Venue",
+                            type="text",
+                            required=True,
+                            description="Logical source name, e.g. liqscope or liquidation_api.",
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="display_name", label="Display Name", type="text", required=False
+                        ),
                     ],
                     source_payload_example={
                         "coin_symbol": "ETHUSD_EVT",
@@ -1157,9 +1199,15 @@ class MarketStructureSourceProvisioningService:
                     endpoint="/market-structure/onboarding/sources/liqscope-webhook",
                     method="POST",
                     fields=[
-                        MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True),
-                        MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
-                        MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
+                        MarketStructureOnboardingFieldRead(
+                            id="coin_symbol", label="Coin Symbol", type="text", required=True
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="timeframe", label="Timeframe", type="number", required=True, default=15
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="display_name", label="Display Name", type="text", required=False
+                        ),
                     ],
                     source_payload_example={
                         "coin_symbol": "ETHUSD_EVT",
@@ -1175,10 +1223,18 @@ class MarketStructureSourceProvisioningService:
                     endpoint="/market-structure/onboarding/sources/liquidation-webhook",
                     method="POST",
                     fields=[
-                        MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True),
-                        MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
-                        MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
-                        MarketStructureOnboardingFieldRead(id="venue", label="Venue", type="text", required=False, default="liquidations_api"),
+                        MarketStructureOnboardingFieldRead(
+                            id="coin_symbol", label="Coin Symbol", type="text", required=True
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="timeframe", label="Timeframe", type="number", required=True, default=15
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="display_name", label="Display Name", type="text", required=False
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="venue", label="Venue", type="text", required=False, default="liquidations_api"
+                        ),
                     ],
                     source_payload_example={
                         "coin_symbol": "BTCUSD_EVT",
@@ -1195,10 +1251,18 @@ class MarketStructureSourceProvisioningService:
                     endpoint="/market-structure/onboarding/sources/derivatives-webhook",
                     method="POST",
                     fields=[
-                        MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True),
-                        MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
-                        MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
-                        MarketStructureOnboardingFieldRead(id="venue", label="Venue", type="text", required=False, default="derivatives_webhook"),
+                        MarketStructureOnboardingFieldRead(
+                            id="coin_symbol", label="Coin Symbol", type="text", required=True
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="timeframe", label="Timeframe", type="number", required=True, default=15
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="display_name", label="Display Name", type="text", required=False
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="venue", label="Venue", type="text", required=False, default="derivatives_webhook"
+                        ),
                     ],
                     source_payload_example={
                         "coin_symbol": "SOLUSD_EVT",
@@ -1215,10 +1279,18 @@ class MarketStructureSourceProvisioningService:
                     endpoint="/market-structure/onboarding/sources/coinglass-webhook",
                     method="POST",
                     fields=[
-                        MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True),
-                        MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
-                        MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
-                        MarketStructureOnboardingFieldRead(id="venue", label="Venue", type="text", required=False, default="coinglass"),
+                        MarketStructureOnboardingFieldRead(
+                            id="coin_symbol", label="Coin Symbol", type="text", required=True
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="timeframe", label="Timeframe", type="number", required=True, default=15
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="display_name", label="Display Name", type="text", required=False
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="venue", label="Venue", type="text", required=False, default="coinglass"
+                        ),
                     ],
                     source_payload_example={
                         "coin_symbol": "ETHUSD_EVT",
@@ -1235,10 +1307,18 @@ class MarketStructureSourceProvisioningService:
                     endpoint="/market-structure/onboarding/sources/hyblock-webhook",
                     method="POST",
                     fields=[
-                        MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True),
-                        MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
-                        MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
-                        MarketStructureOnboardingFieldRead(id="venue", label="Venue", type="text", required=False, default="hyblock"),
+                        MarketStructureOnboardingFieldRead(
+                            id="coin_symbol", label="Coin Symbol", type="text", required=True
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="timeframe", label="Timeframe", type="number", required=True, default=15
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="display_name", label="Display Name", type="text", required=False
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="venue", label="Venue", type="text", required=False, default="hyblock"
+                        ),
                     ],
                     source_payload_example={
                         "coin_symbol": "BTCUSD_EVT",
@@ -1255,10 +1335,18 @@ class MarketStructureSourceProvisioningService:
                     endpoint="/market-structure/onboarding/sources/coinalyze-webhook",
                     method="POST",
                     fields=[
-                        MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True),
-                        MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
-                        MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
-                        MarketStructureOnboardingFieldRead(id="venue", label="Venue", type="text", required=False, default="coinalyze"),
+                        MarketStructureOnboardingFieldRead(
+                            id="coin_symbol", label="Coin Symbol", type="text", required=True
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="timeframe", label="Timeframe", type="number", required=True, default=15
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="display_name", label="Display Name", type="text", required=False
+                        ),
+                        MarketStructureOnboardingFieldRead(
+                            id="venue", label="Venue", type="text", required=False, default="coinalyze"
+                        ),
                     ],
                     source_payload_example={
                         "coin_symbol": "SOLUSD_EVT",
@@ -1314,10 +1402,10 @@ class MarketStructureSourceProvisioningService:
                 },
             )
         )
-        db_source = await self._service.get_source(source.id)
-        if db_source is None:
+        item = await self._queries.get_webhook_registration_read_by_id(int(source.id), include_token=True)
+        if item is None:
             raise InvalidMarketStructureSourceConfigurationError("Webhook source could not be reloaded after creation.")
-        return self._build_webhook_registration(db_source, include_token=True)
+        return _webhook_registration_schema_from_read_model(item)
 
     @staticmethod
     def _issue_ingest_token() -> str:
@@ -1326,7 +1414,9 @@ class MarketStructureSourceProvisioningService:
     @staticmethod
     def _ensure_webhook_capable_source(source: MarketStructureSource) -> None:
         if source.plugin_name != MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH:
-            raise InvalidMarketStructureSourceConfigurationError("Webhook registration is only available for manual_push sources.")
+            raise InvalidMarketStructureSourceConfigurationError(
+                "Webhook registration is only available for manual_push sources."
+            )
 
     @staticmethod
     def _build_webhook_registration(
@@ -1334,25 +1424,6 @@ class MarketStructureSourceProvisioningService:
         *,
         include_token: bool,
     ) -> MarketStructureWebhookRegistrationRead:
-        settings = dict(source.settings_json or {})
-        credentials = dict(source.credentials_json or {})
-        provider = _source_provider(source)
-        normalizer_cls = get_market_structure_webhook_normalizer_class(provider)
-        return MarketStructureWebhookRegistrationRead(
-            source=_serialize_source(source),
-            provider=provider,
-            venue=str(settings.get("venue") or "manual"),
-            ingest_path=f"/market-structure/sources/{int(source.id)}/snapshots",
-            native_ingest_path=f"/market-structure/sources/{int(source.id)}/webhook/native",
-            method="POST",
-            token_header=MARKET_STRUCTURE_INGEST_TOKEN_HEADER,
-            token_query_parameter=MARKET_STRUCTURE_INGEST_TOKEN_QUERY_PARAMETER,
-            token_required=bool(credentials.get("ingest_token")),
-            token=str(credentials.get("ingest_token")) if include_token else None,
-            sample_payload=_sample_webhook_payload(),
-            native_payload_example=dict(normalizer_cls.descriptor.sample_payload) if normalizer_cls is not None else {},
-            notes=[
-                "POST normalized snapshots to the ingest_path or provider-native webhook payloads to the native_ingest_path.",
-                "The token is shown only on registration and rotation responses.",
-            ],
+        return _webhook_registration_schema_from_read_model(
+            market_structure_webhook_registration_read_model_from_orm(source, include_token=include_token)
         )

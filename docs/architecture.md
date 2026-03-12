@@ -178,7 +178,7 @@ Supporting docs:
 Current implementation coverage:
 
 - shared `core/db` unit-of-work and persistence logging foundation
-- migrated `hypothesis_engine`, `control_plane` and `news` repository/query contracts
+- migrated `hypothesis_engine`, `control_plane`, `news` and `market_structure` repository/query contracts
 - remaining domains tracked in the audit backlog
 
 ## Home Assistant

@@ -19,6 +19,8 @@ class MarketStructurePluginRead(BaseModel):
     runtime_dependencies: list[str] = Field(default_factory=list)
     unsupported_reason: str | None = None
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class MarketStructureSourceCreate(BaseModel):
     plugin_name: str
@@ -87,6 +89,8 @@ class MarketStructureSourceHealthRead(BaseModel):
     last_alerted_at: datetime | None = None
     last_alert_kind: str | None = None
     message: str
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MarketStructureSnapshotRead(BaseModel):
@@ -204,3 +208,5 @@ class MarketStructureWebhookRegistrationRead(BaseModel):
     sample_payload: dict[str, Any] = Field(default_factory=dict)
     native_payload_example: dict[str, Any] = Field(default_factory=dict)
     notes: list[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
