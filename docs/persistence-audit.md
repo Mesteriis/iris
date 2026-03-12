@@ -63,21 +63,19 @@ Classification:
 
 #### `apps/anomalies`
 
-Status: partially aligned
+Status: migrated on the background/runtime surface
 
-- Repository exists in [backend/src/apps/anomalies/repos/anomaly_repo.py](/Users/avm/projects/Personal/iris/backend/src/apps/anomalies/repos/anomaly_repo.py).
-- Read-heavy detection context is already isolated reasonably well.
-- Remaining issues:
-  - selectors return ORM entities.
-  - service still commits directly.
-  - no standardized immutable read contracts or persistence logging.
+- repositories are centralized in [backend/src/apps/anomalies/repos/anomaly_repo.py](/Users/avm/projects/Personal/iris/backend/src/apps/anomalies/repos/anomaly_repo.py)
+- read-only anomaly list/detail flows now go through [backend/src/apps/anomalies/query_services.py](/Users/avm/projects/Personal/iris/backend/src/apps/anomalies/query_services.py)
+- immutable dataclass read models now live in [backend/src/apps/anomalies/read_models.py](/Users/avm/projects/Personal/iris/backend/src/apps/anomalies/read_models.py)
+- the compatibility selector module now delegates to the query service instead of issuing ad-hoc session queries directly
+- `candle_closed` consumers and anomaly enrichment / sector-scan tasks now own persistence through the shared async UoW instead of raw session commits
+- persistence logging now covers anomaly repositories, query services, service orchestration and transaction lifecycle events
+- sector and related-peer candle loading now batches peer reads in one explicit query path, removing the old loop-driven N+1 pattern from sector scan context building
 
 Classification:
 
-- `move to query service`
-- `replace ORM leakage with typed model`
-- `fix transaction boundary`
-- `add logging`
+- `OK`
 
 #### `apps/hypothesis_engine`
 
@@ -229,7 +227,6 @@ Required action:
 
 Representative offenders:
 
-- [backend/src/apps/anomalies/services/anomaly_service.py](/Users/avm/projects/Personal/iris/backend/src/apps/anomalies/services/anomaly_service.py)
 - [backend/src/apps/market_structure/services.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_structure/services.py)
 - [backend/src/apps/market_data/services.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/services.py)
 - [backend/src/apps/patterns/selectors.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/selectors.py)
@@ -246,7 +243,6 @@ Required action:
 Representative offenders:
 
 - `market_data` still serializes ORM-backed state inside service/view logic.
-- `anomalies` selectors still return ORM entities.
 - selectors in `patterns`, `signals`, and `portfolio` return `dict[str, Any]`.
 
 Required action:
@@ -279,11 +275,12 @@ Recommended rollout order:
 3. completed: `apps/control_plane`
 4. completed: `apps/news`
 5. completed: `apps/market_structure`
-6. completed: `apps/market_data`
-7. completed: `apps/indicators`
-8. completed on the async/public and TaskIQ orchestration surface: `apps/patterns`
-9. next: `apps/signals`
-10. later: `signals`, `portfolio`, `predictions`, `cross_market`
+6. completed: `apps/anomalies`
+7. completed: `apps/market_data`
+8. completed: `apps/indicators`
+9. completed on the async/public and TaskIQ orchestration surface: `apps/patterns`
+10. next: `apps/signals`
+11. later: `signals`, `portfolio`, `predictions`, `cross_market`
 
 ## Current Behavior To Preserve
 

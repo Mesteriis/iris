@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.apps.anomalies.constants import (
     ANOMALY_EVENT_TYPE,
     ANOMALY_SOURCE_ENRICHMENT,
@@ -31,27 +29,35 @@ from src.apps.anomalies.detectors import (
     PriceVolumeDivergenceDetector,
     RelativeDivergenceDetector,
     SynchronousMoveDetector,
-    VolumeSpikeDetector,
     VolatilityBreakDetector,
+    VolumeSpikeDetector,
 )
 from src.apps.anomalies.policies import AnomalyPolicyEngine
 from src.apps.anomalies.repos import AnomalyRepo
-from src.apps.anomalies.scoring import AnomalyScorer
 from src.apps.anomalies.schemas import AnomalyDetectionContext, AnomalyDraft, DetectorFinding
+from src.apps.anomalies.scoring import AnomalyScorer
+from src.core.db.persistence import PersistenceComponent
+from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
 
 
-class AnomalyService:
+class AnomalyService(PersistenceComponent):
     def __init__(
         self,
-        session: AsyncSession,
+        uow: BaseAsyncUnitOfWork,
         *,
         repo: AnomalyRepo | None = None,
         scorer: AnomalyScorer | None = None,
         policy_engine: AnomalyPolicyEngine | None = None,
     ) -> None:
-        self._session = session
-        self._repo = repo or AnomalyRepo(session)
+        super().__init__(
+            uow.session,
+            component_type="service",
+            domain="anomalies",
+            component_name="AnomalyService",
+        )
+        self._uow = uow
+        self._repo = repo or AnomalyRepo(uow.session)
         self._scorer = scorer or AnomalyScorer()
         self._policy_engine = policy_engine or AnomalyPolicyEngine(cooldown_minutes=COOLDOWN_MINUTES)
         self._fast_detectors = (
@@ -79,6 +85,13 @@ class AnomalyService:
         timestamp: datetime,
         source: str | None = None,
     ) -> list[dict[str, object]]:
+        self._log_debug(
+            "service.process_candle_closed",
+            mode="write",
+            coin_id=coin_id,
+            timeframe=timeframe,
+            source=source or ANOMALY_SOURCE_FAST_PATH,
+        )
         context = await self._repo.load_fast_detection_context(
             coin_id=coin_id,
             timeframe=timeframe,
@@ -86,6 +99,7 @@ class AnomalyService:
             lookback=FAST_PATH_LOOKBACK,
         )
         if context is None:
+            self._log_debug("service.process_candle_closed.result", mode="write", created=0, reason="context_unavailable")
             return []
         created_payloads = await self._run_detection_pass(
             context,
@@ -93,6 +107,7 @@ class AnomalyService:
             source_pipeline=ANOMALY_SOURCE_FAST_PATH,
             extra_payload={"source": source or ANOMALY_SOURCE_FAST_PATH},
         )
+        self._log_debug("service.process_candle_closed.result", mode="write", created=len(created_payloads))
         return created_payloads
 
     async def scan_sector_synchrony(
@@ -103,6 +118,13 @@ class AnomalyService:
         timestamp: datetime,
         trigger_anomaly_id: int | None = None,
     ) -> dict[str, object]:
+        self._log_debug(
+            "service.scan_sector_synchrony",
+            mode="write",
+            trigger_coin_id=trigger_coin_id,
+            timeframe=timeframe,
+            trigger_anomaly_id=trigger_anomaly_id,
+        )
         context = await self._repo.load_sector_detection_context(
             coin_id=trigger_coin_id,
             timeframe=timeframe,
@@ -110,6 +132,7 @@ class AnomalyService:
             lookback=SECTOR_SCAN_LOOKBACK,
         )
         if context is None:
+            self._log_debug("service.scan_sector_synchrony.result", mode="write", status="skipped", created=0)
             return {"status": "skipped", "reason": "context_unavailable"}
         created = await self._run_detection_pass(
             context,
@@ -131,6 +154,13 @@ class AnomalyService:
         timestamp: datetime,
         trigger_anomaly_id: int | None = None,
     ) -> dict[str, object]:
+        self._log_debug(
+            "service.scan_market_structure",
+            mode="write",
+            trigger_coin_id=trigger_coin_id,
+            timeframe=timeframe,
+            trigger_anomaly_id=trigger_anomaly_id,
+        )
         context = await self._repo.load_market_structure_detection_context(
             coin_id=trigger_coin_id,
             timeframe=timeframe,
@@ -138,8 +168,15 @@ class AnomalyService:
             lookback=MARKET_STRUCTURE_LOOKBACK,
         )
         if context is None:
+            self._log_debug("service.scan_market_structure.result", mode="write", status="skipped", reason="context")
             return {"status": "skipped", "reason": "context_unavailable"}
         if not context.venue_snapshots:
+            self._log_debug(
+                "service.scan_market_structure.result",
+                mode="write",
+                status="skipped",
+                reason="market_structure_unavailable",
+            )
             return {"status": "skipped", "reason": "market_structure_unavailable"}
         created = await self._run_detection_pass(
             context,
@@ -154,8 +191,10 @@ class AnomalyService:
         }
 
     async def enrich_anomaly(self, anomaly_id: int) -> dict[str, object]:
-        anomaly = await self._repo.get_anomaly(anomaly_id)
+        self._log_debug("service.enrich_anomaly", mode="write", anomaly_id=anomaly_id)
+        anomaly = await self._repo.get_for_update(anomaly_id)
         if anomaly is None:
+            self._log_warning("service.enrich_anomaly.not_found", mode="write", anomaly_id=anomaly_id)
             return {"status": "error", "reason": "anomaly_not_found", "anomaly_id": anomaly_id}
 
         payload_json = dict(anomaly.payload_json or {})
@@ -192,7 +231,8 @@ class AnomalyService:
             status=ANOMALY_STATUS_ACTIVE if anomaly.status == ANOMALY_STATUS_NEW else anomaly.status,
             payload_json=payload_json,
         )
-        await self._session.commit()
+        await self._uow.commit()
+        self._log_info("service.enrich_anomaly.result", mode="write", anomaly_id=int(anomaly.id), status="ok")
         return {
             "status": "ok",
             "anomaly_id": int(anomaly.id),
@@ -215,7 +255,7 @@ class AnomalyService:
             if finding is None:
                 continue
             score, severity, confidence = self._scorer.score(finding)
-            latest_anomaly = await self._repo.load_latest_open_anomaly(
+            latest_anomaly = await self._repo.get_latest_open_for_update(
                 coin_id=context.coin_id,
                 timeframe=context.timeframe,
                 anomaly_type=finding.anomaly_type,
@@ -272,7 +312,15 @@ class AnomalyService:
                 )
 
         if changed:
-            await self._session.commit()
+            await self._uow.commit()
+            self._log_info(
+                "service.run_detection_pass.committed",
+                mode="write",
+                source_pipeline=source_pipeline,
+                created=len(created_anomalies),
+            )
+        else:
+            self._log_debug("service.run_detection_pass.noop", mode="write", source_pipeline=source_pipeline)
 
         published_payloads: list[dict[str, object]] = []
         for anomaly, draft in created_anomalies:
@@ -283,6 +331,12 @@ class AnomalyService:
             payload = draft.to_event_payload(int(anomaly.id))
             publish_event(ANOMALY_EVENT_TYPE, payload)
             published_payloads.append(payload)
+        self._log_debug(
+            "service.run_detection_pass.result",
+            mode="write",
+            source_pipeline=source_pipeline,
+            published=len(published_payloads),
+        )
         return published_payloads
 
     def _build_draft(

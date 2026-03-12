@@ -5,7 +5,6 @@ from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
-
 from src.apps.anomalies.models import MarketAnomaly
 from src.apps.anomalies.tasks.anomaly_enrichment_tasks import anomaly_enrichment_job
 from src.apps.market_data.repos import fetch_candle_points, upsert_base_candles
@@ -13,6 +12,7 @@ from src.apps.market_data.service_layer import get_coin_by_symbol
 from src.apps.market_data.sources.base import MarketBar
 from src.apps.portfolio.models import PortfolioPosition
 from src.core.db.session import SessionLocal
+from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
 
@@ -36,6 +36,34 @@ def _append_shock_bar(db, *, symbol: str, close_multiplier: float, volume_multip
     return int(coin.id), next_timestamp
 
 
+def _run_dispatcher_loop() -> None:
+    consumer = create_topology_dispatcher_consumer()
+    try:
+        consumer.run()
+    finally:
+        consumer.close()
+
+
+def _start_anomaly_pipeline_processes() -> tuple[multiprocessing.Process, multiprocessing.Process]:
+    ctx = multiprocessing.get_context("spawn")
+    dispatcher = ctx.Process(target=_run_dispatcher_loop, daemon=True)
+    worker = ctx.Process(
+        target=run_worker_loop,
+        args=("anomaly_workers",),
+        daemon=True,
+    )
+    dispatcher.start()
+    worker.start()
+    return dispatcher, worker
+
+
+def _stop_processes(*processes: multiprocessing.Process) -> None:
+    for process in processes:
+        process.terminate()
+    for process in processes:
+        process.join(timeout=2.0)
+
+
 @pytest.mark.asyncio
 async def test_candle_closed_pipeline_persists_and_publishes_anomaly(seeded_market, settings, wait_until) -> None:
     db = SessionLocal()
@@ -57,13 +85,7 @@ async def test_candle_closed_pipeline_persists_and_publishes_anomaly(seeded_mark
     finally:
         db.close()
 
-    ctx = multiprocessing.get_context("spawn")
-    worker = ctx.Process(
-        target=run_worker_loop,
-        args=("anomaly_workers",),
-        daemon=True,
-    )
-    worker.start()
+    dispatcher, worker = _start_anomaly_pipeline_processes()
     try:
         publish_event(
             "candle_closed",
@@ -116,8 +138,7 @@ async def test_candle_closed_pipeline_persists_and_publishes_anomaly(seeded_mark
         finally:
             redis_client.close()
     finally:
-        worker.terminate()
-        worker.join(timeout=2.0)
+        _stop_processes(dispatcher, worker)
 
 
 @pytest.mark.asyncio
@@ -152,13 +173,7 @@ async def test_anomaly_enrichment_task_updates_status_and_context(seeded_market,
     finally:
         db.close()
 
-    ctx = multiprocessing.get_context("spawn")
-    worker = ctx.Process(
-        target=run_worker_loop,
-        args=("anomaly_workers",),
-        daemon=True,
-    )
-    worker.start()
+    dispatcher, worker = _start_anomaly_pipeline_processes()
     try:
         publish_event(
             "candle_closed",
@@ -187,8 +202,7 @@ async def test_anomaly_enrichment_task_updates_status_and_context(seeded_market,
 
         await wait_until(lambda: _load_anomaly_id() > 0, timeout=20.0, interval=0.2)
     finally:
-        worker.terminate()
-        worker.join(timeout=2.0)
+        _stop_processes(dispatcher, worker)
 
     db = SessionLocal()
     try:

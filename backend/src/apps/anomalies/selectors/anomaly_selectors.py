@@ -1,31 +1,9 @@
 from __future__ import annotations
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apps.anomalies.models import MarketAnomaly
-from src.apps.portfolio.models import PortfolioPosition
-
-
-def _serialize_anomaly(anomaly: MarketAnomaly) -> dict[str, object]:
-    return {
-        "id": int(anomaly.id),
-        "coin_id": int(anomaly.coin_id),
-        "symbol": anomaly.symbol,
-        "timeframe": int(anomaly.timeframe),
-        "anomaly_type": anomaly.anomaly_type,
-        "severity": anomaly.severity,
-        "confidence": float(anomaly.confidence),
-        "score": float(anomaly.score),
-        "status": anomaly.status,
-        "detected_at": anomaly.detected_at,
-        "window_start": anomaly.window_start,
-        "window_end": anomaly.window_end,
-        "market_regime": anomaly.market_regime,
-        "sector": anomaly.sector,
-        "summary": anomaly.summary,
-        "payload_json": anomaly.payload_json,
-    }
+from src.apps.anomalies.query_services import AnomalyQueryService
+from src.apps.anomalies.read_models import anomaly_read_model_to_legacy_dict
 
 
 async def list_active_anomalies_async(
@@ -35,18 +13,12 @@ async def list_active_anomalies_async(
     timeframe: int | None = None,
     limit: int = 50,
 ) -> list[dict[str, object]]:
-    stmt = (
-        select(MarketAnomaly)
-        .where(MarketAnomaly.status.in_(("new", "active")))
-        .order_by(MarketAnomaly.detected_at.desc())
-        .limit(limit)
+    items = await AnomalyQueryService(db).list_active_anomalies(
+        symbol=symbol,
+        timeframe=timeframe,
+        limit=limit,
     )
-    if symbol is not None:
-        stmt = stmt.where(MarketAnomaly.symbol == symbol.upper())
-    if timeframe is not None:
-        stmt = stmt.where(MarketAnomaly.timeframe == timeframe)
-    items = (await db.execute(stmt)).scalars().all()
-    return [_serialize_anomaly(item) for item in items]
+    return [anomaly_read_model_to_legacy_dict(item) for item in items]
 
 
 async def list_portfolio_relevant_anomalies_async(
@@ -54,20 +26,5 @@ async def list_portfolio_relevant_anomalies_async(
     *,
     limit: int = 25,
 ) -> list[dict[str, object]]:
-    items = (
-        await db.execute(
-            select(MarketAnomaly)
-            .join(
-                PortfolioPosition,
-                (PortfolioPosition.coin_id == MarketAnomaly.coin_id)
-                & (PortfolioPosition.timeframe == MarketAnomaly.timeframe),
-            )
-            .where(
-                MarketAnomaly.status.in_(("new", "active")),
-                PortfolioPosition.status == "open",
-            )
-            .order_by(MarketAnomaly.detected_at.desc())
-            .limit(limit)
-        )
-    ).scalars().all()
-    return [_serialize_anomaly(item) for item in items]
+    items = await AnomalyQueryService(db).list_portfolio_relevant_anomalies(limit=limit)
+    return [anomaly_read_model_to_legacy_dict(item) for item in items]

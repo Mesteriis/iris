@@ -4,7 +4,7 @@ from datetime import datetime
 
 from src.apps.anomalies.services import AnomalyService
 from src.apps.market_data.domain import ensure_utc
-from src.core.db.session import AsyncSessionLocal
+from src.core.db.uow import AsyncUnitOfWork
 from src.runtime.orchestration.broker import analytics_broker
 from src.runtime.orchestration.locks import async_redis_task_lock
 
@@ -21,8 +21,8 @@ async def anomaly_enrichment_job(anomaly_id: int) -> dict[str, object]:
     ) as acquired:
         if not acquired:
             return {"status": "skipped", "reason": "anomaly_enrichment_in_progress", "anomaly_id": int(anomaly_id)}
-        async with AsyncSessionLocal() as db:
-            service = AnomalyService(db)
+        async with AsyncUnitOfWork() as uow:
+            service = AnomalyService(uow)
             return await service.enrich_anomaly(int(anomaly_id))
 
 
@@ -46,8 +46,8 @@ async def sector_anomaly_scan(
                 "trigger_coin_id": int(trigger_coin_id),
                 "timeframe": int(timeframe),
             }
-        async with AsyncSessionLocal() as db:
-            service = AnomalyService(db)
+        async with AsyncUnitOfWork() as uow:
+            service = AnomalyService(uow)
             return await service.scan_sector_synchrony(
                 trigger_coin_id=int(trigger_coin_id),
                 timeframe=int(timeframe),
@@ -76,8 +76,8 @@ async def market_structure_anomaly_scan(
                 "trigger_coin_id": int(trigger_coin_id),
                 "timeframe": int(timeframe),
             }
-        async with AsyncSessionLocal() as db:
-            service = AnomalyService(db)
+        async with AsyncUnitOfWork() as uow:
+            service = AnomalyService(uow)
             return await service.scan_market_structure(
                 trigger_coin_id=int(trigger_coin_id),
                 timeframe=int(timeframe),
