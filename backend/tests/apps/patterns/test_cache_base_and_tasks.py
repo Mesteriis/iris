@@ -1,23 +1,22 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-
 from src.apps.market_data.repos import CandlePoint
 from src.apps.patterns import cache, tasks
 from src.apps.patterns.domain.base import PatternDetector
 from src.apps.patterns.domain.scheduler import assign_activity_bucket, calculate_activity_score
 
 
-class _AsyncDbContext:
-    def __init__(self, db: object) -> None:
-        self.db = db
+class _AsyncUowContext:
+    def __init__(self, session: object) -> None:
+        self.session = session
 
     async def __aenter__(self) -> object:
-        return self.db
+        return self
 
     async def __aexit__(self, exc_type, exc, tb) -> bool:
         return False
@@ -96,7 +95,7 @@ def test_patterns_cache_and_base_helpers(monkeypatch) -> None:
 
     detector = _BaseProbeDetector()
     candle = CandlePoint(
-        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
         open=100.0,
         high=101.0,
         low=99.0,
@@ -106,15 +105,18 @@ def test_patterns_cache_and_base_helpers(monkeypatch) -> None:
     with pytest.raises(NotImplementedError):
         detector.detect([candle], {})
 
-    assert round(
-        calculate_activity_score(
-            price_change_24h=12.0,
-            volatility=4.0,
-            volume_change_24h=30.0,
-            price_current=200.0,
-        ),
-        4,
-    ) == 38.0
+    assert (
+        round(
+            calculate_activity_score(
+                price_change_24h=12.0,
+                volatility=4.0,
+                volume_change_24h=30.0,
+                price_current=200.0,
+            ),
+            4,
+        )
+        == 38.0
+    )
     assert assign_activity_bucket(80.0) == "HOT"
     assert assign_activity_bucket(45.0) == "WARM"
     assert assign_activity_bucket(20.0) == "COLD"
@@ -123,13 +125,7 @@ def test_patterns_cache_and_base_helpers(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_patterns_tasks_orchestration_branches(monkeypatch) -> None:
-    async def run_sync(fn):
-        return fn(SimpleNamespace(get=lambda model, coin_id: SimpleNamespace(id=coin_id)))
-
-    db = SimpleNamespace(run_sync=run_sync)
-    coin = SimpleNamespace(id=7, symbol="BTCUSD_EVT")
-
-    monkeypatch.setattr(tasks, "AsyncSessionLocal", lambda: _AsyncDbContext(db))
+    monkeypatch.setattr(tasks, "AsyncUnitOfWork", lambda: _AsyncUowContext(SimpleNamespace()))
     monkeypatch.setattr(tasks, "async_redis_task_lock", lambda *args, **kwargs: _async_lock(False))
 
     skipped = await tasks.patterns_bootstrap_scan(symbol="btcusd_evt")
@@ -140,31 +136,86 @@ async def test_patterns_tasks_orchestration_branches(monkeypatch) -> None:
     assert (await tasks.strategy_discovery_job())["reason"] == "strategy_discovery_refresh_in_progress"
 
     monkeypatch.setattr(tasks, "async_redis_task_lock", lambda *args, **kwargs: _async_lock(True))
-    monkeypatch.setattr(tasks, "get_coin_by_symbol_async", lambda db, symbol: __import__("asyncio").sleep(0, result=None))
+
+    class _MissingBootstrapService:
+        def __init__(self, _uow) -> None:
+            pass
+
+        async def bootstrap_scan(self, *, symbol=None, force=False):
+            del force
+            return {"status": "error", "reason": "coin_not_found", "symbol": str(symbol).upper()}
+
+    monkeypatch.setattr(tasks, "PatternBootstrapService", _MissingBootstrapService)
     assert (await tasks.patterns_bootstrap_scan(symbol="btcusd_evt"))["reason"] == "coin_not_found"
 
-    monkeypatch.setattr(tasks, "get_coin_by_symbol_async", lambda db, symbol: __import__("asyncio").sleep(0, result=coin if symbol.upper() == "BTCUSD_EVT" else None))
-    monkeypatch.setattr(tasks, "list_coin_symbols_ready_for_latest_sync_async", lambda db: __import__("asyncio").sleep(0, result=["BTCUSD_EVT", "MISSING_EVT"]))
-    monkeypatch.setattr(tasks, "_ENGINE", SimpleNamespace(bootstrap_coin=lambda sync_db, coin, force=False: {"coin_id": int(coin.id), "created": 2 if force else 1}))
+    class _BootstrapService:
+        def __init__(self, _uow) -> None:
+            pass
+
+        async def bootstrap_scan(self, *, symbol=None, force=False):
+            if symbol is not None:
+                return {"status": "ok", "coins": 1, "items": [{"coin_id": 7, "created": 2 if force else 1}]}
+            return {
+                "status": "ok",
+                "coins": 2,
+                "created": 1,
+                "items": [{"coin_id": 7, "created": 1}, {"status": "skipped", "reason": "coin_not_found"}],
+            }
+
+    monkeypatch.setattr(tasks, "PatternBootstrapService", _BootstrapService)
     bootstrap_one = await tasks.patterns_bootstrap_scan(symbol="btcusd_evt", force=True)
     bootstrap_all = await tasks.patterns_bootstrap_scan()
     assert bootstrap_one == {"status": "ok", "coins": 1, "items": [{"coin_id": 7, "created": 2}]}
     assert bootstrap_all["coins"] == 2
     assert bootstrap_all["created"] == 1
 
-    monkeypatch.setattr(tasks, "run_pattern_evaluation_cycle", lambda sync_db: {"status": "ok", "signals": 3})
-    monkeypatch.setattr(tasks, "enrich_signal_context", lambda *args, **kwargs: {"regime": "bull"})
-    monkeypatch.setattr(tasks, "evaluate_investment_decision", lambda *args, **kwargs: {"decision": "BUY"})
-    monkeypatch.setattr(tasks, "evaluate_final_signal", lambda *args, **kwargs: {"final": "BUY"})
-    monkeypatch.setattr(tasks, "refresh_sector_metrics", lambda sync_db: {"sectors": 2})
-    monkeypatch.setattr(tasks, "refresh_market_cycles", lambda sync_db: {"cycles": 3})
-    monkeypatch.setattr(tasks, "refresh_recent_signal_contexts", lambda sync_db, lookback_days: {"contexts": lookback_days})
-    monkeypatch.setattr(tasks, "refresh_investment_decisions", lambda sync_db, lookback_days, emit_events=False: {"decisions": lookback_days, "emit": emit_events})
-    monkeypatch.setattr(tasks, "refresh_final_signals", lambda sync_db, lookback_days, emit_events=False: {"final_signals": lookback_days, "emit": emit_events})
-    monkeypatch.setattr(tasks, "refresh_discovered_patterns", lambda sync_db: {"patterns": 5})
-    monkeypatch.setattr(tasks, "refresh_strategies", lambda sync_db: {"strategies": 4})
+    class _EvaluationService:
+        def __init__(self, _uow) -> None:
+            pass
 
-    assert await tasks._run_sync_pattern_core(db, lambda sync_db: {"status": "ok"}) == {"status": "ok"}
+        async def run(self):
+            return {"status": "ok", "signals": 3}
+
+    class _SignalContextService:
+        def __init__(self, _uow) -> None:
+            pass
+
+        async def enrich(self, *, coin_id: int, timeframe: int, candle_timestamp: str | None = None):
+            del coin_id, timeframe, candle_timestamp
+            return {
+                "status": "ok",
+                "context": {"regime": "bull"},
+                "decision": {"decision": "BUY"},
+                "final_signal": {"final": "BUY"},
+            }
+
+    class _StructureService:
+        def __init__(self, _uow) -> None:
+            pass
+
+        async def refresh(self):
+            return {"status": "ok", "sectors": {"sectors": 2}, "cycles": {"cycles": 3}}
+
+    class _DiscoveryService:
+        def __init__(self, _uow) -> None:
+            pass
+
+        async def refresh(self):
+            return {"patterns": 5}
+
+    class _StrategyService:
+        def __init__(self, _uow) -> None:
+            pass
+
+        async def refresh(self):
+            return {"status": "ok", "strategies": {"strategies": 4}}
+
+    monkeypatch.setattr(tasks, "PatternEvaluationService", _EvaluationService)
+    monkeypatch.setattr(tasks, "PatternSignalContextService", _SignalContextService)
+    monkeypatch.setattr(tasks, "PatternMarketStructureService", _StructureService)
+    monkeypatch.setattr(tasks, "PatternDiscoveryService", _DiscoveryService)
+    monkeypatch.setattr(tasks, "PatternStrategyService", _StrategyService)
+
     assert await tasks._run_pattern_evaluation() == {"status": "ok", "signals": 3}
     assert await tasks.pattern_evaluation_job() == {"status": "ok", "signals": 3}
     assert await tasks.update_pattern_statistics() == {"status": "ok", "signals": 3}

@@ -59,9 +59,9 @@ Reference docs:
 Current rollout:
 
 - shared UoW and structured persistence logging in `backend/src/core/db`
-- migrated repository/query boundaries in `hypothesis_engine`, `control_plane`, `news`, `market_structure`, `market_data`, `indicators` and the async/public `patterns` API surface
+- migrated repository/query boundaries in `hypothesis_engine`, `control_plane`, `news`, `market_structure`, `market_data`, `indicators` and the `patterns` API plus TaskIQ orchestration surface
 - `market_data` keeps documented Timescale-specific raw SQL only inside legacy infrastructure adapters while async callers use UoW-backed repositories/query services
-- `indicator_workers` now execute indicator persistence through async repositories/UoW; the remaining sync analytical backlog is concentrated in the `patterns` task/runtime core
+- `indicator_workers` and `patterns` TaskIQ entrypoints now execute persistence through async repositories/UoW; the remaining sync analytical backlog is confined to legacy helper modules under `apps/patterns/domain`
 - remaining domains tracked in the persistence audit backlog
 
 ## Stack

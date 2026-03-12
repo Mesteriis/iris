@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-from src.apps.market_data.models import Coin
-from src.apps.market_data.services import get_coin_by_symbol_async, list_coin_symbols_ready_for_latest_sync_async
-from src.apps.patterns.domain.context import enrich_signal_context, refresh_recent_signal_contexts
-from src.apps.patterns.domain.cycle import refresh_market_cycles
-from src.apps.patterns.domain.decision import evaluate_investment_decision, refresh_investment_decisions
-from src.apps.patterns.domain.discovery import refresh_discovered_patterns
-from src.apps.patterns.domain.engine import PatternEngine
-from src.apps.patterns.domain.evaluation import run_pattern_evaluation_cycle
-from src.apps.patterns.domain.narrative import refresh_sector_metrics
-from src.apps.patterns.domain.strategy import refresh_strategies
-from src.apps.patterns.domain.risk import evaluate_final_signal, refresh_final_signals
-from src.core.db.session import AsyncSessionLocal
+from src.apps.patterns.task_services import (
+    PatternBootstrapService,
+    PatternDiscoveryService,
+    PatternEvaluationService,
+    PatternMarketStructureService,
+    PatternSignalContextService,
+    PatternStrategyService,
+)
+from src.core.db.uow import AsyncUnitOfWork
 from src.runtime.orchestration.broker import analytics_broker
 from src.runtime.orchestration.locks import async_redis_task_lock
 
@@ -20,17 +17,6 @@ PATTERN_STATISTICS_LOCK_TIMEOUT_SECONDS = 7200
 MARKET_STRUCTURE_LOCK_TIMEOUT_SECONDS = 7200
 PATTERN_DISCOVERY_LOCK_TIMEOUT_SECONDS = 14400
 STRATEGY_DISCOVERY_LOCK_TIMEOUT_SECONDS = 14400
-_ENGINE = PatternEngine()
-
-
-async def _run_sync_pattern_core(db, fn):
-    # NOTE:
-    # The pattern engine is still implemented as a large synchronous analytics
-    # core. It remains synchronous intentionally while the deeper
-    # domain/repository split is migrated incrementally.
-    # This code runs only on the dedicated analytics TaskIQ worker queue,
-    # outside the main FastAPI request/event loop critical path.
-    return await db.run_sync(fn)
 
 
 @analytics_broker.task
@@ -43,43 +29,8 @@ async def patterns_bootstrap_scan(symbol: str | None = None, force: bool = False
         if not acquired:
             return {"status": "skipped", "reason": "patterns_bootstrap_in_progress", "symbol": lock_suffix}
 
-        async with AsyncSessionLocal() as db:
-            if symbol is not None:
-                coin = await get_coin_by_symbol_async(db, symbol)
-                if coin is None:
-                    return {"status": "error", "reason": "coin_not_found", "symbol": symbol.upper()}
-                result = await _run_sync_pattern_core(
-                    db,
-                    lambda sync_db: _ENGINE.bootstrap_coin(
-                        sync_db,
-                        coin=sync_db.get(Coin, int(coin.id)),
-                        force=force,
-                    ),
-                )
-                return {"status": "ok", "coins": 1, "items": [result]}
-
-            coin_symbols = await list_coin_symbols_ready_for_latest_sync_async(db)
-            items = []
-            for coin_symbol in coin_symbols:
-                coin = await get_coin_by_symbol_async(db, coin_symbol)
-                if coin is None:
-                    continue
-                items.append(
-                    await _run_sync_pattern_core(
-                        db,
-                        lambda sync_db, coin_id=int(coin.id): _ENGINE.bootstrap_coin(
-                            sync_db,
-                            coin=sync_db.get(Coin, coin_id),
-                            force=force,
-                        ),
-                    )
-                )
-            return {
-                "status": "ok",
-                "coins": len(coin_symbols),
-                "created": sum(int(item.get("created", 0)) for item in items),
-                "items": items,
-            }
+        async with AsyncUnitOfWork() as uow:
+            return await PatternBootstrapService(uow).bootstrap_scan(symbol=symbol, force=force)
 
 
 async def _run_pattern_evaluation() -> dict[str, object]:
@@ -90,8 +41,8 @@ async def _run_pattern_evaluation() -> dict[str, object]:
         if not acquired:
             return {"status": "skipped", "reason": "pattern_statistics_refresh_in_progress"}
 
-        async with AsyncSessionLocal() as db:
-            return await _run_sync_pattern_core(db, lambda sync_db: run_pattern_evaluation_cycle(sync_db))
+        async with AsyncUnitOfWork() as uow:
+            return await PatternEvaluationService(uow).run()
 
 
 @analytics_broker.task
@@ -110,30 +61,11 @@ async def signal_context_enrichment(
     timeframe: int,
     candle_timestamp: str | None = None,
 ) -> dict[str, object]:
-    async with AsyncSessionLocal() as db:
-        return await _run_sync_pattern_core(
-            db,
-            lambda sync_db: {
-                "status": "ok",
-                "context": enrich_signal_context(
-                    sync_db,
-                    coin_id=int(coin_id),
-                    timeframe=int(timeframe),
-                    candle_timestamp=candle_timestamp,
-                ),
-                "decision": evaluate_investment_decision(
-                    sync_db,
-                    coin_id=int(coin_id),
-                    timeframe=int(timeframe),
-                    emit_event=False,
-                ),
-                "final_signal": evaluate_final_signal(
-                    sync_db,
-                    coin_id=int(coin_id),
-                    timeframe=int(timeframe),
-                    emit_event=False,
-                ),
-            },
+    async with AsyncUnitOfWork() as uow:
+        return await PatternSignalContextService(uow).enrich(
+            coin_id=int(coin_id),
+            timeframe=int(timeframe),
+            candle_timestamp=candle_timestamp,
         )
 
 
@@ -146,18 +78,8 @@ async def refresh_market_structure() -> dict[str, object]:
         if not acquired:
             return {"status": "skipped", "reason": "market_structure_refresh_in_progress"}
 
-        async with AsyncSessionLocal() as db:
-            return await _run_sync_pattern_core(
-                db,
-                lambda sync_db: {
-                    "status": "ok",
-                    "sectors": refresh_sector_metrics(sync_db),
-                    "cycles": refresh_market_cycles(sync_db),
-                    "context": refresh_recent_signal_contexts(sync_db, lookback_days=30),
-                    "decisions": refresh_investment_decisions(sync_db, lookback_days=30, emit_events=False),
-                    "final_signals": refresh_final_signals(sync_db, lookback_days=30, emit_events=False),
-                },
-            )
+        async with AsyncUnitOfWork() as uow:
+            return await PatternMarketStructureService(uow).refresh()
 
 
 @analytics_broker.task
@@ -169,8 +91,8 @@ async def run_pattern_discovery() -> dict[str, object]:
         if not acquired:
             return {"status": "skipped", "reason": "pattern_discovery_refresh_in_progress"}
 
-        async with AsyncSessionLocal() as db:
-            return await _run_sync_pattern_core(db, lambda sync_db: refresh_discovered_patterns(sync_db))
+        async with AsyncUnitOfWork() as uow:
+            return await PatternDiscoveryService(uow).refresh()
 
 
 @analytics_broker.task
@@ -182,13 +104,5 @@ async def strategy_discovery_job() -> dict[str, object]:
         if not acquired:
             return {"status": "skipped", "reason": "strategy_discovery_refresh_in_progress"}
 
-        async with AsyncSessionLocal() as db:
-            return await _run_sync_pattern_core(
-                db,
-                lambda sync_db: {
-                    "status": "ok",
-                    "strategies": refresh_strategies(sync_db),
-                    "decisions": refresh_investment_decisions(sync_db, lookback_days=30, emit_events=False),
-                    "final_signals": refresh_final_signals(sync_db, lookback_days=30, emit_events=False),
-                },
-            )
+        async with AsyncUnitOfWork() as uow:
+            return await PatternStrategyService(uow).refresh()

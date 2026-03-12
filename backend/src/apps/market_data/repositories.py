@@ -10,12 +10,14 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from src.apps.indicators.models import CoinMetrics, IndicatorCache
-from src.apps.market_data.domain import normalize_interval
+from src.apps.market_data.domain import ensure_utc, normalize_interval
 from src.apps.market_data.models import Candle, Coin
 from src.apps.market_data.repos import (
     AGGREGATE_VIEW_BY_TIMEFRAME,
+    CandlePoint,
     align_timeframe_timestamp,
     interval_to_timeframe,
+    timeframe_bucket_interval,
     timeframe_delta,
 )
 from src.apps.market_data.service_layer import get_base_candle_config
@@ -111,6 +113,20 @@ class CandleRepository(AsyncRepository):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, domain="market_data", repository_name="CandleRepository")
 
+    @staticmethod
+    def _rows_to_candle_points(rows: Sequence[Any], *, timestamp_field: str = "timestamp") -> list[CandlePoint]:
+        return [
+            CandlePoint(
+                timestamp=ensure_utc(getattr(row, timestamp_field)),
+                open=float(row.open),
+                high=float(row.high),
+                low=float(row.low),
+                close=float(row.close),
+                volume=float(row.volume) if row.volume is not None else None,
+            )
+            for row in rows
+        ]
+
     async def get_latest_timestamp(self, *, coin_id: int, timeframe: int) -> datetime | None:
         self._log_debug(
             "repo.get_latest_market_data_candle_timestamp",
@@ -159,6 +175,214 @@ class CandleRepository(AsyncRepository):
         ).all()
         self._log_debug("repo.list_recent_market_data_candles.result", mode="read", count=len(rows))
         return rows
+
+    async def fetch_points(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        limit: int,
+    ) -> list[CandlePoint]:
+        self._log_debug(
+            "repo.fetch_market_data_candle_points",
+            mode="read",
+            coin_id=coin_id,
+            timeframe=timeframe,
+            limit=limit,
+        )
+        if limit <= 0:
+            return []
+
+        direct_rows = (
+            await self.session.execute(
+                select(Candle.timestamp, Candle.open, Candle.high, Candle.low, Candle.close, Candle.volume)
+                .where(Candle.coin_id == coin_id, Candle.timeframe == timeframe)
+                .order_by(Candle.timestamp.desc())
+                .limit(limit)
+            )
+        ).all()
+        direct_points = self._rows_to_candle_points(list(reversed(direct_rows)))
+        if direct_points:
+            self._log_debug("repo.fetch_market_data_candle_points.result", mode="read", count=len(direct_points))
+            return direct_points
+
+        if timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
+            view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
+            view_rows = (
+                await self.session.execute(
+                    text(
+                        f"""
+                        SELECT bucket, open, high, low, close, volume
+                        FROM (
+                            SELECT bucket, open, high, low, close, volume
+                            FROM {view_name}
+                            WHERE coin_id = :coin_id
+                            ORDER BY bucket DESC
+                            LIMIT :limit
+                        ) AS rows
+                        ORDER BY bucket ASC
+                        """
+                    ),
+                    {"coin_id": coin_id, "limit": limit},
+                )
+            ).all()
+            view_points = self._rows_to_candle_points(view_rows, timestamp_field="bucket")
+            if view_points:
+                self._log_debug("repo.fetch_market_data_candle_points.result", mode="read", count=len(view_points))
+                return view_points
+
+            source_timeframe = await self._get_lowest_available_timeframe(coin_id=coin_id, max_timeframe=timeframe)
+            if source_timeframe is not None and source_timeframe < timeframe and timeframe % source_timeframe == 0:
+                resampled_rows = (
+                    await self.session.execute(
+                        text(
+                            """
+                            SELECT bucket, open, high, low, close, volume
+                            FROM (
+                                SELECT
+                                    time_bucket(CAST(:bucket_interval AS INTERVAL), timestamp) AS bucket,
+                                    first(open, timestamp) AS open,
+                                    max(high) AS high,
+                                    min(low) AS low,
+                                    last(close, timestamp) AS close,
+                                    sum(volume) AS volume
+                                FROM candles
+                                WHERE coin_id = :coin_id
+                                  AND timeframe = :source_timeframe
+                                GROUP BY bucket
+                                ORDER BY bucket DESC
+                                LIMIT :limit
+                            ) AS rows
+                            ORDER BY bucket ASC
+                            """
+                        ),
+                        {
+                            "coin_id": coin_id,
+                            "source_timeframe": source_timeframe,
+                            "bucket_interval": timeframe_bucket_interval(timeframe),
+                            "limit": limit,
+                        },
+                    )
+                ).all()
+                points = self._rows_to_candle_points(resampled_rows, timestamp_field="bucket")
+                self._log_debug(
+                    "repo.fetch_market_data_candle_points.result",
+                    mode="read",
+                    count=len(points),
+                    fallback="resampled",
+                )
+                return points
+
+        self._log_debug("repo.fetch_market_data_candle_points.result", mode="read", count=0)
+        return []
+
+    async def fetch_points_between(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> list[CandlePoint]:
+        self._log_debug(
+            "repo.fetch_market_data_candle_points_between",
+            mode="read",
+            coin_id=coin_id,
+            timeframe=timeframe,
+            window_start=window_start.isoformat(),
+            window_end=window_end.isoformat(),
+        )
+        direct_rows = (
+            await self.session.execute(
+                select(Candle.timestamp, Candle.open, Candle.high, Candle.low, Candle.close, Candle.volume)
+                .where(
+                    Candle.coin_id == coin_id,
+                    Candle.timeframe == timeframe,
+                    Candle.timestamp >= ensure_utc(window_start),
+                    Candle.timestamp <= ensure_utc(window_end),
+                )
+                .order_by(Candle.timestamp.asc())
+            )
+        ).all()
+        direct_points = self._rows_to_candle_points(direct_rows)
+        if direct_points:
+            self._log_debug(
+                "repo.fetch_market_data_candle_points_between.result", mode="read", count=len(direct_points)
+            )
+            return direct_points
+
+        if timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
+            view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
+            view_rows = (
+                await self.session.execute(
+                    text(
+                        f"""
+                        SELECT bucket, open, high, low, close, volume
+                        FROM {view_name}
+                        WHERE coin_id = :coin_id
+                          AND bucket >= :window_start
+                          AND bucket <= :window_end
+                        ORDER BY bucket ASC
+                        """
+                    ),
+                    {
+                        "coin_id": coin_id,
+                        "window_start": ensure_utc(window_start),
+                        "window_end": ensure_utc(window_end),
+                    },
+                )
+            ).all()
+            view_points = self._rows_to_candle_points(view_rows, timestamp_field="bucket")
+            if view_points:
+                self._log_debug(
+                    "repo.fetch_market_data_candle_points_between.result",
+                    mode="read",
+                    count=len(view_points),
+                )
+                return view_points
+
+            source_timeframe = await self._get_lowest_available_timeframe(coin_id=coin_id, max_timeframe=timeframe)
+            if source_timeframe is not None and source_timeframe < timeframe and timeframe % source_timeframe == 0:
+                resampled_rows = (
+                    await self.session.execute(
+                        text(
+                            """
+                            SELECT
+                                time_bucket(CAST(:bucket_interval AS INTERVAL), timestamp) AS bucket,
+                                first(open, timestamp) AS open,
+                                max(high) AS high,
+                                min(low) AS low,
+                                last(close, timestamp) AS close,
+                                sum(volume) AS volume
+                            FROM candles
+                            WHERE coin_id = :coin_id
+                              AND timeframe = :source_timeframe
+                              AND timestamp >= :window_start
+                              AND timestamp <= :window_end
+                            GROUP BY bucket
+                            ORDER BY bucket ASC
+                            """
+                        ),
+                        {
+                            "coin_id": coin_id,
+                            "source_timeframe": source_timeframe,
+                            "bucket_interval": timeframe_bucket_interval(timeframe),
+                            "window_start": ensure_utc(window_start),
+                            "window_end": ensure_utc(window_end),
+                        },
+                    )
+                ).all()
+                points = self._rows_to_candle_points(resampled_rows, timestamp_field="bucket")
+                self._log_debug(
+                    "repo.fetch_market_data_candle_points_between.result",
+                    mode="read",
+                    count=len(points),
+                    fallback="resampled",
+                )
+                return points
+
+        self._log_debug("repo.fetch_market_data_candle_points_between.result", mode="read", count=0)
+        return []
 
     async def count_rows_between(
         self,
@@ -340,6 +564,18 @@ class CandleRepository(AsyncRepository):
             count=len(items),
         )
         return items
+
+    async def _get_lowest_available_timeframe(
+        self,
+        *,
+        coin_id: int,
+        max_timeframe: int | None = None,
+    ) -> int | None:
+        stmt = select(func.min(Candle.timeframe)).where(Candle.coin_id == coin_id)
+        if max_timeframe is not None:
+            stmt = stmt.where(Candle.timeframe <= max_timeframe)
+        value = (await self.session.execute(stmt)).scalar_one_or_none()
+        return int(value) if value is not None else None
 
 
 class CoinMetricsRepository(AsyncRepository):

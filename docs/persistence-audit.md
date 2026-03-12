@@ -162,7 +162,7 @@ Classification:
 
 #### `apps/patterns`
 
-Status: migrated on the async API/application surface; sync analytics task/runtime core still pending
+Status: migrated on the async API/application and TaskIQ orchestration surface; legacy sync helper modules still remain under `domain/`
 
 - repositories now isolate pattern feature and pattern registry write paths in [backend/src/apps/patterns/repositories.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/repositories.py)
 - read-only pattern catalog, discovered pattern, coin regime, coin pattern, sector metrics and market-cycle projections now go through [backend/src/apps/patterns/query_services.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/query_services.py)
@@ -170,14 +170,16 @@ Status: migrated on the async API/application surface; sync analytics task/runti
 - views now depend on the shared async UoW instead of owning `AsyncSession` directly
 - the market-cycle endpoint consumed by `indicators` now reuses the same query service instead of a module-level function facade
 - persistence logging now covers pattern feature/pattern registry writes and public query paths
+- TaskIQ flows now run through async class-based services in [backend/src/apps/patterns/task_services.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/task_services.py) and [backend/src/apps/patterns/tasks.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/tasks.py), removing the old `AsyncSession.run_sync` bridge from active runtime orchestration
+- async market-data candle repositories now expose range/series fetchers used by the pattern task services without pushing raw session access back into the task layer
 - remaining follow-up:
-  - [backend/src/apps/patterns/tasks.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/tasks.py) still executes the legacy sync analytics core through `run_sync`
-  - sync-heavy domain modules under [backend/src/apps/patterns/domain](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/domain) still own evaluation/bootstrap/discovery/strategy persistence internally
+  - legacy sync modules under [backend/src/apps/patterns/domain](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/domain) still exist for compatibility/tests and should be retired incrementally as their async service equivalents absorb more helper logic
+  - `signals` and `portfolio` still keep sync-heavy analytical selectors/services outside this migration slice
 
 Classification:
 
-- `OK` on async/public callers
-- `later migration` for sync-heavy task/runtime analytics core
+- `OK` on async/public callers and TaskIQ entrypoints
+- `later migration` for residual sync helper modules kept behind the persistence layer
 
 ### Sync-Heavy Analytical Domains
 
@@ -279,8 +281,8 @@ Recommended rollout order:
 5. completed: `apps/market_structure`
 6. completed: `apps/market_data`
 7. completed: `apps/indicators`
-8. completed on the async/public API surface: `apps/patterns`
-9. next: `apps/patterns` task/runtime analytics core
+8. completed on the async/public and TaskIQ orchestration surface: `apps/patterns`
+9. next: `apps/signals`
 10. later: `signals`, `portfolio`, `predictions`, `cross_market`
 
 ## Current Behavior To Preserve
