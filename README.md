@@ -55,6 +55,12 @@ Reference docs:
 - [docs/persistence-audit.md](/Users/avm/projects/Personal/iris/docs/persistence-audit.md)
 - [docs/persistence-standard.md](/Users/avm/projects/Personal/iris/docs/persistence-standard.md)
 
+Current rollout:
+
+- shared UoW and structured persistence logging in `backend/src/core/db`
+- migrated repository/query boundaries in `hypothesis_engine`, `control_plane` and `news`
+- remaining domains tracked in the persistence audit backlog
+
 ## Stack
 
 - FastAPI backend with SQLAlchemy, Alembic and process-based TaskIQ workers

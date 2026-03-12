@@ -23,6 +23,7 @@ from src.apps.news.schemas import (
     TelegramSourceFromDialogCreate,
 )
 from src.apps.news.services import NewsService, TelegramSessionOnboardingService, TelegramSourceProvisioningService
+from src.core.db.uow import SessionUnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,18 +93,18 @@ async def test_news_service_polls_persists_and_publishes(async_db_session, monke
         lambda event_name, payload: published.append((event_name, payload)),
     )
 
-    service = NewsService(async_db_session)
-    source = await service.create_source(
-        NewsSourceCreate(
-            plugin_name="fixture_news",
-            display_name="Fixture Feed",
-            credentials={"token": "fixture-token"},
-            settings={"channel": "feed"},
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = NewsService(uow)
+        source = await service.create_source(
+            NewsSourceCreate(
+                plugin_name="fixture_news",
+                display_name="Fixture Feed",
+                credentials={"token": "fixture-token"},
+                settings={"channel": "feed"},
+            )
         )
-    )
-
-    first_poll = await service.poll_source(source_id=source.id, limit=2)
-    second_poll = await service.poll_source(source_id=source.id, limit=2)
+        first_poll = await service.poll_source(source_id=source.id, limit=2)
+        second_poll = await service.poll_source(source_id=source.id, limit=2)
 
     assert first_poll == {
         "status": "ok",
@@ -147,18 +148,9 @@ async def test_news_service_polls_persists_and_publishes(async_db_session, monke
 
 @pytest.mark.asyncio
 async def test_news_service_rejects_duplicate_and_unsupported_sources(async_db_session) -> None:
-    service = NewsService(async_db_session)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = NewsService(uow)
 
-    await service.create_source(
-        NewsSourceCreate(
-            plugin_name="x",
-            display_name="Alpha Feed",
-            credentials={"bearer_token": "x-token"},
-            settings={"user_id": "123456"},
-        )
-    )
-
-    with pytest.raises(InvalidNewsSourceConfigurationError, match="already exists"):
         await service.create_source(
             NewsSourceCreate(
                 plugin_name="x",
@@ -168,55 +160,66 @@ async def test_news_service_rejects_duplicate_and_unsupported_sources(async_db_s
             )
         )
 
-    with pytest.raises(UnsupportedNewsPluginError, match="developer API"):
-        await service.create_source(
-            NewsSourceCreate(
-                plugin_name="truth_social",
-                display_name="Truth Social Mirror",
-                credentials={},
-                settings={},
+        with pytest.raises(InvalidNewsSourceConfigurationError, match="already exists"):
+            await service.create_source(
+                NewsSourceCreate(
+                    plugin_name="x",
+                    display_name="Alpha Feed",
+                    credentials={"bearer_token": "x-token"},
+                    settings={"user_id": "123456"},
+                )
             )
-        )
+
+        with pytest.raises(UnsupportedNewsPluginError, match="developer API"):
+            await service.create_source(
+                NewsSourceCreate(
+                    plugin_name="truth_social",
+                    display_name="Truth Social Mirror",
+                    credentials={},
+                    settings={},
+                )
+            )
 
 
 @pytest.mark.asyncio
 async def test_news_service_updates_and_deletes_source(async_db_session) -> None:
-    service = NewsService(async_db_session)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = NewsService(uow)
 
-    created = await service.create_source(
-        NewsSourceCreate(
-            plugin_name="x",
-            display_name="Desk One",
-            credentials={"bearer_token": "token-a"},
-            settings={"user_id": "101"},
+        created = await service.create_source(
+            NewsSourceCreate(
+                plugin_name="x",
+                display_name="Desk One",
+                credentials={"bearer_token": "token-a"},
+                settings={"user_id": "101"},
+            )
         )
-    )
 
-    updated = await service.update_source(
-        created.id,
-        NewsSourceUpdate(
-            display_name="Desk Prime",
-            enabled=False,
-            credentials={"access_token": "token-b"},
-            settings={"max_results": 25},
-            reset_cursor=True,
-            clear_error=True,
-        ),
-    )
-    assert updated is not None
-    assert updated.display_name == "Desk Prime"
-    assert updated.enabled is False
-    assert updated.status == "disabled"
-    assert updated.settings == {"user_id": "101", "max_results": 25}
-    assert updated.credential_fields_present == ["access_token", "bearer_token"]
+        updated = await service.update_source(
+            created.id,
+            NewsSourceUpdate(
+                display_name="Desk Prime",
+                enabled=False,
+                credentials={"access_token": "token-b"},
+                settings={"max_results": 25},
+                reset_cursor=True,
+                clear_error=True,
+            ),
+        )
+        assert updated is not None
+        assert updated.display_name == "Desk Prime"
+        assert updated.enabled is False
+        assert updated.status == "disabled"
+        assert updated.settings == {"user_id": "101", "max_results": 25}
+        assert updated.credential_fields_present == ["access_token", "bearer_token"]
 
-    stored = await async_db_session.get(NewsSource, created.id)
-    assert stored is not None
-    assert stored.cursor_json == {}
-    assert stored.credentials_json["access_token"] == "token-b"
+        stored = await async_db_session.get(NewsSource, created.id)
+        assert stored is not None
+        assert stored.cursor_json == {}
+        assert stored.credentials_json["access_token"] == "token-b"
 
-    assert await service.delete_source(created.id) is True
-    assert await service.delete_source(created.id) is False
+        assert await service.delete_source(created.id) is True
+        assert await service.delete_source(created.id) is False
 
 
 @pytest.mark.asyncio
@@ -362,55 +365,56 @@ async def test_telegram_onboarding_service_lists_selectable_dialogs(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_telegram_source_provisioning_creates_single_and_bulk_sources(async_db_session) -> None:
-    service = TelegramSourceProvisioningService(async_db_session)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = TelegramSourceProvisioningService(uow)
 
-    single = await service.create_source_from_dialog(
-        TelegramSourceFromDialogCreate(
-            api_id=1001,
-            api_hash="hash",
-            session_string="session:telegram",
-            dialog=TelegramDialogSelection(
-                entity_id=101,
-                entity_type="channel",
-                title="Alpha Channel",
-                username="alpha",
-                access_hash="999",
-            ),
-        )
-    )
-    assert single.plugin_name == "telegram_user"
-    assert single.display_name == "Alpha Channel"
-    assert single.settings["channel"] == "@alpha"
-    assert single.settings["entity_access_hash"] == "999"
-
-    bulk = await service.bulk_subscribe(
-        TelegramBulkSubscribeRequest(
-            api_id=1001,
-            api_hash="hash",
-            session_string="session:telegram",
-            dialogs=[
-                TelegramDialogSelection(
+        single = await service.create_source_from_dialog(
+            TelegramSourceFromDialogCreate(
+                api_id=1001,
+                api_hash="hash",
+                session_string="session:telegram",
+                dialog=TelegramDialogSelection(
                     entity_id=101,
                     entity_type="channel",
                     title="Alpha Channel",
                     username="alpha",
                     access_hash="999",
                 ),
-                TelegramDialogSelection(
-                    entity_id=202,
-                    entity_type="chat",
-                    title="Private Group",
-                    display_name="Private Group Feed",
-                ),
-            ],
+            ),
         )
-    )
-    assert bulk.created_count == 1
-    assert bulk.skipped_count == 1
-    assert bulk.created[0].display_name == "Private Group Feed"
-    assert bulk.results[0].status == "skipped"
-    assert "already exists" in str(bulk.results[0].reason)
-    assert bulk.results[1].status == "created"
+        assert single.plugin_name == "telegram_user"
+        assert single.display_name == "Alpha Channel"
+        assert single.settings["channel"] == "@alpha"
+        assert single.settings["entity_access_hash"] == "999"
+
+        bulk = await service.bulk_subscribe(
+            TelegramBulkSubscribeRequest(
+                api_id=1001,
+                api_hash="hash",
+                session_string="session:telegram",
+                dialogs=[
+                    TelegramDialogSelection(
+                        entity_id=101,
+                        entity_type="channel",
+                        title="Alpha Channel",
+                        username="alpha",
+                        access_hash="999",
+                    ),
+                    TelegramDialogSelection(
+                        entity_id=202,
+                        entity_type="chat",
+                        title="Private Group",
+                        display_name="Private Group Feed",
+                    ),
+                ],
+            )
+        )
+        assert bulk.created_count == 1
+        assert bulk.skipped_count == 1
+        assert bulk.created[0].display_name == "Private Group Feed"
+        assert bulk.results[0].status == "skipped"
+        assert "already exists" in str(bulk.results[0].reason)
+        assert bulk.results[1].status == "created"
 
 
 def test_telegram_source_provisioning_wizard_spec() -> None:

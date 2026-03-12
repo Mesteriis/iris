@@ -3,25 +3,17 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from src.apps.market_data.domain import utc_now
 from src.apps.news.constants import (
     DEFAULT_NEWS_POLL_LIMIT,
     NEWS_EVENT_ITEM_INGESTED,
-    NEWS_SOURCE_STATUS_ACTIVE,
-    NEWS_SOURCE_STATUS_DISABLED,
-    NEWS_SOURCE_STATUS_ERROR,
 )
 from src.apps.news.exceptions import InvalidNewsSourceConfigurationError, TelegramOnboardingError
 from src.apps.news.models import NewsItem, NewsSource
-from src.apps.news.plugins import NewsPluginDescriptor, create_news_plugin, get_news_plugin, list_registered_news_plugins
+from src.apps.news.plugins import create_news_plugin, get_news_plugin
+from src.apps.news.query_services import NewsQueryService
+from src.apps.news.repositories import NewsItemRepository, NewsSourceRepository
 from src.apps.news.schemas import (
-    NewsItemLinkRead,
-    NewsItemRead,
-    NewsPluginRead,
     NewsSourceCreate,
     NewsSourceRead,
     NewsSourceUpdate,
@@ -40,6 +32,7 @@ from src.apps.news.schemas import (
     TelegramWizardRead,
     TelegramWizardStepRead,
 )
+from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
 
 _SYMBOL_HINT_PATTERN = re.compile(r"(?<![A-Z0-9])\$([A-Z][A-Z0-9]{1,9})(?![A-Z0-9])")
@@ -57,104 +50,16 @@ def _merge_mapping(base: dict[str, Any], patch: dict[str, Any] | None) -> dict[s
     return merged
 
 
-def _source_status(source: NewsSource) -> str:
-    if not source.enabled:
-        return NEWS_SOURCE_STATUS_DISABLED
-    if source.last_error:
-        return NEWS_SOURCE_STATUS_ERROR
-    return NEWS_SOURCE_STATUS_ACTIVE
-
-
-def _credential_fields_present(credentials: dict[str, Any]) -> list[str]:
-    return sorted([key for key, value in credentials.items() if value not in (None, "", [], {}, ())])
-
-
 def _extract_symbol_hints(text: str) -> list[str]:
     return sorted(set(match.group(1) for match in _SYMBOL_HINT_PATTERN.finditer(text)))
 
 
-def _serialize_plugin(descriptor: NewsPluginDescriptor) -> NewsPluginRead:
-    return NewsPluginRead(
-        name=descriptor.name,
-        display_name=descriptor.display_name,
-        description=descriptor.description,
-        auth_mode=descriptor.auth_mode,
-        supported=descriptor.supported,
-        supports_user_identity=descriptor.supports_user_identity,
-        required_credentials=list(descriptor.required_credentials),
-        required_settings=list(descriptor.required_settings),
-        runtime_dependencies=list(descriptor.runtime_dependencies),
-        unsupported_reason=descriptor.unsupported_reason,
-    )
-
-
-def _serialize_source(source: NewsSource) -> NewsSourceRead:
-    return NewsSourceRead(
-        id=int(source.id),
-        plugin_name=source.plugin_name,
-        display_name=source.display_name,
-        enabled=bool(source.enabled),
-        status=_source_status(source),
-        auth_mode=source.auth_mode,
-        credential_fields_present=_credential_fields_present(dict(source.credentials_json or {})),
-        settings=dict(source.settings_json or {}),
-        cursor=dict(source.cursor_json or {}),
-        last_polled_at=source.last_polled_at,
-        last_error=source.last_error,
-        created_at=source.created_at,
-        updated_at=source.updated_at,
-    )
-
-
-def _serialize_item(item: NewsItem) -> NewsItemRead:
-    return NewsItemRead(
-        id=int(item.id),
-        source_id=int(item.source_id),
-        plugin_name=item.plugin_name,
-        external_id=item.external_id,
-        published_at=item.published_at,
-        author_handle=item.author_handle,
-        channel_name=item.channel_name,
-        title=item.title,
-        content_text=item.content_text,
-        url=item.url,
-        symbol_hints=list(item.symbol_hints or []),
-        payload_json=dict(item.payload_json or {}),
-        normalization_status=item.normalization_status,
-        normalized_payload_json=dict(item.normalized_payload_json or {}),
-        normalized_at=item.normalized_at,
-        sentiment_score=item.sentiment_score,
-        relevance_score=item.relevance_score,
-        links=[
-            NewsItemLinkRead(
-                coin_id=int(link.coin_id),
-                coin_symbol=link.coin_symbol,
-                matched_symbol=link.matched_symbol,
-                link_type=link.link_type,
-                confidence=float(link.confidence),
-            )
-            for link in sorted(item.links, key=lambda current: (-float(current.confidence), int(current.coin_id)))
-        ],
-    )
-
-
 class NewsService:
-    def __init__(self, db: AsyncSession) -> None:
-        self._db = db
-
-    async def list_plugins(self) -> list[NewsPluginRead]:
-        return [_serialize_plugin(plugin_cls.descriptor) for _, plugin_cls in list_registered_news_plugins().items()]
-
-    async def list_sources(self) -> list[NewsSourceRead]:
-        items = (
-            await self._db.execute(
-                select(NewsSource).order_by(NewsSource.plugin_name.asc(), NewsSource.display_name.asc())
-            )
-        ).scalars().all()
-        return [_serialize_source(item) for item in items]
-
-    async def get_source(self, source_id: int) -> NewsSource | None:
-        return await self._db.get(NewsSource, source_id)
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        self._uow = uow
+        self._queries = NewsQueryService(uow.session)
+        self._sources = NewsSourceRepository(uow.session)
+        self._items = NewsItemRepository(uow.session)
 
     async def create_source(self, payload: NewsSourceCreate) -> NewsSourceRead:
         plugin_name = payload.plugin_name.strip().lower()
@@ -162,37 +67,33 @@ class NewsService:
         if plugin_cls is None:
             raise InvalidNewsSourceConfigurationError(f"Unsupported news plugin '{payload.plugin_name}'.")
         plugin_cls.validate_configuration(credentials=payload.credentials, settings=payload.settings)
-        existing = (
-            await self._db.execute(
-                select(NewsSource)
-                .where(
-                    NewsSource.plugin_name == plugin_name,
-                    NewsSource.display_name == payload.display_name.strip(),
-                )
-                .limit(1)
-            )
-        ).scalar_one_or_none()
+        existing = await self._sources.get_by_plugin_display_name(
+            plugin_name=plugin_name,
+            display_name=payload.display_name.strip(),
+        )
         if existing is not None:
             raise InvalidNewsSourceConfigurationError(
                 f"News source '{payload.display_name.strip()}' already exists for plugin '{plugin_name}'."
             )
 
-        source = NewsSource(
-            plugin_name=plugin_name,
-            display_name=payload.display_name.strip(),
-            enabled=payload.enabled,
-            auth_mode=plugin_cls.descriptor.auth_mode,
-            credentials_json=dict(payload.credentials),
-            settings_json=dict(payload.settings),
-            cursor_json={},
+        source = await self._sources.add(
+            NewsSource(
+                plugin_name=plugin_name,
+                display_name=payload.display_name.strip(),
+                enabled=payload.enabled,
+                auth_mode=plugin_cls.descriptor.auth_mode,
+                credentials_json=dict(payload.credentials),
+                settings_json=dict(payload.settings),
+                cursor_json={},
+            )
         )
-        self._db.add(source)
-        await self._db.commit()
-        await self._db.refresh(source)
-        return _serialize_source(source)
+        await self._uow.commit()
+        await self._sources.refresh(source)
+        item = await self._queries.get_source_read_by_id(int(source.id))
+        return NewsSourceRead.model_validate(item if item is not None else source)
 
     async def update_source(self, source_id: int, payload: NewsSourceUpdate) -> NewsSourceRead | None:
-        source = await self.get_source(source_id)
+        source = await self._sources.get_for_update(source_id)
         if source is None:
             return None
 
@@ -206,17 +107,11 @@ class NewsService:
         plugin_cls.validate_configuration(credentials=merged_credentials, settings=merged_settings)
 
         if display_name != source.display_name:
-            existing = (
-                await self._db.execute(
-                    select(NewsSource)
-                    .where(
-                        NewsSource.plugin_name == source.plugin_name,
-                        NewsSource.display_name == display_name,
-                        NewsSource.id != int(source.id),
-                    )
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
+            existing = await self._sources.get_by_plugin_display_name(
+                plugin_name=source.plugin_name,
+                display_name=display_name,
+                exclude_source_id=int(source.id),
+            )
             if existing is not None:
                 raise InvalidNewsSourceConfigurationError(
                     f"News source '{display_name}' already exists for plugin '{source.plugin_name}'."
@@ -234,34 +129,18 @@ class NewsService:
         if payload.clear_error:
             source.last_error = None
 
-        await self._db.commit()
-        await self._db.refresh(source)
-        return _serialize_source(source)
+        await self._uow.commit()
+        await self._sources.refresh(source)
+        item = await self._queries.get_source_read_by_id(int(source.id))
+        return NewsSourceRead.model_validate(item if item is not None else source)
 
     async def delete_source(self, source_id: int) -> bool:
-        source = await self.get_source(source_id)
+        source = await self._sources.get_for_update(source_id)
         if source is None:
             return False
-        await self._db.delete(source)
-        await self._db.commit()
+        await self._sources.delete(source)
+        await self._uow.commit()
         return True
-
-    async def list_items(
-        self,
-        *,
-        source_id: int | None = None,
-        limit: int = DEFAULT_NEWS_POLL_LIMIT,
-    ) -> list[NewsItemRead]:
-        stmt = (
-            select(NewsItem)
-            .options(selectinload(NewsItem.links))
-            .order_by(NewsItem.published_at.desc())
-            .limit(limit)
-        )
-        if source_id is not None:
-            stmt = stmt.where(NewsItem.source_id == source_id)
-        items = (await self._db.execute(stmt)).scalars().all()
-        return [_serialize_item(item) for item in items]
 
     async def poll_source(
         self,
@@ -269,7 +148,7 @@ class NewsService:
         source_id: int,
         limit: int = DEFAULT_NEWS_POLL_LIMIT,
     ) -> dict[str, object]:
-        source = await self.get_source(source_id)
+        source = await self._sources.get_for_update(source_id)
         if source is None:
             return {"status": "error", "reason": "source_not_found", "source_id": source_id}
         if not source.enabled:
@@ -281,7 +160,7 @@ class NewsService:
         except Exception as exc:
             source.last_error = str(exc)[:255]
             source.last_polled_at = utc_now()
-            await self._db.commit()
+            await self._uow.commit()
             return {
                 "status": "error",
                 "reason": "poll_failed",
@@ -291,50 +170,37 @@ class NewsService:
             }
 
         external_ids = [item.external_id for item in result.items]
-        existing_ids: set[str] = set()
-        if external_ids:
-            existing_ids = set(
-                (
-                    await self._db.execute(
-                        select(NewsItem.external_id)
-                        .where(NewsItem.source_id == source_id, NewsItem.external_id.in_(external_ids))
-                    )
-                ).scalars().all()
-            )
+        existing_ids = await self._items.list_existing_external_ids(source_id=source_id, external_ids=external_ids)
 
         created_items: list[NewsItem] = []
         for item in result.items:
             if item.external_id in existing_ids:
                 continue
-            created = NewsItem(
-                source_id=int(source.id),
-                plugin_name=source.plugin_name,
-                external_id=item.external_id,
-                published_at=item.published_at,
-                author_handle=item.author_handle,
-                channel_name=item.channel_name,
-                title=item.title,
-                content_text=item.content_text,
-                url=item.url,
-                symbol_hints=_extract_symbol_hints(item.content_text),
-                payload_json=item.payload_json,
-                normalization_status="pending",
-                normalized_payload_json={},
+            created_items.append(
+                NewsItem(
+                    source_id=int(source.id),
+                    plugin_name=source.plugin_name,
+                    external_id=item.external_id,
+                    published_at=item.published_at,
+                    author_handle=item.author_handle,
+                    channel_name=item.channel_name,
+                    title=item.title,
+                    content_text=item.content_text,
+                    url=item.url,
+                    symbol_hints=_extract_symbol_hints(item.content_text),
+                    payload_json=item.payload_json,
+                    normalization_status="pending",
+                    normalized_payload_json={},
+                )
             )
-            self._db.add(created)
-            created_items.append(created)
 
+        await self._items.add_many(created_items)
         source.cursor_json = dict(result.next_cursor)
         source.last_polled_at = utc_now()
         source.last_error = None
-        await self._db.commit()
+        await self._uow.commit()
 
         for item in created_items:
-            await self._db.refresh(item)
-            # NOTE:
-            # The event publisher uses a synchronous enqueue surface intentionally.
-            # Redis writes are drained by a background thread, so async polling code
-            # does not block the event loop on stream I/O here.
             publish_event(
                 NEWS_EVENT_ITEM_INGESTED,
                 {
@@ -362,13 +228,7 @@ class NewsService:
         }
 
     async def poll_enabled_sources(self, *, limit_per_source: int = DEFAULT_NEWS_POLL_LIMIT) -> dict[str, object]:
-        rows = (
-            await self._db.execute(
-                select(NewsSource)
-                .where(NewsSource.enabled.is_(True))
-                .order_by(NewsSource.updated_at.asc(), NewsSource.id.asc())
-            )
-        ).scalars().all()
+        rows = await self._sources.list_enabled_for_update()
         items = []
         for source in rows:
             items.append(await self.poll_source(source_id=int(source.id), limit=limit_per_source))
@@ -499,9 +359,8 @@ class TelegramSessionOnboardingService:
 
 
 class TelegramSourceProvisioningService:
-    def __init__(self, db: AsyncSession) -> None:
-        self._db = db
-        self._news = NewsService(db)
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        self._news = NewsService(uow)
 
     async def create_source_from_dialog(self, payload: TelegramSourceFromDialogCreate) -> NewsSourceRead:
         request = self._build_source_request(

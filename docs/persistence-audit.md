@@ -81,48 +81,34 @@ Classification:
 
 #### `apps/hypothesis_engine`
 
-Status: migration-ready and high-value
+Status: migrated on the API/application surface and background entrypoints
 
-- Small async-first domain with existing repository and tests.
-- Current violations:
-  - repository commits on `create_*`.
-  - views instantiate repository directly.
-  - services return ORM-backed responses.
-  - prompt loading still reaches DB directly through helper code.
-  - no explicit read/write contract split.
+- repositories are centralized in [backend/src/apps/hypothesis_engine/repositories.py](/Users/avm/projects/Personal/iris/backend/src/apps/hypothesis_engine/repositories.py)
+- read flows now go through [backend/src/apps/hypothesis_engine/query_services.py](/Users/avm/projects/Personal/iris/backend/src/apps/hypothesis_engine/query_services.py)
+- views, tasks and consumers now coordinate persistence through the shared async UoW
+- read paths default to immutable dataclass models from [backend/src/apps/hypothesis_engine/read_models.py](/Users/avm/projects/Personal/iris/backend/src/apps/hypothesis_engine/read_models.py)
+- persistence logging covers repository, query and transaction events
 
 Classification:
 
-- `move to repository`
-- `move to query service`
-- `replace ORM leakage with typed model`
-- `fix transaction boundary`
-- `add logging`
-
-### Async Domains with Direct Persistence in Services
+- `OK`
 
 #### `apps/news`
 
-Primary files:
+Status: migrated on the API/application surface and background entrypoints
 
-- [backend/src/apps/news/services.py](/Users/avm/projects/Personal/iris/backend/src/apps/news/services.py)
-- [backend/src/apps/news/pipeline.py](/Users/avm/projects/Personal/iris/backend/src/apps/news/pipeline.py)
-- [backend/src/apps/news/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/news/views.py)
-
-Issues:
-
-- service class mixes reads, writes, orchestration, and serialization.
-- direct commits inside service and pipeline.
-- read endpoints serialize ORM entities with `selectinload`, but still depend on ORM models as public contract.
+- repositories are isolated in [backend/src/apps/news/repositories.py](/Users/avm/projects/Personal/iris/backend/src/apps/news/repositories.py)
+- read-only list/detail flows now go through [backend/src/apps/news/query_services.py](/Users/avm/projects/Personal/iris/backend/src/apps/news/query_services.py)
+- immutable read models live in [backend/src/apps/news/read_models.py](/Users/avm/projects/Personal/iris/backend/src/apps/news/read_models.py)
+- source CRUD, polling, normalization and correlation now use the shared async UoW instead of direct session commits
+- views, tasks and stream consumers no longer own raw `AsyncSession` boundaries directly
+- list-item reads explicitly eager-load `links`, eliminating caller-side lazy loading on the public read path
 
 Classification:
 
-- `move to repository`
-- `move to query service`
-- `replace ORM leakage with typed model`
-- `fix transaction boundary`
-- `fix N+1/loading contract`
-- `add logging`
+- `OK`
+
+### Async Domains with Direct Persistence in Services
 
 #### `apps/market_structure`
 
@@ -210,11 +196,11 @@ Priority note:
 
 Direct session injection exists in multiple route modules, including:
 
-- [backend/src/apps/hypothesis_engine/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/hypothesis_engine/views.py)
-- [backend/src/apps/control_plane/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/control_plane/views.py)
-- [backend/src/apps/news/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/news/views.py)
 - [backend/src/apps/market_structure/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_structure/views.py)
 - [backend/src/apps/market_data/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/views.py)
+- [backend/src/apps/predictions/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/predictions/views.py)
+- [backend/src/apps/indicators/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/indicators/views.py)
+- [backend/src/apps/patterns/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/views.py)
 
 Required action:
 
@@ -224,8 +210,7 @@ Required action:
 
 Representative offenders:
 
-- [backend/src/apps/hypothesis_engine/repos/hypothesis_repo.py](/Users/avm/projects/Personal/iris/backend/src/apps/hypothesis_engine/repos/hypothesis_repo.py)
-- [backend/src/apps/news/services.py](/Users/avm/projects/Personal/iris/backend/src/apps/news/services.py)
+- [backend/src/apps/anomalies/services/anomaly_service.py](/Users/avm/projects/Personal/iris/backend/src/apps/anomalies/services/anomaly_service.py)
 - [backend/src/apps/market_structure/services.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_structure/services.py)
 - [backend/src/apps/market_data/services.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/services.py)
 - [backend/src/apps/patterns/selectors.py](/Users/avm/projects/Personal/iris/backend/src/apps/patterns/selectors.py)
@@ -241,8 +226,8 @@ Required action:
 
 Representative offenders:
 
-- control-plane services/views return ORM routes and drafts.
-- hypothesis views return ORM prompt/hypothesis/eval entities through Pydantic.
+- `market_structure` and `market_data` still serialize ORM-backed state inside service/view logic.
+- `anomalies` selectors still return ORM entities.
 - selectors in `patterns`, `signals`, and `portfolio` return `dict[str, Any]`.
 
 Required action:
@@ -264,29 +249,19 @@ Assessment:
 
 ### Logging Gap
 
-Persistence operations currently lack a unified logger. There is no shared structured logging for:
-
-- repository/query entry points
-- transaction begin/commit/rollback
-- raw SQL fallback/exception paths
-- lock/select-for-update flows
-- expensive read paths
-
-Required action:
-
-- introduce a shared persistence logger under `core/db`.
+Shared persistence logging now exists under `core/db` and is exercised in migrated domains. Remaining gaps are concentrated in unmigrated domains, where repository/query abstractions are still absent and DB access therefore bypasses the structured logger.
 
 ## Migration Order
 
 Recommended rollout order:
 
-1. shared persistence foundation in `core/db`
-2. `apps/hypothesis_engine`
-3. `apps/control_plane`
-4. `apps/news`
-5. `apps/market_structure`
-6. `apps/market_data`
-7. sync-heavy analytical domains (`indicators`, `patterns`, `signals`, `portfolio`, `predictions`, `cross_market`)
+1. completed: shared persistence foundation in `core/db`
+2. completed: `apps/hypothesis_engine`
+3. completed: `apps/control_plane`
+4. completed: `apps/news`
+5. next: `apps/market_structure`
+6. next: `apps/market_data`
+7. later: sync-heavy analytical domains (`indicators`, `patterns`, `signals`, `portfolio`, `predictions`, `cross_market`)
 
 ## Current Behavior To Preserve
 

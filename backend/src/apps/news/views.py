@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.news.exceptions import InvalidNewsSourceConfigurationError, TelegramOnboardingError, UnsupportedNewsPluginError
+from src.apps.news.query_services import NewsQueryService
 from src.apps.news.schemas import (
     NewsItemRead,
     NewsPluginRead,
@@ -22,28 +22,31 @@ from src.apps.news.schemas import (
     TelegramWizardRead,
 )
 from src.apps.news.services import NewsService, TelegramSessionOnboardingService, TelegramSourceProvisioningService
-from src.core.db.session import get_db
+from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 
 router = APIRouter(tags=["news"])
+DB_UOW = Depends(get_uow)
 
 
 @router.get("/news/plugins", response_model=list[NewsPluginRead])
-async def read_news_plugins(db: AsyncSession = Depends(get_db)) -> list[NewsPluginRead]:
-    return await NewsService(db).list_plugins()
+async def read_news_plugins(uow: BaseAsyncUnitOfWork = DB_UOW) -> list[NewsPluginRead]:
+    items = await NewsQueryService(uow.session).list_plugins()
+    return [NewsPluginRead.model_validate(item) for item in items]
 
 
 @router.get("/news/sources", response_model=list[NewsSourceRead])
-async def read_news_sources(db: AsyncSession = Depends(get_db)) -> list[NewsSourceRead]:
-    return await NewsService(db).list_sources()
+async def read_news_sources(uow: BaseAsyncUnitOfWork = DB_UOW) -> list[NewsSourceRead]:
+    items = await NewsQueryService(uow.session).list_sources()
+    return [NewsSourceRead.model_validate(item) for item in items]
 
 
 @router.post("/news/sources", response_model=NewsSourceRead, status_code=status.HTTP_201_CREATED)
 async def create_news_source(
     payload: NewsSourceCreate,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> NewsSourceRead:
     try:
-        return await NewsService(db).create_source(payload)
+        return await NewsService(uow).create_source(payload)
     except (InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -52,10 +55,10 @@ async def create_news_source(
 async def patch_news_source(
     source_id: int,
     payload: NewsSourceUpdate,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> NewsSourceRead:
     try:
-        updated = await NewsService(db).update_source(source_id, payload)
+        updated = await NewsService(uow).update_source(source_id, payload)
     except (InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if updated is None:
@@ -64,8 +67,8 @@ async def patch_news_source(
 
 
 @router.delete("/news/sources/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_news_source(source_id: int, db: AsyncSession = Depends(get_db)) -> None:
-    deleted = await NewsService(db).delete_source(source_id)
+async def delete_news_source(source_id: int, uow: BaseAsyncUnitOfWork = DB_UOW) -> None:
+    deleted = await NewsService(uow).delete_source(source_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"News source '{source_id}' was not found.")
 
@@ -74,20 +77,21 @@ async def delete_news_source(source_id: int, db: AsyncSession = Depends(get_db))
 async def read_news_items(
     source_id: int | None = Query(default=None, ge=1),
     limit: int = Query(default=50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> list[NewsItemRead]:
-    return await NewsService(db).list_items(source_id=source_id, limit=limit)
+    items = await NewsQueryService(uow.session).list_items(source_id=source_id, limit=limit)
+    return [NewsItemRead.model_validate(item) for item in items]
 
 
 @router.post("/news/sources/{source_id}/jobs/run", status_code=status.HTTP_202_ACCEPTED)
 async def run_news_source_job(
     source_id: int,
     limit: int = Query(default=50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> dict[str, object]:
     from src.apps.news.tasks import poll_news_source_job
 
-    source = await NewsService(db).get_source(source_id)
+    source = await NewsQueryService(uow.session).get_source_read_by_id(source_id)
     if source is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"News source '{source_id}' was not found.")
 
@@ -151,10 +155,10 @@ async def read_telegram_wizard() -> TelegramWizardRead:
 )
 async def create_telegram_source_from_dialog(
     payload: TelegramSourceFromDialogCreate,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> NewsSourceRead:
     try:
-        return await TelegramSourceProvisioningService(db).create_source_from_dialog(payload)
+        return await TelegramSourceProvisioningService(uow).create_source_from_dialog(payload)
     except InvalidNewsSourceConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -166,6 +170,6 @@ async def create_telegram_source_from_dialog(
 )
 async def bulk_subscribe_telegram_sources(
     payload: TelegramBulkSubscribeRequest,
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> TelegramBulkSubscribeRead:
-    return await TelegramSourceProvisioningService(db).bulk_subscribe(payload)
+    return await TelegramSourceProvisioningService(uow).bulk_subscribe(payload)

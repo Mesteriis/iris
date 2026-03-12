@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from src.apps.news.pipeline import NewsCorrelationService, NewsNormalizationService
 from src.core.db.session import AsyncSessionLocal
+from src.core.db.uow import AsyncUnitOfWork
 from src.runtime.streams.types import IrisEvent
 
 
@@ -15,8 +16,8 @@ class NewsNormalizationConsumer:
         item_id = int(event.payload.get("item_id") or 0)
         if item_id <= 0:
             return
-        async with self._session_factory() as db:
-            await NewsNormalizationService(db).normalize_item(item_id=item_id)
+        async with AsyncUnitOfWork(session_factory=self._session_factory) as uow:
+            await NewsNormalizationService(uow).normalize_item(item_id=item_id)
 
 
 class NewsCorrelationConsumer:
@@ -29,8 +30,8 @@ class NewsCorrelationConsumer:
         item_id = int(event.payload.get("item_id") or 0)
         if item_id <= 0:
             return
-        async with self._session_factory() as db:
-            await NewsCorrelationService(db).correlate_item(item_id=item_id)
+        async with AsyncUnitOfWork(session_factory=self._session_factory) as uow:
+            await NewsCorrelationService(uow).correlate_item(item_id=item_id)
 
 
 __all__ = ["NewsCorrelationConsumer", "NewsNormalizationConsumer"]

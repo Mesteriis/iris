@@ -4,11 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.apps.market_data.domain import utc_now
-from src.apps.market_data.models import Coin
 from src.apps.news.constants import (
     NEWS_EVENT_ITEM_NORMALIZED,
     NEWS_EVENT_SYMBOL_CORRELATION_UPDATED,
@@ -19,6 +15,8 @@ from src.apps.news.constants import (
     NEWS_TOPIC_KEYWORDS,
 )
 from src.apps.news.models import NewsItem, NewsItemLink
+from src.apps.news.repositories import NewsItemLinkRepository, NewsItemRepository, NewsMarketDataRepository
+from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
 
 _UPPERCASE_TOKEN_PATTERN = re.compile(r"\b[A-Z]{2,10}\b")
@@ -103,11 +101,13 @@ def _quote_priority(symbol: str) -> int:
 
 
 class NewsNormalizationService:
-    def __init__(self, db: AsyncSession) -> None:
-        self._db = db
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        self._uow = uow
+        self._items = NewsItemRepository(uow.session)
+        self._market = NewsMarketDataRepository(uow.session)
 
     async def normalize_item(self, *, item_id: int) -> dict[str, object]:
-        item = await self._db.get(NewsItem, item_id)
+        item = await self._items.get_for_update(item_id)
         if item is None:
             return {"status": "skipped", "reason": "item_not_found", "item_id": int(item_id)}
 
@@ -150,13 +150,12 @@ class NewsNormalizationService:
             item.normalized_at = utc_now()
             item.sentiment_score = round(sentiment, 4)
             item.relevance_score = round(relevance, 4)
-            await self._db.commit()
-            await self._db.refresh(item)
+            await self._uow.commit()
         except Exception as exc:
             item.normalization_status = NEWS_NORMALIZATION_STATUS_ERROR
             item.normalized_payload_json = {"error": str(exc)[:255]}
             item.normalized_at = utc_now()
-            await self._db.commit()
+            await self._uow.commit()
             return {
                 "status": "error",
                 "reason": "normalization_failed",
@@ -187,32 +186,28 @@ class NewsNormalizationService:
         }
 
     async def _load_coin_aliases(self) -> list[CoinAlias]:
-        rows = (
-            await self._db.execute(
-                select(Coin.id, Coin.symbol, Coin.name, Coin.sort_order)
-                .where(Coin.deleted_at.is_(None), Coin.enabled.is_(True))
-                .order_by(Coin.sort_order.asc(), Coin.symbol.asc())
-            )
-        ).all()
+        rows = await self._market.list_coin_aliases()
         return [
             CoinAlias(
-                coin_id=int(row.id),
-                coin_symbol=str(row.symbol),
-                coin_name=str(row.name),
-                canonical_symbol=_canonical_symbol(str(row.symbol)),
-                sort_order=int(getattr(row, "sort_order", 0) or 0),
-                aliases=_symbol_aliases(str(row.symbol)),
+                coin_id=int(row.coin_id),
+                coin_symbol=str(row.coin_symbol),
+                coin_name=str(row.coin_name),
+                canonical_symbol=_canonical_symbol(str(row.coin_symbol)),
+                sort_order=int(row.sort_order),
+                aliases=_symbol_aliases(str(row.coin_symbol)),
             )
             for row in rows
         ]
 
 
 class NewsCorrelationService:
-    def __init__(self, db: AsyncSession) -> None:
-        self._db = db
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        self._uow = uow
+        self._items = NewsItemRepository(uow.session)
+        self._links = NewsItemLinkRepository(uow.session)
 
     async def correlate_item(self, *, item_id: int) -> dict[str, object]:
-        item = await self._db.get(NewsItem, item_id)
+        item = await self._items.get_for_update(item_id)
         if item is None:
             return {"status": "skipped", "reason": "item_not_found", "item_id": int(item_id)}
 
@@ -223,9 +218,9 @@ class NewsCorrelationService:
                 + list((item.normalized_payload_json or {}).get("detected_symbols", []))
             )
         }
-        aliases = await NewsNormalizationService(self._db)._load_coin_aliases()
+        aliases = await NewsNormalizationService(self._uow)._load_coin_aliases()
         lowered_text = _clean_text(item.title, item.content_text, item.channel_name).lower()
-        await self._db.execute(delete(NewsItemLink).where(NewsItemLink.news_item_id == int(item.id)))
+        await self._links.delete_by_item_id(int(item.id))
 
         created = 0
         winners: dict[str, tuple[tuple[int, int, int], CoinAlias, str, str, float]] = {}
@@ -267,8 +262,9 @@ class NewsCorrelationService:
                     confidence,
                 )
 
+        created_links: list[NewsItemLink] = []
         for _rank, alias, matched_symbol, link_type, confidence in winners.values():
-            self._db.add(
+            created_links.append(
                 NewsItemLink(
                     news_item_id=int(item.id),
                     coin_id=alias.coin_id,
@@ -280,14 +276,9 @@ class NewsCorrelationService:
             )
             created += 1
 
-        await self._db.commit()
-        links = (
-            await self._db.execute(
-                select(NewsItemLink)
-                .where(NewsItemLink.news_item_id == int(item.id))
-                .order_by(NewsItemLink.confidence.desc(), NewsItemLink.coin_id.asc())
-            )
-        ).scalars().all()
+        await self._links.add_many(created_links)
+        await self._uow.commit()
+        links = sorted(created_links, key=lambda current: (-float(current.confidence), int(current.coin_id)))
         for link in links:
             publish_event(
                 NEWS_EVENT_SYMBOL_CORRELATION_UPDATED,

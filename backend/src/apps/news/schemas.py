@@ -18,6 +18,8 @@ class NewsPluginRead(BaseModel):
     runtime_dependencies: list[str] = Field(default_factory=list)
     unsupported_reason: str | None = None
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class NewsSourceCreate(BaseModel):
     plugin_name: str

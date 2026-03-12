@@ -9,8 +9,17 @@ from sqlalchemy import select
 
 from src.apps.news.models import NewsItem, NewsItemLink, NewsSource
 from src.core.db.session import SessionLocal
+from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
+
+
+def _run_topology_dispatcher() -> None:
+    worker = create_topology_dispatcher_consumer()
+    try:
+        worker.run()
+    finally:
+        worker.close()
 
 
 @pytest.mark.asyncio
@@ -52,6 +61,10 @@ async def test_news_pipeline_normalizes_and_creates_symbol_links(seeded_market, 
         db.close()
 
     ctx = multiprocessing.get_context("spawn")
+    dispatcher_worker = ctx.Process(
+        target=_run_topology_dispatcher,
+        daemon=True,
+    )
     normalization_worker = ctx.Process(
         target=run_worker_loop,
         args=("news_normalization_workers",),
@@ -62,6 +75,7 @@ async def test_news_pipeline_normalizes_and_creates_symbol_links(seeded_market, 
         args=("news_correlation_workers",),
         daemon=True,
     )
+    dispatcher_worker.start()
     normalization_worker.start()
     correlation_worker.start()
     try:
@@ -125,7 +139,9 @@ async def test_news_pipeline_normalizes_and_creates_symbol_links(seeded_market, 
         finally:
             client.close()
     finally:
+        dispatcher_worker.terminate()
         normalization_worker.terminate()
         correlation_worker.terminate()
+        dispatcher_worker.join(timeout=2.0)
         normalization_worker.join(timeout=2.0)
         correlation_worker.join(timeout=2.0)

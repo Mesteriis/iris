@@ -195,10 +195,13 @@ Initial rollout completed in this refactor pass:
   - explicit async unit of work
   - session-wrapping unit of work for tests and externally managed sessions
   - shared persistence logger helpers
-- first fully migrated domain: `apps/hypothesis_engine`
+- migrated domains currently covered by the standard:
+  - `apps/hypothesis_engine`
+  - `apps/control_plane`
+  - `apps/news`
   - repository/query split
   - immutable read models for read paths
-  - centralized transaction ownership in services/tasks/views
+  - centralized transaction ownership in services/tasks/views/consumers
   - persistence logging hooks
 
 Remaining domains are tracked in [docs/persistence-audit.md](/Users/avm/projects/Personal/iris/docs/persistence-audit.md).
