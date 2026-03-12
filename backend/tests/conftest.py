@@ -20,7 +20,7 @@ from alembic.config import Config
 import alembic.command as command
 sys.path = _ORIGINAL_SYS_PATH
 from redis import Redis
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 os.environ.setdefault("EVENT_STREAM_NAME", "iris_events_test")
 
@@ -329,6 +329,42 @@ def isolated_control_plane_state() -> Iterator[None]:
             route.event_definition_id = int(snapshot["event_definition_id"])
             route.consumer_id = int(snapshot["consumer_id"])
         db.commit()
+        db.close()
+
+
+@pytest.fixture(autouse=True)
+def ensure_control_plane_audit_seed() -> Iterator[None]:
+    db = SessionLocal()
+    try:
+        audit_count = int(db.scalar(select(func.count()).select_from(EventRouteAuditLog)) or 0)
+        version = db.scalar(select(TopologyConfigVersion).where(TopologyConfigVersion.version_number == 1).limit(1))
+        if audit_count == 0 and version is not None:
+            routes = db.scalars(select(EventRoute).order_by(EventRoute.id.asc())).all()
+            for route in routes:
+                db.add(
+                    EventRouteAuditLog(
+                        route_id=int(route.id),
+                        route_key_snapshot=route.route_key,
+                        draft_id=None,
+                        topology_version_id=int(version.id),
+                        action="bootstrapped",
+                        actor="system",
+                        actor_mode="control",
+                        reason="legacy_runtime_router_import",
+                        before_json={},
+                        after_json={
+                            "event_definition_id": int(route.event_definition_id),
+                            "consumer_id": int(route.consumer_id),
+                            "status": route.status,
+                            "scope_type": route.scope_type,
+                            "environment": route.environment,
+                        },
+                        context_json={"source": "legacy_runtime_router", "test_rehydrated": True},
+                    )
+                )
+            db.commit()
+        yield
+    finally:
         db.close()
 
 

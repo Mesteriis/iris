@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Mapping
 
 from src.apps.control_plane.enums import (
@@ -177,15 +178,66 @@ class TopologyDiffItem:
     after: dict[str, Any]
 
 
+@dataclass(slots=True, frozen=True)
+class EventDefinitionSnapshot:
+    event_type: str
+    domain: str
+    is_control_event: bool = False
+
+
+@dataclass(slots=True, frozen=True)
+class EventConsumerSnapshot:
+    consumer_key: str
+    delivery_stream: str
+    compatible_event_types: tuple[str, ...]
+    supports_shadow: bool = False
+    settings: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True, frozen=True)
+class EventRouteSnapshot:
+    route_key: str
+    event_type: str
+    consumer_key: str
+    status: EventRouteStatus
+    scope_type: EventRouteScope
+    scope_value: str | None = None
+    environment: str = "*"
+    filters: RouteFilters = field(default_factory=RouteFilters)
+    throttle: RouteThrottle = field(default_factory=RouteThrottle)
+    shadow: RouteShadow = field(default_factory=RouteShadow)
+    notes: str | None = None
+    priority: int = 100
+    system_managed: bool = False
+
+
+@dataclass(slots=True, frozen=True)
+class TopologySnapshot:
+    version_number: int
+    created_at: datetime | None
+    events: dict[str, EventDefinitionSnapshot]
+    consumers: dict[str, EventConsumerSnapshot]
+    routes_by_event_type: dict[str, tuple[EventRouteSnapshot, ...]]
+    coin_symbol_by_id: dict[int, str] = field(default_factory=dict)
+    coin_exchange_by_id: dict[int, str] = field(default_factory=dict)
+
+    def iter_routes(self, event_type: str) -> tuple[EventRouteSnapshot, ...]:
+        return self.routes_by_event_type.get(event_type, ())
+
+
 __all__ = [
     "AuditActor",
     "DraftChangeCommand",
     "DraftCreateCommand",
+    "EventConsumerSnapshot",
+    "EventDefinitionSnapshot",
+    "EventRouteSnapshot",
     "RouteFilters",
     "RouteMutationCommand",
     "RouteShadow",
     "RouteStatusChangeCommand",
     "RouteThrottle",
+    "TopologySnapshot",
     "TopologyDiffItem",
     "build_route_key",
 ]

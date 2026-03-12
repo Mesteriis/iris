@@ -79,6 +79,15 @@ The control-plane application layer now includes repositories and services for:
 - topology snapshot assembly
 - draft storage and preview diffs before publish
 
+The runtime side now also has a dedicated dispatcher/evaluator layer that can consume a topology snapshot and decide delivery based on:
+
+- compatibility contracts
+- route status (`active`, `muted`, `paused`, `throttled`, `shadow`, `disabled`)
+- scope matching
+- route filters
+- throttle windows
+- shadow observe-only behavior
+
 ## Database
 
 The database includes the market-data core plus higher-level analytical domains. Key persisted areas now include:

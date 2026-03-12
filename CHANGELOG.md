@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Runtime control-plane dispatcher and route evaluator under `backend/src/runtime/control_plane` with route-status handling, filter evaluation, shadow/throttle decisions, in-memory dispatch metrics and dedicated pytest coverage.
 - Control-plane repositories and application services for event registry reads, route management, audit logging, topology snapshots and draft preview workflows, with pytest coverage for compatibility validation and change tracking.
 - Event Control Plane storage foundation under `backend/src/apps/control_plane` with persisted `event_definitions`, `event_consumers`, `event_routes`, `event_route_audit_logs`, `topology_config_versions`, `topology_drafts` and `topology_draft_changes`.
 - Alembic migration `20260312_000029` bootstrapping the current hardcoded Redis-stream worker topology into DB-backed event/consumer/route registries plus an initial published topology version and audit trail.

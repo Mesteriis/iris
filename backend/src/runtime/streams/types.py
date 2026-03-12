@@ -64,6 +64,63 @@ class IrisEvent:
         ).hexdigest()
         return f"{self.event_type}:{self.coin_id}:{self.timeframe}:{ensure_utc(self.timestamp).isoformat()}:{payload_hash}"
 
+    @property
+    def event_id(self) -> str:
+        return str(self.payload.get("event_id") or self.idempotency_key)
+
+    @property
+    def causation_id(self) -> str | None:
+        raw = self.payload.get("causation_id")
+        return str(raw) if raw is not None else None
+
+    @property
+    def correlation_id(self) -> str:
+        raw = self.payload.get("correlation_id")
+        if raw is not None:
+            return str(raw)
+        if self.causation_id is not None:
+            return self.causation_id
+        return self.event_id
+
+    @property
+    def parent_event_id(self) -> str | None:
+        raw = self.payload.get("parent_event_id")
+        return str(raw) if raw is not None else None
+
+    @property
+    def producer(self) -> str:
+        raw = self.payload.get("producer")
+        return str(raw) if raw is not None else "runtime.streams.publisher"
+
+    @property
+    def occurred_at(self) -> datetime:
+        raw = self.payload.get("occurred_at")
+        if isinstance(raw, str):
+            return ensure_utc(datetime.fromisoformat(raw))
+        if isinstance(raw, datetime):
+            return ensure_utc(raw)
+        return ensure_utc(self.timestamp)
+
+    @property
+    def symbol(self) -> str | None:
+        raw = self.payload.get("symbol")
+        return str(raw) if raw is not None else None
+
+    @property
+    def exchange(self) -> str | None:
+        raw = self.payload.get("exchange")
+        return str(raw) if raw is not None else None
+
+    @property
+    def confidence(self) -> float | None:
+        raw = self.payload.get("confidence")
+        return float(raw) if raw is not None else None
+
+    @property
+    def metadata(self) -> dict[str, Any]:
+        raw = self.payload.get("metadata")
+        return dict(raw) if isinstance(raw, dict) else {}
+
 
 def serialize_payload(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
