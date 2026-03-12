@@ -46,21 +46,20 @@ These counts are intentionally directional rather than contractual; the importan
 
 #### `apps/control_plane`
 
-Status: partially aligned
+Status: migrated on the API/application surface
 
 - Existing repositories are present in [backend/src/apps/control_plane/repositories.py](/Users/avm/projects/Personal/iris/backend/src/apps/control_plane/repositories.py).
-- Queries already use explicit eager loading for route/detail reads.
-- Remaining issues:
-  - services still own direct `commit()` / `flush()` logic.
-  - read paths still leak ORM entities into views.
-  - no immutable read models or shared persistence logging.
+- Queries now flow through dedicated read services in [backend/src/apps/control_plane/query_services.py](/Users/avm/projects/Personal/iris/backend/src/apps/control_plane/query_services.py).
+- Views now depend on `get_uow()` and no longer take `AsyncSession` directly for caller-facing reads or writes.
+- Read paths now return immutable dataclass models from [backend/src/apps/control_plane/read_models.py](/Users/avm/projects/Personal/iris/backend/src/apps/control_plane/read_models.py), with explicit thawing only at transport/write boundaries.
+- Route and draft mutation services now commit/flush via the shared UoW instead of direct session ownership.
+- Structured persistence logging now covers control-plane repositories, query services and transaction lifecycle events.
+- Remaining follow-up:
+  - [backend/src/apps/control_plane/cache.py](/Users/avm/projects/Personal/iris/backend/src/apps/control_plane/cache.py) still uses its own infrastructure-local session adapter, which is acceptable for now but should eventually adopt the same logging helpers.
 
 Classification:
 
-- `move to query service`
-- `replace ORM leakage with typed model`
-- `fix transaction boundary`
-- `add logging`
+- `OK`
 
 #### `apps/anomalies`
 

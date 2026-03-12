@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,6 +50,14 @@ from src.apps.control_plane.models import (
     TopologyDraft,
     TopologyDraftChange,
 )
+from src.apps.control_plane.query_services import (
+    TopologyDraftQueryService,
+    TopologyObservabilityQueryService,
+    TopologyQueryService,
+    observability_overview_payload,
+    topology_graph_payload,
+    topology_snapshot_payload,
+)
 from src.apps.control_plane.repositories import (
     EventConsumerRepository,
     EventDefinitionRepository,
@@ -61,7 +68,8 @@ from src.apps.control_plane.repositories import (
     TopologyVersionRepository,
 )
 from src.apps.market_data.domain import utc_now
-from src.core.settings import get_settings
+from src.core.db.persistence import thaw_json_value
+from src.core.db.uow import BaseAsyncUnitOfWork
 
 
 def route_to_snapshot(route: EventRoute) -> dict[str, Any]:
@@ -129,32 +137,6 @@ def _command_from_payload(payload: dict[str, Any]) -> RouteMutationCommand:
     )
 
 
-def _parse_datetime(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    return datetime.fromisoformat(value)
-
-
-def _int_value(payload: dict[str, str], key: str) -> int:
-    raw = payload.get(key)
-    return int(raw) if raw is not None else 0
-
-
-def _average_latency(payload: dict[str, str]) -> float | None:
-    count = _int_value(payload, "latency_count")
-    if count <= 0:
-        return None
-    total_raw = payload.get("latency_total_ms")
-    total = float(total_raw) if total_raw is not None else 0.0
-    return round(total / count, 2)
-
-
-def _lag_seconds(now: datetime, observed_at: datetime | None) -> int | None:
-    if observed_at is None:
-        return None
-    return max(int((now - observed_at).total_seconds()), 0)
-
-
 class AuditLogService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -205,20 +187,17 @@ class EventRegistryService:
 
     async def list_compatible_consumers(self, event_type: str) -> list[EventConsumer]:
         consumers = await self._consumers.list_all()
-        return [
-            consumer
-            for consumer in consumers
-            if event_type in set(consumer.compatible_event_types_json or [])
-        ]
+        return [consumer for consumer in consumers if event_type in set(consumer.compatible_event_types_json or [])]
 
 
 class RouteManagementService:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-        self._events = EventDefinitionRepository(session)
-        self._consumers = EventConsumerRepository(session)
-        self._routes = EventRouteRepository(session)
-        self._audit = AuditLogService(session)
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        self._uow = uow
+        self._session = uow.session
+        self._events = EventDefinitionRepository(self._session)
+        self._consumers = EventConsumerRepository(self._session)
+        self._routes = EventRouteRepository(self._session)
+        self._audit = AuditLogService(self._session)
 
     async def list_routes(self) -> list[EventRoute]:
         return await self._routes.list_all()
@@ -256,7 +235,7 @@ class RouteManagementService:
             before={},
             after=route_to_snapshot(route),
         )
-        await self._session.commit()
+        await self._uow.commit()
         publish_control_event(
             CONTROL_ROUTE_CREATED,
             {
@@ -304,7 +283,7 @@ class RouteManagementService:
         route.updated_at = utc_now()
         route.event_definition = event_definition
         route.consumer = consumer
-        await self._session.flush()
+        await self._uow.flush()
         await self._audit.log_route_change(
             route=route,
             route_key=route.route_key,
@@ -313,7 +292,7 @@ class RouteManagementService:
             before=before,
             after=route_to_snapshot(route),
         )
-        await self._session.commit()
+        await self._uow.commit()
         publish_control_event(
             CONTROL_ROUTE_UPDATED,
             {
@@ -342,7 +321,7 @@ class RouteManagementService:
         route.updated_at = utc_now()
         if command.notes is not None:
             route.notes = command.notes
-        await self._session.flush()
+        await self._uow.flush()
         await self._audit.log_route_change(
             route=route,
             route_key=route.route_key,
@@ -351,7 +330,7 @@ class RouteManagementService:
             before=before,
             after=route_to_snapshot(route),
         )
-        await self._session.commit()
+        await self._uow.commit()
         publish_control_event(
             CONTROL_ROUTE_STATUS_CHANGED,
             {
@@ -396,125 +375,19 @@ class RouteManagementService:
 class TopologyService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
-        self._events = EventDefinitionRepository(session)
-        self._consumers = EventConsumerRepository(session)
-        self._routes = EventRouteRepository(session)
         self._versions = TopologyVersionRepository(session)
 
     async def list_routes(self) -> list[EventRoute]:
-        return await self._routes.list_all()
+        return await EventRouteRepository(self._session).list_all()
 
     async def get_latest_version(self) -> TopologyConfigVersion | None:
         return await self._versions.get_latest_published()
 
     async def build_snapshot(self) -> dict[str, Any]:
-        latest_version = await self._versions.get_latest_published()
-        routes = await self._routes.list_all()
-        events = await self._events.list_all()
-        consumers = await self._consumers.list_all()
-        return {
-            "version_number": int(latest_version.version_number) if latest_version is not None else 0,
-            "created_at": latest_version.created_at.isoformat() if latest_version is not None else None,
-            "events": [
-                {
-                    "event_type": event.event_type,
-                    "display_name": event.display_name,
-                    "domain": event.domain,
-                    "is_control_event": bool(event.is_control_event),
-                }
-                for event in events
-            ],
-            "consumers": [
-                {
-                    "consumer_key": consumer.consumer_key,
-                    "display_name": consumer.display_name,
-                    "domain": consumer.domain,
-                    "delivery_stream": consumer.delivery_stream,
-                    "compatible_event_types": list(consumer.compatible_event_types_json or []),
-                }
-                for consumer in consumers
-            ],
-            "routes": [route_to_snapshot(route) for route in routes],
-        }
+        return topology_snapshot_payload(await TopologyQueryService(self._session).build_snapshot())
 
     async def build_graph(self) -> dict[str, Any]:
-        latest_version = await self._versions.get_latest_published()
-        routes = await self._routes.list_all()
-        events = await self._events.list_all()
-        consumers = await self._consumers.list_all()
-
-        nodes = [
-            {
-                "id": f"event:{event.event_type}",
-                "node_type": "event",
-                "key": event.event_type,
-                "label": event.display_name,
-                "domain": event.domain,
-                "metadata": {
-                    "description": event.description,
-                    "is_control_event": bool(event.is_control_event),
-                },
-            }
-            for event in events
-        ]
-        nodes.extend(
-            {
-                "id": f"consumer:{consumer.consumer_key}",
-                "node_type": "consumer",
-                "key": consumer.consumer_key,
-                "label": consumer.display_name,
-                "domain": consumer.domain,
-                "metadata": {
-                    "delivery_stream": consumer.delivery_stream,
-                    "delivery_mode": consumer.delivery_mode,
-                    "supports_shadow": bool(consumer.supports_shadow),
-                    "supported_filter_fields": list(consumer.supported_filter_fields_json or []),
-                    "supported_scopes": list(consumer.supported_scopes_json or []),
-                    "compatible_event_types": list(consumer.compatible_event_types_json or []),
-                },
-            }
-            for consumer in consumers
-        )
-
-        compatibility = {
-            event.event_type: [
-                consumer.consumer_key
-                for consumer in consumers
-                if event.event_type in set(consumer.compatible_event_types_json or [])
-            ]
-            for event in events
-        }
-        edges = [
-            {
-                "id": route.route_key,
-                "route_key": route.route_key,
-                "source": f"event:{route.event_definition.event_type}",
-                "target": f"consumer:{route.consumer.consumer_key}",
-                "status": route.status,
-                "scope_type": route.scope_type,
-                "scope_value": route.scope_value,
-                "environment": route.environment,
-                "filters": dict(route.filters_json or {}),
-                "throttle": dict(route.throttle_config_json or {}),
-                "shadow": dict(route.shadow_config_json or {}),
-                "notes": route.notes,
-                "priority": int(route.priority),
-                "system_managed": bool(route.system_managed),
-                "compatible": route.consumer.consumer_key in compatibility.get(route.event_definition.event_type, []),
-            }
-            for route in routes
-        ]
-        return {
-            "version_number": int(latest_version.version_number) if latest_version is not None else 0,
-            "created_at": latest_version.created_at.isoformat() if latest_version is not None else None,
-            "nodes": nodes,
-            "edges": edges,
-            "palette": {
-                "events": [event.event_type for event in events],
-                "consumers": [consumer.consumer_key for consumer in consumers],
-            },
-            "compatibility": compatibility,
-        }
+        return topology_graph_payload(await TopologyQueryService(self._session).build_graph())
 
 
 class TopologyObservabilityService:
@@ -525,96 +398,27 @@ class TopologyObservabilityService:
         metrics_store: ControlPlaneMetricsStore | None = None,
         dead_consumer_after_seconds: int | None = None,
     ) -> None:
-        settings = get_settings()
-        self._routes = EventRouteRepository(session)
-        self._consumers = EventConsumerRepository(session)
-        self._versions = TopologyVersionRepository(session)
-        self._metrics = metrics_store or ControlPlaneMetricsStore()
-        self._dead_consumer_after_seconds = (
-            int(dead_consumer_after_seconds)
-            if dead_consumer_after_seconds is not None
-            else int(settings.control_plane_dead_consumer_after_seconds)
+        self._query_service = TopologyObservabilityQueryService(
+            session,
+            metrics_store=metrics_store,
+            dead_consumer_after_seconds=dead_consumer_after_seconds,
         )
 
     async def build_overview(self) -> dict[str, Any]:
-        latest_version = await self._versions.get_latest_published()
-        routes = await self._routes.list_all()
-        consumers = await self._consumers.list_all()
-        generated_at = utc_now()
-
-        route_metrics = [
-            await self._build_route_metrics(route, generated_at=generated_at)
-            for route in routes
-        ]
-        consumer_metrics = [
-            await self._build_consumer_metrics(consumer, generated_at=generated_at)
-            for consumer in consumers
-        ]
-        return {
-            "version_number": int(latest_version.version_number) if latest_version is not None else 0,
-            "generated_at": generated_at.isoformat(),
-            "throughput": sum(int(metric["throughput"]) for metric in route_metrics),
-            "failure_count": sum(int(metric["failure_count"]) for metric in route_metrics),
-            "shadow_route_count": sum(1 for route in routes if route.status == EventRouteStatus.SHADOW.value),
-            "muted_route_count": sum(1 for route in routes if route.status == EventRouteStatus.MUTED.value),
-            "dead_consumer_count": sum(1 for consumer in consumer_metrics if bool(consumer["dead"])),
-            "routes": route_metrics,
-            "consumers": consumer_metrics,
-        }
-
-    async def _build_route_metrics(self, route: EventRoute, *, generated_at: datetime) -> dict[str, Any]:
-        raw = await self._metrics.read_route_metrics(route.route_key)
-        last_delivered_at = _parse_datetime(raw.get("last_delivered_at"))
-        last_completed_at = _parse_datetime(raw.get("last_completed_at"))
-        avg_latency_ms = _average_latency(raw)
-        return {
-            "route_key": route.route_key,
-            "event_type": route.event_definition.event_type if route.event_definition is not None else "",
-            "consumer_key": route.consumer.consumer_key if route.consumer is not None else "",
-            "status": route.status,
-            "throughput": _int_value(raw, "delivered_total"),
-            "failure_count": _int_value(raw, "failure_total"),
-            "avg_latency_ms": avg_latency_ms,
-            "last_delivered_at": last_delivered_at.isoformat() if last_delivered_at is not None else None,
-            "last_completed_at": last_completed_at.isoformat() if last_completed_at is not None else None,
-            "lag_seconds": _lag_seconds(generated_at, last_delivered_at),
-            "shadow_count": _int_value(raw, "shadow_total"),
-            "muted": route.status == EventRouteStatus.MUTED.value,
-            "last_reason": raw.get("last_reason"),
-        }
-
-    async def _build_consumer_metrics(self, consumer: EventConsumer, *, generated_at: datetime) -> dict[str, Any]:
-        raw = await self._metrics.read_consumer_metrics(consumer.consumer_key)
-        last_seen_at = _parse_datetime(raw.get("last_seen_at"))
-        last_failure_at = _parse_datetime(raw.get("last_failure_at"))
-        lag_seconds = _lag_seconds(generated_at, last_seen_at)
-        dead = lag_seconds is None or lag_seconds > self._dead_consumer_after_seconds
-        return {
-            "consumer_key": consumer.consumer_key,
-            "domain": consumer.domain,
-            "processed_total": _int_value(raw, "processed_total"),
-            "failure_count": _int_value(raw, "failure_total"),
-            "avg_latency_ms": _average_latency(raw),
-            "last_seen_at": last_seen_at.isoformat() if last_seen_at is not None else None,
-            "last_failure_at": last_failure_at.isoformat() if last_failure_at is not None else None,
-            "lag_seconds": lag_seconds,
-            "dead": dead,
-            "supports_shadow": bool(consumer.supports_shadow),
-            "delivery_stream": consumer.delivery_stream,
-            "last_error": raw.get("last_error"),
-        }
+        return observability_overview_payload(await self._query_service.build_overview())
 
 
 class TopologyDraftService:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-        self._drafts = TopologyDraftRepository(session)
-        self._changes = TopologyDraftChangeRepository(session)
-        self._routes = EventRouteRepository(session)
-        self._events = EventDefinitionRepository(session)
-        self._consumers = EventConsumerRepository(session)
-        self._versions = TopologyVersionRepository(session)
-        self._audit = AuditLogService(session)
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        self._uow = uow
+        self._session = uow.session
+        self._drafts = TopologyDraftRepository(self._session)
+        self._changes = TopologyDraftChangeRepository(self._session)
+        self._routes = EventRouteRepository(self._session)
+        self._events = EventDefinitionRepository(self._session)
+        self._consumers = EventConsumerRepository(self._session)
+        self._versions = TopologyVersionRepository(self._session)
+        self._audit = AuditLogService(self._session)
 
     async def create_draft(self, command: DraftCreateCommand) -> TopologyDraft:
         latest_version = await self._versions.get_latest_published()
@@ -627,7 +431,7 @@ class TopologyDraftService:
             created_by=command.created_by,
         )
         draft = await self._drafts.add(draft)
-        await self._session.commit()
+        await self._uow.commit()
         return draft
 
     async def list_drafts(self) -> list[TopologyDraft]:
@@ -651,73 +455,7 @@ class TopologyDraftService:
         return change
 
     async def preview_diff(self, draft_id: int) -> list[TopologyDiffItem]:
-        draft = await self._require_draft(draft_id)
-        if draft.status != TopologyDraftStatus.DRAFT.value:
-            raise TopologyDraftStateError(f"Draft '{draft_id}' is not editable.")
-
-        live_routes = await self._routes.list_all()
-        route_map = {route.route_key: route_to_snapshot(route) for route in live_routes}
-        changes = await self._changes.list_by_draft(int(draft.id))
-        diff_items: list[TopologyDiffItem] = []
-
-        for change in changes:
-            change_type = TopologyDraftChangeType(change.change_type)
-            payload = dict(change.payload_json or {})
-            target_route_key = change.target_route_key
-            if change_type == TopologyDraftChangeType.ROUTE_CREATED:
-                command = _command_from_payload(payload)
-                after = _command_to_route_snapshot(command)
-                route_map[command.route_key] = after
-                diff_items.append(
-                    TopologyDiffItem(
-                        change_type=change_type,
-                        route_key=command.route_key,
-                        before={},
-                        after=after,
-                    )
-                )
-                continue
-
-            if target_route_key is None:
-                continue
-            before = dict(route_map.get(target_route_key, {}))
-            after = dict(before)
-            if change_type == TopologyDraftChangeType.ROUTE_DELETED:
-                route_map.pop(target_route_key, None)
-                diff_items.append(
-                    TopologyDiffItem(
-                        change_type=change_type,
-                        route_key=target_route_key,
-                        before=before,
-                        after={},
-                    )
-                )
-                continue
-            if change_type == TopologyDraftChangeType.ROUTE_STATUS_CHANGED:
-                after["status"] = str(payload["status"])
-                if payload.get("notes") is not None:
-                    after["notes"] = str(payload["notes"])
-                route_key = target_route_key
-            elif change_type == TopologyDraftChangeType.ROUTE_UPDATED:
-                merged_payload = dict(after)
-                merged_payload.update(payload)
-                command = _command_from_payload(merged_payload)
-                after = _command_to_route_snapshot(command)
-                route_key = command.route_key
-            else:
-                route_key = target_route_key
-            if route_key != target_route_key:
-                route_map.pop(target_route_key, None)
-            route_map[route_key] = after
-            diff_items.append(
-                TopologyDiffItem(
-                    change_type=change_type,
-                    route_key=route_key,
-                    before=before,
-                    after=after,
-                )
-            )
-        return diff_items
+        return list(await TopologyDraftQueryService(self._session).preview_diff(draft_id))
 
     async def apply_draft(self, draft_id: int, *, actor: AuditActor) -> tuple[TopologyDraft, TopologyConfigVersion]:
         draft = await self._require_draft(draft_id)
@@ -758,8 +496,8 @@ class TopologyDraftService:
         draft.applied_version_id = int(version.id)
         draft.applied_at = utc_now()
         draft.updated_at = draft.applied_at
-        await self._session.flush()
-        await self._session.commit()
+        await self._uow.flush()
+        await self._uow.commit()
 
         publish_control_event(
             CONTROL_TOPOLOGY_PUBLISHED,
@@ -791,15 +529,15 @@ class TopologyDraftService:
                 route_key=item.route_key,
                 action=EventAuditAction.DRAFT_DISCARDED.value,
                 actor=actor,
-                before=dict(item.before),
-                after=dict(item.after),
+                before=thaw_json_value(item.before),
+                after=thaw_json_value(item.after),
                 draft_id=int(draft.id),
             )
         draft.status = TopologyDraftStatus.DISCARDED.value
         draft.discarded_at = utc_now()
         draft.updated_at = draft.discarded_at
-        await self._session.flush()
-        await self._session.commit()
+        await self._uow.flush()
+        await self._uow.commit()
         return draft
 
     async def _apply_change(
@@ -832,7 +570,7 @@ class TopologyDraftService:
             if payload.get("notes") is not None:
                 route.notes = str(payload["notes"])
             route.updated_at = utc_now()
-            await self._session.flush()
+            await self._uow.flush()
             await self._audit.log_route_change(
                 route=route,
                 route_key=route.route_key,
@@ -882,8 +620,7 @@ class TopologyDraftService:
         return draft
 
     async def _build_published_snapshot(self, *, version: TopologyConfigVersion) -> dict[str, Any]:
-        topology_service = TopologyService(self._session)
-        snapshot = await topology_service.build_snapshot()
+        snapshot = topology_snapshot_payload(await TopologyQueryService(self._session).build_snapshot())
         snapshot["version_number"] = int(version.version_number)
         snapshot["created_at"] = version.created_at.isoformat() if version.created_at is not None else None
         return snapshot
@@ -964,7 +701,7 @@ class TopologyDraftService:
         route.updated_at = utc_now()
         route.event_definition = event_definition
         route.consumer = consumer
-        await self._session.flush()
+        await self._uow.flush()
         await self._audit.log_route_change(
             route=route,
             route_key=route.route_key,

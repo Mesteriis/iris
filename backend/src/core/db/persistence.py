@@ -30,6 +30,14 @@ def freeze_json_value(value: Any) -> Any:
     return value
 
 
+def thaw_json_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): thaw_json_value(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        return [thaw_json_value(item) for item in value]
+    return value
+
+
 def sanitize_log_value(value: Any) -> Any:
     if isinstance(value, Mapping):
         sanitized: dict[str, Any] = {}
@@ -111,4 +119,5 @@ __all__ = [
     "PersistenceComponent",
     "freeze_json_value",
     "sanitize_log_value",
+    "thaw_json_value",
 ]

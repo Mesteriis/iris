@@ -87,6 +87,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- `control_plane` HTTP reads now go through dedicated query services with immutable read models, while route/draft mutations run under the shared async UoW instead of direct session ownership in views and services.
 - `hypothesis_engine` HTTP routes, services, task job and stream consumer now use the shared UoW and query/repository boundaries instead of direct repository commits and route-level session-driven reads.
 - README and architecture docs now document the new persistence standard, including where DB access is allowed, how transaction ownership works and when raw SQL is still acceptable.
 - Control-plane test coverage now includes draft preview/apply paths for route updates and deletions, not only route creation and status changes.

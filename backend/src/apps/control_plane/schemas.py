@@ -15,7 +15,7 @@ from src.apps.control_plane.enums import (
 
 
 class RouteFiltersPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
 
     symbol: list[str] = Field(default_factory=list)
     timeframe: list[int] = Field(default_factory=list)
@@ -25,14 +25,14 @@ class RouteFiltersPayload(BaseModel):
 
 
 class RouteThrottlePayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
 
     limit: int | None = Field(default=None, ge=1)
     window_seconds: int = Field(default=60, ge=1)
 
 
 class RouteShadowPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
 
     enabled: bool = False
     sample_rate: float = Field(default=1.0, ge=0.0, le=1.0)
@@ -71,6 +71,8 @@ class EventConsumerRead(BaseModel):
 
 
 class CompatibleConsumerRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     consumer_key: str
     display_name: str
     domain: str
@@ -80,6 +82,8 @@ class CompatibleConsumerRead(BaseModel):
 
 
 class EventRouteRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     route_key: str
     event_type: str
@@ -123,6 +127,8 @@ class EventRouteStatusWrite(BaseModel):
 
 
 class TopologyNodeRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     node_type: Literal["event", "consumer"]
     key: str
@@ -132,6 +138,8 @@ class TopologyNodeRead(BaseModel):
 
 
 class TopologyEdgeRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     route_key: str
     source: str
@@ -150,6 +158,8 @@ class TopologyEdgeRead(BaseModel):
 
 
 class TopologyGraphRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     version_number: int
     created_at: datetime | None = None
     nodes: list[TopologyNodeRead]
@@ -159,6 +169,8 @@ class TopologyGraphRead(BaseModel):
 
 
 class TopologySnapshotRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     version_number: int
     created_at: datetime | None = None
     events: list[dict[str, Any]]
@@ -192,6 +204,8 @@ class TopologyDraftCreateWrite(BaseModel):
 
 
 class TopologyDraftLifecycleRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     draft: TopologyDraftRead
     published_version_number: int | None = None
 
@@ -217,6 +231,8 @@ class TopologyDraftChangeRead(BaseModel):
 
 
 class TopologyDiffItemRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     change_type: TopologyDraftChangeType
     route_key: str
     before: dict[str, Any]
@@ -224,6 +240,8 @@ class TopologyDiffItemRead(BaseModel):
 
 
 class EventRouteAuditLogRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     route_key_snapshot: str
     action: str
@@ -237,6 +255,8 @@ class EventRouteAuditLogRead(BaseModel):
 
 
 class RouteObservabilityRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     route_key: str
     event_type: str
     consumer_key: str
@@ -253,6 +273,8 @@ class RouteObservabilityRead(BaseModel):
 
 
 class ConsumerObservabilityRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     consumer_key: str
     domain: str
     processed_total: int
@@ -268,6 +290,8 @@ class ConsumerObservabilityRead(BaseModel):
 
 
 class ObservabilityOverviewRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     version_number: int
     generated_at: datetime
     throughput: int

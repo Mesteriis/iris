@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.control_plane.contracts import (
     AuditActor,
@@ -21,10 +22,19 @@ from src.apps.control_plane.exceptions import (
     TopologyDraftNotFound,
     TopologyDraftStateError,
 )
-from src.apps.control_plane.models import EventRoute, EventRouteAuditLog, TopologyDraft, TopologyDraftChange
+from src.apps.control_plane.query_services import (
+    AuditLogQueryService,
+    EventRegistryQueryService,
+    RouteQueryService,
+    TopologyDraftQueryService,
+    TopologyObservabilityQueryService,
+    TopologyQueryService,
+    observability_overview_payload,
+    topology_graph_payload,
+    topology_snapshot_payload,
+)
 from src.apps.control_plane.schemas import (
     CompatibleConsumerRead,
-    ConsumerObservabilityRead,
     EventConsumerRead,
     EventDefinitionRead,
     EventRouteAuditLogRead,
@@ -32,10 +42,6 @@ from src.apps.control_plane.schemas import (
     EventRouteRead,
     EventRouteStatusWrite,
     ObservabilityOverviewRead,
-    RouteFiltersPayload,
-    RouteObservabilityRead,
-    RouteShadowPayload,
-    RouteThrottlePayload,
     TopologyDiffItemRead,
     TopologyDraftChangeRead,
     TopologyDraftChangeWrite,
@@ -45,19 +51,13 @@ from src.apps.control_plane.schemas import (
     TopologyGraphRead,
     TopologySnapshotRead,
 )
-from src.apps.control_plane.services import (
-    AuditLogService,
-    EventRegistryService,
-    RouteManagementService,
-    TopologyDraftService,
-    TopologyObservabilityService,
-    TopologyService,
-)
-from src.core.db.session import get_db
+from src.apps.control_plane.services import RouteManagementService, TopologyDraftService
+from src.core.db.persistence import thaw_json_value
+from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 from src.core.settings import get_settings
 
 router = APIRouter(prefix="/control-plane", tags=["control-plane"])
-DB_SESSION = Depends(get_db)
+DB_UOW = Depends(get_uow)
 
 
 def _parse_access_mode(value: str | None) -> TopologyAccessMode:
@@ -126,124 +126,179 @@ def _route_payload_to_command(payload: EventRouteMutationWrite) -> RouteMutation
     )
 
 
-def _route_read(route: EventRoute) -> EventRouteRead:
-    return EventRouteRead(
-        id=int(route.id),
-        route_key=route.route_key,
-        event_type=route.event_definition.event_type if route.event_definition is not None else "",
-        consumer_key=route.consumer.consumer_key if route.consumer is not None else "",
-        status=route.status,
-        scope_type=route.scope_type,
-        scope_value=route.scope_value,
-        environment=route.environment,
-        filters=RouteFiltersPayload.model_validate(route.filters_json or {}),
-        throttle=RouteThrottlePayload.model_validate(route.throttle_config_json or {}),
-        shadow=RouteShadowPayload.model_validate(route.shadow_config_json or {}),
-        notes=route.notes,
-        priority=int(route.priority),
-        system_managed=bool(route.system_managed),
-        created_at=route.created_at,
-        updated_at=route.updated_at,
+def _event_definition_read(item: Any) -> EventDefinitionRead:
+    return EventDefinitionRead.model_validate(
+        {
+            "id": int(item.id),
+            "event_type": item.event_type,
+            "display_name": item.display_name,
+            "domain": item.domain,
+            "description": item.description,
+            "is_control_event": bool(item.is_control_event),
+            "payload_schema_json": thaw_json_value(item.payload_schema_json),
+            "routing_hints_json": thaw_json_value(item.routing_hints_json),
+        }
     )
 
 
-def _draft_read(draft: TopologyDraft) -> TopologyDraftRead:
+def _event_consumer_read(item: Any) -> EventConsumerRead:
+    return EventConsumerRead.model_validate(
+        {
+            "id": int(item.id),
+            "consumer_key": item.consumer_key,
+            "display_name": item.display_name,
+            "domain": item.domain,
+            "description": item.description,
+            "implementation_key": item.implementation_key,
+            "delivery_mode": item.delivery_mode,
+            "delivery_stream": item.delivery_stream,
+            "supports_shadow": bool(item.supports_shadow),
+            "compatible_event_types_json": list(item.compatible_event_types_json),
+            "supported_filter_fields_json": list(item.supported_filter_fields_json),
+            "supported_scopes_json": list(item.supported_scopes_json),
+            "settings_json": thaw_json_value(item.settings_json),
+        }
+    )
+
+
+def _compatible_consumer_read(item: Any) -> CompatibleConsumerRead:
+    return CompatibleConsumerRead.model_validate(
+        {
+            "consumer_key": item.consumer_key,
+            "display_name": item.display_name,
+            "domain": item.domain,
+            "supports_shadow": bool(item.supports_shadow),
+            "supported_filter_fields": list(item.supported_filter_fields),
+            "supported_scopes": list(item.supported_scopes),
+        }
+    )
+
+
+def _route_read(source: Any) -> EventRouteRead:
+    event_type = getattr(source, "event_type", None)
+    if not event_type:
+        event_definition = getattr(source, "event_definition", None)
+        event_type = getattr(event_definition, "event_type", "")
+    consumer_key = getattr(source, "consumer_key", None)
+    if not consumer_key:
+        consumer = getattr(source, "consumer", None)
+        consumer_key = getattr(consumer, "consumer_key", "")
+    filters = getattr(source, "filters", None)
+    throttle = getattr(source, "throttle", None)
+    shadow = getattr(source, "shadow", None)
+    return EventRouteRead.model_validate(
+        {
+            "id": int(source.id),
+            "route_key": source.route_key,
+            "event_type": event_type,
+            "consumer_key": consumer_key,
+            "status": source.status,
+            "scope_type": source.scope_type,
+            "scope_value": source.scope_value,
+            "environment": source.environment,
+            "filters": filters.to_json() if filters is not None else dict(getattr(source, "filters_json", {}) or {}),
+            "throttle": (
+                throttle.to_json() if throttle is not None else dict(getattr(source, "throttle_config_json", {}) or {})
+            ),
+            "shadow": shadow.to_json() if shadow is not None else dict(getattr(source, "shadow_config_json", {}) or {}),
+            "notes": source.notes,
+            "priority": int(source.priority),
+            "system_managed": bool(source.system_managed),
+            "created_at": getattr(source, "created_at", None),
+            "updated_at": getattr(source, "updated_at", None),
+        }
+    )
+
+
+def _draft_read(source: Any) -> TopologyDraftRead:
     return TopologyDraftRead.model_validate(
         {
-            "id": int(draft.id),
-            "name": draft.name,
-            "description": draft.description,
-            "status": draft.status,
-            "access_mode": draft.access_mode,
-            "base_version_id": draft.base_version_id,
-            "created_by": draft.created_by,
-            "applied_version_id": draft.applied_version_id,
-            "created_at": draft.created_at,
-            "updated_at": draft.updated_at,
-            "applied_at": draft.applied_at,
-            "discarded_at": draft.discarded_at,
+            "id": int(source.id),
+            "name": source.name,
+            "description": source.description,
+            "status": source.status,
+            "access_mode": source.access_mode,
+            "base_version_id": getattr(source, "base_version_id", None),
+            "created_by": source.created_by,
+            "applied_version_id": getattr(source, "applied_version_id", None),
+            "created_at": source.created_at,
+            "updated_at": source.updated_at,
+            "applied_at": getattr(source, "applied_at", None),
+            "discarded_at": getattr(source, "discarded_at", None),
         }
     )
 
 
-def _draft_change_read(change: TopologyDraftChange) -> TopologyDraftChangeRead:
+def _draft_change_read(source: Any) -> TopologyDraftChangeRead:
     return TopologyDraftChangeRead.model_validate(
         {
-            "id": int(change.id),
-            "draft_id": int(change.draft_id),
-            "change_type": change.change_type,
-            "target_route_key": change.target_route_key,
-            "payload_json": dict(change.payload_json or {}),
-            "created_by": change.created_by,
-            "created_at": change.created_at,
+            "id": int(source.id),
+            "draft_id": int(source.draft_id),
+            "change_type": source.change_type,
+            "target_route_key": source.target_route_key,
+            "payload_json": thaw_json_value(source.payload_json or {}),
+            "created_by": source.created_by,
+            "created_at": source.created_at,
         }
     )
 
 
-def _audit_log_read(row: EventRouteAuditLog) -> EventRouteAuditLogRead:
+def _audit_log_read(source: Any) -> EventRouteAuditLogRead:
     return EventRouteAuditLogRead.model_validate(
         {
-            "id": int(row.id),
-            "route_key_snapshot": row.route_key_snapshot,
-            "action": row.action,
-            "actor": row.actor,
-            "actor_mode": row.actor_mode,
-            "reason": row.reason,
-            "before_json": dict(row.before_json or {}),
-            "after_json": dict(row.after_json or {}),
-            "context_json": dict(row.context_json or {}),
-            "created_at": row.created_at,
+            "id": int(source.id),
+            "route_key_snapshot": source.route_key_snapshot,
+            "action": source.action,
+            "actor": source.actor,
+            "actor_mode": source.actor_mode,
+            "reason": source.reason,
+            "before_json": thaw_json_value(source.before_json or {}),
+            "after_json": thaw_json_value(source.after_json or {}),
+            "context_json": thaw_json_value(source.context_json or {}),
+            "created_at": source.created_at,
         }
     )
 
 
 @router.get("/registry/events", response_model=list[EventDefinitionRead])
-async def read_event_registry(db: AsyncSession = DB_SESSION) -> list[EventDefinitionRead]:
-    service = EventRegistryService(db)
-    return [EventDefinitionRead.model_validate(row) for row in await service.list_event_definitions()]
+async def read_event_registry(uow: BaseAsyncUnitOfWork = DB_UOW) -> list[EventDefinitionRead]:
+    items = await EventRegistryQueryService(uow.session).list_event_definitions()
+    return [_event_definition_read(item) for item in items]
 
 
 @router.get("/registry/consumers", response_model=list[EventConsumerRead])
-async def read_consumer_registry(db: AsyncSession = DB_SESSION) -> list[EventConsumerRead]:
-    service = EventRegistryService(db)
-    return [EventConsumerRead.model_validate(row) for row in await service.list_consumers()]
+async def read_consumer_registry(uow: BaseAsyncUnitOfWork = DB_UOW) -> list[EventConsumerRead]:
+    items = await EventRegistryQueryService(uow.session).list_consumers()
+    return [_event_consumer_read(item) for item in items]
 
 
 @router.get("/registry/events/{event_type}/compatible-consumers", response_model=list[CompatibleConsumerRead])
-async def read_compatible_consumers(event_type: str, db: AsyncSession = DB_SESSION) -> list[CompatibleConsumerRead]:
-    service = EventRegistryService(db)
-    definitions = await service.list_event_definitions()
-    if event_type not in {row.event_type for row in definitions}:
+async def read_compatible_consumers(
+    event_type: str,
+    uow: BaseAsyncUnitOfWork = DB_UOW,
+) -> list[CompatibleConsumerRead]:
+    service = EventRegistryQueryService(uow.session)
+    if await service.get_event_definition(event_type) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Event definition '{event_type}' was not found.",
         )
-    return [
-        CompatibleConsumerRead(
-            consumer_key=row.consumer_key,
-            display_name=row.display_name,
-            domain=row.domain,
-            supports_shadow=bool(row.supports_shadow),
-            supported_filter_fields=list(row.supported_filter_fields_json or []),
-            supported_scopes=list(row.supported_scopes_json or []),
-        )
-        for row in await service.list_compatible_consumers(event_type)
-    ]
+    return [_compatible_consumer_read(item) for item in await service.list_compatible_consumers(event_type)]
 
 
 @router.get("/routes", response_model=list[EventRouteRead])
-async def read_routes(db: AsyncSession = DB_SESSION) -> list[EventRouteRead]:
-    service = RouteManagementService(db)
-    return [_route_read(route) for route in await service.list_routes()]
+async def read_routes(uow: BaseAsyncUnitOfWork = DB_UOW) -> list[EventRouteRead]:
+    items = await RouteQueryService(uow.session).list_routes()
+    return [_route_read(route) for route in items]
 
 
 @router.post("/routes", response_model=EventRouteRead, status_code=status.HTTP_201_CREATED)
 async def create_route(
     payload: EventRouteMutationWrite,
     actor: AuditActor = CONTROL_ACTOR,
-    db: AsyncSession = DB_SESSION,
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> EventRouteRead:
-    service = RouteManagementService(db)
+    service = RouteManagementService(uow)
     try:
         route = await service.create_route(_route_payload_to_command(payload), actor=actor)
     except EventRouteCompatibilityError as exc:
@@ -258,9 +313,9 @@ async def update_route(
     route_key: str,
     payload: EventRouteMutationWrite,
     actor: AuditActor = CONTROL_ACTOR,
-    db: AsyncSession = DB_SESSION,
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> EventRouteRead:
-    service = RouteManagementService(db)
+    service = RouteManagementService(uow)
     try:
         route = await service.update_route(route_key, _route_payload_to_command(payload), actor=actor)
     except EventRouteNotFound as exc:
@@ -277,9 +332,9 @@ async def update_route_status(
     route_key: str,
     payload: EventRouteStatusWrite,
     actor: AuditActor = CONTROL_ACTOR,
-    db: AsyncSession = DB_SESSION,
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> EventRouteRead:
-    service = RouteManagementService(db)
+    service = RouteManagementService(uow)
     try:
         route = await service.change_status(
             RouteStatusChangeCommand(route_key=route_key, status=payload.status, notes=payload.notes),
@@ -291,30 +346,30 @@ async def update_route_status(
 
 
 @router.get("/topology/snapshot", response_model=TopologySnapshotRead)
-async def read_topology_snapshot(db: AsyncSession = DB_SESSION) -> TopologySnapshotRead:
-    service = TopologyService(db)
-    return TopologySnapshotRead.model_validate(await service.build_snapshot())
+async def read_topology_snapshot(uow: BaseAsyncUnitOfWork = DB_UOW) -> TopologySnapshotRead:
+    snapshot = await TopologyQueryService(uow.session).build_snapshot()
+    return TopologySnapshotRead.model_validate(topology_snapshot_payload(snapshot))
 
 
 @router.get("/topology/graph", response_model=TopologyGraphRead)
-async def read_topology_graph(db: AsyncSession = DB_SESSION) -> TopologyGraphRead:
-    service = TopologyService(db)
-    return TopologyGraphRead.model_validate(await service.build_graph())
+async def read_topology_graph(uow: BaseAsyncUnitOfWork = DB_UOW) -> TopologyGraphRead:
+    graph = await TopologyQueryService(uow.session).build_graph()
+    return TopologyGraphRead.model_validate(topology_graph_payload(graph))
 
 
 @router.get("/drafts", response_model=list[TopologyDraftRead])
-async def read_drafts(db: AsyncSession = DB_SESSION) -> list[TopologyDraftRead]:
-    service = TopologyDraftService(db)
-    return [_draft_read(draft) for draft in await service.list_drafts()]
+async def read_drafts(uow: BaseAsyncUnitOfWork = DB_UOW) -> list[TopologyDraftRead]:
+    items = await TopologyDraftQueryService(uow.session).list_drafts()
+    return [_draft_read(draft) for draft in items]
 
 
 @router.post("/drafts", response_model=TopologyDraftRead, status_code=status.HTTP_201_CREATED)
 async def create_draft(
     payload: TopologyDraftCreateWrite,
     actor: AuditActor = CONTROL_ACTOR,
-    db: AsyncSession = DB_SESSION,
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> TopologyDraftRead:
-    service = TopologyDraftService(db)
+    service = TopologyDraftService(uow)
     draft = await service.create_draft(
         DraftCreateCommand(
             name=payload.name,
@@ -331,9 +386,9 @@ async def create_draft_change(
     draft_id: int,
     payload: TopologyDraftChangeWrite,
     actor: AuditActor = CONTROL_ACTOR,
-    db: AsyncSession = DB_SESSION,
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> TopologyDraftChangeRead:
-    service = TopologyDraftService(db)
+    service = TopologyDraftService(uow)
     try:
         change = await service.add_change(
             draft_id,
@@ -352,10 +407,12 @@ async def create_draft_change(
 
 
 @router.get("/drafts/{draft_id}/diff", response_model=list[TopologyDiffItemRead])
-async def read_draft_diff(draft_id: int, db: AsyncSession = DB_SESSION) -> list[TopologyDiffItemRead]:
-    service = TopologyDraftService(db)
+async def read_draft_diff(
+    draft_id: int,
+    uow: BaseAsyncUnitOfWork = DB_UOW,
+) -> list[TopologyDiffItemRead]:
     try:
-        diff = await service.preview_diff(draft_id)
+        diff = await TopologyDraftQueryService(uow.session).preview_diff(draft_id)
     except TopologyDraftNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except TopologyDraftStateError as exc:
@@ -364,8 +421,8 @@ async def read_draft_diff(draft_id: int, db: AsyncSession = DB_SESSION) -> list[
         TopologyDiffItemRead(
             change_type=item.change_type,
             route_key=item.route_key,
-            before=dict(item.before),
-            after=dict(item.after),
+            before=thaw_json_value(item.before),
+            after=thaw_json_value(item.after),
         )
         for item in diff
     ]
@@ -375,9 +432,9 @@ async def read_draft_diff(draft_id: int, db: AsyncSession = DB_SESSION) -> list[
 async def apply_draft(
     draft_id: int,
     actor: AuditActor = CONTROL_ACTOR,
-    db: AsyncSession = DB_SESSION,
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> TopologyDraftLifecycleRead:
-    service = TopologyDraftService(db)
+    service = TopologyDraftService(uow)
     try:
         draft, version = await service.apply_draft(draft_id, actor=actor)
     except TopologyDraftNotFound as exc:
@@ -394,9 +451,9 @@ async def apply_draft(
 async def discard_draft(
     draft_id: int,
     actor: AuditActor = CONTROL_ACTOR,
-    db: AsyncSession = DB_SESSION,
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> TopologyDraftLifecycleRead:
-    service = TopologyDraftService(db)
+    service = TopologyDraftService(uow)
     try:
         draft = await service.discard_draft(draft_id, actor=actor)
     except TopologyDraftNotFound as exc:
@@ -409,24 +466,13 @@ async def discard_draft(
 @router.get("/audit", response_model=list[EventRouteAuditLogRead])
 async def read_audit_log(
     limit: int = Query(default=50, ge=1, le=500),
-    db: AsyncSession = DB_SESSION,
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> list[EventRouteAuditLogRead]:
-    service = AuditLogService(db)
-    return [_audit_log_read(row) for row in await service.list_recent(limit=limit)]
+    items = await AuditLogQueryService(uow.session).list_recent(limit=limit)
+    return [_audit_log_read(item) for item in items]
 
 
 @router.get("/observability", response_model=ObservabilityOverviewRead)
-async def read_observability(db: AsyncSession = DB_SESSION) -> ObservabilityOverviewRead:
-    service = TopologyObservabilityService(db)
-    payload = await service.build_overview()
-    return ObservabilityOverviewRead(
-        version_number=int(payload["version_number"]),
-        generated_at=payload["generated_at"],
-        throughput=int(payload["throughput"]),
-        failure_count=int(payload["failure_count"]),
-        shadow_route_count=int(payload["shadow_route_count"]),
-        muted_route_count=int(payload["muted_route_count"]),
-        dead_consumer_count=int(payload["dead_consumer_count"]),
-        routes=[RouteObservabilityRead.model_validate(row) for row in payload["routes"]],
-        consumers=[ConsumerObservabilityRead.model_validate(row) for row in payload["consumers"]],
-    )
+async def read_observability(uow: BaseAsyncUnitOfWork = DB_UOW) -> ObservabilityOverviewRead:
+    payload = observability_overview_payload(await TopologyObservabilityQueryService(uow.session).build_overview())
+    return ObservabilityOverviewRead.model_validate(payload)
