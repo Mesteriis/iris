@@ -61,6 +61,7 @@ Current rollout:
 - shared UoW and structured persistence logging in `backend/src/core/db`
 - migrated repository/query boundaries in `hypothesis_engine`, `control_plane`, `news`, `anomalies`, `market_structure`, `market_data`, `indicators` and the `patterns` API plus TaskIQ orchestration surface
 - `anomalies` now uses immutable read models, query-service compatibility adapters, UoW-owned worker/task writes and batched peer-candle loading on the sector scan path
+- `cross_market` now uses immutable read models, query services, repository-backed async worker writes and batched leader-candle loading on the active runtime path; legacy sync engine helpers remain only for compatibility callers
 - `market_data` keeps documented Timescale-specific raw SQL only inside legacy infrastructure adapters while async callers use UoW-backed repositories/query services
 - `indicator_workers` and `patterns` TaskIQ entrypoints now execute persistence through async repositories/UoW; the remaining sync analytical backlog is confined to legacy helper modules under `apps/patterns/domain`
 - remaining domains tracked in the persistence audit backlog
@@ -707,7 +708,7 @@ Runtime behavior:
 
 ## Cross-Market Intelligence Layer
 
-The cross-market layer lives under `backend/src/apps/cross_market/engine.py` and extends, not replaces, the existing analytics stack.
+The active cross-market runtime path now lives under `backend/src/apps/cross_market/services.py`, `query_services.py`, `repositories.py` and `read_models.py`. The legacy sync helpers in `backend/src/apps/cross_market/engine.py` remain temporarily for compatibility callers and tests, but worker-triggered writes now go through the shared async UoW.
 
 Responsibilities:
 
@@ -715,6 +716,8 @@ Responsibilities:
 - refresh sector momentum from current `coin_metrics`
 - identify market leaders from breakout / activity / volume context
 - feed Signal Fusion with cross-market alignment weights
+- batch leader candle reads explicitly on the active runtime path to avoid loop-driven N+1 lookups
+- publish correlation cache updates and leader/rotation events only after the persistence transaction commits
 
 Stored structures:
 

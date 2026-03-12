@@ -7,13 +7,14 @@ from datetime import timedelta
 import pytest
 from redis import Redis
 from sqlalchemy import select
-
+from src.apps.cross_market.models import CoinRelation
+from src.apps.indicators.models import CoinMetrics
+from src.apps.predictions.models import MarketPrediction
 from src.core.db.session import SessionLocal
+from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
-from src.apps.indicators.models import CoinMetrics
-from src.apps.cross_market.models import CoinRelation
-from src.apps.predictions.models import MarketPrediction
+
 from tests.cross_market_support import (
     DEFAULT_START,
     correlated_close_series,
@@ -22,6 +23,34 @@ from tests.cross_market_support import (
     seed_candles,
     set_market_metrics,
 )
+
+
+def _run_dispatcher_loop() -> None:
+    consumer = create_topology_dispatcher_consumer()
+    try:
+        consumer.run()
+    finally:
+        consumer.close()
+
+
+def _start_cross_market_pipeline_processes() -> tuple[multiprocessing.Process, multiprocessing.Process]:
+    ctx = multiprocessing.get_context("spawn")
+    dispatcher = ctx.Process(target=_run_dispatcher_loop, daemon=True)
+    worker = ctx.Process(
+        target=run_worker_loop,
+        args=("cross_market_workers",),
+        daemon=True,
+    )
+    dispatcher.start()
+    worker.start()
+    return dispatcher, worker
+
+
+def _stop_processes(*processes: multiprocessing.Process) -> None:
+    for process in processes:
+        process.terminate()
+    for process in processes:
+        process.join(timeout=2.0)
 
 
 @pytest.mark.asyncio
@@ -74,13 +103,7 @@ async def test_cross_market_worker_updates_relations_and_detects_market_leader(d
     db_session.commit()
 
     last_timestamp = DEFAULT_START + timedelta(hours=len(follower_closes) - 1)
-    ctx = multiprocessing.get_context("spawn")
-    worker = ctx.Process(
-        target=run_worker_loop,
-        args=("cross_market_workers",),
-        daemon=True,
-    )
-    worker.start()
+    dispatcher, worker = _start_cross_market_pipeline_processes()
     try:
         publish_event(
             "candle_closed",
@@ -150,5 +173,4 @@ async def test_cross_market_worker_updates_relations_and_detects_market_leader(d
         finally:
             verification_db.close()
     finally:
-        worker.terminate()
-        worker.join(timeout=2.0)
+        _stop_processes(dispatcher, worker)

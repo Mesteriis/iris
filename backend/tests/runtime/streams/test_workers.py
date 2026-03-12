@@ -249,17 +249,33 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
     ]
 
     calls.clear()
-    monkeypatch.setattr(
-        workers,
-        "process_cross_market_event",
-        lambda _db, **kwargs: calls.append(("cross_market", kwargs["coin_id"])) or {"status": "ok"},
-    )
-    monkeypatch.setattr(workers, "_run_worker_db", lambda fn: __import__("asyncio").sleep(0, result=fn("db")))
+
+    class FakeUow:
+        session = "async-db"
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            del exc_type, exc, tb
+            return False
+
+    class FakeCrossMarketService:
+        def __init__(self, uow):
+            calls.append(("cross_market_session", uow.session))
+
+        async def process_event(self, **kwargs):
+            calls.append(("cross_market", kwargs["coin_id"]))
+            return {"status": "ok"}
+
+    monkeypatch.setattr(workers, "AsyncUnitOfWork", lambda: FakeUow())
+    monkeypatch.setattr(workers, "CrossMarketService", FakeCrossMarketService)
     await workers._handle_cross_market_event(_event(coin_id=-1))
     await workers._handle_cross_market_event(_event(coin_id=9))
-    assert calls == [("cross_market", 9)]
+    assert calls == [("cross_market_session", "async-db"), ("cross_market", 9)]
 
     calls.clear()
+    monkeypatch.setattr(workers, "_run_worker_db", lambda fn: __import__("asyncio").sleep(0, result=fn("db")))
     monkeypatch.setattr(
         workers,
         "evaluate_portfolio_action",

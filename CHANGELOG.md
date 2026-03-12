@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `market_data` repository/query split with immutable coin/history read models, UoW-owned async CRUD/task entrypoints, anti-N+1 backfill candidate selection and persistence contract coverage for read-model immutability and logging hooks.
 - `indicators` repository/query split with immutable metrics/radar/flow read models, async worker-owned indicator writes and feature snapshots, anti-N+1 market-leader reads, and persistence contract coverage for read-model immutability and logging hooks.
 - `anomalies` repository/query split with immutable anomaly read models, UoW-owned consumer/task writes, structured persistence logging and batched sector peer-candle loading to remove the old anomaly N+1 scan path.
+- `cross_market` repository/query split with immutable read models, UoW-owned worker writes, structured persistence logging and batched leader-candle loading to remove the old relation-update N+1 path.
 - `patterns` async/public API surface now uses repositories for feature/registry writes, query services for catalog/regime/sector/cycle reads, immutable read models and persistence contract coverage.
 - `patterns` TaskIQ orchestration now runs through async class-based services and UoW-owned transactions, with `run_sync` removed from active bootstrap/evaluation/market-structure/discovery/strategy flows and async candle-series repositories added for task/runtime analytics.
 - Persistence audit and target standard docs under `docs/persistence-audit.md` and `docs/persistence-standard.md`, formalizing repository/query/UoW boundaries, immutable read-model policy, anti-N+1 rules and raw SQL exception policy.
@@ -84,6 +85,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - `indicators` no longer exposes module-level persistence facades for reads or snapshot writes; callers now instantiate class-based services/query adapters and own UoW commits explicitly.
+- `cross_market_workers` now execute persistence through async services/repositories/UoW instead of `AsyncSession.run_sync`, and correlation/prediction caches plus emitted events are deferred until after the transaction commits on the active runtime path.
 - New API surfaces for patterns, per-coin regimes, sector metrics, market cycles and top-ranked signals, plus dashboard/detail page updates for pattern intelligence.
 - Manual feature-flag and pattern lifecycle management via API, plus discovery review endpoint for `discovered_patterns`.
 - Dashboard now surfaces feature-flag state and discovery candidates, and maintenance jobs re-enrich recent signal context after market structure/statistics updates.

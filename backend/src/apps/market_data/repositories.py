@@ -5,7 +5,7 @@ from collections.abc import Iterable, Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import delete, func, select, text, tuple_
+from sqlalchemy import column, delete, func, select, table, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -275,6 +275,133 @@ class CandleRepository(AsyncRepository):
 
         self._log_debug("repo.fetch_market_data_candle_points.result", mode="read", count=0)
         return []
+
+    async def fetch_points_for_coin_ids(
+        self,
+        *,
+        coin_ids: Sequence[int],
+        timeframe: int,
+        limit: int,
+    ) -> dict[int, list[CandlePoint]]:
+        requested_ids = list(dict.fromkeys(int(value) for value in coin_ids))
+        self._log_debug(
+            "repo.fetch_market_data_candle_points_for_coin_ids",
+            mode="read",
+            timeframe=timeframe,
+            limit=limit,
+            coin_count=len(requested_ids),
+            bulk=True,
+        )
+        if not requested_ids or limit <= 0:
+            return {}
+
+        ranked_direct = (
+            select(
+                Candle.coin_id.label("coin_id"),
+                Candle.timestamp.label("timestamp"),
+                Candle.open.label("open"),
+                Candle.high.label("high"),
+                Candle.low.label("low"),
+                Candle.close.label("close"),
+                Candle.volume.label("volume"),
+                func.row_number()
+                .over(partition_by=Candle.coin_id, order_by=Candle.timestamp.desc())
+                .label("row_number"),
+            )
+            .where(Candle.coin_id.in_(requested_ids), Candle.timeframe == timeframe)
+            .subquery()
+        )
+        direct_rows = (
+            await self.session.execute(
+                select(
+                    ranked_direct.c.coin_id,
+                    ranked_direct.c.timestamp,
+                    ranked_direct.c.open,
+                    ranked_direct.c.high,
+                    ranked_direct.c.low,
+                    ranked_direct.c.close,
+                    ranked_direct.c.volume,
+                )
+                .where(ranked_direct.c.row_number <= limit)
+                .order_by(ranked_direct.c.coin_id.asc(), ranked_direct.c.timestamp.asc())
+            )
+        ).all()
+        grouped: dict[int, list[CandlePoint]] = {}
+        if direct_rows:
+            direct_points = self._rows_to_candle_points(direct_rows)
+            for row, point in zip(direct_rows, direct_points, strict=False):
+                grouped.setdefault(int(row.coin_id), []).append(point)
+
+        missing_ids = [coin_id for coin_id in requested_ids if coin_id not in grouped]
+        if missing_ids and timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
+            view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
+            aggregate_view = table(
+                view_name,
+                column("coin_id"),
+                column("bucket"),
+                column("open"),
+                column("high"),
+                column("low"),
+                column("close"),
+                column("volume"),
+            )
+            ranked_view = (
+                select(
+                    aggregate_view.c.coin_id.label("coin_id"),
+                    aggregate_view.c.bucket.label("bucket"),
+                    aggregate_view.c.open.label("open"),
+                    aggregate_view.c.high.label("high"),
+                    aggregate_view.c.low.label("low"),
+                    aggregate_view.c.close.label("close"),
+                    aggregate_view.c.volume.label("volume"),
+                    func.row_number()
+                    .over(partition_by=aggregate_view.c.coin_id, order_by=aggregate_view.c.bucket.desc())
+                    .label("row_number"),
+                )
+                .where(aggregate_view.c.coin_id.in_(missing_ids))
+                .subquery()
+            )
+            view_rows = (
+                await self.session.execute(
+                    select(
+                        ranked_view.c.coin_id,
+                        ranked_view.c.bucket,
+                        ranked_view.c.open,
+                        ranked_view.c.high,
+                        ranked_view.c.low,
+                        ranked_view.c.close,
+                        ranked_view.c.volume,
+                    )
+                    .where(ranked_view.c.row_number <= limit)
+                    .order_by(ranked_view.c.coin_id.asc(), ranked_view.c.bucket.asc())
+                )
+            ).all()
+            if view_rows:
+                view_points = self._rows_to_candle_points(view_rows, timestamp_field="bucket")
+                for row, point in zip(view_rows, view_points, strict=False):
+                    grouped.setdefault(int(row.coin_id), []).append(point)
+                missing_ids = [coin_id for coin_id in missing_ids if coin_id not in grouped]
+
+        if missing_ids:
+            self._log_warning(
+                "repo.fetch_market_data_candle_points_for_coin_ids.fallback",
+                mode="read",
+                timeframe=timeframe,
+                fallback_coin_count=len(missing_ids),
+            )
+            for coin_id in missing_ids:
+                points = await self.fetch_points(coin_id=coin_id, timeframe=timeframe, limit=limit)
+                if points:
+                    grouped[coin_id] = points
+
+        result = {coin_id: grouped[coin_id] for coin_id in requested_ids if coin_id in grouped}
+        self._log_debug(
+            "repo.fetch_market_data_candle_points_for_coin_ids.result",
+            mode="read",
+            requested_coin_count=len(requested_ids),
+            loaded_coin_count=len(result),
+        )
+        return result
 
     async def fetch_points_between(
         self,

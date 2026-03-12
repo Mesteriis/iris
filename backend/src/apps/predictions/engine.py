@@ -5,18 +5,15 @@ from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
-from src.apps.market_data.models import Candle
-from src.runtime.streams.publisher import publish_event
-from src.apps.market_data.models import Coin
 from src.apps.cross_market.models import CoinRelation
-from src.apps.predictions.models import MarketPrediction
-from src.apps.predictions.models import PredictionResult
-from src.apps.market_data.repos import fetch_candle_points_between
 from src.apps.market_data.domain import ensure_utc, utc_now
+from src.apps.market_data.models import Candle, Coin
+from src.apps.market_data.repos import fetch_candle_points_between
 from src.apps.predictions.cache import cache_prediction_snapshot, cache_prediction_snapshot_async
+from src.apps.predictions.models import MarketPrediction, PredictionResult
+from src.runtime.streams.publisher import publish_event
 
 PREDICTION_MOVE_THRESHOLD = 0.015
 PREDICTION_MAX_FOLLOWERS = 8
@@ -105,6 +102,91 @@ def create_market_predictions(
         created += 1
     db.commit()
     return {"status": "ok", "created": created, "leader_coin_id": leader_coin_id}
+
+
+async def create_market_predictions_async(
+    db: AsyncSession,
+    *,
+    leader_coin_id: int,
+    prediction_event: str,
+    expected_move: str,
+    base_confidence: float,
+    emit_events: bool = True,
+    cache_snapshots: bool = True,
+) -> dict[str, object]:
+    del emit_events
+    now = utc_now()
+    relations = (
+        await db.execute(
+            select(CoinRelation)
+            .where(
+                CoinRelation.leader_coin_id == leader_coin_id,
+                CoinRelation.confidence >= 0.5,
+            )
+            .order_by(CoinRelation.confidence.desc(), CoinRelation.correlation.desc())
+            .limit(PREDICTION_MAX_FOLLOWERS)
+        )
+    ).scalars().all()
+    if not relations:
+        return {"status": "skipped", "reason": "relations_not_found", "leader_coin_id": leader_coin_id}
+
+    created = 0
+    snapshots: list[dict[str, object]] = []
+    for relation in relations:
+        target_coin = await db.get(Coin, relation.follower_coin_id)
+        if target_coin is None or target_coin.deleted_at is not None or not target_coin.enabled:
+            continue
+        existing = await db.scalar(
+            select(MarketPrediction)
+            .where(
+                MarketPrediction.leader_coin_id == leader_coin_id,
+                MarketPrediction.target_coin_id == relation.follower_coin_id,
+                MarketPrediction.prediction_event == prediction_event,
+                MarketPrediction.expected_move == expected_move,
+                MarketPrediction.status == "pending",
+            )
+            .order_by(MarketPrediction.created_at.desc(), MarketPrediction.id.desc())
+            .limit(1)
+        )
+        if existing is not None and ensure_utc(existing.evaluation_time) >= now:
+            continue
+        confidence = _clamp(base_confidence * max(float(relation.confidence), 0.55), 0.35, 0.98)
+        prediction = MarketPrediction(
+            prediction_type="cross_market_follow_through",
+            leader_coin_id=leader_coin_id,
+            target_coin_id=relation.follower_coin_id,
+            prediction_event=prediction_event,
+            expected_move=expected_move,
+            lag_hours=max(int(relation.lag_hours), 1),
+            confidence=confidence,
+            evaluation_time=now + timedelta(hours=max(int(relation.lag_hours), 1)),
+            status="pending",
+        )
+        db.add(prediction)
+        await db.flush()
+        snapshot = {
+            "prediction_id": int(prediction.id),
+            "prediction_type": prediction.prediction_type,
+            "leader_coin_id": int(prediction.leader_coin_id),
+            "target_coin_id": int(prediction.target_coin_id),
+            "prediction_event": prediction.prediction_event,
+            "expected_move": prediction.expected_move,
+            "lag_hours": int(prediction.lag_hours),
+            "confidence": float(prediction.confidence),
+            "created_at": prediction.created_at,
+            "evaluation_time": prediction.evaluation_time,
+            "status": prediction.status,
+        }
+        if cache_snapshots:
+            await cache_prediction_snapshot_async(**snapshot)
+        snapshots.append(snapshot)
+        created += 1
+    return {
+        "status": "ok",
+        "created": created,
+        "leader_coin_id": leader_coin_id,
+        "cache_snapshots": tuple(snapshots),
+    }
 
 
 def _evaluate_prediction_window(

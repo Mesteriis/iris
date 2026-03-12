@@ -203,6 +203,7 @@ Initial rollout completed in this refactor pass:
   - `apps/market_structure`
   - `apps/market_data`
   - `apps/indicators`
+  - `apps/cross_market` on the active async worker/runtime surface
   - `apps/patterns` on the async/public API surface and TaskIQ orchestration layer
   - repository/query split
   - immutable read models for read paths

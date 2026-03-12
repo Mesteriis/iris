@@ -179,6 +179,24 @@ Classification:
 - `OK` on async/public callers and TaskIQ entrypoints
 - `later migration` for residual sync helper modules kept behind the persistence layer
 
+#### `apps/cross_market`
+
+Status: migrated on the async runtime/worker surface; legacy sync helpers remain for compatibility callers
+
+- repositories now isolate Core upserts for `coin_relations` and `sector_metrics` in [backend/src/apps/cross_market/repositories.py](/Users/avm/projects/Personal/iris/backend/src/apps/cross_market/repositories.py)
+- read-only computation contexts now go through [backend/src/apps/cross_market/query_services.py](/Users/avm/projects/Personal/iris/backend/src/apps/cross_market/query_services.py)
+- immutable dataclass read models now live in [backend/src/apps/cross_market/read_models.py](/Users/avm/projects/Personal/iris/backend/src/apps/cross_market/read_models.py)
+- active worker writes now run through [backend/src/apps/cross_market/services.py](/Users/avm/projects/Personal/iris/backend/src/apps/cross_market/services.py) under the shared async UoW instead of `AsyncSession.run_sync`
+- leader/follower candle loading now batches candidate leader history through [backend/src/apps/market_data/repositories.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/repositories.py), removing the old loop-driven N+1 path from relation updates
+- correlation cache writes, prediction cache writes and emitted leader/rotation/correlation events now happen only after the persistence transaction commits on the active runtime path
+- remaining follow-up:
+  - legacy sync helpers under [backend/src/apps/cross_market/engine.py](/Users/avm/projects/Personal/iris/backend/src/apps/cross_market/engine.py) still exist for `signals`/compatibility callers and should be retired incrementally as those callers migrate
+
+Classification:
+
+- `OK` on the async/background runtime surface
+- `later migration` for residual sync helper callers kept behind the compatibility engine module
+
 ### Sync-Heavy Analytical Domains
 
 These domains are still dominated by synchronous `Session` access inside selectors/engines and represent the largest remaining migration surface:
@@ -186,7 +204,6 @@ These domains are still dominated by synchronous `Session` access inside selecto
 - `apps/signals`
 - `apps/portfolio`
 - `apps/predictions`
-- `apps/cross_market`
 
 Shared issues:
 
@@ -279,8 +296,9 @@ Recommended rollout order:
 7. completed: `apps/market_data`
 8. completed: `apps/indicators`
 9. completed on the async/public and TaskIQ orchestration surface: `apps/patterns`
-10. next: `apps/signals`
-11. later: `signals`, `portfolio`, `predictions`, `cross_market`
+10. completed on the async/background runtime surface: `apps/cross_market`
+11. next: `apps/signals`
+12. later: `signals`, `portfolio`, `predictions`
 
 ## Current Behavior To Preserve
 

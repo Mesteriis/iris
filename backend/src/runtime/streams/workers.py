@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from src.apps.anomalies.consumers import CandleAnomalyConsumer, SectorAnomalyConsumer
 from src.apps.control_plane.metrics import ControlPlaneMetricsStore
-from src.apps.cross_market.engine import process_cross_market_event
+from src.apps.cross_market.services import CrossMarketService
 from src.apps.hypothesis_engine.consumers import HypothesisConsumer
 from src.apps.indicators.models import CoinMetrics
 from src.apps.indicators.services import FeatureSnapshotService, IndicatorAnalyticsService
@@ -63,7 +63,7 @@ _CONTROL_PLANE_METRICS = ControlPlaneMetricsStore()
 
 # NOTE:
 # These stream workers now use async Redis/consumer orchestration.
-# Indicator persistence has been migrated to async repositories/UoW.
+# Indicator and cross-market persistence now run through async repositories/UoW.
 # Other domains still rely on legacy sync cores behind AsyncSession.run_sync.
 
 
@@ -329,16 +329,14 @@ async def _handle_fusion_event(event: IrisEvent) -> None:
 async def _handle_cross_market_event(event: IrisEvent) -> None:
     if event.coin_id <= 0:
         return
-    await _run_worker_db(
-        lambda db: process_cross_market_event(
-            db,
+    async with AsyncUnitOfWork() as uow:
+        await CrossMarketService(uow).process_event(
             coin_id=event.coin_id,
             timeframe=event.timeframe,
             event_type=event.event_type,
             payload=event.payload,
             emit_events=True,
         )
-    )
 
 
 async def _handle_portfolio_event(event: IrisEvent) -> None:
