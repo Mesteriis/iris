@@ -178,7 +178,8 @@ Supporting docs:
 Current implementation coverage:
 
 - shared `core/db` unit-of-work and persistence logging foundation
-- migrated `hypothesis_engine`, `control_plane`, `news` and `market_structure` repository/query contracts
+- migrated `hypothesis_engine`, `control_plane`, `news`, `market_structure` and `market_data` repository/query contracts
+- `apps/market_data` keeps legacy sync adapters only for Timescale-specific aggregate/resampling access and not for new async callers
 - remaining domains tracked in the audit backlog
 
 ## Home Assistant

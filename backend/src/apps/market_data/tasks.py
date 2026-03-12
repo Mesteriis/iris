@@ -1,23 +1,53 @@
 from __future__ import annotations
 
-from src.core.db.session import AsyncSessionLocal
-from src.apps.market_data.services import (
-    get_coin_by_symbol_async,
-    get_next_pending_backfill_due_at_async,
-    list_coin_symbols_pending_backfill_async,
-    list_coin_symbols_ready_for_latest_sync_async,
-    sync_coin_history_backfill_async,
-    sync_coin_history_backfill_forced_async,
-    sync_coin_latest_history_async,
-    sync_watched_assets_async,
-)
+from src.apps.market_data.query_services import MarketDataQueryService
+from src.apps.market_data.services import MarketDataHistorySyncService, MarketDataService
 from src.apps.patterns.tasks import patterns_bootstrap_scan
+from src.core.db.uow import AsyncUnitOfWork, BaseAsyncUnitOfWork
 from src.runtime.orchestration.broker import broker
 from src.runtime.orchestration.locks import async_redis_task_lock
 
 HISTORY_BACKFILL_LOCK_TIMEOUT_SECONDS = 3600
 HISTORY_REFRESH_LOCK_TIMEOUT_SECONDS = 900
 COIN_HISTORY_LOCK_TIMEOUT_SECONDS = 1800
+AsyncSessionLocal = AsyncUnitOfWork
+
+
+def _session(value):
+    return value.session if hasattr(value, "session") else value
+
+
+async def get_next_pending_backfill_due_at_async():
+    async with AsyncSessionLocal() as db:
+        return await MarketDataQueryService(_session(db)).get_next_pending_backfill_due_at()
+
+
+async def sync_watched_assets_async(db):
+    return await MarketDataService(db).sync_watched_assets()
+
+
+async def list_coin_symbols_pending_backfill_async(db, *, symbol: str | None = None):
+    return await MarketDataQueryService(_session(db)).list_coin_symbols_pending_backfill(symbol=symbol)
+
+
+async def list_coin_symbols_ready_for_latest_sync_async(db):
+    return await MarketDataQueryService(_session(db)).list_coin_symbols_ready_for_latest_sync()
+
+
+async def get_coin_by_symbol_async(db, symbol: str):
+    return await MarketDataQueryService(_session(db)).get_coin_read_by_symbol(symbol)
+
+
+async def sync_coin_history_backfill_async(db, coin):
+    return await MarketDataHistorySyncService(db).sync_coin_history_backfill(symbol=coin.symbol, force=False)
+
+
+async def sync_coin_history_backfill_forced_async(db, coin):
+    return await MarketDataHistorySyncService(db).sync_coin_history_backfill(symbol=coin.symbol, force=True)
+
+
+async def sync_coin_latest_history_async(db, coin, *, force: bool = False):
+    return await MarketDataHistorySyncService(db).sync_coin_latest_history(symbol=coin.symbol, force=force)
 
 
 async def get_next_history_backfill_due_at():
@@ -41,30 +71,40 @@ async def _enqueue_patterns_bootstrap(*, symbol: str, force: bool = False) -> di
     }
 
 
-async def _sync_coin_backfill_item(db, coin, *, force: bool = False) -> dict[str, object]:
-    async with _with_coin_history_lock(coin.symbol) as acquired:
+async def _sync_coin_backfill_item(
+    db: BaseAsyncUnitOfWork,
+    coin,
+    *,
+    force: bool = False,
+) -> dict[str, object]:
+    symbol = str(coin.symbol)
+    async with _with_coin_history_lock(symbol) as acquired:
         if not acquired:
             return {
-                "symbol": coin.symbol,
+                "symbol": symbol.upper(),
                 "created": 0,
                 "status": "skipped",
                 "reason": "coin_history_in_progress",
             }
         result = await (
-            sync_coin_history_backfill_forced_async(db, coin)
-            if force
-            else sync_coin_history_backfill_async(db, coin)
+            sync_coin_history_backfill_forced_async(db, coin) if force else sync_coin_history_backfill_async(db, coin)
         )
         if result.get("status") == "ok":
-            result["patterns_bootstrap"] = await _enqueue_patterns_bootstrap(symbol=coin.symbol, force=force)
+            result["patterns_bootstrap"] = await _enqueue_patterns_bootstrap(symbol=str(result["symbol"]), force=force)
         return result
 
 
-async def _sync_coin_latest_item(db, coin, *, force: bool = False) -> dict[str, object]:
-    async with _with_coin_history_lock(coin.symbol) as acquired:
+async def _sync_coin_latest_item(
+    db: BaseAsyncUnitOfWork,
+    coin,
+    *,
+    force: bool = False,
+) -> dict[str, object]:
+    symbol = str(coin.symbol)
+    async with _with_coin_history_lock(symbol) as acquired:
         if not acquired:
             return {
-                "symbol": coin.symbol,
+                "symbol": symbol.upper(),
                 "created": 0,
                 "status": "skipped",
                 "reason": "coin_history_in_progress",

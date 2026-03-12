@@ -200,6 +200,7 @@ Initial rollout completed in this refactor pass:
   - `apps/control_plane`
   - `apps/news`
   - `apps/market_structure`
+  - `apps/market_data`
   - repository/query split
   - immutable read models for read paths
   - centralized transaction ownership in services/tasks/views/consumers

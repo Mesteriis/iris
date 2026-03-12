@@ -127,28 +127,21 @@ Classification:
 
 #### `apps/market_data`
 
-Primary files:
+Status: migrated on the async API/application surface and scheduled entrypoints
 
-- [backend/src/apps/market_data/services.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/services.py)
-- [backend/src/apps/market_data/service_layer.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/service_layer.py)
-- [backend/src/apps/market_data/repos.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/repos.py)
-- [backend/src/apps/market_data/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/views.py)
-
-Issues:
-
-- both sync and async persistence paths coexist.
-- services and service_layer both perform persistence, creating two public styles.
-- raw SQL is used for Timescale aggregate views, resampling, and `refresh_continuous_aggregate`.
-- commit ownership is spread across service functions.
+- repositories now isolate mutable coin/candle writes, metrics maintenance, delete cascades and Timescale aggregate refresh calls in [backend/src/apps/market_data/repositories.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/repositories.py)
+- read-only coin/history/backfill candidate flows now go through [backend/src/apps/market_data/query_services.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/query_services.py)
+- immutable dataclass read models now live in [backend/src/apps/market_data/read_models.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/read_models.py)
+- async CRUD/history sync orchestration now lives behind class-based services in [backend/src/apps/market_data/services.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/services.py)
+- views and TaskIQ jobs now depend on the shared async UoW instead of owning `AsyncSession` / `AsyncSessionLocal` directly
+- query-service backfill/latest-sync selection batches latest-candle lookups, removing caller-side N+1 checks from the public async path
+- legacy sync adapters in [backend/src/apps/market_data/service_layer.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/service_layer.py) and [backend/src/apps/market_data/repos.py](/Users/avm/projects/Personal/iris/backend/src/apps/market_data/repos.py) remain temporarily for sync-heavy analytical callers and Timescale-specific aggregate/resampling paths
 
 Classification:
 
-- `move to repository`
-- `move to query service`
-- `rewrite raw SQL to Core` where dynamic view access does not require vendor SQL
-- `keep as justified raw SQL exception` for Timescale continuous aggregate refresh and dynamic aggregate-view reads/resampling
-- `fix transaction boundary`
-- `add logging`
+- `OK` on async/public callers
+- `keep as justified raw SQL exception` for Timescale continuous aggregate refresh and dynamic aggregate-view reads/resampling in the legacy sync adapters
+- `later migration` for sync-heavy analytical callers still consuming the legacy sync service layer
 
 ### Sync-Heavy Analytical Domains
 
@@ -252,8 +245,9 @@ Recommended rollout order:
 3. completed: `apps/control_plane`
 4. completed: `apps/news`
 5. completed: `apps/market_structure`
-6. next: `apps/market_data`
-7. later: sync-heavy analytical domains (`indicators`, `patterns`, `signals`, `portfolio`, `predictions`, `cross_market`)
+6. completed: `apps/market_data`
+7. next: sync-heavy analytical domains starting with `apps/indicators`
+8. later: `patterns`, `signals`, `portfolio`, `predictions`, `cross_market`
 
 ## Current Behavior To Preserve
 
