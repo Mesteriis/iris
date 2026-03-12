@@ -13,10 +13,12 @@ from src.apps.signals.backtests import get_coin_backtests, list_backtests, list_
 from src.apps.signals.cache import cache_market_decision_snapshot_async
 from src.apps.signals.decision_selectors import get_coin_decision, list_decisions, list_top_decisions
 from src.apps.signals.final_signal_selectors import get_coin_final_signal, list_final_signals, list_top_final_signals
-from src.apps.signals.fusion import (
+from src.apps.signals.fusion import evaluate_market_decision, evaluate_news_fusion_event
+from src.apps.signals.fusion_support import (
     FUSION_CANDLE_GROUPS,
     FUSION_NEWS_TIMEFRAMES,
     FUSION_SIGNAL_LIMIT,
+    NEWS_FUSION_SCORE_CAP,
     MATERIAL_CONFIDENCE_DELTA,
     NEWS_FUSION_MAX_ITEMS,
     FusionSnapshot,
@@ -26,10 +28,15 @@ from src.apps.signals.fusion import (
     _decision_from_scores,
     _regime_weight,
     _signal_regime,
-    evaluate_market_decision,
-    evaluate_news_fusion_event,
 )
 from src.apps.signals.history import refresh_recent_signal_history, refresh_signal_history
+from src.apps.signals.history_support import (
+    SIGNAL_HISTORY_LOOKBACK_DAYS,
+    SIGNAL_HISTORY_RECENT_LIMIT,
+    _close_timestamps,
+    _evaluate_signal,
+    _open_timestamp_from_signal,
+)
 from src.apps.signals.market_decision_selectors import (
     get_coin_market_decision,
     list_market_decisions,
@@ -41,13 +48,6 @@ from src.apps.signals.strategies import list_strategies, list_strategy_performan
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
-from src.apps.signals.history import (
-    SIGNAL_HISTORY_LOOKBACK_DAYS,
-    SIGNAL_HISTORY_RECENT_LIMIT,
-    _close_timestamps,
-    _evaluate_signal,
-    _open_timestamp_from_signal,
-)
 
 
 @dataclass(slots=True, frozen=True)
@@ -567,8 +567,8 @@ class SignalFusionService(PersistenceComponent):
                 bearish_score += base_weight * 0.05
         return NewsImpactSnapshot(
             item_count=len(rows),
-            bullish_score=round(_clamp(bullish_score, 0.0, 0.85), 4),
-            bearish_score=round(_clamp(bearish_score, 0.0, 0.85), 4),
+            bullish_score=round(_clamp(bullish_score, 0.0, NEWS_FUSION_SCORE_CAP), 4),
+            bearish_score=round(_clamp(bearish_score, 0.0, NEWS_FUSION_SCORE_CAP), 4),
             latest_timestamp=latest_timestamp,
         )
 

@@ -229,6 +229,7 @@ Status: migrated on the async/public API read surface plus signal-fusion and sig
 - [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py) now routes `signal_fusion_workers` through the shared async UoW instead of opening sync write boundaries inside `fusion.py`
 - [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py) now refreshes signal history through the shared async UoW instead of calling `refresh_recent_signal_history()` inside the sync decision flow
 - [backend/src/apps/patterns/task_service_history.py](backend/src/apps/patterns/task_service_history.py) now delegates signal-history refresh to `SignalHistoryService`, removing the duplicated async history persistence path
+- active async query/service code now uses [backend/src/apps/signals/backtest_support.py](backend/src/apps/signals/backtest_support.py), [backend/src/apps/signals/fusion_support.py](backend/src/apps/signals/fusion_support.py) and [backend/src/apps/signals/history_support.py](backend/src/apps/signals/history_support.py) instead of importing pure helper logic from the legacy sync compatibility modules directly
 - market-decision detail reads keep their cache-first behavior but the fallback and DB projection are now logged through the shared persistence logger inside `SignalQueryService`
 - remaining follow-up:
   - legacy sync compatibility helpers inside [backend/src/apps/signals/fusion.py](backend/src/apps/signals/fusion.py) still remain and should be retired once all remaining callers move to `SignalFusionService`

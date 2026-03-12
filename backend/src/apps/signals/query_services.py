@@ -13,7 +13,7 @@ from src.apps.market_data.repositories import CoinRepository
 from src.apps.market_data.models import Coin
 from src.apps.patterns.domain.regime import read_regime_details
 from src.apps.patterns.selectors import _signal_select
-from src.apps.signals.backtests import _BacktestPoint, _serialize_group
+from src.apps.signals.backtest_support import BacktestPoint, serialize_backtest_group
 from src.apps.signals.cache import read_cached_market_decision_async
 from src.apps.signals.decision_selectors import _latest_decisions_subquery
 from src.apps.signals.final_signal_selectors import _latest_final_signals_subquery
@@ -828,7 +828,7 @@ class SignalQueryService(AsyncQueryService):
             stmt = stmt.where(SignalHistory.signal_type == signal_type)
         rows = (await self.session.execute(stmt)).all()
         points = [
-            _BacktestPoint(
+            BacktestPoint(
                 symbol=str(row.symbol),
                 signal_type=str(row.signal_type),
                 timeframe=int(row.timeframe),
@@ -839,11 +839,11 @@ class SignalQueryService(AsyncQueryService):
             )
             for row in rows
         ]
-        grouped: dict[tuple[str, int], list[_BacktestPoint]] = defaultdict(list)
+        grouped: dict[tuple[str, int], list[BacktestPoint]] = defaultdict(list)
         for point in points:
             grouped[(point.signal_type, point.timeframe)].append(point)
         payload = [
-            _serialize_group(
+            serialize_backtest_group(
                 symbol=symbol.upper() if symbol is not None else None,
                 signal_type=current_signal_type,
                 timeframe=current_timeframe,

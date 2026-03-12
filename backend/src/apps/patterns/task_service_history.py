@@ -24,7 +24,7 @@ from src.apps.patterns.domain.success import (
     publish_pattern_state_event,
 )
 from src.apps.patterns.models import PatternRegistry
-from src.apps.signals.history import SIGNAL_HISTORY_LOOKBACK_DAYS
+from src.apps.signals.history_support import SIGNAL_HISTORY_LOOKBACK_DAYS
 from src.apps.signals.models import SignalHistory
 from src.apps.signals.services import SignalHistoryService
 
