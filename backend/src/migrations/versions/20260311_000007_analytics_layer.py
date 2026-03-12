@@ -18,8 +18,6 @@ depends_on: Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
-
     op.create_table(
         "candles",
         sa.Column("coin_id", sa.Integer(), nullable=False),
@@ -35,98 +33,155 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("coin_id", "timeframe", "timestamp"),
     )
     op.create_index("ix_candles_coin_id_timestamp", "candles", ["coin_id", "timestamp"], unique=False)
-    op.execute("SELECT create_hypertable('candles', by_range('timestamp'), if_not_exists => TRUE)")
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            BEGIN
+                CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+            EXCEPTION
+                WHEN OTHERS THEN
+                    NULL;
+            END;
 
-    op.execute(
-        """
-        CREATE MATERIALIZED VIEW candles_1h
-        WITH (timescaledb.continuous) AS
-        SELECT
-            coin_id,
-            time_bucket(INTERVAL '1 hour', timestamp) AS bucket,
-            first(open, timestamp) AS open,
-            max(high) AS high,
-            min(low) AS low,
-            last(close, timestamp) AS close,
-            sum(volume) AS volume
-        FROM candles
-        WHERE timeframe = 15
-        GROUP BY coin_id, bucket
-        WITH NO DATA
-        """
-    )
-    op.execute(
-        """
-        CREATE MATERIALIZED VIEW candles_4h
-        WITH (timescaledb.continuous) AS
-        SELECT
-            coin_id,
-            time_bucket(INTERVAL '4 hours', timestamp) AS bucket,
-            first(open, timestamp) AS open,
-            max(high) AS high,
-            min(low) AS low,
-            last(close, timestamp) AS close,
-            sum(volume) AS volume
-        FROM candles
-        WHERE timeframe = 15
-        GROUP BY coin_id, bucket
-        WITH NO DATA
-        """
-    )
-    op.execute(
-        """
-        CREATE MATERIALIZED VIEW candles_1d
-        WITH (timescaledb.continuous) AS
-        SELECT
-            coin_id,
-            time_bucket(INTERVAL '1 day', timestamp) AS bucket,
-            first(open, timestamp) AS open,
-            max(high) AS high,
-            min(low) AS low,
-            last(close, timestamp) AS close,
-            sum(volume) AS volume
-        FROM candles
-        WHERE timeframe = 15
-        GROUP BY coin_id, bucket
-        WITH NO DATA
+            IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+                PERFORM create_hypertable('candles', by_range('timestamp'), if_not_exists => TRUE);
+
+                EXECUTE $sql$
+                    CREATE MATERIALIZED VIEW candles_1h
+                    WITH (timescaledb.continuous) AS
+                    SELECT
+                        coin_id,
+                        time_bucket(INTERVAL '1 hour', timestamp) AS bucket,
+                        first(open, timestamp) AS open,
+                        max(high) AS high,
+                        min(low) AS low,
+                        last(close, timestamp) AS close,
+                        sum(volume) AS volume
+                    FROM candles
+                    WHERE timeframe = 15
+                    GROUP BY coin_id, bucket
+                    WITH NO DATA
+                $sql$;
+
+                EXECUTE $sql$
+                    CREATE MATERIALIZED VIEW candles_4h
+                    WITH (timescaledb.continuous) AS
+                    SELECT
+                        coin_id,
+                        time_bucket(INTERVAL '4 hours', timestamp) AS bucket,
+                        first(open, timestamp) AS open,
+                        max(high) AS high,
+                        min(low) AS low,
+                        last(close, timestamp) AS close,
+                        sum(volume) AS volume
+                    FROM candles
+                    WHERE timeframe = 15
+                    GROUP BY coin_id, bucket
+                    WITH NO DATA
+                $sql$;
+
+                EXECUTE $sql$
+                    CREATE MATERIALIZED VIEW candles_1d
+                    WITH (timescaledb.continuous) AS
+                    SELECT
+                        coin_id,
+                        time_bucket(INTERVAL '1 day', timestamp) AS bucket,
+                        first(open, timestamp) AS open,
+                        max(high) AS high,
+                        min(low) AS low,
+                        last(close, timestamp) AS close,
+                        sum(volume) AS volume
+                    FROM candles
+                    WHERE timeframe = 15
+                    GROUP BY coin_id, bucket
+                    WITH NO DATA
+                $sql$;
+
+                EXECUTE $sql$
+                    SELECT add_continuous_aggregate_policy(
+                        'candles_1h',
+                        start_offset => INTERVAL '3 hours',
+                        end_offset => INTERVAL '15 minutes',
+                        schedule_interval => INTERVAL '15 minutes',
+                        if_not_exists => TRUE
+                    )
+                $sql$;
+
+                EXECUTE $sql$
+                    SELECT add_continuous_aggregate_policy(
+                        'candles_4h',
+                        start_offset => INTERVAL '12 hours',
+                        end_offset => INTERVAL '15 minutes',
+                        schedule_interval => INTERVAL '15 minutes',
+                        if_not_exists => TRUE
+                    )
+                $sql$;
+
+                EXECUTE $sql$
+                    SELECT add_continuous_aggregate_policy(
+                        'candles_1d',
+                        start_offset => INTERVAL '3 days',
+                        end_offset => INTERVAL '15 minutes',
+                        schedule_interval => INTERVAL '15 minutes',
+                        if_not_exists => TRUE
+                    )
+                $sql$;
+            ELSE
+                EXECUTE $sql$
+                    CREATE MATERIALIZED VIEW candles_1h AS
+                    SELECT
+                        coin_id,
+                        date_bin(INTERVAL '1 hour', timestamp, TIMESTAMPTZ '2000-01-01 00:00:00+00') AS bucket,
+                        (ARRAY_AGG(open ORDER BY timestamp ASC))[1] AS open,
+                        max(high) AS high,
+                        min(low) AS low,
+                        (ARRAY_AGG(close ORDER BY timestamp DESC))[1] AS close,
+                        sum(volume) AS volume
+                    FROM candles
+                    WHERE timeframe = 15
+                    GROUP BY coin_id, bucket
+                    WITH NO DATA
+                $sql$;
+
+                EXECUTE $sql$
+                    CREATE MATERIALIZED VIEW candles_4h AS
+                    SELECT
+                        coin_id,
+                        date_bin(INTERVAL '4 hours', timestamp, TIMESTAMPTZ '2000-01-01 00:00:00+00') AS bucket,
+                        (ARRAY_AGG(open ORDER BY timestamp ASC))[1] AS open,
+                        max(high) AS high,
+                        min(low) AS low,
+                        (ARRAY_AGG(close ORDER BY timestamp DESC))[1] AS close,
+                        sum(volume) AS volume
+                    FROM candles
+                    WHERE timeframe = 15
+                    GROUP BY coin_id, bucket
+                    WITH NO DATA
+                $sql$;
+
+                EXECUTE $sql$
+                    CREATE MATERIALIZED VIEW candles_1d AS
+                    SELECT
+                        coin_id,
+                        date_bin(INTERVAL '1 day', timestamp, TIMESTAMPTZ '2000-01-01 00:00:00+00') AS bucket,
+                        (ARRAY_AGG(open ORDER BY timestamp ASC))[1] AS open,
+                        max(high) AS high,
+                        min(low) AS low,
+                        (ARRAY_AGG(close ORDER BY timestamp DESC))[1] AS close,
+                        sum(volume) AS volume
+                    FROM candles
+                    WHERE timeframe = 15
+                    GROUP BY coin_id, bucket
+                    WITH NO DATA
+                $sql$;
+            END IF;
+        END $$;
         """
     )
     op.execute("CREATE INDEX ix_candles_1h_coin_id_bucket_desc ON candles_1h (coin_id, bucket DESC)")
     op.execute("CREATE INDEX ix_candles_4h_coin_id_bucket_desc ON candles_4h (coin_id, bucket DESC)")
     op.execute("CREATE INDEX ix_candles_1d_coin_id_bucket_desc ON candles_1d (coin_id, bucket DESC)")
-    op.execute(
-        """
-        SELECT add_continuous_aggregate_policy(
-            'candles_1h',
-            start_offset => INTERVAL '3 hours',
-            end_offset => INTERVAL '15 minutes',
-            schedule_interval => INTERVAL '15 minutes',
-            if_not_exists => TRUE
-        )
-        """
-    )
-    op.execute(
-        """
-        SELECT add_continuous_aggregate_policy(
-            'candles_4h',
-            start_offset => INTERVAL '12 hours',
-            end_offset => INTERVAL '15 minutes',
-            schedule_interval => INTERVAL '15 minutes',
-            if_not_exists => TRUE
-        )
-        """
-    )
-    op.execute(
-        """
-        SELECT add_continuous_aggregate_policy(
-            'candles_1d',
-            start_offset => INTERVAL '3 days',
-            end_offset => INTERVAL '15 minutes',
-            schedule_interval => INTERVAL '15 minutes',
-            if_not_exists => TRUE
-        )
-        """
-    )
 
     op.alter_column(
         "coin_metrics",
@@ -339,9 +394,33 @@ def downgrade() -> None:
     op.drop_index("ix_indicator_cache_coin_id_timeframe_timestamp_desc", table_name="indicator_cache")
     op.drop_table("indicator_cache")
 
-    op.execute("SELECT remove_continuous_aggregate_policy('candles_1d', if_exists => TRUE)")
-    op.execute("SELECT remove_continuous_aggregate_policy('candles_4h', if_exists => TRUE)")
-    op.execute("SELECT remove_continuous_aggregate_policy('candles_1h', if_exists => TRUE)")
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+                BEGIN
+                    PERFORM remove_continuous_aggregate_policy('candles_1d', if_exists => TRUE);
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        NULL;
+                END;
+                BEGIN
+                    PERFORM remove_continuous_aggregate_policy('candles_4h', if_exists => TRUE);
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        NULL;
+                END;
+                BEGIN
+                    PERFORM remove_continuous_aggregate_policy('candles_1h', if_exists => TRUE);
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        NULL;
+                END;
+            END IF;
+        END $$;
+        """
+    )
     op.execute("DROP MATERIALIZED VIEW IF EXISTS candles_1d CASCADE")
     op.execute("DROP MATERIALIZED VIEW IF EXISTS candles_4h CASCADE")
     op.execute("DROP MATERIALIZED VIEW IF EXISTS candles_1h CASCADE")
