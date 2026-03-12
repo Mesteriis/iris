@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Event Control Plane storage foundation under `backend/src/apps/control_plane` with persisted `event_definitions`, `event_consumers`, `event_routes`, `event_route_audit_logs`, `topology_config_versions`, `topology_drafts` and `topology_draft_changes`.
+- Alembic migration `20260312_000029` bootstrapping the current hardcoded Redis-stream worker topology into DB-backed event/consumer/route registries plus an initial published topology version and audit trail.
 - Hypothesis Engine under `backend/src/apps/hypothesis_engine` with prompt CRUD APIs, event-driven hypothesis generation from signals/anomalies/decisions/portfolio events, scheduled evaluation jobs, AI insight SSE streaming, heuristic/OpenAI-like/local HTTP providers, persistence for `ai_prompts` / `ai_hypotheses` / `ai_hypothesis_evals` / `ai_weights`, and dedicated pytest coverage.
 - Backend business and technical review documents under `docs/reviews` covering domain interactions, architecture quality, risks and operational recommendations.
 - Anomaly Detection subsystem under `backend/src/apps/anomalies` with dedicated `candle_closed -> anomaly_detected` consumers, `MarketAnomaly` persistence, fast-path price/volume/volatility/relative detectors, slow-path sector/market-structure scans, explainable scoring and anomaly enrichment tasks.
@@ -74,6 +76,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- Local bootstrap/test migrations now fall back cleanly when TimescaleDB is unavailable, preserving the canonical schema on plain PostgreSQL while still using Timescale features when the extension exists.
 - Runtime stream routing, analytics worker loading and embedded scheduler wiring now optionally enable `hypothesis_workers`, `evaluate_hypotheses_job` and `/hypothesis/*` routes behind `enable_hypothesis_engine`, with dedicated AI provider settings and isolated Redis/test cleanup for `iris:ai:*`.
 - Backend package root was renamed from `backend/app` to `backend/src`, and Alembic scripts were moved from `backend/alembic` to `backend/src/migrations` with matching updates in imports, bootstrap, Docker, service entrypoints and test tooling.
 - Signal fusion now incorporates normalized news correlation context instead of relying only on pattern/signal stacks, while keeping news as a bounded contextual input rather than synthetic trading signals.

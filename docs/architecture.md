@@ -2,16 +2,20 @@
 
 ## Scope
 
-IRIS is intentionally narrow:
+IRIS is an event-driven market intelligence service. The current codebase includes:
 
 - `coins`
-- `price_history`
-
-Not included:
-
-- signals
-- trading logic
-- pattern detection
+- `candles`
+- indicators and market regime
+- pattern detection and signal generation
+- signal fusion and decisions
+- portfolio state and exchange sync
+- cross-market intelligence and predictions
+- anomaly detection
+- news normalization and correlation
+- market structure ingestion
+- optional hypothesis engine
+- Home Assistant integration
 
 ## Backend runtime
 
@@ -20,6 +24,7 @@ The backend owns three concerns inside one service:
 - FastAPI HTTP API
 - SQLAlchemy/Alembic database access and migrations
 - TaskIQ brokers plus dedicated worker processes
+- Redis Streams based event transport
 
 FastAPI only enqueues TaskIQ jobs. Task execution runs in dedicated worker processes started from the backend lifespan hook, so long-running analytics never execute inside the main HTTP event loop.
 
@@ -27,38 +32,60 @@ Background tasks:
 
 - startup bootstrap task: sync watched assets and backfill retention windows from seed data
 - periodic refresh task: append newly available bars for enabled, non-deleted assets
+- scheduler-triggered domain jobs for pattern statistics, market structure health, portfolio sync, prediction evaluation, news polling and hypothesis evaluation
 
 The default `source` is an internal deterministic market-data generator for the MVP, so the project runs without external API keys.
 
+## Event Runtime
+
+The event runtime currently uses a single ingress Redis stream for domain events.
+
+Producers publish through `runtime/streams/publisher.py`.
+
+Worker processes are spawned from the backend lifespan hook and currently implement domain behavior for:
+
+- indicators
+- analysis scheduling
+- patterns
+- regime updates
+- decisions
+- signal fusion
+- cross-market intelligence
+- anomaly detection
+- news normalization and correlation
+- portfolio reactions
+- optional hypothesis generation
+
+## Event Control Plane
+
+IRIS now includes a DB-backed Event Control Plane storage layer. The runtime cutover happens in subsequent stages, but the topology source of truth already exists in the schema and is seeded from the current hardcoded routing graph.
+
+Control-plane entities:
+
+- `event_definitions`
+- `event_consumers`
+- `event_routes`
+- `event_route_audit_logs`
+- `topology_config_versions`
+- `topology_drafts`
+- `topology_draft_changes`
+
+The initial published topology is generated from the current worker subscription map so the migration path stays backward-compatible.
+
 ## Database
 
-Tables:
+The database includes the market-data core plus higher-level analytical domains. Key persisted areas now include:
 
-- `coins`
-- `price_history`
-
-`coins` stores the watched asset catalog metadata:
-
-- `asset_type`
-- `theme`
-- `source`
-- `enabled`
-- `sort_order`
-- `candles_config`
-- `last_history_sync_at`
-- `deleted_at`
-
-`price_history` stores interval-based bars and keeps:
-
-- `interval`
-- `timestamp`
-- `price`
-- `volume`
-
-Indexes:
-
-- `(coin_id, timestamp)`
-- unique `(coin_id, interval, timestamp)`
+- asset and candle history
+- indicator caches and regime snapshots
+- signals, decisions and backtests
+- portfolio balances, positions and actions
+- cross-market relations and prediction memory
+- anomaly entities
+- news sources, items and symbol links
+- market-structure sources and snapshots
+- hypothesis prompts, hypotheses, evaluations and weights
+- event control-plane topology and audit metadata
 
 ## Home Assistant
 
