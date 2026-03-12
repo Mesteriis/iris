@@ -59,12 +59,13 @@ Reference docs:
 Current rollout:
 
 - shared UoW and structured persistence logging in `backend/src/core/db`
-- migrated repository/query boundaries in `hypothesis_engine`, `control_plane`, `news`, `anomalies`, `market_structure`, `market_data`, `indicators`, `predictions` and the `patterns` API plus TaskIQ orchestration surface
+- migrated repository/query boundaries in `hypothesis_engine`, `control_plane`, `news`, `anomalies`, `market_structure`, `market_data`, `indicators`, `predictions`, `signals` and the `patterns` API plus TaskIQ orchestration surface
 - `anomalies` now uses immutable read models, query-service compatibility adapters, UoW-owned worker/task writes and batched peer-candle loading on the sector scan path
 - `cross_market` now uses immutable read models, query services, repository-backed async worker writes and batched leader-candle loading on the active runtime path; legacy sync engine helpers remain only for compatibility callers
 - `predictions` now uses immutable read models, query services, UoW-owned evaluation jobs and batched pending-window lookups on the active async API/background path; legacy sync engine helpers remain only for compatibility callers
+- `signals` public read APIs now use `SignalQueryService`, immutable dataclass read models and UoW-owned route boundaries; `services.py` is limited to legacy sync compatibility exports
 - `market_data` keeps documented Timescale-specific raw SQL only inside legacy infrastructure adapters while async callers use UoW-backed repositories/query services
-- `indicator_workers` and `patterns` TaskIQ entrypoints now execute persistence through async repositories/UoW; the remaining sync analytical backlog is confined to legacy helper modules under `apps/patterns/domain`
+- `indicator_workers` and `patterns` TaskIQ entrypoints now execute persistence through async repositories/UoW; the remaining sync analytical backlog is confined to `apps/signals/fusion.py`, `apps/signals/history.py`, `apps/signals/backtests.py`, `apps/signals/strategies.py`, legacy helper modules under `apps/patterns/domain` and `apps/portfolio`
 - remaining domains tracked in the persistence audit backlog
 
 ## Stack

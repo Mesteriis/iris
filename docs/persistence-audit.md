@@ -216,12 +216,29 @@ Classification:
 - `OK` on the async/public API and scheduled runtime surface
 - `later migration` for residual sync helper callers kept behind the compatibility engine/selector modules
 
+#### `apps/signals`
+
+Status: migrated on the async/public API read surface; legacy sync fusion/history/backtests helpers still remain
+
+- read-only signal, decision, market-decision, final-signal, backtest and strategy projections now go through [backend/src/apps/signals/query_services.py](/Users/avm/projects/Personal/iris/backend/src/apps/signals/query_services.py)
+- immutable dataclass read models now live in [backend/src/apps/signals/read_models.py](/Users/avm/projects/Personal/iris/backend/src/apps/signals/read_models.py)
+- views now depend on the shared async UoW instead of injecting `AsyncSession` directly in [backend/src/apps/signals/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/signals/views.py)
+- public async query wrappers were removed from [backend/src/apps/signals/services.py](/Users/avm/projects/Personal/iris/backend/src/apps/signals/services.py); the module is now limited to legacy sync compatibility exports
+- market-decision detail reads keep their cache-first behavior but the fallback and DB projection are now logged through the shared persistence logger inside `SignalQueryService`
+- remaining follow-up:
+  - [backend/src/apps/signals/fusion.py](/Users/avm/projects/Personal/iris/backend/src/apps/signals/fusion.py), [backend/src/apps/signals/history.py](/Users/avm/projects/Personal/iris/backend/src/apps/signals/history.py), [backend/src/apps/signals/backtests.py](/Users/avm/projects/Personal/iris/backend/src/apps/signals/backtests.py) and [backend/src/apps/signals/strategies.py](/Users/avm/projects/Personal/iris/backend/src/apps/signals/strategies.py) still own sync analytical logic and write boundaries that require a later async/class-first pass
+
+Classification:
+
+- `OK` on the async/public API read surface
+- `later migration` for residual sync analytical engines and write paths
+
 ### Sync-Heavy Analytical Domains
 
 These domains are still dominated by synchronous `Session` access inside selectors/engines and represent the largest remaining migration surface:
 
-- `apps/signals`
 - `apps/portfolio`
+- residual sync analytical modules inside `apps/signals`
 
 Shared issues:
 
@@ -251,11 +268,10 @@ Priority note:
 Direct session injection exists in multiple route modules, including:
 
 - [backend/src/apps/portfolio/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/portfolio/views.py)
-- [backend/src/apps/signals/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/signals/views.py)
 
 Required action:
 
-- replace route-level session usage with query services and command/application services built on top of a shared unit of work dependency.
+- replace the remaining route-level session usage with query services and command/application services built on top of a shared unit of work dependency.
 
 ### Transaction Boundary Drift
 
@@ -315,8 +331,9 @@ Recommended rollout order:
 9. completed on the async/public and TaskIQ orchestration surface: `apps/patterns`
 10. completed on the async/background runtime surface: `apps/cross_market`
 11. completed on the async/public API and scheduled runtime surface: `apps/predictions`
-12. next: `apps/signals`
-13. later: `portfolio` plus residual sync compatibility helpers in `signals`, `predictions`, `cross_market` and `patterns`
+12. completed on the async/public API read surface: `apps/signals`
+13. next: `apps/portfolio`
+14. later: residual sync analytical/write helpers in `signals`, plus compatibility helpers in `predictions`, `cross_market` and `patterns`
 
 ## Current Behavior To Preserve
 

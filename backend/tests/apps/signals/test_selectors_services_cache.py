@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 import src.apps.signals.cache as signal_cache_module
 import src.apps.signals.market_decision_selectors as market_selector_module
-import src.apps.signals.services as signal_services_module
+import src.apps.signals.query_services as signal_query_module
 from src.apps.patterns.selectors import _signal_select
 from src.apps.signals.cache import (
     DECISION_CACHE_TTL_SECONDS,
@@ -26,26 +26,11 @@ from src.apps.signals.cache import (
 from src.apps.signals.decision_selectors import get_coin_decision, list_decisions, list_top_decisions
 from src.apps.signals.final_signal_selectors import get_coin_final_signal, list_final_signals, list_top_final_signals
 from src.apps.signals.market_decision_selectors import get_coin_market_decision, list_market_decisions, list_top_market_decisions
-from src.apps.signals.models import FinalSignal, InvestmentDecision, Strategy, StrategyRule
-from src.apps.signals.services import (
+from src.apps.signals.models import FinalSignal, InvestmentDecision, Signal, Strategy, StrategyRule
+from src.apps.signals.query_services import (
+    SignalQueryService,
     _cluster_membership_map_async,
     _serialize_signal_rows_async,
-    get_coin_backtests_async,
-    get_coin_decision_async,
-    get_coin_final_signal_async,
-    get_coin_market_decision_async,
-    list_backtests_async,
-    list_decisions_async,
-    list_enriched_signals_async,
-    list_final_signals_async,
-    list_market_decisions_async,
-    list_strategies_async,
-    list_strategy_performance_async,
-    list_top_backtests_async,
-    list_top_decisions_async,
-    list_top_final_signals_async,
-    list_top_market_decisions_async,
-    list_top_signals_async,
 )
 from src.apps.signals.strategies import list_strategies, list_strategy_performance
 from tests.factories.seeds import DecisionSeedFactory, StrategySeedFactory
@@ -294,12 +279,13 @@ async def test_signal_async_services_cover_selectors_serialization_and_strategy_
     btc = seeded_api_state["btc"]
     eth = seeded_api_state["eth"]
     timestamp = seeded_api_state["signal_timestamp"]
+    query_service = SignalQueryService(async_db_session)
 
     rows = (
         await async_db_session.execute(
             _signal_select()
-            .where(signal_services_module.Signal.coin_id == int(btc.id), signal_services_module.Signal.timeframe == 15)
-            .order_by(signal_services_module.Signal.candle_timestamp.desc(), signal_services_module.Signal.created_at.desc())
+            .where(Signal.coin_id == int(btc.id), Signal.timeframe == 15)
+            .order_by(Signal.candle_timestamp.desc(), Signal.created_at.desc())
         )
     ).all()
     assert await _cluster_membership_map_async(async_db_session, []) == {}
@@ -307,16 +293,16 @@ async def test_signal_async_services_cover_selectors_serialization_and_strategy_
     assert membership[(int(btc.id), 15, timestamp)] == ["pattern_cluster_breakout"]
 
     serialized = await _serialize_signal_rows_async(async_db_session, rows)
-    assert serialized[0]["cluster_membership"] == ["pattern_cluster_breakout"]
-    assert serialized[0]["market_regime"] == "bull_trend"
-    assert serialized[0]["cycle_phase"] == "markup"
+    assert serialized[0].cluster_membership == ("pattern_cluster_breakout",)
+    assert serialized[0].market_regime == "bull_trend"
+    assert serialized[0].cycle_phase == "markup"
 
-    enriched = await list_enriched_signals_async(async_db_session, symbol="BTCUSD_EVT", timeframe=15, limit=10)
-    assert [row["signal_type"] for row in enriched] == ["pattern_bull_flag", "pattern_cluster_breakout"]
-    assert await list_enriched_signals_async(async_db_session, symbol="BTCUSD_EVT", limit=10)
-    assert await list_enriched_signals_async(async_db_session, timeframe=15, limit=10)
-    top_signals = await list_top_signals_async(async_db_session, limit=200)
-    assert any(row["symbol"] == "BTCUSD_EVT" and row["signal_type"] == "pattern_bull_flag" for row in top_signals)
+    enriched = await query_service.list_signals(symbol="BTCUSD_EVT", timeframe=15, limit=10)
+    assert [row.signal_type for row in enriched] == ["pattern_bull_flag", "pattern_cluster_breakout"]
+    assert await query_service.list_signals(symbol="BTCUSD_EVT", limit=10)
+    assert await query_service.list_signals(timeframe=15, limit=10)
+    top_signals = await query_service.list_top_signals(limit=200)
+    assert any(row.symbol == "BTCUSD_EVT" and row.signal_type == "pattern_bull_flag" for row in top_signals)
 
     extra_decision_seed = DecisionSeedFactory.build(decision="ACCUMULATE", created_at=timestamp + timedelta(minutes=2))
     extra_investment = InvestmentDecision(
@@ -355,19 +341,19 @@ async def test_signal_async_services_cover_selectors_serialization_and_strategy_
     async_db_session.add_all([extra_investment, extra_final, disabled_strategy, disabled_rule])
     await async_db_session.commit()
 
-    decisions = await list_decisions_async(async_db_session, symbol="BTCUSD_EVT", limit=10)
-    assert {row["timeframe"] for row in decisions} == {15, 1440}
-    assert await list_decisions_async(async_db_session, timeframe=15, limit=10)
-    top_decisions = await list_top_decisions_async(async_db_session, limit=200)
-    assert any(row["symbol"] == "BTCUSD_EVT" and row["timeframe"] == 1440 for row in top_decisions)
-    btc_decision = await get_coin_decision_async(async_db_session, "BTCUSD_EVT")
+    decisions = await query_service.list_decisions(symbol="BTCUSD_EVT", limit=10)
+    assert {row.timeframe for row in decisions} == {15, 1440}
+    assert await query_service.list_decisions(timeframe=15, limit=10)
+    top_decisions = await query_service.list_top_decisions(limit=200)
+    assert any(row.symbol == "BTCUSD_EVT" and row.timeframe == 1440 for row in top_decisions)
+    btc_decision = await query_service.get_coin_decision("BTCUSD_EVT")
     assert btc_decision is not None
-    assert btc_decision["canonical_decision"] == "ACCUMULATE"
-    eth_decision = await get_coin_decision_async(async_db_session, "ETHUSD_EVT")
+    assert btc_decision.canonical_decision == "ACCUMULATE"
+    eth_decision = await query_service.get_coin_decision("ETHUSD_EVT")
     assert eth_decision is not None
-    assert eth_decision["canonical_decision"] is None
-    assert eth_decision["items"] == []
-    assert await get_coin_decision_async(async_db_session, "MISSING_EVT") is None
+    assert eth_decision.canonical_decision is None
+    assert eth_decision.items == ()
+    assert await query_service.get_coin_decision("MISSING_EVT") is None
 
     cached_entries = {
         1440: DecisionCacheEntry(
@@ -395,73 +381,71 @@ async def test_signal_async_services_cover_selectors_serialization_and_strategy_
             return None
         return cached_entries.get(timeframe)
 
-    monkeypatch.setattr(signal_services_module, "read_cached_market_decision_async", _cached_reader)
-    cached_market = await get_coin_market_decision_async(async_db_session, "BTCUSD_EVT")
+    monkeypatch.setattr(signal_query_module, "read_cached_market_decision_async", _cached_reader)
+    cached_market = await query_service.get_coin_market_decision("BTCUSD_EVT")
     assert cached_market is not None
-    assert cached_market["canonical_decision"] == "SELL"
-    assert [row["timeframe"] for row in cached_market["items"]] == [15, 1440]
+    assert cached_market.canonical_decision == "SELL"
+    assert [row.timeframe for row in cached_market.items] == [15, 1440]
 
     async def _empty_reader(*, coin_id: int, timeframe: int):
         return None
 
-    monkeypatch.setattr(signal_services_module, "read_cached_market_decision_async", _empty_reader)
-    market_rows = await list_market_decisions_async(async_db_session, symbol="ETHUSD_EVT", timeframe=60, limit=10)
-    assert [row["symbol"] for row in market_rows] == ["ETHUSD_EVT"]
-    assert await list_market_decisions_async(async_db_session, symbol="ETHUSD_EVT", limit=10)
-    assert await list_market_decisions_async(async_db_session, timeframe=60, limit=10)
-    top_market_rows = await list_top_market_decisions_async(async_db_session, limit=200)
-    assert any(row["symbol"] == "BTCUSD_EVT" and row["decision"] == "BUY" for row in top_market_rows)
-    fallback_market = await get_coin_market_decision_async(async_db_session, "ETHUSD_EVT")
+    monkeypatch.setattr(signal_query_module, "read_cached_market_decision_async", _empty_reader)
+    market_rows = await query_service.list_market_decisions(symbol="ETHUSD_EVT", timeframe=60, limit=10)
+    assert [row.symbol for row in market_rows] == ["ETHUSD_EVT"]
+    assert await query_service.list_market_decisions(symbol="ETHUSD_EVT", limit=10)
+    assert await query_service.list_market_decisions(timeframe=60, limit=10)
+    top_market_rows = await query_service.list_top_market_decisions(limit=200)
+    assert any(row.symbol == "BTCUSD_EVT" and row.decision == "BUY" for row in top_market_rows)
+    fallback_market = await query_service.get_coin_market_decision("ETHUSD_EVT")
     assert fallback_market is not None
-    assert fallback_market["canonical_decision"] == "HOLD"
-    empty_market = await get_coin_market_decision_async(async_db_session, "SOLUSD_EVT")
+    assert fallback_market.canonical_decision == "HOLD"
+    empty_market = await query_service.get_coin_market_decision("SOLUSD_EVT")
     assert empty_market is not None
-    assert empty_market["canonical_decision"] is None
-    assert empty_market["items"] == []
-    assert await get_coin_market_decision_async(async_db_session, "MISSING_EVT") is None
+    assert empty_market.canonical_decision is None
+    assert empty_market.items == ()
+    assert await query_service.get_coin_market_decision("MISSING_EVT") is None
 
-    final_rows = await list_final_signals_async(async_db_session, symbol="ETHUSD_EVT", timeframe=60, limit=10)
-    assert [row["symbol"] for row in final_rows] == ["ETHUSD_EVT"]
-    final_rows = await list_final_signals_async(async_db_session, limit=200)
-    assert {"BTCUSD_EVT", "ETHUSD_EVT"} <= {row["symbol"] for row in final_rows}
-    top_final_rows = await list_top_final_signals_async(async_db_session, limit=200)
-    assert any(row["symbol"] == "BTCUSD_EVT" and row["risk_adjusted_score"] == 99.69 for row in top_final_rows)
-    eth_final = await get_coin_final_signal_async(async_db_session, "ETHUSD_EVT")
+    final_rows = await query_service.list_final_signals(symbol="ETHUSD_EVT", timeframe=60, limit=10)
+    assert [row.symbol for row in final_rows] == ["ETHUSD_EVT"]
+    final_rows = await query_service.list_final_signals(limit=200)
+    assert {"BTCUSD_EVT", "ETHUSD_EVT"} <= {row.symbol for row in final_rows}
+    top_final_rows = await query_service.list_top_final_signals(limit=200)
+    assert any(row.symbol == "BTCUSD_EVT" and row.risk_adjusted_score == 99.69 for row in top_final_rows)
+    eth_final = await query_service.get_coin_final_signal("ETHUSD_EVT")
     assert eth_final is not None
-    assert eth_final["items"][0]["volatility_risk"] == 0.0
-    empty_async_final = await get_coin_final_signal_async(async_db_session, "SOLUSD_EVT")
+    assert eth_final.items[0].volatility_risk == 0.0
+    empty_async_final = await query_service.get_coin_final_signal("SOLUSD_EVT")
     assert empty_async_final is not None
-    assert empty_async_final["canonical_decision"] is None
-    assert empty_async_final["items"] == []
-    assert await get_coin_final_signal_async(async_db_session, "MISSING_EVT") is None
+    assert empty_async_final.canonical_decision is None
+    assert empty_async_final.items == ()
+    assert await query_service.get_coin_final_signal("MISSING_EVT") is None
 
-    backtests = await list_backtests_async(
-        async_db_session,
+    backtests = await query_service.list_backtests(
         symbol="BTCUSD_EVT",
         timeframe=15,
         signal_type="pattern_bull_flag",
         limit=0,
     )
     assert len(backtests) == 1
-    assert backtests[0]["sample_size"] == 2
-    assert await list_backtests_async(async_db_session, symbol="BTCUSD_EVT", limit=10)
-    assert await list_backtests_async(async_db_session, timeframe=15, limit=10)
-    top_backtests = await list_top_backtests_async(async_db_session, timeframe=15, limit=200)
-    assert any(row["signal_type"] == "pattern_bull_flag" and row["timeframe"] == 15 for row in top_backtests)
-    coin_backtests = await get_coin_backtests_async(
-        async_db_session,
+    assert backtests[0].sample_size == 2
+    assert await query_service.list_backtests(symbol="BTCUSD_EVT", limit=10)
+    assert await query_service.list_backtests(timeframe=15, limit=10)
+    top_backtests = await query_service.list_top_backtests(timeframe=15, limit=200)
+    assert any(row.signal_type == "pattern_bull_flag" and row.timeframe == 15 for row in top_backtests)
+    coin_backtests = await query_service.get_coin_backtests(
         "BTCUSD_EVT",
         timeframe=15,
         signal_type="pattern_bull_flag",
         limit=0,
     )
     assert coin_backtests is not None
-    assert coin_backtests["items"][0]["coin_count"] == 1
-    assert await get_coin_backtests_async(async_db_session, "MISSING_EVT") is None
+    assert coin_backtests.items[0].coin_count == 1
+    assert await query_service.get_coin_backtests("MISSING_EVT") is None
 
-    enabled_strategies = await list_strategies_async(async_db_session, enabled_only=True, limit=10)
-    assert [row["id"] for row in enabled_strategies] == [101]
-    all_strategies = await list_strategies_async(async_db_session, enabled_only=False, limit=10)
-    assert any(row["performance"] is None for row in all_strategies)
-    strategy_performance = await list_strategy_performance_async(async_db_session, limit=0)
-    assert strategy_performance[0]["strategy_id"] == 101
+    enabled_strategies = await query_service.list_strategies(enabled_only=True, limit=10)
+    assert [row.id for row in enabled_strategies] == [101]
+    all_strategies = await query_service.list_strategies(enabled_only=False, limit=10)
+    assert any(row.performance is None for row in all_strategies)
+    strategy_performance = await query_service.list_strategy_performance(limit=0)
+    assert strategy_performance[0].strategy_id == 101
