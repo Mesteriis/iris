@@ -188,7 +188,7 @@ Current implementation coverage:
 - `apps/portfolio` now exposes immutable portfolio read models plus `PortfolioQueryService`, while `/portfolio/*` reads, `portfolio_sync_job` and `portfolio_workers` execute under the shared async UoW and defer cache/event side effects until after commit
 - `patterns` API/read-write and TaskIQ orchestration surface now use repositories, async task services, query services, immutable read models and UoW-owned handlers
 - `apps/market_data` keeps legacy sync adapters only for Timescale-specific aggregate/resampling access and not for new async callers
-- `indicator_workers`, `signal_fusion_workers` and signal-history refresh paths now persist runtime state through async repositories/UoW; `patterns` keeps only legacy sync helper modules under `domain/`, while `portfolio` keeps only legacy sync helpers in `engine.py` / `selectors.py` and active task/runtime entrypoints run through async services
+- `indicator_workers`, `decision_workers`, `signal_fusion_workers` and signal-history refresh paths now persist runtime state through async repositories/UoW; `patterns` keeps only legacy sync helper modules under `domain/`, while `portfolio` keeps only legacy sync helpers in `engine.py` / `selectors.py` and active task/runtime entrypoints run through async services
 - remaining domains tracked in the audit backlog
 
 ## Home Assistant

@@ -6,10 +6,19 @@ import pytest
 from redis import Redis
 
 from src.core.settings import get_settings
+from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
 from src.apps.patterns.domain.regime import detect_market_regime
 from src.apps.patterns.cache import read_cached_regime
+
+
+def _run_dispatcher_loop() -> None:
+    consumer = create_topology_dispatcher_consumer()
+    try:
+        consumer.run()
+    finally:
+        consumer.close()
 
 
 def test_market_regime_detection_rules() -> None:
@@ -79,11 +88,16 @@ async def test_regime_worker_caches_and_emits_changes(seeded_market, wait_until)
     settings = get_settings()
     sample = seeded_market["ETHUSD_EVT"]
     ctx = multiprocessing.get_context("spawn")
+    dispatcher = ctx.Process(
+        target=_run_dispatcher_loop,
+        daemon=True,
+    )
     worker = ctx.Process(
         target=run_worker_loop,
         args=("regime_workers",),
         daemon=True,
     )
+    dispatcher.start()
     worker.start()
     try:
         publish_event(
@@ -119,5 +133,7 @@ async def test_regime_worker_caches_and_emits_changes(seeded_market, wait_until)
         finally:
             redis.close()
     finally:
+        dispatcher.terminate()
         worker.terminate()
+        dispatcher.join(timeout=2.0)
         worker.join(timeout=2.0)

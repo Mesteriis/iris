@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from sqlalchemy import select
+
+from src.apps.indicators.models import CoinMetrics
+from src.apps.market_data.domain import utc_now
 from src.apps.patterns.task_service_base import PatternTaskBase
 from src.apps.patterns.task_service_bootstrap import PatternBootstrapService
 from src.apps.patterns.task_service_context import PatternContextMixin
@@ -49,7 +53,7 @@ class PatternSignalContextService(_PatternTaskSupport):
         *,
         coin_id: int,
         timeframe: int,
-        candle_timestamp: str | None = None,
+        candle_timestamp: object | None = None,
     ) -> dict[str, object]:
         context = await self._enrich_signal_context(
             coin_id=int(coin_id),
@@ -66,8 +70,26 @@ class PatternSignalContextService(_PatternTaskSupport):
             timeframe=int(timeframe),
             emit_event=False,
         )
+        metrics = await self.session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(coin_id)).limit(1))
         await self._uow.commit()
-        return {"status": "ok", "context": context, "decision": decision, "final_signal": final_signal}
+        return {
+            "status": "ok",
+            "context": context,
+            "decision": decision,
+            "final_signal": final_signal,
+            "_feature_snapshot": {
+                "coin_id": int(coin_id),
+                "timeframe": int(timeframe),
+                "timestamp": candle_timestamp if candle_timestamp is not None else utc_now(),
+                "price_current": (
+                    float(metrics.price_current)
+                    if metrics is not None and metrics.price_current is not None
+                    else None
+                ),
+                "rsi_14": float(metrics.rsi_14) if metrics is not None and metrics.rsi_14 is not None else None,
+                "macd": float(metrics.macd) if metrics is not None and metrics.macd is not None else None,
+            },
+        }
 
 
 class PatternMarketStructureService(_PatternTaskSupport):

@@ -169,6 +169,7 @@ Status: migrated on the async API/application and TaskIQ orchestration surface; 
 - the market-cycle endpoint consumed by `indicators` now reuses the same query service instead of a module-level function facade
 - persistence logging now covers pattern feature/pattern registry writes and public query paths
 - TaskIQ flows now run through async class-based services in [backend/src/apps/patterns/task_services.py](backend/src/apps/patterns/task_services.py) and [backend/src/apps/patterns/tasks.py](backend/src/apps/patterns/tasks.py), removing the old `AsyncSession.run_sync` bridge from active runtime orchestration
+- `decision_workers` now delegate context enrichment plus decision/final-signal generation to async `PatternSignalContextService` under UoW, removing the old sync `run_sync` decision path from [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py)
 - async market-data candle repositories now expose range/series fetchers used by the pattern task services without pushing raw session access back into the task layer
 - remaining follow-up:
   - legacy sync modules under [backend/src/apps/patterns/domain](backend/src/apps/patterns/domain) still exist for compatibility/tests and should be retired incrementally as their async service equivalents absorb more helper logic

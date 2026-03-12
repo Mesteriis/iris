@@ -66,13 +66,6 @@ async def test_worker_db_and_helper_functions(monkeypatch) -> None:
         def scalars(self, _stmt):
             return ScalarResult()
 
-        def scalar(self, _stmt):
-            return "1.25"
-
-    class EmptyValueDb:
-        def scalar(self, _stmt):
-            return None
-
     published: list[tuple[str, dict[str, object]]] = []
 
     monkeypatch.setattr(workers, "AsyncSessionLocal", lambda: _AsyncContext(AsyncSession()))
@@ -90,26 +83,6 @@ async def test_worker_db_and_helper_functions(monkeypatch) -> None:
     assert result == "used:sync-db"
     assert signal_types == {"pattern_a", "pattern_b"}
     assert published[0][0] == "signal_created"
-    assert (
-        workers._latest_indicator_value(
-            SyncDb(),
-            coin_id=7,
-            timeframe=15,
-            indicator="price_current",
-            timestamp=_event().timestamp,
-        )
-        == 1.25
-    )
-    assert (
-        workers._latest_indicator_value(
-            EmptyValueDb(),
-            coin_id=7,
-            timeframe=15,
-            indicator="price_current",
-            timestamp=_event().timestamp,
-        )
-        is None
-    )
 
 
 @pytest.mark.asyncio
@@ -177,22 +150,6 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
     await workers._handle_pattern_event(_event(event_type="analysis_requested"))
     assert published == []
 
-    async def run_decision(_fn):
-        return {
-            "status": "ok",
-            "decision": "BUY",
-            "score": 0.91,
-            "_feature_snapshot": {
-                "coin_id": 7,
-                "timeframe": 15,
-                "timestamp": _event().timestamp,
-                "price_current": 101.0,
-                "rsi_14": 52.0,
-                "macd": 1.5,
-            },
-        }
-
-    monkeypatch.setattr(workers, "_run_worker_db", run_decision)
     monkeypatch.setattr(
         workers,
         "_capture_feature_snapshot_async",
@@ -200,17 +157,42 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
     )
 
     class FakeDecisionUow:
-        session = "decision-db"
+        _index = 0
+
+        def __init__(self) -> None:
+            type(self)._index += 1
+            self.session = f"decision-db-{type(self)._index}"
 
         async def __aenter__(self):
+            calls.append(("decision_uow_enter", self.session))
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
             del exc_type, exc, tb
+            calls.append(("decision_uow_exit", self.session))
             return False
 
         async def commit(self):
             calls.append(("decision_history_commit", self.session))
+
+    class FakePatternSignalContextService:
+        def __init__(self, uow):
+            calls.append(("context_session", uow.session))
+
+        async def enrich(self, **kwargs):
+            calls.append(("context_enrich", (kwargs["coin_id"], kwargs["timeframe"])))
+            return {
+                "status": "ok",
+                "decision": {"status": "ok", "decision": "BUY", "score": 0.91},
+                "_feature_snapshot": {
+                    "coin_id": 7,
+                    "timeframe": 15,
+                    "timestamp": _event().timestamp,
+                    "price_current": 101.0,
+                    "rsi_14": 52.0,
+                    "macd": 1.5,
+                },
+            }
 
     class FakeSignalHistoryService:
         def __init__(self, uow):
@@ -220,24 +202,35 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
             calls.append(("history_refresh", (coin_id, timeframe)))
             return {"status": "ok"}
 
-    monkeypatch.setattr(workers, "AsyncUnitOfWork", lambda: FakeDecisionUow())
+    monkeypatch.setattr(workers, "AsyncUnitOfWork", FakeDecisionUow)
+    monkeypatch.setattr(
+        workers,
+        "_pattern_signal_context_service_factory",
+        lambda uow: FakePatternSignalContextService(uow),
+    )
     monkeypatch.setattr(workers, "SignalHistoryService", FakeSignalHistoryService)
     await workers._handle_decision_event(_event(event_type="pattern_detected"))
     assert published[-1][0] == "decision_generated"
     assert snapshots[-1]["price_current"] == 101.0
-    assert ("history_session", "decision-db") in calls
+    assert ("context_session", "decision-db-1") in calls
+    assert ("context_enrich", (7, 15)) in calls
+    assert ("history_session", "decision-db-2") in calls
     assert ("history_refresh", (7, 15)) in calls
-    assert ("decision_history_commit", "decision-db") in calls
+    assert ("decision_history_commit", "decision-db-2") in calls
 
     published.clear()
     calls.clear()
-    monkeypatch.setattr(
-        workers,
-        "_run_worker_db",
-        lambda _fn: __import__("asyncio").sleep(
-            0,
-            result={
-                "status": "skip",
+    FakeDecisionUow._index = 0
+
+    class FakePatternSignalContextServiceSkip:
+        def __init__(self, uow):
+            calls.append(("context_session", uow.session))
+
+        async def enrich(self, **kwargs):
+            calls.append(("context_enrich", (kwargs["coin_id"], kwargs["timeframe"])))
+            return {
+                "status": "ok",
+                "decision": {"status": "skip"},
                 "_feature_snapshot": {
                     "coin_id": 7,
                     "timeframe": 15,
@@ -246,8 +239,12 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
                     "rsi_14": None,
                     "macd": None,
                 },
-            },
-        ),
+            }
+
+    monkeypatch.setattr(
+        workers,
+        "_pattern_signal_context_service_factory",
+        lambda uow: FakePatternSignalContextServiceSkip(uow),
     )
     await workers._handle_decision_event(_event(event_type="pattern_detected"))
     assert published == []
@@ -566,36 +563,6 @@ def test_worker_domain_helpers_and_factory(monkeypatch) -> None:
         "regime_confidence": 0.73,
     }
     assert workers._refresh_regime_state(SimpleNamespace(get=lambda *_args, **_kwargs: None), event) is None
-
-    flow_calls: list[tuple[str, object]] = []
-    monkeypatch.setattr(
-        workers, "enrich_signal_context", lambda _db, **kwargs: flow_calls.append(("context", kwargs["commit"]))
-    )
-    monkeypatch.setattr(
-        workers,
-        "evaluate_investment_decision",
-        lambda _db, **kwargs: flow_calls.append(("decision", kwargs["emit_event"]))
-        or {"status": "ok", "decision": "BUY"},
-    )
-    monkeypatch.setattr(
-        workers, "evaluate_final_signal", lambda _db, **kwargs: flow_calls.append(("final", kwargs["emit_event"]))
-    )
-    monkeypatch.setattr(
-        workers,
-        "_latest_indicator_value",
-        lambda _db, **kwargs: {"price_current": 101.0, "rsi_14": 52.0, "macd": 1.5}[kwargs["indicator"]],
-    )
-    decision_result = workers._evaluate_decision_flow(object(), event)
-    assert decision_result["status"] == "ok"
-    assert flow_calls == [("context", True), ("decision", True), ("final", True)]
-    assert decision_result["_feature_snapshot"] == {
-        "coin_id": 7,
-        "timeframe": 15,
-        "timestamp": event.timestamp,
-        "price_current": 101.0,
-        "rsi_14": 52.0,
-        "macd": 1.5,
-    }
 
     created: list[tuple[str, object, object]] = []
 

@@ -15,13 +15,10 @@ from src.apps.market_data.models import Coin
 from src.apps.news.consumers import NewsCorrelationConsumer, NewsNormalizationConsumer
 from src.apps.patterns.cache import cache_regime_snapshot_async, read_cached_regime_async
 from src.apps.patterns.domain.clusters import build_pattern_clusters
-from src.apps.patterns.domain.context import enrich_signal_context
 from src.apps.patterns.domain.cycle import update_market_cycle
-from src.apps.patterns.domain.decision import evaluate_investment_decision
 from src.apps.patterns.domain.engine import PatternEngine
 from src.apps.patterns.domain.hierarchy import build_hierarchy_signals
 from src.apps.patterns.domain.narrative import refresh_sector_metrics
-from src.apps.patterns.domain.risk import evaluate_final_signal
 from src.apps.patterns.domain.scheduler import should_request_analysis
 from src.apps.patterns.models import MarketCycle
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
@@ -62,8 +59,8 @@ _CONTROL_PLANE_METRICS = ControlPlaneMetricsStore()
 
 # NOTE:
 # These stream workers now use async Redis/consumer orchestration.
-# Indicator, cross-market, signal-fusion and signal-history persistence now run through async repositories/UoW.
-# Remaining decision/context/risk orchestration still relies on legacy sync cores behind AsyncSession.run_sync.
+# Indicator, cross-market, decision-context, signal-fusion and signal-history persistence now run through async repositories/UoW.
+# Remaining pattern-detection and regime-refresh orchestration still relies on legacy sync cores behind AsyncSession.run_sync.
 
 
 async def _run_worker_db(fn):
@@ -102,6 +99,12 @@ async def _capture_feature_snapshot_async(
             macd=macd,
         )
         await uow.commit()
+
+
+def _pattern_signal_context_service_factory(uow):
+    from src.apps.patterns.task_services import PatternSignalContextService
+
+    return PatternSignalContextService(uow)
 
 
 def _signal_types_at_timestamp(db, *, coin_id: int, timeframe: int, timestamp: object) -> set[str]:
@@ -271,23 +274,15 @@ async def _handle_regime_event(event: IrisEvent) -> None:
         )
 
 
-def _latest_indicator_value(db, *, coin_id: int, timeframe: int, indicator: str, timestamp: object) -> float | None:
-    from src.apps.indicators.models import IndicatorCache
-
-    value = db.scalar(
-        select(IndicatorCache.value).where(
-            IndicatorCache.coin_id == coin_id,
-            IndicatorCache.timeframe == timeframe,
-            IndicatorCache.indicator == indicator,
-            IndicatorCache.timestamp == timestamp,
-        )
-    )
-    return float(value) if value is not None else None
-
-
 async def _handle_decision_event(event: IrisEvent) -> None:
-    decision_result = await _run_worker_db(lambda db: _evaluate_decision_flow(db, event))
-    snapshot_payload = decision_result.pop("_feature_snapshot", None)
+    async with AsyncUnitOfWork() as uow:
+        flow_result = await _pattern_signal_context_service_factory(uow).enrich(
+            coin_id=event.coin_id,
+            timeframe=event.timeframe,
+            candle_timestamp=event.timestamp,
+        )
+    decision_result = dict(flow_result.get("decision", {}))
+    snapshot_payload = flow_result.get("_feature_snapshot")
     if snapshot_payload is not None:
         await _capture_feature_snapshot_async(**snapshot_payload)
     async with AsyncUnitOfWork() as uow:
@@ -429,57 +424,6 @@ def _refresh_regime_state(db, event: IrisEvent) -> dict[str, object] | None:
         "next_cycle": cycle_result.get("cycle_phase"),
         "regime": (str(event.payload.get("market_regime")) if event.payload.get("market_regime") is not None else None),
         "regime_confidence": float(event.payload.get("regime_confidence") or 0.0),
-    }
-
-
-def _evaluate_decision_flow(db, event: IrisEvent) -> dict[str, object]:
-    enrich_signal_context(
-        db,
-        coin_id=event.coin_id,
-        timeframe=event.timeframe,
-        candle_timestamp=event.timestamp,
-        commit=True,
-    )
-    decision_result = evaluate_investment_decision(
-        db,
-        coin_id=event.coin_id,
-        timeframe=event.timeframe,
-        emit_event=True,
-    )
-    evaluate_final_signal(
-        db,
-        coin_id=event.coin_id,
-        timeframe=event.timeframe,
-        emit_event=True,
-    )
-    return {
-        **decision_result,
-        "_feature_snapshot": {
-            "coin_id": event.coin_id,
-            "timeframe": event.timeframe,
-            "timestamp": event.timestamp,
-            "price_current": _latest_indicator_value(
-                db,
-                coin_id=event.coin_id,
-                timeframe=event.timeframe,
-                indicator="price_current",
-                timestamp=event.timestamp,
-            ),
-            "rsi_14": _latest_indicator_value(
-                db,
-                coin_id=event.coin_id,
-                timeframe=event.timeframe,
-                indicator="rsi_14",
-                timestamp=event.timestamp,
-            ),
-            "macd": _latest_indicator_value(
-                db,
-                coin_id=event.coin_id,
-                timeframe=event.timeframe,
-                indicator="macd",
-                timestamp=event.timestamp,
-            ),
-        },
     }
 
 

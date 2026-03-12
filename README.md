@@ -68,7 +68,7 @@ Current rollout:
 - legacy `signals` `backtests.py` / `strategies.py` read paths and `fusion.py` / `history.py` write paths now run through class-based compatibility adapters/services with structured deprecation logging, keeping old sync contracts while marking migration boundaries explicitly
 - `portfolio` public APIs, `portfolio_sync_job` and `portfolio_workers` now use `PortfolioQueryService` / `PortfolioService`, immutable dataclass read models and UoW-owned transaction boundaries; cache writes and published events are deferred until after commit
 - `market_data` keeps documented Timescale-specific raw SQL only inside legacy infrastructure adapters while async callers use UoW-backed repositories/query services
-- `indicator_workers`, `signal_fusion_workers`, signal-history refresh paths and `patterns` TaskIQ entrypoints now execute persistence through async repositories/UoW; the remaining sync analytical backlog is confined to legacy `apps/signals/backtests.py`, `apps/signals/strategies.py`, legacy helper modules under `apps/patterns/domain`, plus `apps/portfolio/engine.py` and `apps/portfolio/selectors.py`
+- `indicator_workers`, `decision_workers`, `signal_fusion_workers`, signal-history refresh paths and `patterns` TaskIQ entrypoints now execute persistence through async repositories/UoW; the remaining sync analytical backlog is confined to legacy `apps/signals/backtests.py`, `apps/signals/strategies.py`, legacy helper modules under `apps/patterns/domain`, plus `apps/portfolio/engine.py` and `apps/portfolio/selectors.py`
 - remaining domains tracked in the persistence audit backlog
 
 ## Stack
@@ -465,7 +465,7 @@ Control-plane read APIs can be used in observe mode. Mutating endpoints require:
 9. Cluster and hierarchy engines derive stronger structures from emitted pattern signals.
 10. `regime_workers` update cycle and sector-aware market context and mirror regime reads into Redis cache keys `iris:regime:{coin_id}:{timeframe}`.
 11. `cross_market_workers` update rolling `coin_relations`, refresh `sector_metrics`, emit `market_leader_detected` / `sector_rotation_detected` / `correlation_updated` and cache relations under `iris:correlation:{leader_coin_id}:{follower_coin_id}`.
-12. `decision_workers` update the Contextual Signal Engine:
+12. `decision_workers` now run the class-based async `PatternSignalContextService` under UoW and update the Contextual Signal Engine:
    `priority_score = confidence * temperature * regime_alignment * volatility_alignment * liquidity_score * sector_alignment * cycle_alignment * cluster_bonus`
 13. Lazy Investor Decision Engine converts the current stack into an investment decision.
 14. Liquidity & Risk Engine converts that decision into a tradable `final_signal`.
