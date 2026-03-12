@@ -25,9 +25,8 @@ from src.apps.patterns.domain.risk import evaluate_final_signal
 from src.apps.patterns.domain.scheduler import should_request_analysis
 from src.apps.patterns.models import MarketCycle
 from src.apps.portfolio.engine import evaluate_portfolio_action
-from src.apps.signals.history import refresh_recent_signal_history
 from src.apps.signals.models import Signal
-from src.apps.signals.services import SignalFusionService, SignalFusionSideEffectDispatcher
+from src.apps.signals.services import SignalFusionService, SignalFusionSideEffectDispatcher, SignalHistoryService
 from src.core.db.session import AsyncSessionLocal
 from src.core.db.uow import AsyncUnitOfWork
 from src.core.settings import get_settings
@@ -63,8 +62,8 @@ _CONTROL_PLANE_METRICS = ControlPlaneMetricsStore()
 
 # NOTE:
 # These stream workers now use async Redis/consumer orchestration.
-# Indicator, cross-market and signal-fusion persistence now run through async repositories/UoW.
-# Remaining decision/history orchestration still relies on legacy sync cores behind AsyncSession.run_sync.
+# Indicator, cross-market, signal-fusion and signal-history persistence now run through async repositories/UoW.
+# Remaining decision/context/risk orchestration still relies on legacy sync cores behind AsyncSession.run_sync.
 
 
 async def _run_worker_db(fn):
@@ -291,6 +290,12 @@ async def _handle_decision_event(event: IrisEvent) -> None:
     snapshot_payload = decision_result.pop("_feature_snapshot", None)
     if snapshot_payload is not None:
         await _capture_feature_snapshot_async(**snapshot_payload)
+    async with AsyncUnitOfWork() as uow:
+        await SignalHistoryService(uow).refresh_recent_history(
+            coin_id=event.coin_id,
+            timeframe=event.timeframe,
+        )
+        await uow.commit()
     if decision_result.get("status") == "ok":
         publish_event(
             "decision_generated",
@@ -446,12 +451,6 @@ def _evaluate_decision_flow(db, event: IrisEvent) -> dict[str, object]:
         coin_id=event.coin_id,
         timeframe=event.timeframe,
         emit_event=True,
-    )
-    refresh_recent_signal_history(
-        db,
-        coin_id=event.coin_id,
-        timeframe=event.timeframe,
-        commit=True,
     )
     return {
         **decision_result,

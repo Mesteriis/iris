@@ -5,6 +5,8 @@ from datetime import datetime
 from datetime import timedelta
 
 from src.apps.cross_market.cache import read_cached_correlation_async
+from src.apps.market_data.domain import ensure_utc
+from src.apps.market_data.repositories import CandleRepository
 from src.apps.patterns.domain.context import enrich_signal_context
 from src.apps.patterns.domain.semantics import is_cluster_signal, is_hierarchy_signal, pattern_bias, slug_from_signal_type
 from src.apps.signals.backtests import get_coin_backtests, list_backtests, list_top_backtests
@@ -34,12 +36,18 @@ from src.apps.signals.market_decision_selectors import (
     list_top_market_decisions,
 )
 from src.apps.signals.models import MarketDecision, Signal
-from src.apps.signals.repositories import SignalFusionRepository
+from src.apps.signals.repositories import SignalFusionRepository, SignalHistoryRepository
 from src.apps.signals.strategies import list_strategies, list_strategy_performance
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
-from src.apps.market_data.domain import ensure_utc
 from src.runtime.streams.publisher import publish_event
+from src.apps.signals.history import (
+    SIGNAL_HISTORY_LOOKBACK_DAYS,
+    SIGNAL_HISTORY_RECENT_LIMIT,
+    _close_timestamps,
+    _evaluate_signal,
+    _open_timestamp_from_signal,
+)
 
 
 @dataclass(slots=True, frozen=True)
@@ -117,6 +125,24 @@ class SignalFusionBatchResult:
         if self.reason is not None:
             payload["reason"] = self.reason
         return payload
+
+
+@dataclass(slots=True, frozen=True)
+class SignalHistoryRefreshResult:
+    status: str
+    rows: int
+    evaluated: int
+    coin_id: int | None
+    timeframe: int | None
+
+    def to_summary(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "rows": self.rows,
+            "evaluated": self.evaluated,
+            "coin_id": self.coin_id,
+            "timeframe": self.timeframe,
+        }
 
 
 class SignalFusionSideEffectDispatcher:
@@ -637,6 +663,161 @@ class SignalFusionService(PersistenceComponent):
         return 0.55
 
 
+class SignalHistoryService(PersistenceComponent):
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        super().__init__(
+            uow.session,
+            component_type="service",
+            domain="signals",
+            component_name="SignalHistoryService",
+        )
+        self._history = SignalHistoryRepository(uow.session)
+        self._candles = CandleRepository(uow.session)
+
+    async def refresh_history(
+        self,
+        *,
+        lookback_days: int = SIGNAL_HISTORY_LOOKBACK_DAYS,
+        coin_id: int | None = None,
+        timeframe: int | None = None,
+        limit_per_scope: int | None = None,
+    ) -> SignalHistoryRefreshResult:
+        self._log_debug(
+            "service.refresh_signal_history",
+            mode="write",
+            lookback_days=lookback_days,
+            coin_id=coin_id,
+            timeframe=timeframe,
+            limit_per_scope=limit_per_scope,
+        )
+        signals = await self._history.list_signals_for_history(
+            lookback_days=int(lookback_days),
+            coin_id=coin_id,
+            timeframe=timeframe,
+            limit_per_scope=limit_per_scope,
+        )
+        if not signals:
+            self._log_debug(
+                "service.refresh_signal_history.result",
+                mode="write",
+                status="ok",
+                rows=0,
+                evaluated=0,
+                coin_id=coin_id,
+                timeframe=timeframe,
+            )
+            return SignalHistoryRefreshResult(
+                status="ok",
+                rows=0,
+                evaluated=0,
+                coin_id=coin_id,
+                timeframe=timeframe,
+            )
+
+        groups: dict[tuple[int, int], list[Signal]] = {}
+        for signal in signals:
+            groups.setdefault((int(signal.coin_id), int(signal.timeframe)), []).append(signal)
+
+        rows: list[dict[str, object]] = []
+        evaluated = 0
+        for (group_coin_id, group_timeframe), scoped_signals in groups.items():
+            if not scoped_signals:
+                continue
+            start = _open_timestamp_from_signal(scoped_signals[0])
+            end = ensure_utc(scoped_signals[-1].candle_timestamp) + timedelta(hours=72, minutes=group_timeframe)
+            candles = await self._candles.fetch_points_between(
+                coin_id=group_coin_id,
+                timeframe=group_timeframe,
+                window_start=start,
+                window_end=end,
+            )
+            if not candles:
+                self._log_debug(
+                    "service.refresh_signal_history.group_missing_candles",
+                    mode="write",
+                    coin_id=group_coin_id,
+                    timeframe=group_timeframe,
+                    signal_count=len(scoped_signals),
+                )
+                rows.extend(
+                    {
+                        "coin_id": signal.coin_id,
+                        "timeframe": signal.timeframe,
+                        "signal_type": signal.signal_type,
+                        "confidence": float(signal.confidence),
+                        "market_regime": signal.market_regime,
+                        "candle_timestamp": signal.candle_timestamp,
+                        "profit_after_24h": None,
+                        "profit_after_72h": None,
+                        "maximum_drawdown": None,
+                        "result_return": None,
+                        "result_drawdown": None,
+                        "evaluated_at": None,
+                    }
+                    for signal in scoped_signals
+                )
+                continue
+
+            close_timestamps = _close_timestamps(candles, group_timeframe)
+            close_index_map = {timestamp: index for index, timestamp in enumerate(close_timestamps)}
+            for signal in scoped_signals:
+                outcome = _evaluate_signal(signal, candles, close_timestamps, close_index_map)
+                if outcome.evaluated_at is not None:
+                    evaluated += 1
+                rows.append(
+                    {
+                        "coin_id": signal.coin_id,
+                        "timeframe": signal.timeframe,
+                        "signal_type": signal.signal_type,
+                        "confidence": float(signal.confidence),
+                        "market_regime": signal.market_regime,
+                        "candle_timestamp": signal.candle_timestamp,
+                        "profit_after_24h": outcome.profit_after_24h,
+                        "profit_after_72h": outcome.profit_after_72h,
+                        "maximum_drawdown": outcome.maximum_drawdown,
+                        "result_return": outcome.result_return,
+                        "result_drawdown": outcome.result_drawdown,
+                        "evaluated_at": outcome.evaluated_at,
+                    }
+                )
+        await self._history.upsert_signal_history(rows=rows)
+        result = SignalHistoryRefreshResult(
+            status="ok",
+            rows=len(rows),
+            evaluated=evaluated,
+            coin_id=coin_id,
+            timeframe=timeframe,
+        )
+        self._log_info(
+            "service.refresh_signal_history.result",
+            mode="write",
+            rows=result.rows,
+            evaluated=result.evaluated,
+            coin_id=coin_id,
+            timeframe=timeframe,
+        )
+        return result
+
+    async def refresh_recent_history(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+    ) -> SignalHistoryRefreshResult:
+        self._log_debug(
+            "service.refresh_recent_signal_history",
+            mode="write",
+            coin_id=coin_id,
+            timeframe=timeframe,
+        )
+        return await self.refresh_history(
+            lookback_days=SIGNAL_HISTORY_LOOKBACK_DAYS,
+            coin_id=int(coin_id),
+            timeframe=int(timeframe),
+            limit_per_scope=SIGNAL_HISTORY_RECENT_LIMIT,
+        )
+
+
 __all__ = [
     "SignalDecisionCacheSnapshot",
     "SignalFusionBatchResult",
@@ -644,6 +825,8 @@ __all__ = [
     "SignalFusionResult",
     "SignalFusionService",
     "SignalFusionSideEffectDispatcher",
+    "SignalHistoryRefreshResult",
+    "SignalHistoryService",
     "evaluate_market_decision",
     "evaluate_news_fusion_event",
     "get_coin_backtests",

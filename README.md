@@ -63,10 +63,10 @@ Current rollout:
 - `anomalies` now uses immutable read models, query-service compatibility adapters, UoW-owned worker/task writes and batched peer-candle loading on the sector scan path
 - `cross_market` now uses immutable read models, query services, repository-backed async worker writes and batched leader-candle loading on the active runtime path; legacy sync engine helpers remain only for compatibility callers
 - `predictions` now uses immutable read models, query services, UoW-owned evaluation jobs and batched pending-window lookups on the active async API/background path; legacy sync engine helpers remain only for compatibility callers
-- `signals` public read APIs now use `SignalQueryService`, immutable dataclass read models and UoW-owned route boundaries, while `signal_fusion_workers` now execute through class-based `SignalFusionService` and `SignalFusionRepository`
+- `signals` public read APIs now use `SignalQueryService`, immutable dataclass read models and UoW-owned route boundaries, while `signal_fusion_workers` and signal-history refresh paths now execute through class-based `SignalFusionService` / `SignalHistoryService`
 - `portfolio` public APIs and `portfolio_sync_job` now use `PortfolioQueryService`, `PortfolioService`, immutable dataclass read models and UoW-owned transaction boundaries; cache writes and published events are deferred until after commit
 - `market_data` keeps documented Timescale-specific raw SQL only inside legacy infrastructure adapters while async callers use UoW-backed repositories/query services
-- `indicator_workers`, `signal_fusion_workers` and `patterns` TaskIQ entrypoints now execute persistence through async repositories/UoW; the remaining sync analytical backlog is confined to legacy `apps/signals/fusion.py` compatibility helpers, `apps/signals/history.py`, `apps/signals/backtests.py`, `apps/signals/strategies.py`, legacy helper modules under `apps/patterns/domain`, plus `apps/portfolio/engine.py` and `apps/portfolio/selectors.py`
+- `indicator_workers`, `signal_fusion_workers`, signal-history refresh paths and `patterns` TaskIQ entrypoints now execute persistence through async repositories/UoW; the remaining sync analytical backlog is confined to legacy `apps/signals/fusion.py` / `apps/signals/history.py` compatibility helpers, `apps/signals/backtests.py`, `apps/signals/strategies.py`, legacy helper modules under `apps/patterns/domain`, plus `apps/portfolio/engine.py` and `apps/portfolio/selectors.py`
 - remaining domains tracked in the persistence audit backlog
 
 ## Stack

@@ -198,11 +198,39 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
         "_capture_feature_snapshot_async",
         lambda **kwargs: __import__("asyncio").sleep(0, result=snapshots.append(kwargs)),
     )
+
+    class FakeDecisionUow:
+        session = "decision-db"
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            del exc_type, exc, tb
+            return False
+
+        async def commit(self):
+            calls.append(("decision_history_commit", self.session))
+
+    class FakeSignalHistoryService:
+        def __init__(self, uow):
+            calls.append(("history_session", uow.session))
+
+        async def refresh_recent_history(self, *, coin_id, timeframe):
+            calls.append(("history_refresh", (coin_id, timeframe)))
+            return {"status": "ok"}
+
+    monkeypatch.setattr(workers, "AsyncUnitOfWork", lambda: FakeDecisionUow())
+    monkeypatch.setattr(workers, "SignalHistoryService", FakeSignalHistoryService)
     await workers._handle_decision_event(_event(event_type="pattern_detected"))
     assert published[-1][0] == "decision_generated"
     assert snapshots[-1]["price_current"] == 101.0
+    assert ("history_session", "decision-db") in calls
+    assert ("history_refresh", (7, 15)) in calls
+    assert ("decision_history_commit", "decision-db") in calls
 
     published.clear()
+    calls.clear()
     monkeypatch.setattr(
         workers,
         "_run_worker_db",
@@ -223,29 +251,58 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
     )
     await workers._handle_decision_event(_event(event_type="pattern_detected"))
     assert published == []
+    assert ("history_refresh", (7, 15)) in calls
 
-    async def run_capture(fn):
-        calls.append(("trigger_timestamp", fn("db")))
-        return {"status": "ok"}
+    calls.clear()
 
-    monkeypatch.setattr(workers, "_run_worker_db", run_capture)
-    monkeypatch.setattr(
-        workers,
-        "evaluate_market_decision",
-        lambda _db, **kwargs: kwargs["trigger_timestamp"],
-    )
-    monkeypatch.setattr(
-        workers,
-        "evaluate_news_fusion_event",
-        lambda _db, **kwargs: ("news", kwargs["reference_timestamp"]),
-    )
+    class FakeFusionUow:
+        session = "fusion-db"
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            del exc_type, exc, tb
+            return False
+
+        async def commit(self):
+            calls.append(("fusion_commit", self.session))
+
+    class FakeSignalFusionService:
+        def __init__(self, uow):
+            calls.append(("fusion_session", uow.session))
+
+        async def evaluate_market_decision(self, **kwargs):
+            calls.append(("trigger_timestamp", kwargs["trigger_timestamp"]))
+            return ("market", kwargs["trigger_timestamp"])
+
+        async def evaluate_news_fusion_event(self, **kwargs):
+            calls.append(("news_reference", kwargs["reference_timestamp"]))
+            return ("news", kwargs["reference_timestamp"])
+
+    class FakeFusionDispatcher:
+        async def apply(self, result):
+            calls.append(("dispatcher", result))
+
+    monkeypatch.setattr(workers, "AsyncUnitOfWork", lambda: FakeFusionUow())
+    monkeypatch.setattr(workers, "SignalFusionService", FakeSignalFusionService)
+    monkeypatch.setattr(workers, "SignalFusionSideEffectDispatcher", lambda: FakeFusionDispatcher())
     await workers._handle_fusion_event(_event(event_type="market_regime_changed"))
     await workers._handle_fusion_event(_event(event_type="pattern_detected"))
     await workers._handle_fusion_event(_event(event_type="news_symbol_correlation_updated", timeframe=0))
     assert calls == [
+        ("fusion_session", "fusion-db"),
         ("trigger_timestamp", None),
+        ("fusion_commit", "fusion-db"),
+        ("dispatcher", ("market", None)),
+        ("fusion_session", "fusion-db"),
         ("trigger_timestamp", _event().timestamp),
-        ("trigger_timestamp", ("news", _event().timestamp)),
+        ("fusion_commit", "fusion-db"),
+        ("dispatcher", ("market", _event().timestamp)),
+        ("fusion_session", "fusion-db"),
+        ("news_reference", _event().timestamp),
+        ("fusion_commit", "fusion-db"),
+        ("dispatcher", ("news", _event().timestamp)),
     ]
 
     calls.clear()
@@ -492,15 +549,13 @@ def test_worker_domain_helpers_and_factory(monkeypatch) -> None:
         workers, "evaluate_final_signal", lambda _db, **kwargs: flow_calls.append(("final", kwargs["emit_event"]))
     )
     monkeypatch.setattr(
-        workers, "refresh_recent_signal_history", lambda _db, **kwargs: flow_calls.append(("history", kwargs["commit"]))
-    )
-    monkeypatch.setattr(
         workers,
         "_latest_indicator_value",
         lambda _db, **kwargs: {"price_current": 101.0, "rsi_14": 52.0, "macd": 1.5}[kwargs["indicator"]],
     )
     decision_result = workers._evaluate_decision_flow(object(), event)
     assert decision_result["status"] == "ok"
+    assert flow_calls == [("context", True), ("decision", True), ("final", True)]
     assert decision_result["_feature_snapshot"] == {
         "coin_id": 7,
         "timeframe": 15,

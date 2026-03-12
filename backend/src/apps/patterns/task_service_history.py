@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import timedelta
 
 from sqlalchemy import select
@@ -25,13 +24,9 @@ from src.apps.patterns.domain.success import (
     publish_pattern_state_event,
 )
 from src.apps.patterns.models import PatternRegistry
-from src.apps.signals.history import (
-    SIGNAL_HISTORY_LOOKBACK_DAYS,
-    _close_timestamps,
-    _evaluate_signal,
-    _open_timestamp_from_signal,
-)
-from src.apps.signals.models import Signal, SignalHistory
+from src.apps.signals.history import SIGNAL_HISTORY_LOOKBACK_DAYS
+from src.apps.signals.models import SignalHistory
+from src.apps.signals.services import SignalHistoryService
 
 
 class PatternHistoryStatisticsMixin:
@@ -43,98 +38,14 @@ class PatternHistoryStatisticsMixin:
         timeframe: int | None = None,
         limit_per_scope: int | None = None,
     ) -> dict[str, object]:
-        cutoff = utc_now() - timedelta(days=lookback_days)
-        stmt = (
-            select(Signal)
-            .where(Signal.candle_timestamp >= cutoff)
-            .order_by(
-                Signal.coin_id.asc(), Signal.timeframe.asc(), Signal.candle_timestamp.asc(), Signal.created_at.asc()
+        return (
+            await SignalHistoryService(self._uow).refresh_history(
+                lookback_days=lookback_days,
+                coin_id=coin_id,
+                timeframe=timeframe,
+                limit_per_scope=limit_per_scope,
             )
-        )
-        if coin_id is not None:
-            stmt = stmt.where(Signal.coin_id == coin_id)
-        if timeframe is not None:
-            stmt = stmt.where(Signal.timeframe == timeframe)
-        signals = (await self.session.execute(stmt)).scalars().all()
-        if limit_per_scope is not None:
-            grouped_rows: dict[tuple[int, int], list[Signal]] = defaultdict(list)
-            for row in signals:
-                grouped_rows[(int(row.coin_id), int(row.timeframe))].append(row)
-            limited: list[Signal] = []
-            for scoped_rows in grouped_rows.values():
-                limited.extend(scoped_rows[-limit_per_scope:])
-            limited.sort(key=lambda row: (row.coin_id, row.timeframe, row.candle_timestamp, row.created_at))
-            signals = limited
-
-        if not signals:
-            return {
-                "status": "ok",
-                "rows": 0,
-                "evaluated": 0,
-                "coin_id": coin_id,
-                "timeframe": timeframe,
-            }
-
-        groups: dict[tuple[int, int], list[Signal]] = defaultdict(list)
-        for row in signals:
-            groups[(int(row.coin_id), int(row.timeframe))].append(row)
-
-        rows: list[dict[str, object]] = []
-        evaluated = 0
-        for (group_coin_id, group_timeframe), scoped_signals in groups.items():
-            start = _open_timestamp_from_signal(scoped_signals[0])
-            end = ensure_utc(scoped_signals[-1].candle_timestamp) + timedelta(hours=72)
-            end += timedelta(minutes=group_timeframe)
-            candles = await self._fetch_candle_points_between(
-                coin_id=group_coin_id,
-                timeframe=group_timeframe,
-                window_start=start,
-                window_end=end,
-            )
-            if not candles:
-                rows.extend(
-                    {
-                        "coin_id": signal.coin_id,
-                        "timeframe": signal.timeframe,
-                        "signal_type": signal.signal_type,
-                        "confidence": float(signal.confidence),
-                        "market_regime": signal.market_regime,
-                        "candle_timestamp": signal.candle_timestamp,
-                        "profit_after_24h": None,
-                        "profit_after_72h": None,
-                        "maximum_drawdown": None,
-                        "result_return": None,
-                        "result_drawdown": None,
-                        "evaluated_at": None,
-                    }
-                    for signal in scoped_signals
-                )
-                continue
-
-            close_timestamps = _close_timestamps(candles, group_timeframe)
-            close_index_map = {timestamp: index for index, timestamp in enumerate(close_timestamps)}
-            for signal in scoped_signals:
-                outcome = _evaluate_signal(signal, candles, close_timestamps, close_index_map)
-                if outcome.evaluated_at is not None:
-                    evaluated += 1
-                rows.append(
-                    {
-                        "coin_id": signal.coin_id,
-                        "timeframe": signal.timeframe,
-                        "signal_type": signal.signal_type,
-                        "confidence": float(signal.confidence),
-                        "market_regime": signal.market_regime,
-                        "candle_timestamp": signal.candle_timestamp,
-                        "profit_after_24h": outcome.profit_after_24h,
-                        "profit_after_72h": outcome.profit_after_72h,
-                        "maximum_drawdown": outcome.maximum_drawdown,
-                        "result_return": outcome.result_return,
-                        "result_drawdown": outcome.result_drawdown,
-                        "evaluated_at": outcome.evaluated_at,
-                    }
-                )
-        await self._upsert_signal_history(rows=rows)
-        return {"status": "ok", "rows": len(rows), "evaluated": evaluated, "coin_id": coin_id, "timeframe": timeframe}
+        ).to_summary()
 
     async def _refresh_pattern_statistics(self, *, emit_events: bool = True) -> dict[str, object]:
         from src.apps.patterns.domain.registry import PATTERN_CATALOG

@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from dataclasses import FrozenInstanceError
 
 import pytest
 from sqlalchemy import select
 
 import src.apps.signals.services as signal_services_module
-from src.apps.signals.models import MarketDecision
+from src.apps.signals.models import MarketDecision, Signal, SignalHistory
 from src.apps.signals.query_services import SignalQueryService
-from src.apps.signals.services import SignalFusionService
+from src.apps.signals.services import SignalFusionService, SignalHistoryService
 from src.core.db.persistence import PERSISTENCE_LOGGER
 from src.core.db.uow import SessionUnitOfWork
+from tests.cross_market_support import DEFAULT_START, seed_candles
+from tests.factories.seeds import SignalSeedFactory
 from tests.fusion_support import create_test_coin, insert_signals, replace_pattern_statistics, upsert_coin_metrics
 
 
@@ -136,6 +139,94 @@ async def test_signal_fusion_persistence_logs_cover_service_repo_and_uow(async_d
     assert "uow.begin" in events
     assert "service.evaluate_market_decision" in events
     assert "repo.list_recent_fusion_signals" in events
+    assert "uow.rollback_uncommitted" in events
+
+
+@pytest.mark.asyncio
+async def test_signal_history_service_defers_commit_to_uow(async_db_session, db_session) -> None:
+    coin = create_test_coin(db_session, symbol="SOLUSD_EVT", name="Solana Event Test")
+    seed_candles(
+        db_session,
+        coin=coin,
+        interval="1h",
+        closes=[100.0 + index for index in range(80)],
+        start=DEFAULT_START,
+    )
+    signal_timestamp = DEFAULT_START + timedelta(hours=1)
+    seed = SignalSeedFactory.build(
+        signal_type="golden_cross",
+        confidence=0.72,
+        priority_score=100.0,
+        context_score=1.0,
+        regime_alignment=1.0,
+        candle_timestamp=signal_timestamp,
+        created_at=signal_timestamp,
+    )
+    db_session.add(Signal(coin_id=int(coin.id), timeframe=60, **seed.__dict__))
+    db_session.commit()
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await SignalHistoryService(uow).refresh_recent_history(coin_id=int(coin.id), timeframe=60)
+        assert result.status == "ok"
+        assert result.rows == 1
+        visible_before_commit = db_session.scalar(
+            select(SignalHistory)
+            .where(SignalHistory.coin_id == int(coin.id), SignalHistory.timeframe == 60)
+            .limit(1)
+        )
+        assert visible_before_commit is None
+
+    db_session.expire_all()
+    visible_after_rollback = db_session.scalar(
+        select(SignalHistory)
+        .where(SignalHistory.coin_id == int(coin.id), SignalHistory.timeframe == 60)
+        .limit(1)
+    )
+    assert visible_after_rollback is None
+
+
+@pytest.mark.asyncio
+async def test_signal_history_persistence_logs_cover_service_repo_and_uow(async_db_session, db_session, monkeypatch) -> None:
+    coin = create_test_coin(db_session, symbol="AVAXUSD_EVT", name="Avalanche Event Test")
+    seed_candles(
+        db_session,
+        coin=coin,
+        interval="1h",
+        closes=[100.0 + index for index in range(80)],
+        start=DEFAULT_START,
+    )
+    signal_timestamp = DEFAULT_START + timedelta(hours=1)
+    seed = SignalSeedFactory.build(
+        signal_type="golden_cross",
+        confidence=0.72,
+        priority_score=100.0,
+        context_score=1.0,
+        regime_alignment=1.0,
+        candle_timestamp=signal_timestamp,
+        created_at=signal_timestamp,
+    )
+    db_session.add(Signal(coin_id=int(coin.id), timeframe=60, **seed.__dict__))
+    db_session.commit()
+    events: list[str] = []
+
+    def _debug(message: str, *args, **kwargs) -> None:
+        del args, kwargs
+        events.append(message)
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "debug", _debug)
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        await SignalHistoryService(uow).refresh_recent_history(coin_id=int(coin.id), timeframe=60)
+
+    assert "uow.begin" in events
+    assert "service.refresh_recent_signal_history" in events
+    assert "repo.list_signal_history_signals" in events
+    assert "repo.upsert_signal_history_rows" in events
     assert "uow.rollback_uncommitted" in events
 
 

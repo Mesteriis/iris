@@ -1,19 +1,99 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Sequence
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.cross_market.models import CoinRelation, SectorMetric
 from src.apps.indicators.models import CoinMetrics
+from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Coin
 from src.apps.news.constants import NEWS_NORMALIZATION_STATUS_NORMALIZED
 from src.apps.news.models import NewsItem, NewsItemLink
 from src.apps.patterns.models import PatternStatistic
-from src.apps.signals.models import MarketDecision, Signal
+from src.apps.signals.models import MarketDecision, Signal, SignalHistory
 from src.core.db.persistence import AsyncRepository
+
+
+class SignalHistoryRepository(AsyncRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, domain="signals", repository_name="SignalHistoryRepository")
+
+    async def list_signals_for_history(
+        self,
+        *,
+        lookback_days: int,
+        coin_id: int | None = None,
+        timeframe: int | None = None,
+        limit_per_scope: int | None = None,
+    ) -> list[Signal]:
+        self._log_debug(
+            "repo.list_signal_history_signals",
+            mode="read",
+            lookback_days=lookback_days,
+            coin_id=coin_id,
+            timeframe=timeframe,
+            limit_per_scope=limit_per_scope,
+        )
+        cutoff = utc_now() - timedelta(days=int(lookback_days))
+        stmt = (
+            select(Signal)
+            .where(Signal.candle_timestamp >= cutoff)
+            .order_by(Signal.coin_id.asc(), Signal.timeframe.asc(), Signal.candle_timestamp.asc(), Signal.created_at.asc())
+        )
+        if coin_id is not None:
+            stmt = stmt.where(Signal.coin_id == int(coin_id))
+        if timeframe is not None:
+            stmt = stmt.where(Signal.timeframe == int(timeframe))
+        rows = (await self.session.execute(stmt)).scalars().all()
+        items = list(rows)
+        if limit_per_scope is None:
+            self._log_debug("repo.list_signal_history_signals.result", mode="read", count=len(items))
+            return items
+
+        grouped: dict[tuple[int, int], list[Signal]] = defaultdict(list)
+        for row in items:
+            grouped[(int(row.coin_id), int(row.timeframe))].append(row)
+        limited: list[Signal] = []
+        for scoped_rows in grouped.values():
+            limited.extend(scoped_rows[-int(limit_per_scope) :])
+        limited.sort(key=lambda row: (row.coin_id, row.timeframe, row.candle_timestamp, row.created_at))
+        self._log_debug("repo.list_signal_history_signals.result", mode="read", count=len(limited))
+        return limited
+
+    async def upsert_signal_history(self, *, rows: Sequence[dict[str, object]]) -> int:
+        self._log_info(
+            "repo.upsert_signal_history_rows",
+            mode="write",
+            row_count=len(rows),
+            bulk=True,
+        )
+        if not rows:
+            return 0
+        stmt = insert(SignalHistory).values(list(rows))
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["coin_id", "timeframe", "signal_type", "candle_timestamp"],
+            set_={
+                "confidence": stmt.excluded.confidence,
+                "market_regime": stmt.excluded.market_regime,
+                "profit_after_24h": stmt.excluded.profit_after_24h,
+                "profit_after_72h": stmt.excluded.profit_after_72h,
+                "maximum_drawdown": stmt.excluded.maximum_drawdown,
+                "result_return": stmt.excluded.result_return,
+                "result_drawdown": stmt.excluded.result_drawdown,
+                "evaluated_at": stmt.excluded.evaluated_at,
+            },
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        count = int(result.rowcount or 0)
+        self._log_debug("repo.upsert_signal_history_rows.result", mode="write", count=count, bulk=True)
+        return count
 
 
 class SignalFusionRepository(AsyncRepository):
