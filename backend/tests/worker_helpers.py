@@ -6,9 +6,9 @@ from typing import Any
 
 from redis import Redis
 
-from app.core.settings import get_settings
-from app.runtime.streams.consumer import EventConsumer, EventConsumerConfig
-from app.runtime.streams.types import IrisEvent
+from src.core.settings import get_settings
+from src.runtime.streams.consumer import EventConsumer, EventConsumerConfig
+from src.runtime.streams.types import IrisEvent
 
 
 def recording_worker_loop(

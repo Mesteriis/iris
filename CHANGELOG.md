@@ -7,12 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Anomaly Detection subsystem under `backend/app/apps/anomalies` with dedicated `candle_closed -> anomaly_detected` consumers, `MarketAnomaly` persistence, fast-path price/volume/volatility/relative detectors, slow-path sector/market-structure scans, explainable scoring and anomaly enrichment tasks.
+- Anomaly Detection subsystem under `backend/src/apps/anomalies` with dedicated `candle_closed -> anomaly_detected` consumers, `MarketAnomaly` persistence, fast-path price/volume/volatility/relative detectors, slow-path sector/market-structure scans, explainable scoring and anomaly enrichment tasks.
 - Expanded anomaly coverage with failed breakout, compression/expansion, price-volume divergence, correlation breakdown, funding/open-interest, cross-exchange dislocation and liquidation-cascade detectors plus async persistence, cooldown/hysteresis policies and anomaly stream publishing.
-- News ingestion subsystem under `backend/app/apps/news` with plugin registry, source CRUD API, polling/manual jobs, normalized `news_items`, symbol correlation links and downstream fusion from `news_item_ingested` into `decision_generated`.
+- News ingestion subsystem under `backend/src/apps/news` with plugin registry, source CRUD API, polling/manual jobs, normalized `news_items`, symbol correlation links and downstream fusion from `news_item_ingested` into `decision_generated`.
 - Telegram user onboarding flow for news sources with session request/confirm endpoints, dialog discovery, single/bulk source provisioning and private channel/group support via entity id plus access hash.
 - News source support for X, Telegram user sessions and Discord bots, with explicit unsupported-provider handling for Truth Social style sources.
-- Market Structure ingestion subsystem under `backend/app/apps/market_structure` with polling/manual/webhook sources, snapshot storage, onboarding presets, native webhook normalization and `market_structure_snapshot_ingested` events.
+- Market Structure ingestion subsystem under `backend/src/apps/market_structure` with polling/manual/webhook sources, snapshot storage, onboarding presets, native webhook normalization and `market_structure_snapshot_ingested` events.
 - Provider-specific market structure webhook presets and native payload normalizers for Liqscope, generic liquidation collectors, derivatives collectors, Coinglass, Hyblock and Coinalyze.
 - Source health model for market structure feeds with `idle` / `healthy` / `stale` / `error` / `disabled` / `quarantined` states, read APIs, scheduler-driven refresh and stream events for SSE consumption.
 - Source reliability controls for market structure polling with per-source retry backoff, consecutive failure tracking, auto-quarantine, alert events and manual quarantine release through source update API.
@@ -30,7 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Portfolio API surface: `/portfolio/positions`, `/portfolio/actions` and `/portfolio/state`.
 - Portfolio Map and Portfolio Watch Radar UI showing capital allocation, current positions, regime context, fused IRIS stance, downside risk and unrealized P/L.
 - Portfolio / exchange pytest coverage for position sizing, risk limits, sync behavior, plugin loading and auto-watch activation.
-- Signal Fusion Engine under `backend/app/analysis/signal_fusion_engine.py` with `market_decisions` storage, Redis decision cache keys `iris:decision:{coin_id}:{timeframe}` and a dedicated `signal_fusion_workers` consumer group.
+- Signal Fusion Engine under `backend/src/analysis/signal_fusion_engine.py` with `market_decisions` storage, Redis decision cache keys `iris:decision:{coin_id}:{timeframe}` and a dedicated `signal_fusion_workers` consumer group.
 - Market decision API surface: `/market-decisions`, `/market-decisions/top` and `/coins/{symbol}/market-decision`.
 - Decision Radar UI showing fused BUY / SELL / HOLD / WATCH stances, confidence, signal count and regime.
 - Signal fusion tests for bullish aggregation, conflicting-stack HOLD behavior, regime-aware weighting and Redis `decision_generated` event emission.
@@ -50,7 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `signal_history` outcome store for evaluated signal returns and drawdowns.
 - `feature_snapshots` wide feature-vector table for ML and historical context training.
 - Pattern Intelligence foundation schema: feature flags, pattern registry, pattern statistics, discovered patterns, sectors, sector metrics and market cycles.
-- Pattern engine package scaffold under `backend/app/patterns` with detector interface, lifecycle enums and priority/temperature helpers.
+- Pattern engine package scaffold under `backend/src/patterns` with detector interface, lifecycle enums and priority/temperature helpers.
 - Descending candle index `ix_candles_coin_tf_ts_desc` for incremental last-200-candle pattern scans.
 - Incremental pattern detection engine with the required structural, continuation, momentum, volatility and volume detector set.
 - TaskIQ `patterns_bootstrap_scan` task plus automatic one-time historical bootstrap after coin backfill completes.
@@ -72,12 +72,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- Backend package root was renamed from `backend/app` to `backend/src`, and Alembic scripts were moved from `backend/alembic` to `backend/src/migrations` with matching updates in imports, bootstrap, Docker, service entrypoints and test tooling.
 - Signal fusion now incorporates normalized news correlation context instead of relying only on pattern/signal stacks, while keeping news as a bounded contextual input rather than synthetic trading signals.
 - Event-driven runtime wiring now includes dedicated news, anomaly and market-structure consumer groups/tasks so ingestion, anomaly detection, source polling and downstream enrichment scale independently from candle ingestion.
 - Market structure source reads now expose operational metadata such as `consecutive_failures`, `backoff_until`, `quarantined_at`, `quarantine_reason`, `last_alerted_at` and `last_alert_kind` for backend consumers and future SSE projections.
 - Health evaluation for market structure sources now treats successful polling/ingest activity as the canonical heartbeat, so clearing an error no longer marks a source healthy before the first successful snapshot.
 - Tests and runtime imports were reorganized around the new domain packages, replacing the older flat backend test layout with app/runtime/core slices that match the production architecture.
-- Backend layout was fully realigned around `backend/app/apps`, `backend/app/core` and `backend/app/runtime`; real implementations now live in domain apps, portfolio exchange plugins moved into `apps/portfolio`, and the legacy horizontal layers under `api`, `services`, `events`, `db`, `models`, `schemas`, `patterns`, `analysis`, `taskiq`, `messaging` and `exchanges` were removed.
+- Backend layout was fully realigned around `backend/src/apps`, `backend/src/core` and `backend/src/runtime`; real implementations now live in domain apps, portfolio exchange plugins moved into `apps/portfolio`, and the legacy horizontal layers under `api`, `services`, `events`, `db`, `models`, `schemas`, `patterns`, `analysis`, `taskiq`, `messaging` and `exchanges` were removed.
 - Event-driven runtime now includes `cross_market_workers` consuming `candle_closed` and `indicator_updated`, and Signal Fusion now folds cross-market alignment into fused confidence.
 - `coins` now expose a dedicated `sector` code alongside the existing sector relationship so cross-market and frontend reads can reason about sector momentum without breaking current taxonomy logic.
 - `sector_metrics` now also persist `avg_price_change_24h`, `avg_volume_change_24h` and `trend` for Market Flow reads.

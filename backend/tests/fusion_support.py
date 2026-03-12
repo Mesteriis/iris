@@ -5,12 +5,12 @@ from datetime import datetime
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.apps.indicators.models import CoinMetrics
-from app.apps.patterns.models import PatternRegistry
-from app.apps.patterns.models import PatternStatistic
-from app.apps.signals.models import Signal
-from app.apps.market_data.schemas import CoinCreate
-from app.apps.market_data.service_layer import create_coin
+from src.apps.indicators.models import CoinMetrics
+from src.apps.patterns.models import PatternRegistry
+from src.apps.patterns.models import PatternStatistic
+from src.apps.signals.models import Signal
+from src.apps.market_data.schemas import CoinCreate
+from src.apps.market_data.service_layer import create_coin
 
 
 def create_test_coin(db: Session, *, symbol: str, name: str):

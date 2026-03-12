@@ -4,11 +4,11 @@ from types import SimpleNamespace
 
 from sqlalchemy import select
 
-from app.apps.patterns import cache
-from app.apps.patterns.domain.context import _regime_alignment, _volatility_alignment
-from app.apps.patterns.domain.lifecycle import PatternLifecycleState, lifecycle_allows_detection, resolve_lifecycle_state
-from app.apps.patterns.domain.registry import active_detector_slugs, feature_enabled, load_active_detectors, sync_pattern_metadata
-from app.apps.patterns.domain.utils import (
+from src.apps.patterns import cache
+from src.apps.patterns.domain.context import _regime_alignment, _volatility_alignment
+from src.apps.patterns.domain.lifecycle import PatternLifecycleState, lifecycle_allows_detection, resolve_lifecycle_state
+from src.apps.patterns.domain.registry import active_detector_slugs, feature_enabled, load_active_detectors, sync_pattern_metadata
+from src.apps.patterns.domain.utils import (
     average,
     clamp,
     closes,
@@ -25,7 +25,7 @@ from app.apps.patterns.domain.utils import (
     window_range,
     within_tolerance,
 )
-from app.apps.patterns.models import PatternFeature, PatternRegistry
+from src.apps.patterns.models import PatternFeature, PatternRegistry
 from tests.factories.market_data import build_candle_points
 
 

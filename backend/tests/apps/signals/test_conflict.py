@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.apps.signals.fusion import evaluate_market_decision
+from src.apps.signals.fusion import evaluate_market_decision
 from tests.fusion_support import create_test_coin, insert_signals, replace_pattern_statistics
 
 

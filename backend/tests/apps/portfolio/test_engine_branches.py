@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.apps.portfolio.engine import (
+from src.apps.portfolio.engine import (
     _ensure_coin_for_balance,
     _maybe_auto_watch_coin,
     _rebalance_existing_position,
@@ -14,7 +14,7 @@ from app.apps.portfolio.engine import (
     refresh_portfolio_state,
     sync_exchange_balances,
 )
-from app.apps.portfolio.models import ExchangeAccount, PortfolioAction, PortfolioBalance, PortfolioPosition
+from src.apps.portfolio.models import ExchangeAccount, PortfolioAction, PortfolioBalance, PortfolioPosition
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_exchange_account, create_market_decision, create_sector
 
@@ -77,7 +77,7 @@ def test_portfolio_balance_helpers_cover_auto_watch_and_closing(db_session, monk
     assert created.symbol == "SOLUSD_EVT"
 
     published: list[str] = []
-    monkeypatch.setattr("app.apps.portfolio.engine.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr("src.apps.portfolio.engine.publish_event", lambda event_type, payload: published.append(event_type))
     assert _maybe_auto_watch_coin(db_session, coin=coin, value_usd=1.0, exchange_name="fixture_close") is False
     assert _maybe_auto_watch_coin(db_session, coin=coin, value_usd=500.0, exchange_name="fixture_close") is True
     assert published[-1] == "coin_auto_watch_enabled"
@@ -114,7 +114,7 @@ def test_portfolio_sync_skips_blank_balances(db_session) -> None:
         async def fetch_trades(self):
             return []
 
-    from app.apps.portfolio.clients import register_exchange
+    from src.apps.portfolio.clients import register_exchange
 
     register_exchange("fixture_blank", BlankPlugin)
     create_exchange_account(db_session, exchange_name="fixture_blank")
@@ -176,7 +176,7 @@ def test_portfolio_helper_and_event_branches(db_session, monkeypatch) -> None:
     assert position.status == "open"
 
     published: list[str] = []
-    monkeypatch.setattr("app.apps.portfolio.engine.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr("src.apps.portfolio.engine.publish_event", lambda event_type, payload: published.append(event_type))
 
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     metrics = upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bear_trend", timeframe=15)
@@ -229,7 +229,7 @@ def test_portfolio_balance_rows_update_and_reopen_positions(db_session) -> None:
         async def fetch_trades(self):
             return []
 
-    from app.apps.portfolio.clients import register_exchange
+    from src.apps.portfolio.clients import register_exchange
 
     register_exchange("fixture_update", MutablePlugin)
     account = create_exchange_account(db_session, exchange_name="fixture_update")

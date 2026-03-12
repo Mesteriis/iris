@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from app.apps.anomalies.constants import (
+from src.apps.anomalies.constants import (
     ANOMALY_STATUS_ACTIVE,
     ANOMALY_STATUS_COOLING,
     ANOMALY_STATUS_RESOLVED,
@@ -11,7 +11,7 @@ from app.apps.anomalies.constants import (
     ANOMALY_TYPE_CORRELATION_BREAKDOWN,
     ANOMALY_TYPE_PRICE_SPIKE,
 )
-from app.apps.anomalies.policies import AnomalyPolicyEngine
+from src.apps.anomalies.policies import AnomalyPolicyEngine
 
 
 def _policy_engine() -> AnomalyPolicyEngine:

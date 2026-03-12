@@ -12,7 +12,7 @@ The runtime is now hybrid:
 The backend now exposes a pipeline-oriented layout that matches the runtime model more closely:
 
 ```text
-backend/app/
+backend/src/
   core/
     settings/
     db/
@@ -159,7 +159,7 @@ IRIS uses the existing schema instead of duplicating market history:
 
 ## Pattern Intelligence System
 
-The pattern subsystem lives under `backend/app/apps/patterns/domain` and is integrated into the current analytics flow.
+The pattern subsystem lives under `backend/src/apps/patterns/domain` and is integrated into the current analytics flow.
 
 ### Modules
 
@@ -191,7 +191,7 @@ The pattern subsystem lives under `backend/app/apps/patterns/domain` and is inte
   Lazy Investor Decision Engine that converts market analysis into `STRONG_BUY` ... `STRONG_SELL` actions.
 - `strategy.py`
   Self Evolving Strategy Engine for strategy discovery, performance tracking and decision alignment.
-- `backend/app/apps/portfolio/engine.py`
+- `backend/src/apps/portfolio/engine.py`
   Portfolio Engine for position sizing, rebalancing, capital allocation, exchange balance sync and auto-watch activation.
 
 ## Portfolio Engine
@@ -246,7 +246,7 @@ Redis caches:
 
 ### Multi-exchange support
 
-Exchange integrations live under `backend/app/apps/portfolio/clients.py`:
+Exchange integrations live under `backend/src/apps/portfolio/clients.py`:
 
 - `ExchangePlugin`
   abstract plugin contract for exchange accounts
@@ -259,7 +259,7 @@ This keeps the portfolio engine open for `Kraken`, `Coinbase`, `OKX` and other e
 
 ## Signal Fusion Engine
 
-The fusion layer lives under `backend/app/apps/signals/fusion.py` and sits on top of stored `signals`. It does not replace pattern signals or investment decisions. It adds a separate aggregation layer that turns recent signal stacks into a unified market stance.
+The fusion layer lives under `backend/src/apps/signals/fusion.py` and sits on top of stored `signals`. It does not replace pattern signals or investment decisions. It adds a separate aggregation layer that turns recent signal stacks into a unified market stance.
 
 Responsibilities:
 
@@ -596,7 +596,7 @@ Runtime behavior:
 
 ## Cross-Market Intelligence Layer
 
-The cross-market layer lives under `backend/app/apps/cross_market/engine.py` and extends, not replaces, the existing analytics stack.
+The cross-market layer lives under `backend/src/apps/cross_market/engine.py` and extends, not replaces, the existing analytics stack.
 
 Responsibilities:
 
@@ -629,7 +629,7 @@ Typical use:
 
 ## Market Prediction Memory Engine
 
-The prediction memory layer lives under `backend/app/apps/predictions/engine.py`.
+The prediction memory layer lives under `backend/src/apps/predictions/engine.py`.
 
 Responsibilities:
 

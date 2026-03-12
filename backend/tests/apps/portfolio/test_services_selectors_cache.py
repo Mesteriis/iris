@@ -7,10 +7,10 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import delete, select
 
-from app.apps.market_data.models import Coin
-from app.apps.indicators.models import CoinMetrics
-from app.apps.portfolio import cache, tasks
-from app.apps.portfolio.cache import (
+from src.apps.market_data.models import Coin
+from src.apps.indicators.models import CoinMetrics
+from src.apps.portfolio import cache, tasks
+from src.apps.portfolio.cache import (
     PORTFOLIO_BALANCES_CACHE_KEY,
     PORTFOLIO_STATE_CACHE_KEY,
     cache_portfolio_balances,
@@ -22,9 +22,9 @@ from app.apps.portfolio.cache import (
     read_cached_portfolio_state,
     read_cached_portfolio_state_async,
 )
-from app.apps.portfolio.models import ExchangeAccount, PortfolioBalance, PortfolioPosition, PortfolioState
-from app.apps.portfolio.selectors import get_portfolio_state, list_portfolio_actions, list_portfolio_positions
-from app.apps.portfolio.services import (
+from src.apps.portfolio.models import ExchangeAccount, PortfolioBalance, PortfolioPosition, PortfolioState
+from src.apps.portfolio.selectors import get_portfolio_state, list_portfolio_actions, list_portfolio_positions
+from src.apps.portfolio.services import (
     _apply_auto_watch,
     _ensure_coin_for_balance_async,
     _ensure_portfolio_state_async,
@@ -151,10 +151,10 @@ def test_portfolio_cache_and_selectors_cover_cached_and_uncached_paths(db_sessio
     assert actions[0]["action"] == "OPEN_POSITION"
     assert actions[0]["market_decision"] == "BUY"
 
-    monkeypatch.setattr("app.apps.portfolio.selectors.read_cached_portfolio_state", lambda: {"cached": True})
+    monkeypatch.setattr("src.apps.portfolio.selectors.read_cached_portfolio_state", lambda: {"cached": True})
     assert get_portfolio_state(db_session) == {"cached": True}
 
-    monkeypatch.setattr("app.apps.portfolio.selectors.read_cached_portfolio_state", lambda: None)
+    monkeypatch.setattr("src.apps.portfolio.selectors.read_cached_portfolio_state", lambda: None)
     state = get_portfolio_state(db_session)
     assert state["open_positions"] == 1
     assert state["max_positions"] == settings.portfolio_max_positions
@@ -180,12 +180,12 @@ async def test_portfolio_async_services_cover_balance_sync_and_task_wrapper(asyn
     actions = await list_portfolio_actions_async(async_db_session, limit=5)
     assert actions[0]["action"] == "OPEN_POSITION"
 
-    monkeypatch.setattr("app.apps.portfolio.services.read_cached_portfolio_state_async", lambda: __import__("asyncio").sleep(0, result={"cached": True}))
+    monkeypatch.setattr("src.apps.portfolio.services.read_cached_portfolio_state_async", lambda: __import__("asyncio").sleep(0, result={"cached": True}))
     assert await get_portfolio_state_async(async_db_session) == {"cached": True}
 
     cached_states: list[dict[str, object]] = []
-    monkeypatch.setattr("app.apps.portfolio.services.read_cached_portfolio_state_async", lambda: __import__("asyncio").sleep(0, result=None))
-    monkeypatch.setattr("app.apps.portfolio.services.cache_portfolio_state_async", lambda payload: __import__("asyncio").sleep(0, result=cached_states.append(payload)))
+    monkeypatch.setattr("src.apps.portfolio.services.read_cached_portfolio_state_async", lambda: __import__("asyncio").sleep(0, result=None))
+    monkeypatch.setattr("src.apps.portfolio.services.cache_portfolio_state_async", lambda payload: __import__("asyncio").sleep(0, result=cached_states.append(payload)))
     state = await get_portfolio_state_async(async_db_session)
     assert state["open_positions"] == 1
     assert cached_states
@@ -267,7 +267,7 @@ async def test_portfolio_async_services_cover_balance_sync_and_task_wrapper(asyn
     assert btc.enabled is True
 
     published_events: list[str] = []
-    monkeypatch.setattr("app.apps.portfolio.services.publish_event", lambda event_type, payload: published_events.append(event_type))
+    monkeypatch.setattr("src.apps.portfolio.services.publish_event", lambda event_type, payload: published_events.append(event_type))
     none_row = await _sync_balance_row_async(
         async_db_session,
         account_id=999999,
@@ -313,13 +313,13 @@ async def test_portfolio_async_services_cover_balance_sync_and_task_wrapper(asyn
     }
 
     cached_state_payloads: list[dict[str, object]] = []
-    monkeypatch.setattr("app.apps.portfolio.services.cache_portfolio_state_async", lambda payload: __import__("asyncio").sleep(0, result=cached_state_payloads.append(payload)))
+    monkeypatch.setattr("src.apps.portfolio.services.cache_portfolio_state_async", lambda payload: __import__("asyncio").sleep(0, result=cached_state_payloads.append(payload)))
     await _refresh_portfolio_state_async(async_db_session)
     assert cached_state_payloads
 
     cached_balance_payloads: list[list[dict[str, object]]] = []
-    monkeypatch.setattr("app.apps.portfolio.services.create_exchange_plugin", lambda account: _FixturePlugin(account))
-    monkeypatch.setattr("app.apps.portfolio.services.cache_portfolio_balances_async", lambda payload: __import__("asyncio").sleep(0, result=cached_balance_payloads.append(payload)))
+    monkeypatch.setattr("src.apps.portfolio.services.create_exchange_plugin", lambda account: _FixturePlugin(account))
+    monkeypatch.setattr("src.apps.portfolio.services.cache_portfolio_balances_async", lambda payload: __import__("asyncio").sleep(0, result=cached_balance_payloads.append(payload)))
     published_events.clear()
     sync_result = await sync_exchange_balances_async(async_db_session, emit_events=True)
     assert sync_result["status"] == "ok"

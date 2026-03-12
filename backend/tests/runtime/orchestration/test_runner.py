@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.runtime.orchestration import runner
+from src.runtime.orchestration import runner
 
 
 class _StopFlag:

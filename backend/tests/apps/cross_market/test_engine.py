@@ -8,12 +8,12 @@ import pytest
 from redis import Redis
 from sqlalchemy import select
 
-from app.core.db.session import SessionLocal
-from app.runtime.streams.publisher import flush_publisher, publish_event
-from app.runtime.streams.runner import run_worker_loop
-from app.apps.indicators.models import CoinMetrics
-from app.apps.cross_market.models import CoinRelation
-from app.apps.predictions.models import MarketPrediction
+from src.core.db.session import SessionLocal
+from src.runtime.streams.publisher import flush_publisher, publish_event
+from src.runtime.streams.runner import run_worker_loop
+from src.apps.indicators.models import CoinMetrics
+from src.apps.cross_market.models import CoinRelation
+from src.apps.predictions.models import MarketPrediction
 from tests.cross_market_support import (
     DEFAULT_START,
     correlated_close_series,

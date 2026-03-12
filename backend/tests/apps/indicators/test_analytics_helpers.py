@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
-import app.apps.indicators.analytics as analytics
-from app.apps.indicators.analytics import (
+import src.apps.indicators.analytics as analytics
+from src.apps.indicators.analytics import (
     TimeframeSnapshot,
     _activity_fields,
     _calculate_snapshot,
@@ -35,10 +35,10 @@ from app.apps.indicators.analytics import (
     list_signals,
     process_indicator_event,
 )
-from app.apps.indicators.models import CoinMetrics, IndicatorCache
-from app.apps.market_data.models import Coin
-from app.apps.market_data.repos import CandlePoint
-from app.apps.signals.models import Signal
+from src.apps.indicators.models import CoinMetrics, IndicatorCache
+from src.apps.market_data.models import Coin
+from src.apps.market_data.repos import CandlePoint
+from src.apps.signals.models import Signal
 from tests.factories.market_data import build_candle_points
 
 

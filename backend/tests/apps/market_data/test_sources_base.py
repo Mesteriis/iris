@@ -5,14 +5,14 @@ from datetime import datetime, timedelta, timezone
 import httpx
 import pytest
 
-from app.apps.market_data import clients, events
-from app.apps.market_data.sources.base import (
+from src.apps.market_data import clients, events
+from src.apps.market_data.sources.base import (
     BaseMarketSource,
     MarketBar,
     RateLimitedMarketSourceError,
     TemporaryMarketSourceError,
 )
-from app.apps.market_data.sources.rate_limits import RateLimitPolicy
+from src.apps.market_data.sources.rate_limits import RateLimitPolicy
 from tests.factories.market_data import CoinCreateFactory
 
 
@@ -99,7 +99,7 @@ async def test_market_source_rate_limit_helpers(monkeypatch) -> None:
         async def clear_cooldown(self, name: str) -> None:
             calls.append(("clear_cooldown", name))
 
-    monkeypatch.setattr("app.apps.market_data.sources.base.get_rate_limit_manager", lambda: FakeRateLimitManager())
+    monkeypatch.setattr("src.apps.market_data.sources.base.get_rate_limit_manager", lambda: FakeRateLimitManager())
 
     assert await source.is_rate_limited() is True
     await source.set_rate_limit(12)
@@ -126,7 +126,7 @@ async def test_market_source_request_success_and_transport_errors(monkeypatch) -
         assert kwargs["cost"] == 2
         return response
 
-    monkeypatch.setattr("app.apps.market_data.sources.base.rate_limited_get", fake_rate_limited_get)
+    monkeypatch.setattr("src.apps.market_data.sources.base.rate_limited_get", fake_rate_limited_get)
     assert (
         await source.request(
             "https://example.com/data",
@@ -141,14 +141,14 @@ async def test_market_source_request_success_and_transport_errors(monkeypatch) -
     async def fake_raise_rate_limit(*args, **kwargs):
         raise RateLimitedMarketSourceError("dummy", 7, "dummy rate limited")
 
-    monkeypatch.setattr("app.apps.market_data.sources.base.rate_limited_get", fake_raise_rate_limit)
+    monkeypatch.setattr("src.apps.market_data.sources.base.rate_limited_get", fake_raise_rate_limit)
     with pytest.raises(RateLimitedMarketSourceError, match="dummy rate limited"):
         await source.request("https://example.com/data")
 
     async def fake_raise_http(*args, **kwargs):
         raise httpx.ConnectError("boom")
 
-    monkeypatch.setattr("app.apps.market_data.sources.base.rate_limited_get", fake_raise_http)
+    monkeypatch.setattr("src.apps.market_data.sources.base.rate_limited_get", fake_raise_http)
     with pytest.raises(TemporaryMarketSourceError, match="dummy transport error"):
         await source.request("https://example.com/data")
 
@@ -159,7 +159,7 @@ async def test_market_source_raise_rate_limited_and_retry_after(monkeypatch) -> 
     set_calls: list[int] = []
 
     monkeypatch.setattr(
-        "app.apps.market_data.sources.base.get_rate_limit_policy",
+        "src.apps.market_data.sources.base.get_rate_limit_policy",
         lambda name: RateLimitPolicy(fallback_retry_after_seconds=9),
     )
 

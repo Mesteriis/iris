@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import timedelta
 from types import SimpleNamespace
 
-from app.apps.cross_market.models import SectorMetric
-from app.apps.indicators.models import CoinMetrics
-from app.apps.patterns.domain.context import (
+from src.apps.cross_market.models import SectorMetric
+from src.apps.indicators.models import CoinMetrics
+from src.apps.patterns.domain.context import (
     _cycle_alignment,
     _liquidity_score,
     _pattern_temperature,
@@ -13,9 +13,9 @@ from app.apps.patterns.domain.context import (
     _signal_regime,
     enrich_signal_context,
 )
-from app.apps.patterns.models import MarketCycle, PatternStatistic
-from app.apps.patterns.domain.registry import sync_pattern_metadata
-from app.apps.signals.models import Signal
+from src.apps.patterns.models import MarketCycle, PatternStatistic
+from src.apps.patterns.domain.registry import sync_pattern_metadata
+from src.apps.signals.models import Signal
 from tests.cross_market_support import DEFAULT_START
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_sector
@@ -42,9 +42,9 @@ def test_context_helper_branches(db_session, monkeypatch) -> None:
     assert _signal_regime(None, 15) is None
 
     metrics = SimpleNamespace(coin_id=1, market_regime="sideways_range", market_regime_details={"15": {"regime": "bull_trend", "confidence": 0.8}})
-    monkeypatch.setattr("app.apps.patterns.domain.context.read_cached_regime", lambda **_: SimpleNamespace(regime="high_volatility"))
+    monkeypatch.setattr("src.apps.patterns.domain.context.read_cached_regime", lambda **_: SimpleNamespace(regime="high_volatility"))
     assert _signal_regime(metrics, 15) == "high_volatility"
-    monkeypatch.setattr("app.apps.patterns.domain.context.read_cached_regime", lambda **_: None)
+    monkeypatch.setattr("src.apps.patterns.domain.context.read_cached_regime", lambda **_: None)
     assert _signal_regime(metrics, 15) == "bull_trend"
 
 

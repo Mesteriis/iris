@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.apps.patterns.domain.success import (
+from src.apps.patterns.domain.success import (
     GLOBAL_MARKET_REGIME,
     assess_pattern_success,
     load_pattern_success_cache,
@@ -10,10 +10,10 @@ from app.apps.patterns.domain.success import (
     normalize_market_regime,
     publish_pattern_state_event,
 )
-from app.apps.patterns.models import PatternStatistic
-from app.apps.patterns.domain.registry import sync_pattern_metadata
+from src.apps.patterns.models import PatternStatistic
+from src.apps.patterns.domain.registry import sync_pattern_metadata
 from tests.factories.patterns import PatternDetectionFactory
-from app.apps.patterns.domain.success import apply_pattern_success_validation
+from src.apps.patterns.domain.success import apply_pattern_success_validation
 
 
 def _pattern_stat(
@@ -98,7 +98,7 @@ def test_pattern_success_publish_and_low_confidence_degrade(monkeypatch, db_sess
     db_session.commit()
 
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("app.runtime.streams.publisher.publish_event", lambda event_type, payload: published.append((event_type, payload)))
+    monkeypatch.setattr("src.runtime.streams.publisher.publish_event", lambda event_type, payload: published.append((event_type, payload)))
     publish_pattern_state_event("pattern_tested", pattern_slug="bull_flag", timeframe=15)
     assert published[-1][1]["pattern_slug"] == "bull_flag"
     assert "confidence" not in published[-1][1]
@@ -110,7 +110,7 @@ def test_pattern_success_publish_and_low_confidence_degrade(monkeypatch, db_sess
         candle_timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
         category="continuation",
     )
-    from app.apps.patterns.domain.success import apply_pattern_success_validation
+    from src.apps.patterns.domain.success import apply_pattern_success_validation
 
     adjusted = apply_pattern_success_validation(
         db_session,

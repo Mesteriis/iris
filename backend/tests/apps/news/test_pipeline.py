@@ -7,10 +7,10 @@ import pytest
 from redis import Redis
 from sqlalchemy import select
 
-from app.apps.news.models import NewsItem, NewsItemLink, NewsSource
-from app.core.db.session import SessionLocal
-from app.runtime.streams.publisher import flush_publisher, publish_event
-from app.runtime.streams.runner import run_worker_loop
+from src.apps.news.models import NewsItem, NewsItemLink, NewsSource
+from src.core.db.session import SessionLocal
+from src.runtime.streams.publisher import flush_publisher, publish_event
+from src.runtime.streams.runner import run_worker_loop
 
 
 @pytest.mark.asyncio

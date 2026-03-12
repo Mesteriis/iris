@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 import pytest
 from redis.exceptions import RedisError, ResponseError
 
-from app.runtime.streams import consumer
-from app.runtime.streams.types import IrisEvent, build_event_fields
+from src.runtime.streams import consumer
+from src.runtime.streams.types import IrisEvent, build_event_fields
 
 
 class _FakeAsyncRedis:

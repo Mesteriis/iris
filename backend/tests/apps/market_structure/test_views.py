@@ -323,7 +323,7 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
     assert patch_response.json()["settings"]["venue"] == "binance_main"
 
     queued: dict[str, object] = {}
-    from app.apps.market_structure.tasks import poll_market_structure_source_job
+    from src.apps.market_structure.tasks import poll_market_structure_source_job
 
     async def fake_kiq(**kwargs):
         queued.update(kwargs)
@@ -336,7 +336,7 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
     assert queued == {"source_id": source_id, "limit": 2}
 
     queued_health: dict[str, object] = {}
-    from app.apps.market_structure.tasks import refresh_market_structure_source_health_job
+    from src.apps.market_structure.tasks import refresh_market_structure_source_health_job
 
     async def fake_health_kiq(**kwargs):
         queued_health.update(kwargs)

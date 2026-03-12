@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.apps.system.views import _source_status_rows
+from src.apps.system.views import _source_status_rows
 from tests.apps.conftest import AliveProcess, SourceStatusRead
 
 
@@ -35,8 +35,8 @@ async def test_status_and_health_endpoints(api_app_client, monkeypatch) -> None:
     async def fake_ping_database() -> None:
         return None
 
-    monkeypatch.setattr("app.apps.system.views._source_status_rows", fake_source_status_rows)
-    monkeypatch.setattr("app.apps.system.views.ping_database", fake_ping_database)
+    monkeypatch.setattr("src.apps.system.views._source_status_rows", fake_source_status_rows)
+    monkeypatch.setattr("src.apps.system.views.ping_database", fake_ping_database)
 
     status_response = await client.get("/status")
     assert status_response.status_code == 200
@@ -65,7 +65,7 @@ async def test_source_status_rows_uses_carousel_and_rate_limits(monkeypatch) -> 
         )
 
     monkeypatch.setattr(
-        "app.apps.system.views.get_market_source_carousel",
+        "src.apps.system.views.get_market_source_carousel",
         lambda: SimpleNamespace(
             sources={
                 "fixture": SimpleNamespace(
@@ -76,7 +76,7 @@ async def test_source_status_rows_uses_carousel_and_rate_limits(monkeypatch) -> 
         ),
     )
     monkeypatch.setattr(
-        "app.apps.system.views.get_rate_limit_manager",
+        "src.apps.system.views.get_rate_limit_manager",
         lambda: SimpleNamespace(snapshot=fake_snapshot),
     )
 

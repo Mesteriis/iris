@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.settings import get_settings
+from src.core.settings import get_settings
 
 
 @pytest.mark.asyncio

@@ -4,12 +4,12 @@ from datetime import timedelta
 
 from sqlalchemy import delete, select
 
-from app.apps.patterns.models import PatternStatistic
-from app.apps.signals.models import SignalHistory
-from app.apps.patterns.domain.statistics import refresh_pattern_statistics
-from app.apps.patterns.domain.success import GLOBAL_MARKET_REGIME, PATTERN_SUCCESS_ROLLING_WINDOW
-from app.apps.patterns.domain.registry import sync_pattern_metadata
-from app.apps.market_data.domain import utc_now
+from src.apps.patterns.models import PatternStatistic
+from src.apps.signals.models import SignalHistory
+from src.apps.patterns.domain.statistics import refresh_pattern_statistics
+from src.apps.patterns.domain.success import GLOBAL_MARKET_REGIME, PATTERN_SUCCESS_ROLLING_WINDOW
+from src.apps.patterns.domain.registry import sync_pattern_metadata
+from src.apps.market_data.domain import utc_now
 
 
 def _history_row(

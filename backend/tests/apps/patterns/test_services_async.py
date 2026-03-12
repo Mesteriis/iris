@@ -5,10 +5,10 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
-from app.apps.cross_market.models import SectorMetric
-from app.apps.indicators.models import CoinMetrics
-from app.apps.patterns.models import PatternFeature
-from app.apps.patterns.services import (
+from src.apps.cross_market.models import SectorMetric
+from src.apps.indicators.models import CoinMetrics
+from src.apps.patterns.models import PatternFeature
+from src.apps.patterns.services import (
     _build_sector_narratives_async,
     _capital_wave_bucket,
     _cluster_membership_map_async,
@@ -27,8 +27,8 @@ from app.apps.patterns.services import (
     update_pattern_async,
     update_pattern_feature_async,
 )
-from app.apps.patterns.selectors import _signal_select
-from app.apps.signals.models import Signal
+from src.apps.patterns.selectors import _signal_select
+from src.apps.signals.models import Signal
 
 
 @pytest.mark.asyncio
@@ -256,7 +256,7 @@ async def test_pattern_async_sector_narrative_rotation_branches(monkeypatch) -> 
         del timeframe
         return (0.03 if coin_id == 1 else 0.02, 0.01)
 
-    monkeypatch.setattr("app.apps.patterns.services._coin_bar_return_async", _coin_bar_return)
+    monkeypatch.setattr("src.apps.patterns.services._coin_bar_return_async", _coin_bar_return)
 
     none_session = _NarrativeSession(
         [

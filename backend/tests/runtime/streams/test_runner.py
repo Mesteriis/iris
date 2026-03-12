@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.runtime.streams import runner
+from src.runtime.streams import runner
 
 
 class _Worker:

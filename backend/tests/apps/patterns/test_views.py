@@ -101,7 +101,7 @@ async def test_pattern_endpoints(api_app_client, seeded_api_state) -> None:
 
 @pytest.mark.asyncio
 async def test_pattern_view_branches(monkeypatch) -> None:
-    from app.apps.patterns.views import patch_pattern, patch_pattern_feature, read_coin_regime
+    from src.apps.patterns.views import patch_pattern, patch_pattern_feature, read_coin_regime
 
     async def missing_row(*_args, **_kwargs):
         return None
@@ -113,24 +113,24 @@ async def test_pattern_view_branches(monkeypatch) -> None:
             "created_at": "2026-03-12T00:00:00Z",
         }
 
-    monkeypatch.setattr("app.apps.patterns.views.update_pattern_feature_async", missing_row)
+    monkeypatch.setattr("src.apps.patterns.views.update_pattern_feature_async", missing_row)
     with pytest.raises(HTTPException) as missing_feature:
         await patch_pattern_feature("missing", SimpleNamespace(enabled=True), db=object())
     assert missing_feature.value.status_code == 404
 
-    monkeypatch.setattr("app.apps.patterns.views.update_pattern_feature_async", feature_row)
+    monkeypatch.setattr("src.apps.patterns.views.update_pattern_feature_async", feature_row)
     feature = await patch_pattern_feature("market_regime_engine", SimpleNamespace(enabled=True), db=object())
     assert feature.feature_slug == "market_regime_engine"
 
     async def invalid_pattern(*_args, **_kwargs):
         raise ValueError("bad pattern")
 
-    monkeypatch.setattr("app.apps.patterns.views.update_pattern_async", invalid_pattern)
+    monkeypatch.setattr("src.apps.patterns.views.update_pattern_async", invalid_pattern)
     with pytest.raises(HTTPException) as invalid:
         await patch_pattern("bull_flag", SimpleNamespace(enabled=True, lifecycle_state=None, cpu_cost=None), db=object())
     assert invalid.value.status_code == 400
 
-    monkeypatch.setattr("app.apps.patterns.views.update_pattern_async", missing_row)
+    monkeypatch.setattr("src.apps.patterns.views.update_pattern_async", missing_row)
     with pytest.raises(HTTPException) as missing_pattern:
         await patch_pattern("missing", SimpleNamespace(enabled=True, lifecycle_state=None, cpu_cost=None), db=object())
     assert missing_pattern.value.status_code == 404
@@ -146,11 +146,11 @@ async def test_pattern_view_branches(monkeypatch) -> None:
             "statistics": [],
         }
 
-    monkeypatch.setattr("app.apps.patterns.views.update_pattern_async", pattern_row)
+    monkeypatch.setattr("src.apps.patterns.views.update_pattern_async", pattern_row)
     pattern = await patch_pattern("bull_flag", SimpleNamespace(enabled=True, lifecycle_state=None, cpu_cost=1), db=object())
     assert pattern.slug == "bull_flag"
 
-    monkeypatch.setattr("app.apps.patterns.views.get_coin_regimes_async", missing_row)
+    monkeypatch.setattr("src.apps.patterns.views.get_coin_regimes_async", missing_row)
     with pytest.raises(HTTPException) as missing_regime:
         await read_coin_regime("BTCUSD_EVT", db=object())
     assert missing_regime.value.status_code == 404
@@ -158,6 +158,6 @@ async def test_pattern_view_branches(monkeypatch) -> None:
     async def regime_payload(*_args, **_kwargs):
         return {"coin_id": 1, "symbol": "BTCUSD_EVT", "canonical_regime": "bull_trend", "items": []}
 
-    monkeypatch.setattr("app.apps.patterns.views.get_coin_regimes_async", regime_payload)
+    monkeypatch.setattr("src.apps.patterns.views.get_coin_regimes_async", regime_payload)
     regime = await read_coin_regime("BTCUSD_EVT", db=object())
     assert regime.symbol == "BTCUSD_EVT"

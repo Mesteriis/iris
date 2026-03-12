@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from redis.exceptions import RedisError, ResponseError
 
-from app.runtime.streams import messages
+from src.runtime.streams import messages
 
 
 class _FakeRedis:

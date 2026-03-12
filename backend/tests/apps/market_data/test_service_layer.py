@@ -6,10 +6,10 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
-from app.apps.indicators.models import CoinMetrics, IndicatorCache
-from app.apps.market_data.models import Candle, Coin
-from app.apps.market_data.schemas import CandleConfig
-from app.apps.market_data.service_layer import (
+from src.apps.indicators.models import CoinMetrics, IndicatorCache
+from src.apps.market_data.models import Candle, Coin
+from src.apps.market_data.schemas import CandleConfig
+from src.apps.market_data.service_layer import (
     BASE_TIMEFRAME_MINUTES,
     _sync_coin_history,
     bulk_create_price_history,
@@ -42,13 +42,13 @@ from app.apps.market_data.service_layer import (
     sync_coin_latest_history,
     sync_watched_assets,
 )
-from app.apps.market_data.sources.base import MarketBar
+from src.apps.market_data.sources.base import MarketBar
 from tests.factories.market_data import CoinCreateFactory, PriceHistoryCreateFactory
 
 
 def test_market_data_service_layer_config_and_queries(db_session, seeded_market, monkeypatch) -> None:
     fixed_now = datetime(2026, 3, 12, 1, 30, tzinfo=timezone.utc)
-    monkeypatch.setattr("app.apps.market_data.service_layer.utc_now", lambda: fixed_now)
+    monkeypatch.setattr("src.apps.market_data.service_layer.utc_now", lambda: fixed_now)
 
     btc = get_coin_by_symbol(db_session, "BTCUSD_EVT")
     assert btc is not None
@@ -92,7 +92,7 @@ def test_market_data_service_layer_config_and_queries(db_session, seeded_market,
     ready_symbols = {coin.symbol for coin in list_coins_ready_for_latest_sync(db_session)}
     assert {"BTCUSD_EVT", "ETHUSD_EVT", "SOLUSD_EVT"} <= ready_symbols
     monkeypatch.setattr(
-        "app.apps.market_data.service_layer.list_coins_pending_backfill",
+        "src.apps.market_data.service_layer.list_coins_pending_backfill",
         lambda db: [pending_coin],
     )
     assert get_next_pending_backfill_due_at(db_session) == pending_coin.next_history_sync_at
@@ -109,7 +109,7 @@ def test_market_data_service_layer_config_and_queries(db_session, seeded_market,
     db_session.commit()
 
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("app.apps.market_data.service_layer.publish_event", lambda event_type, payload: published.append((event_type, payload)))
+    monkeypatch.setattr("src.apps.market_data.service_layer.publish_event", lambda event_type, payload: published.append((event_type, payload)))
     publish_candle_events(
         coin_id=int(btc.id),
         timeframe=15,
@@ -132,7 +132,7 @@ def test_market_data_service_layer_history_operations(db_session, seeded_market,
 
     published: list[tuple[int, str]] = []
     monkeypatch.setattr(
-        "app.apps.market_data.service_layer.publish_candle_events",
+        "src.apps.market_data.service_layer.publish_candle_events",
         lambda **kwargs: published.append((kwargs["created_count"], kwargs["source"])),
     )
 
@@ -259,7 +259,7 @@ def test_market_data_service_layer_coin_lifecycle_and_sync_assets(db_session, mo
     db_session.commit()
 
     monkeypatch.setattr(
-        "app.apps.market_data.service_layer.WATCHED_ASSETS",
+        "src.apps.market_data.service_layer.WATCHED_ASSETS",
         [
             {
                 "symbol": "DOGEUSD_EVT",
@@ -339,29 +339,29 @@ def test_market_data_service_layer_sync_history_branches(db_session, monkeypatch
     )
 
     progress_events: list[tuple[str, object]] = []
-    monkeypatch.setattr("app.apps.market_data.service_layer.utc_now", lambda: now)
+    monkeypatch.setattr("src.apps.market_data.service_layer.utc_now", lambda: now)
     monkeypatch.setattr(
-        "app.apps.market_data.service_layer.calculate_backfill_progress",
+        "src.apps.market_data.service_layer.calculate_backfill_progress",
         lambda *args, **kwargs: (0, 10, 0.0),
     )
-    monkeypatch.setattr("app.apps.market_data.service_layer.prune_future_price_history", lambda *args, **kwargs: 0)
-    monkeypatch.setattr("app.apps.market_data.service_layer.prune_price_history", lambda *args, **kwargs: 0)
-    monkeypatch.setattr("app.apps.market_data.service_layer.get_latest_history_timestamp", lambda *args, **kwargs: None)
-    monkeypatch.setattr("app.apps.market_data.service_layer.upsert_base_candles", lambda *args, **kwargs: latest_available)
+    monkeypatch.setattr("src.apps.market_data.service_layer.prune_future_price_history", lambda *args, **kwargs: 0)
+    monkeypatch.setattr("src.apps.market_data.service_layer.prune_price_history", lambda *args, **kwargs: 0)
+    monkeypatch.setattr("src.apps.market_data.service_layer.get_latest_history_timestamp", lambda *args, **kwargs: None)
+    monkeypatch.setattr("src.apps.market_data.service_layer.upsert_base_candles", lambda *args, **kwargs: latest_available)
     monkeypatch.setattr(
-        "app.apps.market_data.service_layer.publish_coin_history_progress_message",
+        "src.apps.market_data.service_layer.publish_coin_history_progress_message",
         lambda coin, **kwargs: progress_events.append(("progress", kwargs["progress_percent"])),
     )
     monkeypatch.setattr(
-        "app.apps.market_data.service_layer.publish_coin_history_loaded_message",
+        "src.apps.market_data.service_layer.publish_coin_history_loaded_message",
         lambda coin, **kwargs: progress_events.append(("loaded", kwargs["total_points"])),
     )
     monkeypatch.setattr(
-        "app.apps.market_data.service_layer.publish_coin_analysis_messages",
+        "src.apps.market_data.service_layer.publish_coin_analysis_messages",
         lambda coin: progress_events.append(("analysis", coin.symbol)),
     )
     monkeypatch.setattr(
-        "app.apps.market_data.service_layer.publish_candle_events",
+        "src.apps.market_data.service_layer.publish_candle_events",
         lambda **kwargs: progress_events.append(("candle", kwargs["created_count"])),
     )
 
@@ -369,7 +369,7 @@ def test_market_data_service_layer_sync_history_branches(db_session, monkeypatch
         async def fetch_history_window(self, *_args, **_kwargs):
             return SimpleNamespace(bars=[bar], completed=False, error="source_backoff")
 
-    monkeypatch.setattr("app.apps.market_data.service_layer.get_market_source_carousel", lambda: Carousel())
+    monkeypatch.setattr("src.apps.market_data.service_layer.get_market_source_carousel", lambda: Carousel())
 
     backoff = sync_coin_history_backfill(db_session, coin)
     assert backoff["status"] == "backoff"
@@ -389,7 +389,7 @@ def test_market_data_service_layer_sync_history_branches(db_session, monkeypatch
     db_session.commit()
 
     monkeypatch.setattr(
-        "app.apps.market_data.service_layer.calculate_backfill_progress",
+        "src.apps.market_data.service_layer.calculate_backfill_progress",
         lambda *args, **kwargs: (10, 10, 100.0),
     )
 
@@ -397,7 +397,7 @@ def test_market_data_service_layer_sync_history_branches(db_session, monkeypatch
         async def fetch_history_window(self, *_args, **_kwargs):
             return SimpleNamespace(bars=[bar], completed=True, error=None)
 
-    monkeypatch.setattr("app.apps.market_data.service_layer.get_market_source_carousel", lambda: CompleteCarousel())
+    monkeypatch.setattr("src.apps.market_data.service_layer.get_market_source_carousel", lambda: CompleteCarousel())
     forced = sync_coin_history_backfill_forced(db_session, coin)
     assert forced["status"] == "ok"
     assert coin.history_backfill_completed_at == now
@@ -409,7 +409,7 @@ def test_market_data_service_layer_sync_history_branches(db_session, monkeypatch
 
     coin.history_backfill_completed_at = now
     db_session.commit()
-    monkeypatch.setattr("app.apps.market_data.service_layer.get_latest_history_timestamp", lambda *args, **kwargs: latest_available)
+    monkeypatch.setattr("src.apps.market_data.service_layer.get_latest_history_timestamp", lambda *args, **kwargs: latest_available)
     latest_result = sync_coin_latest_history(db_session, coin, force=False)
     assert latest_result["status"] == "ok"
 
@@ -454,11 +454,11 @@ def test_market_data_service_layer_additional_edge_branches(db_session, monkeypa
     assert updated.history_backfill_completed_at is not None
     assert updated.last_history_sync_error == "old"
 
-    monkeypatch.setattr("app.apps.market_data.service_layer.fetch_candle_points", lambda *args, **kwargs: [])
+    monkeypatch.setattr("src.apps.market_data.service_layer.fetch_candle_points", lambda *args, **kwargs: [])
     assert get_latest_price(db_session, "PRESERVE_EVT") is None
     assert list_price_history(db_session, "MISSING_EDGE_EVT") == []
 
-    monkeypatch.setattr("app.apps.market_data.service_layer.get_latest_candle_timestamp", lambda *args, **kwargs: None)
+    monkeypatch.setattr("src.apps.market_data.service_layer.get_latest_candle_timestamp", lambda *args, **kwargs: None)
     assert prune_price_history(db_session, updated, "15m", 10) == 0
 
 
@@ -501,19 +501,19 @@ def test_market_data_service_layer_sync_history_progress_update_and_latest_none(
             fetch_calls.append((interval, start))
             return SimpleNamespace(bars=[bar], completed=True, error=None)
 
-    monkeypatch.setattr("app.apps.market_data.service_layer.utc_now", lambda: now)
-    monkeypatch.setattr("app.apps.market_data.service_layer.calculate_backfill_progress", lambda *args, **kwargs: next(progress_values))
-    monkeypatch.setattr("app.apps.market_data.service_layer.latest_completed_timestamp", lambda interval, reference: latest_available)
-    monkeypatch.setattr("app.apps.market_data.service_layer.history_window_start", lambda latest, interval, retention: latest - timedelta(minutes=15))
-    monkeypatch.setattr("app.apps.market_data.service_layer.prune_future_price_history", lambda *args, **kwargs: 0)
-    monkeypatch.setattr("app.apps.market_data.service_layer.prune_price_history", lambda *args, **kwargs: 0)
-    monkeypatch.setattr("app.apps.market_data.service_layer.get_latest_history_timestamp", lambda *args, **kwargs: None)
-    monkeypatch.setattr("app.apps.market_data.service_layer.get_market_source_carousel", lambda: Carousel())
-    monkeypatch.setattr("app.apps.market_data.service_layer.upsert_base_candles", lambda *args, **kwargs: None)
-    monkeypatch.setattr("app.apps.market_data.service_layer.publish_coin_history_progress_message", lambda coin, **kwargs: events.append(("progress", kwargs["progress_percent"])))
-    monkeypatch.setattr("app.apps.market_data.service_layer.publish_coin_history_loaded_message", lambda coin, **kwargs: events.append(("loaded", kwargs["total_points"])))
-    monkeypatch.setattr("app.apps.market_data.service_layer.publish_coin_analysis_messages", lambda coin: events.append(("analysis", coin.symbol)))
-    monkeypatch.setattr("app.apps.market_data.service_layer.publish_candle_events", lambda **kwargs: events.append(("candle", kwargs["created_count"])))
+    monkeypatch.setattr("src.apps.market_data.service_layer.utc_now", lambda: now)
+    monkeypatch.setattr("src.apps.market_data.service_layer.calculate_backfill_progress", lambda *args, **kwargs: next(progress_values))
+    monkeypatch.setattr("src.apps.market_data.service_layer.latest_completed_timestamp", lambda interval, reference: latest_available)
+    monkeypatch.setattr("src.apps.market_data.service_layer.history_window_start", lambda latest, interval, retention: latest - timedelta(minutes=15))
+    monkeypatch.setattr("src.apps.market_data.service_layer.prune_future_price_history", lambda *args, **kwargs: 0)
+    monkeypatch.setattr("src.apps.market_data.service_layer.prune_price_history", lambda *args, **kwargs: 0)
+    monkeypatch.setattr("src.apps.market_data.service_layer.get_latest_history_timestamp", lambda *args, **kwargs: None)
+    monkeypatch.setattr("src.apps.market_data.service_layer.get_market_source_carousel", lambda: Carousel())
+    monkeypatch.setattr("src.apps.market_data.service_layer.upsert_base_candles", lambda *args, **kwargs: None)
+    monkeypatch.setattr("src.apps.market_data.service_layer.publish_coin_history_progress_message", lambda coin, **kwargs: events.append(("progress", kwargs["progress_percent"])))
+    monkeypatch.setattr("src.apps.market_data.service_layer.publish_coin_history_loaded_message", lambda coin, **kwargs: events.append(("loaded", kwargs["total_points"])))
+    monkeypatch.setattr("src.apps.market_data.service_layer.publish_coin_analysis_messages", lambda coin: events.append(("analysis", coin.symbol)))
+    monkeypatch.setattr("src.apps.market_data.service_layer.publish_candle_events", lambda **kwargs: events.append(("candle", kwargs["created_count"])))
 
     result = _sync_coin_history(FakeDb(), coin, history_mode="backfill")
     assert result == {"symbol": "SYNC_EVT", "created": 1, "status": "ok"}

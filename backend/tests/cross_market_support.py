@@ -4,11 +4,11 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.apps.market_data.models import Coin
-from app.apps.indicators.models import CoinMetrics
-from app.apps.predictions.models import MarketPrediction
-from app.apps.market_data.repos import upsert_base_candles
-from app.apps.market_data.sources.base import MarketBar
+from src.apps.market_data.models import Coin
+from src.apps.indicators.models import CoinMetrics
+from src.apps.predictions.models import MarketPrediction
+from src.apps.market_data.repos import upsert_base_candles
+from src.apps.market_data.sources.base import MarketBar
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_sector
 

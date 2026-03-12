@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-import app.apps.indicators.domain as indicator_domain
-from app.apps.indicators.domain import adx_series, atr_series, bollinger_bands, ema_series, macd_series, rsi_series, sma_series
+import src.apps.indicators.domain as indicator_domain
+from src.apps.indicators.domain import adx_series, atr_series, bollinger_bands, ema_series, macd_series, rsi_series, sma_series
 
 
 def test_indicator_math_moving_averages_and_macd() -> None:

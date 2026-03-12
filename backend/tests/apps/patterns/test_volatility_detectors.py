@@ -4,9 +4,9 @@ from datetime import datetime, timedelta, timezone
 
 import importlib
 
-from app.apps.market_data.repos import CandlePoint
+from src.apps.market_data.repos import CandlePoint
 
-volatility = importlib.import_module("app.apps.patterns.domain.detectors.volatility")
+volatility = importlib.import_module("src.apps.patterns.domain.detectors.volatility")
 
 
 def _candles(count: int, *, start_price: float = 100.0) -> list[CandlePoint]:

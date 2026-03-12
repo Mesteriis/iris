@@ -4,9 +4,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.apps.market_data import sources as carousel_module
-from app.apps.market_data.sources import MarketFetchResult, MarketSourceCarousel, get_market_source_carousel
-from app.apps.market_data.sources.base import (
+from src.apps.market_data import sources as carousel_module
+from src.apps.market_data.sources import MarketFetchResult, MarketSourceCarousel, get_market_source_carousel
+from src.apps.market_data.sources.base import (
     MarketBar,
     MarketSourceError,
     RateLimitedMarketSourceError,

@@ -9,17 +9,17 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 
-import app.core.bootstrap.app as bootstrap_app_module
-import app.core.bootstrap.lifespan as lifespan_module
-import app.core.db.session as session_module
-import app.core.db.uow as uow_module
-import app.core.settings.base as settings_base_module
-import app.main as main_module
+import src.core.bootstrap.app as bootstrap_app_module
+import src.core.bootstrap.lifespan as lifespan_module
+import src.core.db.session as session_module
+import src.core.db.uow as uow_module
+import src.core.settings.base as settings_base_module
+import src.main as main_module
 
 
 def test_bootstrap_app_builds_config_runs_migrations_and_enters_deferred_lifespan(monkeypatch) -> None:
     config = bootstrap_app_module.get_alembic_config()
-    assert config.get_main_option("script_location").endswith("/backend/alembic")
+    assert config.get_main_option("script_location").endswith("/backend/src/migrations")
     assert config.get_main_option("sqlalchemy.url") == bootstrap_app_module.settings.database_url
 
     upgrade_calls: list[tuple[str, str]] = []
@@ -39,7 +39,7 @@ def test_bootstrap_app_builds_config_runs_migrations_and_enters_deferred_lifespa
         yield
         entered.append("closed")
 
-    monkeypatch.setattr("app.core.bootstrap.lifespan.lifespan", _fake_lifespan)
+    monkeypatch.setattr("src.core.bootstrap.lifespan.lifespan", _fake_lifespan)
     app = bootstrap_app_module.create_app()
     assert app.title == bootstrap_app_module.settings.app_name
     assert callable(app.state.run_migrations)
@@ -252,7 +252,7 @@ def test_main_run_invokes_uvicorn(monkeypatch) -> None:
     calls: list[tuple[str, str, int]] = []
     monkeypatch.setattr(main_module.uvicorn, "run", lambda target, host, port: calls.append((target, host, port)))
     main_module.run()
-    assert calls == [("app.main:app", main_module.settings.api_host, main_module.settings.api_port)]
+    assert calls == [("src.main:app", main_module.settings.api_host, main_module.settings.api_port)]
 
 
 def test_settings_validator_and_main_module_entrypoint(monkeypatch) -> None:
@@ -260,8 +260,8 @@ def test_settings_validator_and_main_module_entrypoint(monkeypatch) -> None:
 
     calls: list[tuple[str, str, int]] = []
     monkeypatch.setattr("uvicorn.run", lambda target, host, port: calls.append((target, host, port)))
-    original_main = sys.modules.pop("app.main", None)
-    runpy.run_module("app.main", run_name="__main__")
+    original_main = sys.modules.pop("src.main", None)
+    runpy.run_module("src.main", run_name="__main__")
     if original_main is not None:
-        sys.modules["app.main"] = original_main
+        sys.modules["src.main"] = original_main
     assert calls

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.apps.market_data import tasks
+from src.apps.market_data import tasks
 
 
 @asynccontextmanager

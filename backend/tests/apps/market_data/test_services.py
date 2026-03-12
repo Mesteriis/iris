@@ -6,9 +6,9 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
-from app.apps.indicators.models import CoinMetrics
-from app.apps.market_data.models import Coin
-from app.apps.market_data.services import (
+from src.apps.indicators.models import CoinMetrics
+from src.apps.market_data.models import Coin
+from src.apps.market_data.services import (
     _calculate_backfill_progress_async,
     _coin_has_base_candles_async,
     _get_latest_candle_timestamp_async,
@@ -32,7 +32,7 @@ from app.apps.market_data.services import (
     sync_coin_latest_history_async,
     sync_watched_assets_async,
 )
-from app.apps.market_data.sources.base import MarketBar
+from src.apps.market_data.sources.base import MarketBar
 from tests.factories.market_data import CoinCreateFactory, PriceHistoryCreateFactory
 
 
@@ -69,7 +69,7 @@ async def test_market_data_async_services_create_query_delete_and_refresh(async_
         def connect(self):
             return AsyncEngineContext()
 
-    monkeypatch.setattr("app.apps.market_data.services.async_engine", AsyncEngine())
+    monkeypatch.setattr("src.apps.market_data.services.async_engine", AsyncEngine())
 
     now = datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
     await _refresh_continuous_aggregate_range_async(timeframe=17, window_start=now, window_end=now)
@@ -123,7 +123,7 @@ async def test_market_data_async_services_history_helpers(async_db_session, seed
 
     published: list[tuple[int, str]] = []
     monkeypatch.setattr(
-        "app.apps.market_data.services.publish_candle_events",
+        "src.apps.market_data.services.publish_candle_events",
         lambda **kwargs: published.append((kwargs["created_count"], kwargs["source"])),
     )
 
@@ -185,7 +185,7 @@ async def test_market_data_async_services_history_helpers(async_db_session, seed
         retention_bars=10,
     ) == 0
 
-    monkeypatch.setattr("app.apps.market_data.services._refresh_continuous_aggregate_range_async", lambda **kwargs: __import__("asyncio").sleep(0))
+    monkeypatch.setattr("src.apps.market_data.services._refresh_continuous_aggregate_range_async", lambda **kwargs: __import__("asyncio").sleep(0))
     bar = MarketBar(
         timestamp=latest + timedelta(minutes=15),
         open=100.0,
@@ -203,7 +203,7 @@ async def test_market_data_async_services_history_helpers(async_db_session, seed
 @pytest.mark.asyncio
 async def test_market_data_async_services_sync_queries_and_watched_assets(async_db_session, monkeypatch) -> None:
     fixed_now = datetime(2026, 3, 12, 1, 30, tzinfo=timezone.utc)
-    monkeypatch.setattr("app.apps.market_data.services.utc_now", lambda: fixed_now)
+    monkeypatch.setattr("src.apps.market_data.services.utc_now", lambda: fixed_now)
 
     pending = await create_coin_async(
         async_db_session,
@@ -213,7 +213,7 @@ async def test_market_data_async_services_sync_queries_and_watched_assets(async_
     await async_db_session.commit()
 
     monkeypatch.setattr(
-        "app.apps.market_data.services._coin_has_base_candles_async",
+        "src.apps.market_data.services._coin_has_base_candles_async",
         lambda db, coin: __import__("asyncio").sleep(0, result=coin.symbol != "XRPUSD_EVT"),
     )
 
@@ -221,23 +221,23 @@ async def test_market_data_async_services_sync_queries_and_watched_assets(async_
         async def execute(self, _stmt):
             return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [pending]))
 
-    monkeypatch.setattr("app.apps.market_data.services.AsyncSessionLocal", lambda: _AsyncContext(FakePendingSession()))
+    monkeypatch.setattr("src.apps.market_data.services.AsyncSessionLocal", lambda: _AsyncContext(FakePendingSession()))
     assert await get_next_pending_backfill_due_at_async() == pending.next_history_sync_at
 
-    monkeypatch.setattr("app.apps.market_data.services.AsyncSessionLocal", lambda: _AsyncContext(async_db_session))
+    monkeypatch.setattr("src.apps.market_data.services.AsyncSessionLocal", lambda: _AsyncContext(async_db_session))
     assert "XRPUSD_EVT" in await list_coin_symbols_pending_backfill_async(async_db_session)
     assert await list_coin_symbols_pending_backfill_async(async_db_session, symbol="xrpusd_evt") == ["XRPUSD_EVT"]
 
     pending.history_backfill_completed_at = fixed_now
     await async_db_session.commit()
     monkeypatch.setattr(
-        "app.apps.market_data.services._coin_has_base_candles_async",
+        "src.apps.market_data.services._coin_has_base_candles_async",
         lambda db, coin: __import__("asyncio").sleep(0, result=True),
     )
     assert "XRPUSD_EVT" in await list_coin_symbols_ready_for_latest_sync_async(async_db_session)
 
     monkeypatch.setattr(
-        "app.apps.market_data.services.WATCHED_ASSETS",
+        "src.apps.market_data.services.WATCHED_ASSETS",
         [
             {
                 "symbol": "DOGEUSD_EVT",
@@ -290,29 +290,29 @@ async def test_market_data_async_services_sync_history_branches(async_db_session
     )
 
     events: list[tuple[str, object]] = []
-    monkeypatch.setattr("app.apps.market_data.services.utc_now", lambda: now)
+    monkeypatch.setattr("src.apps.market_data.services.utc_now", lambda: now)
     monkeypatch.setattr(
-        "app.apps.market_data.services._calculate_backfill_progress_async",
+        "src.apps.market_data.services._calculate_backfill_progress_async",
         lambda *args, **kwargs: __import__("asyncio").sleep(0, result=(0, 10, 0.0)),
     )
-    monkeypatch.setattr("app.apps.market_data.services._prune_future_price_history_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=0))
-    monkeypatch.setattr("app.apps.market_data.services._prune_price_history_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=0))
-    monkeypatch.setattr("app.apps.market_data.services._get_latest_history_timestamp_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=None))
-    monkeypatch.setattr("app.apps.market_data.services._upsert_base_candles_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=latest_available))
+    monkeypatch.setattr("src.apps.market_data.services._prune_future_price_history_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=0))
+    monkeypatch.setattr("src.apps.market_data.services._prune_price_history_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=0))
+    monkeypatch.setattr("src.apps.market_data.services._get_latest_history_timestamp_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=None))
+    monkeypatch.setattr("src.apps.market_data.services._upsert_base_candles_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=latest_available))
     monkeypatch.setattr(
-        "app.apps.market_data.services.publish_coin_history_progress_message",
+        "src.apps.market_data.services.publish_coin_history_progress_message",
         lambda coin, **kwargs: events.append(("progress", kwargs["progress_percent"])),
     )
     monkeypatch.setattr(
-        "app.apps.market_data.services.publish_coin_history_loaded_message",
+        "src.apps.market_data.services.publish_coin_history_loaded_message",
         lambda coin, **kwargs: events.append(("loaded", kwargs["total_points"])),
     )
     monkeypatch.setattr(
-        "app.apps.market_data.services.publish_coin_analysis_messages",
+        "src.apps.market_data.services.publish_coin_analysis_messages",
         lambda coin: events.append(("analysis", coin.symbol)),
     )
     monkeypatch.setattr(
-        "app.apps.market_data.services.publish_candle_events",
+        "src.apps.market_data.services.publish_candle_events",
         lambda **kwargs: events.append(("candle", kwargs["created_count"])),
     )
 
@@ -320,7 +320,7 @@ async def test_market_data_async_services_sync_history_branches(async_db_session
         async def fetch_history_window(self, *_args, **_kwargs):
             return SimpleNamespace(bars=[bar], completed=False, error="source_backoff")
 
-    monkeypatch.setattr("app.apps.market_data.services.get_market_source_carousel", lambda: Carousel())
+    monkeypatch.setattr("src.apps.market_data.services.get_market_source_carousel", lambda: Carousel())
 
     backoff = await sync_coin_history_backfill_async(async_db_session, coin)
     assert backoff["status"] == "backoff"
@@ -340,7 +340,7 @@ async def test_market_data_async_services_sync_history_branches(async_db_session
     await async_db_session.commit()
 
     monkeypatch.setattr(
-        "app.apps.market_data.services._calculate_backfill_progress_async",
+        "src.apps.market_data.services._calculate_backfill_progress_async",
         lambda *args, **kwargs: __import__("asyncio").sleep(0, result=(10, 10, 100.0)),
     )
 
@@ -348,7 +348,7 @@ async def test_market_data_async_services_sync_history_branches(async_db_session
         async def fetch_history_window(self, *_args, **_kwargs):
             return SimpleNamespace(bars=[bar], completed=True, error=None)
 
-    monkeypatch.setattr("app.apps.market_data.services.get_market_source_carousel", lambda: CompleteCarousel())
+    monkeypatch.setattr("src.apps.market_data.services.get_market_source_carousel", lambda: CompleteCarousel())
     forced = await sync_coin_history_backfill_forced_async(async_db_session, coin)
     assert forced["status"] == "ok"
     assert coin.history_backfill_completed_at == now
@@ -360,7 +360,7 @@ async def test_market_data_async_services_sync_history_branches(async_db_session
 
     coin.history_backfill_completed_at = now
     await async_db_session.commit()
-    monkeypatch.setattr("app.apps.market_data.services._get_latest_history_timestamp_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=latest_available))
+    monkeypatch.setattr("src.apps.market_data.services._get_latest_history_timestamp_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=latest_available))
     latest_result = await sync_coin_latest_history_async(async_db_session, coin, force=False)
     assert latest_result["status"] == "ok"
 
@@ -393,26 +393,26 @@ async def test_market_data_async_services_additional_edge_branches(async_db_sess
     assert same_settings.last_history_sync_error == "old"
 
     monkeypatch.setattr(
-        "app.apps.market_data.services.AsyncSessionLocal",
+        "src.apps.market_data.services.AsyncSessionLocal",
         lambda: _AsyncContext(type("EmptyDb", (), {"execute": lambda self, stmt: __import__("asyncio").sleep(0, result=SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [])))})()),
     )
     assert await get_next_pending_backfill_due_at_async() is None
 
     due_coin = SimpleNamespace(symbol="DUE_EVT", history_backfill_completed_at=None, next_history_sync_at=None)
     monkeypatch.setattr(
-        "app.apps.market_data.services.AsyncSessionLocal",
+        "src.apps.market_data.services.AsyncSessionLocal",
         lambda: _AsyncContext(type("DueDb", (), {"execute": lambda self, stmt: __import__("asyncio").sleep(0, result=SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [due_coin])))})()),
     )
-    monkeypatch.setattr("app.apps.market_data.services.utc_now", lambda: datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc))
+    monkeypatch.setattr("src.apps.market_data.services.utc_now", lambda: datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc))
     assert await get_next_pending_backfill_due_at_async() == datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
 
     ready_coin = SimpleNamespace(symbol="READY_EVT", history_backfill_completed_at=datetime(2026, 3, 12, 11, 0, tzinfo=timezone.utc), next_history_sync_at=None)
     monkeypatch.setattr(
-        "app.apps.market_data.services.AsyncSessionLocal",
+        "src.apps.market_data.services.AsyncSessionLocal",
         lambda: _AsyncContext(type("ReadyDb", (), {"execute": lambda self, stmt: __import__("asyncio").sleep(0, result=SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [ready_coin])))})()),
     )
     monkeypatch.setattr(
-        "app.apps.market_data.services._coin_has_base_candles_async",
+        "src.apps.market_data.services._coin_has_base_candles_async",
         lambda db, coin: __import__("asyncio").sleep(0, result=True),
     )
     assert await get_next_pending_backfill_due_at_async() is None
@@ -428,7 +428,7 @@ async def test_market_data_async_services_additional_edge_branches(async_db_sess
     await async_db_session.commit()
 
     monkeypatch.setattr(
-        "app.apps.market_data.services.WATCHED_ASSETS",
+        "src.apps.market_data.services.WATCHED_ASSETS",
         [
             {
                 "symbol": "WATCH_EVT",
@@ -455,7 +455,7 @@ async def test_market_data_async_services_additional_edge_branches(async_db_sess
     watch_coin.last_history_sync_error = "preserve"
     await async_db_session.commit()
     monkeypatch.setattr(
-        "app.apps.market_data.services.WATCHED_ASSETS",
+        "src.apps.market_data.services.WATCHED_ASSETS",
         [
             {
                 "symbol": "WATCH_EVT",
@@ -475,7 +475,7 @@ async def test_market_data_async_services_additional_edge_branches(async_db_sess
     assert watch_coin.last_history_sync_error == "preserve"
 
     monkeypatch.setattr(
-        "app.apps.market_data.services._coin_has_base_candles_async",
+        "src.apps.market_data.services._coin_has_base_candles_async",
         lambda db, coin: __import__("asyncio").sleep(0, result=False),
     )
     assert await list_coin_symbols_ready_for_latest_sync_async(async_db_session) == []
@@ -497,7 +497,7 @@ async def test_market_data_async_services_additional_edge_branches(async_db_sess
         volume=10.0,
         source="fixture",
     )
-    monkeypatch.setattr("app.apps.market_data.services._refresh_continuous_aggregate_range_async", lambda **kwargs: __import__("asyncio").sleep(0))
+    monkeypatch.setattr("src.apps.market_data.services._refresh_continuous_aggregate_range_async", lambda **kwargs: __import__("asyncio").sleep(0))
     assert await _upsert_base_candles_async(async_db_session, coin_id=int(watch_coin.id), interval="15m", bars=[older_bar]) is None
     one_hour_bar = MarketBar(
         timestamp=latest,
@@ -550,19 +550,19 @@ async def test_market_data_async_services_sync_history_progress_update_and_lates
             fetch_calls.append((interval, start))
             return SimpleNamespace(bars=[bar], completed=True, error=None)
 
-    monkeypatch.setattr("app.apps.market_data.services.utc_now", lambda: now)
-    monkeypatch.setattr("app.apps.market_data.services._calculate_backfill_progress_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=next(progress_values)))
-    monkeypatch.setattr("app.apps.market_data.services.latest_completed_timestamp", lambda interval, reference: latest_available)
-    monkeypatch.setattr("app.apps.market_data.services.history_window_start", lambda latest, interval, retention: latest - timedelta(minutes=15))
-    monkeypatch.setattr("app.apps.market_data.services._prune_future_price_history_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=0))
-    monkeypatch.setattr("app.apps.market_data.services._prune_price_history_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=0))
-    monkeypatch.setattr("app.apps.market_data.services._get_latest_history_timestamp_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=None))
-    monkeypatch.setattr("app.apps.market_data.services.get_market_source_carousel", lambda: Carousel())
-    monkeypatch.setattr("app.apps.market_data.services._upsert_base_candles_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=None))
-    monkeypatch.setattr("app.apps.market_data.services.publish_coin_history_progress_message", lambda coin, **kwargs: events.append(("progress", kwargs["progress_percent"])))
-    monkeypatch.setattr("app.apps.market_data.services.publish_coin_history_loaded_message", lambda coin, **kwargs: events.append(("loaded", kwargs["total_points"])))
-    monkeypatch.setattr("app.apps.market_data.services.publish_coin_analysis_messages", lambda coin: events.append(("analysis", coin.symbol)))
-    monkeypatch.setattr("app.apps.market_data.services.publish_candle_events", lambda **kwargs: events.append(("candle", kwargs["created_count"])))
+    monkeypatch.setattr("src.apps.market_data.services.utc_now", lambda: now)
+    monkeypatch.setattr("src.apps.market_data.services._calculate_backfill_progress_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=next(progress_values)))
+    monkeypatch.setattr("src.apps.market_data.services.latest_completed_timestamp", lambda interval, reference: latest_available)
+    monkeypatch.setattr("src.apps.market_data.services.history_window_start", lambda latest, interval, retention: latest - timedelta(minutes=15))
+    monkeypatch.setattr("src.apps.market_data.services._prune_future_price_history_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=0))
+    monkeypatch.setattr("src.apps.market_data.services._prune_price_history_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=0))
+    monkeypatch.setattr("src.apps.market_data.services._get_latest_history_timestamp_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=None))
+    monkeypatch.setattr("src.apps.market_data.services.get_market_source_carousel", lambda: Carousel())
+    monkeypatch.setattr("src.apps.market_data.services._upsert_base_candles_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=None))
+    monkeypatch.setattr("src.apps.market_data.services.publish_coin_history_progress_message", lambda coin, **kwargs: events.append(("progress", kwargs["progress_percent"])))
+    monkeypatch.setattr("src.apps.market_data.services.publish_coin_history_loaded_message", lambda coin, **kwargs: events.append(("loaded", kwargs["total_points"])))
+    monkeypatch.setattr("src.apps.market_data.services.publish_coin_analysis_messages", lambda coin: events.append(("analysis", coin.symbol)))
+    monkeypatch.setattr("src.apps.market_data.services.publish_candle_events", lambda **kwargs: events.append(("candle", kwargs["created_count"])))
 
     result = await _sync_coin_history_async(FakeDb(), coin, history_mode="backfill")
     assert result == {"symbol": "ASYNC_SYNC_EVT", "created": 1, "status": "ok"}

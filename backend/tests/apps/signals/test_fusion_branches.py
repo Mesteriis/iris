@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 from sqlalchemy import select
 
-from app.apps.patterns.models import PatternStatistic
-from app.apps.patterns.domain.registry import sync_pattern_metadata
-from app.apps.signals.fusion import (
+from src.apps.patterns.models import PatternStatistic
+from src.apps.patterns.domain.registry import sync_pattern_metadata
+from src.apps.signals.fusion import (
     _decision_from_scores,
     _fuse_signals,
     _recent_signals,
@@ -17,7 +17,7 @@ from app.apps.signals.fusion import (
     _signal_success_rate,
     evaluate_market_decision,
 )
-from app.apps.signals.models import MarketDecision, Signal
+from src.apps.signals.models import MarketDecision, Signal
 from tests.cross_market_support import DEFAULT_START
 from tests.fusion_support import create_test_coin, replace_pattern_statistics, upsert_coin_metrics
 from tests.portfolio_support import create_market_decision
@@ -73,7 +73,7 @@ def test_evaluate_market_decision_skip_and_unchanged_branches(db_session, monkey
     coin = create_test_coin(db_session, symbol="ETHUSD_EVT", name="Ethereum Event Test")
     upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=15)
 
-    monkeypatch.setattr("app.apps.signals.fusion.enrich_signal_context", lambda *args, **kwargs: {"status": "ok"})
+    monkeypatch.setattr("src.apps.signals.fusion.enrich_signal_context", lambda *args, **kwargs: {"status": "ok"})
     skipped = evaluate_market_decision(db_session, coin_id=int(coin.id), timeframe=15, emit_event=False)
     assert skipped["reason"] == "signals_not_found"
 
@@ -119,8 +119,8 @@ def test_evaluate_market_decision_handles_null_fusion_window(db_session, monkeyp
         )
     )
     db_session.commit()
-    monkeypatch.setattr("app.apps.signals.fusion.enrich_signal_context", lambda *args, **kwargs: {"status": "ok"})
-    monkeypatch.setattr("app.apps.signals.fusion._fuse_signals", lambda *args, **kwargs: None)
+    monkeypatch.setattr("src.apps.signals.fusion.enrich_signal_context", lambda *args, **kwargs: {"status": "ok"})
+    monkeypatch.setattr("src.apps.signals.fusion._fuse_signals", lambda *args, **kwargs: None)
     result = evaluate_market_decision(db_session, coin_id=int(coin.id), timeframe=15, emit_event=False)
     assert result["reason"] == "fusion_window_empty"
 
@@ -140,7 +140,7 @@ def test_fusion_additional_regime_and_event_branches(db_session, monkeypatch) ->
     assert _regime_weight(SimpleNamespace(signal_type="pattern_bull_flag", confidence=0.8), "low_volatility") == 1.05
     assert _regime_weight(SimpleNamespace(signal_type="pattern_custom", confidence=0.8), "low_volatility") == 1.0
 
-    monkeypatch.setattr("app.apps.signals.fusion.cross_market_alignment_weight", lambda *args, **kwargs: 1.0)
+    monkeypatch.setattr("src.apps.signals.fusion.cross_market_alignment_weight", lambda *args, **kwargs: 1.0)
     neutral_fused = _fuse_signals(
         db_session,
         signals=[
@@ -194,8 +194,8 @@ def test_fusion_additional_regime_and_event_branches(db_session, monkeypatch) ->
     db_session.commit()
 
     published: list[str] = []
-    monkeypatch.setattr("app.apps.signals.fusion.publish_event", lambda event_type, payload: published.append(event_type))
-    monkeypatch.setattr("app.apps.signals.fusion.enrich_signal_context", lambda *args, **kwargs: {"status": "ok"})
+    monkeypatch.setattr("src.apps.signals.fusion.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr("src.apps.signals.fusion.enrich_signal_context", lambda *args, **kwargs: {"status": "ok"})
     result = evaluate_market_decision(db_session, coin_id=int(coin.id), timeframe=15, emit_event=True)
     assert result["status"] == "ok"
     assert published[-1] == "decision_generated"

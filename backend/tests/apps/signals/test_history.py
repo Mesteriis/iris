@@ -6,10 +6,10 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 
-import app.apps.signals.history as signal_history_module
-from app.apps.market_data.domain import ensure_utc, utc_now
-from app.apps.market_data.repos import CandlePoint
-from app.apps.signals.history import (
+import src.apps.signals.history as signal_history_module
+from src.apps.market_data.domain import ensure_utc, utc_now
+from src.apps.market_data.repos import CandlePoint
+from src.apps.signals.history import (
     _candle_index_map,
     _close_timestamps,
     _drawdown_for_window,
@@ -22,7 +22,7 @@ from app.apps.signals.history import (
     refresh_recent_signal_history,
     refresh_signal_history,
 )
-from app.apps.signals.models import Signal, SignalHistory
+from src.apps.signals.models import Signal, SignalHistory
 from tests.cross_market_support import DEFAULT_START, seed_candles
 from tests.factories.seeds import SignalSeedFactory
 from tests.fusion_support import create_test_coin

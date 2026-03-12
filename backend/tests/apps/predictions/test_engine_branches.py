@@ -5,8 +5,8 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 
-from app.apps.cross_market.models import CoinRelation
-from app.apps.predictions.engine import (
+from src.apps.cross_market.models import CoinRelation
+from src.apps.predictions.engine import (
     _apply_relation_feedback,
     _apply_relation_feedback_async,
     _evaluate_prediction_window,
@@ -15,7 +15,7 @@ from app.apps.predictions.engine import (
     evaluate_pending_predictions,
     evaluate_pending_predictions_async,
 )
-from app.apps.predictions.models import MarketPrediction, PredictionResult
+from src.apps.predictions.models import MarketPrediction, PredictionResult
 from tests.cross_market_support import (
     DEFAULT_START,
     create_cross_market_coin,
@@ -223,7 +223,7 @@ def test_prediction_sync_failure_expiry_and_pending_branches(db_session, monkeyp
     assert _evaluate_prediction_window(db_session, failed_prediction, now=DEFAULT_START + timedelta(hours=4)) is not None
 
     published: list[str] = []
-    monkeypatch.setattr("app.apps.predictions.engine.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr("src.apps.predictions.engine.publish_event", lambda event_type, payload: published.append(event_type))
     result = evaluate_pending_predictions(db_session, emit_events=True)
     db_session.expire_all()
 
@@ -421,12 +421,12 @@ async def test_prediction_async_failure_expiry_update_and_pending_branches(async
     db_session.commit()
 
     published: list[str] = []
-    monkeypatch.setattr("app.apps.predictions.engine.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr("src.apps.predictions.engine.publish_event", lambda event_type, payload: published.append(event_type))
     async def _noop_cache_prediction_snapshot_async(**kwargs):
         return None
 
     monkeypatch.setattr(
-        "app.apps.predictions.engine.cache_prediction_snapshot_async",
+        "src.apps.predictions.engine.cache_prediction_snapshot_async",
         _noop_cache_prediction_snapshot_async,
     )
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from app.apps.patterns.domain.detectors.volume import (
+from src.apps.patterns.domain.detectors.volume import (
     AccumulationDistributionDetector,
     ChurnBarDetector,
     ClimaxTurnDetector,

@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-import app.apps.patterns.domain.pattern_context as pattern_context_module
-from app.apps.patterns.domain.base import PatternDetection, PatternDetector
-from app.apps.patterns.domain.pattern_context import (
+import src.apps.patterns.domain.pattern_context as pattern_context_module
+from src.apps.patterns.domain.base import PatternDetection, PatternDetector
+from src.apps.patterns.domain.pattern_context import (
     _additional_dependencies,
     apply_pattern_context,
     dependencies_satisfied,

@@ -6,10 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.apps.market_data.repos import CandlePoint
-from app.apps.patterns import cache, tasks
-from app.apps.patterns.domain.base import PatternDetector
-from app.apps.patterns.domain.scheduler import assign_activity_bucket, calculate_activity_score
+from src.apps.market_data.repos import CandlePoint
+from src.apps.patterns import cache, tasks
+from src.apps.patterns.domain.base import PatternDetector
+from src.apps.patterns.domain.scheduler import assign_activity_bucket, calculate_activity_score
 
 
 class _AsyncDbContext:

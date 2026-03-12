@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.runtime.streams import router
-from app.runtime.streams.types import (
+from src.runtime.streams import router
+from src.runtime.streams.types import (
     ANOMALY_SECTOR_WORKER_GROUP,
     ANOMALY_WORKER_GROUP,
     FUSION_WORKER_GROUP,

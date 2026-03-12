@@ -7,9 +7,9 @@ from datetime import timedelta
 
 import pytest
 
-import app.apps.predictions.cache as prediction_cache_module
-import app.apps.predictions.tasks as prediction_tasks_module
-from app.apps.predictions.cache import (
+import src.apps.predictions.cache as prediction_cache_module
+import src.apps.predictions.tasks as prediction_tasks_module
+from src.apps.predictions.cache import (
     PREDICTION_CACHE_TTL_SECONDS,
     _parse_prediction_payload,
     cache_prediction_snapshot,
@@ -20,8 +20,8 @@ from app.apps.predictions.cache import (
     read_cached_prediction,
     read_cached_prediction_async,
 )
-from app.apps.predictions.selectors import list_predictions
-from app.apps.predictions.services import list_predictions_async
+from src.apps.predictions.selectors import list_predictions
+from src.apps.predictions.services import list_predictions_async
 
 
 class _SyncCacheClient:

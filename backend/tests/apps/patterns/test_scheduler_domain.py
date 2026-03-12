@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.apps.patterns.domain.scheduler import (
+from src.apps.patterns.domain.scheduler import (
     analysis_interval,
     analysis_priority_for_bucket,
     get_activity_snapshot,

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.core.settings import get_settings
-from app.apps.portfolio.models import PortfolioPosition
-from app.apps.portfolio.engine import evaluate_portfolio_action
+from src.core.settings import get_settings
+from src.apps.portfolio.models import PortfolioPosition
+from src.apps.portfolio.engine import evaluate_portfolio_action
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_market_decision, create_sector
 

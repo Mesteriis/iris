@@ -5,11 +5,11 @@ import json
 from redis import Redis
 from sqlalchemy import select
 
-from app.apps.market_data.models import Coin
-from app.apps.portfolio.models import PortfolioBalance
-from app.apps.portfolio.models import PortfolioPosition
-from app.apps.portfolio.engine import sync_exchange_balances
-from app.apps.portfolio.cache import read_cached_portfolio_balances
+from src.apps.market_data.models import Coin
+from src.apps.portfolio.models import PortfolioBalance
+from src.apps.portfolio.models import PortfolioPosition
+from src.apps.portfolio.engine import sync_exchange_balances
+from src.apps.portfolio.cache import read_cached_portfolio_balances
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_exchange_account
 
@@ -35,7 +35,7 @@ class FixtureBalancePlugin:
 
 
 def test_portfolio_sync_updates_balances_and_emits_events(db_session, redis_client, settings) -> None:
-    from app.apps.portfolio.clients import register_exchange
+    from src.apps.portfolio.clients import register_exchange
 
     register_exchange("fixture_sync", FixtureBalancePlugin)
     create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
@@ -55,7 +55,7 @@ def test_portfolio_sync_updates_balances_and_emits_events(db_session, redis_clie
     assert cached is not None
     assert len(cached) == 2
 
-    from app.runtime.streams.publisher import flush_publisher
+    from src.runtime.streams.publisher import flush_publisher
 
     assert flush_publisher(timeout=5.0)
     messages = redis_client.xrange(settings.event_stream_name, "-", "+")

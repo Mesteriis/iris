@@ -6,21 +6,21 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import delete, select
 
-from app.apps.cross_market.models import Sector
-from app.apps.cross_market.models import SectorMetric
-from app.apps.indicators.models import CoinMetrics
-from app.apps.market_data.models import Coin
-from app.apps.patterns.domain.base import PatternDetection, PatternDetector
-from app.apps.patterns.domain.clusters import build_pattern_clusters
-from app.apps.patterns.domain.cycle import _detect_cycle_phase, refresh_market_cycles, update_market_cycle
-from app.apps.patterns.domain.discovery import _window_signature, refresh_discovered_patterns
-from app.apps.patterns.domain.engine import PatternEngine
-from app.apps.patterns.domain.hierarchy import build_hierarchy_signals
-from app.apps.patterns.domain.narrative import _capital_wave_bucket, _coin_bar_return, build_sector_narratives, refresh_sector_metrics
-from app.apps.patterns.domain.registry import sync_pattern_metadata
-from app.apps.patterns.domain.utils import signal_timestamp
-from app.apps.patterns.models import PatternFeature
-from app.apps.signals.models import Signal
+from src.apps.cross_market.models import Sector
+from src.apps.cross_market.models import SectorMetric
+from src.apps.indicators.models import CoinMetrics
+from src.apps.market_data.models import Coin
+from src.apps.patterns.domain.base import PatternDetection, PatternDetector
+from src.apps.patterns.domain.clusters import build_pattern_clusters
+from src.apps.patterns.domain.cycle import _detect_cycle_phase, refresh_market_cycles, update_market_cycle
+from src.apps.patterns.domain.discovery import _window_signature, refresh_discovered_patterns
+from src.apps.patterns.domain.engine import PatternEngine
+from src.apps.patterns.domain.hierarchy import build_hierarchy_signals
+from src.apps.patterns.domain.narrative import _capital_wave_bucket, _coin_bar_return, build_sector_narratives, refresh_sector_metrics
+from src.apps.patterns.domain.registry import sync_pattern_metadata
+from src.apps.patterns.domain.utils import signal_timestamp
+from src.apps.patterns.models import PatternFeature
+from src.apps.signals.models import Signal
 from tests.factories.market_data import build_candle_points
 from tests.cross_market_support import DEFAULT_START, seed_candles
 from tests.fusion_support import create_test_coin, insert_signals
@@ -223,7 +223,7 @@ def test_cycle_discovery_and_narrative_domains_cover_real_market_state(db_sessio
         timeframe_minutes=60,
     )
     monkeypatch.setattr(
-        "app.apps.patterns.domain.discovery.fetch_candle_points",
+        "src.apps.patterns.domain.discovery.fetch_candle_points",
         lambda db, coin_id, timeframe, limit: (
             sparse_candles
             if coin_id == int(sparse_coin.id) and timeframe == 60
@@ -236,7 +236,7 @@ def test_cycle_discovery_and_narrative_domains_cover_real_market_state(db_sessio
     assert discovery_result["status"] == "ok"
     assert discovery_result["patterns"] > 0
 
-    monkeypatch.setattr("app.apps.patterns.domain.discovery.fetch_candle_points", lambda db, coin_id, timeframe, limit: [])
+    monkeypatch.setattr("src.apps.patterns.domain.discovery.fetch_candle_points", lambda db, coin_id, timeframe, limit: [])
     empty_discovery = refresh_discovered_patterns(db_session)
     assert empty_discovery == {"status": "ok", "patterns": 0}
 
@@ -258,17 +258,17 @@ def test_pattern_engine_covers_incremental_bootstrap_and_history_paths(db_sessio
     coin_id = int(seeded_market["BTCUSD_EVT"]["coin_id"])
     candles = build_candle_points(closes=[100.0 + 0.5 * index for index in range(40)], volumes=[1000.0] * 40)
 
-    monkeypatch.setattr("app.apps.patterns.domain.engine.feature_enabled", lambda db, slug: False)
+    monkeypatch.setattr("src.apps.patterns.domain.engine.feature_enabled", lambda db, slug: False)
     assert engine.detect_incremental(db_session, coin_id=coin_id, timeframe=15)["reason"] == "pattern_detection_disabled"
 
-    monkeypatch.setattr("app.apps.patterns.domain.engine.feature_enabled", lambda db, slug: True)
-    monkeypatch.setattr("app.apps.patterns.domain.engine.fetch_candle_points", lambda db, coin_id, timeframe, lookback: candles[:20])
+    monkeypatch.setattr("src.apps.patterns.domain.engine.feature_enabled", lambda db, slug: True)
+    monkeypatch.setattr("src.apps.patterns.domain.engine.fetch_candle_points", lambda db, coin_id, timeframe, lookback: candles[:20])
     assert engine.detect_incremental(db_session, coin_id=coin_id, timeframe=15)["reason"] == "insufficient_candles"
 
-    monkeypatch.setattr("app.apps.patterns.domain.engine.fetch_candle_points", lambda db, coin_id, timeframe, lookback: candles)
-    monkeypatch.setattr("app.apps.patterns.domain.engine.load_active_detectors", lambda db, timeframe: [_StaticBullishDetector()])
+    monkeypatch.setattr("src.apps.patterns.domain.engine.fetch_candle_points", lambda db, coin_id, timeframe, lookback: candles)
+    monkeypatch.setattr("src.apps.patterns.domain.engine.load_active_detectors", lambda db, timeframe: [_StaticBullishDetector()])
     monkeypatch.setattr(
-        "app.apps.patterns.domain.engine.current_indicator_map",
+        "src.apps.patterns.domain.engine.current_indicator_map",
         lambda candles: {
             "price_current": candles[-1].close,
             "ema_50": candles[-1].close * 0.99,
@@ -277,8 +277,8 @@ def test_pattern_engine_covers_incremental_bootstrap_and_history_paths(db_sessio
             "average_volume_20": 1000.0,
         },
     )
-    monkeypatch.setattr("app.apps.patterns.domain.engine.apply_pattern_context", lambda detection, detector, indicators, regime: detection)
-    monkeypatch.setattr("app.apps.patterns.domain.engine.apply_pattern_success_validation", lambda db, detection, timeframe, market_regime, coin_id, emit_events, snapshot_cache: detection)
+    monkeypatch.setattr("src.apps.patterns.domain.engine.apply_pattern_context", lambda detection, detector, indicators, regime: detection)
+    monkeypatch.setattr("src.apps.patterns.domain.engine.apply_pattern_success_validation", lambda db, detection, timeframe, market_regime, coin_id, emit_events, snapshot_cache: detection)
 
     result = engine.detect_incremental(db_session, coin_id=coin_id, timeframe=15, regime="bull_trend")
     assert result["status"] == "ok"
@@ -375,8 +375,8 @@ def test_cluster_hierarchy_engine_and_narrative_guard_paths(db_session, seeded_a
                 )
             ]
 
-    monkeypatch.setattr("app.apps.patterns.domain.engine.load_pattern_success_cache", lambda *args, **kwargs: {})
-    monkeypatch.setattr("app.apps.patterns.domain.engine.apply_pattern_context", lambda **kwargs: None)
+    monkeypatch.setattr("src.apps.patterns.domain.engine.load_pattern_success_cache", lambda *args, **kwargs: {})
+    monkeypatch.setattr("src.apps.patterns.domain.engine.apply_pattern_context", lambda **kwargs: None)
     assert engine.detect(
         db_session,
         coin_id=int(btc.id),
@@ -388,10 +388,10 @@ def test_cluster_hierarchy_engine_and_narrative_guard_paths(db_session, seeded_a
     ) == []
 
     monkeypatch.setattr(
-        "app.apps.patterns.domain.engine.apply_pattern_context",
+        "src.apps.patterns.domain.engine.apply_pattern_context",
         lambda detection, detector, indicators, regime: detection,
     )
-    monkeypatch.setattr("app.apps.patterns.domain.engine.apply_pattern_success_validation", lambda *args, **kwargs: None)
+    monkeypatch.setattr("src.apps.patterns.domain.engine.apply_pattern_success_validation", lambda *args, **kwargs: None)
     assert engine.detect(
         db_session,
         coin_id=int(btc.id),
@@ -403,7 +403,7 @@ def test_cluster_hierarchy_engine_and_narrative_guard_paths(db_session, seeded_a
     ) == []
     assert engine._insert_detections(db_session, coin_id=int(btc.id), timeframe=15, detections=[]) == 0
 
-    monkeypatch.setattr("app.apps.patterns.domain.engine.feature_enabled", lambda db, slug: False)
+    monkeypatch.setattr("src.apps.patterns.domain.engine.feature_enabled", lambda db, slug: False)
     assert engine.bootstrap_coin(db_session, coin=btc, force=True)["reason"] == "pattern_detection_disabled"
 
     bootstrap_coin = create_test_coin(db_session, symbol="BRANCH_EVT", name="Branch Coin")
@@ -414,13 +414,13 @@ def test_cluster_hierarchy_engine_and_narrative_guard_paths(db_session, seeded_a
     ]
     db_session.commit()
 
-    monkeypatch.setattr("app.apps.patterns.domain.engine.feature_enabled", lambda db, slug: True)
+    monkeypatch.setattr("src.apps.patterns.domain.engine.feature_enabled", lambda db, slug: True)
     monkeypatch.setattr(
-        "app.apps.patterns.domain.engine.load_active_detectors",
+        "src.apps.patterns.domain.engine.load_active_detectors",
         lambda db, timeframe: [] if timeframe == 15 else [_PassingDetector()],
     )
     monkeypatch.setattr(
-        "app.apps.patterns.domain.engine.fetch_candle_points",
+        "src.apps.patterns.domain.engine.fetch_candle_points",
         lambda db, coin_id, timeframe, lookback: candles[:20] if timeframe == 60 else candles,
     )
     guarded_bootstrap = engine.bootstrap_coin(db_session, coin=bootstrap_coin, force=True)
@@ -444,7 +444,7 @@ def test_cluster_hierarchy_engine_and_narrative_guard_paths(db_session, seeded_a
         narratives = build_sector_narratives(db_session)
         assert narratives and all(item.rotation_state is None for item in narratives)
 
-        monkeypatch.setattr("app.apps.patterns.domain.narrative._coin_bar_return", lambda *args, **kwargs: (None, None))
+        monkeypatch.setattr("src.apps.patterns.domain.narrative._coin_bar_return", lambda *args, **kwargs: (None, None))
         assert refresh_sector_metrics(db_session, timeframe=15)["status"] == "ok"
         monkeypatch.undo()
 
@@ -519,7 +519,7 @@ def test_sync_narratives_handle_missing_metric_snapshots_and_empty_capital_wave(
     assert sector_metric is not None
     assert float(sector_metric.sector_strength) != 0.0
 
-    monkeypatch.setattr("app.apps.patterns.domain.narrative._coin_bar_return", lambda *args, **kwargs: (None, None))
+    monkeypatch.setattr("src.apps.patterns.domain.narrative._coin_bar_return", lambda *args, **kwargs: (None, None))
     narratives = build_sector_narratives(db_session)
     assert narratives
     assert all(item.capital_wave is None for item in narratives)

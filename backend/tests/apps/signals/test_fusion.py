@@ -8,12 +8,12 @@ import pytest
 from redis import Redis
 from sqlalchemy import func, select
 
-from app.apps.news.models import NewsItem, NewsItemLink, NewsSource
-from app.apps.signals.fusion import evaluate_market_decision
-from app.core.db.session import SessionLocal
-from app.runtime.streams.publisher import flush_publisher, publish_event
-from app.runtime.streams.runner import run_worker_loop
-from app.apps.signals.models import MarketDecision
+from src.apps.news.models import NewsItem, NewsItemLink, NewsSource
+from src.apps.signals.fusion import evaluate_market_decision
+from src.core.db.session import SessionLocal
+from src.runtime.streams.publisher import flush_publisher, publish_event
+from src.runtime.streams.runner import run_worker_loop
+from src.apps.signals.models import MarketDecision
 from tests.fusion_support import create_test_coin, insert_signals, replace_pattern_statistics, upsert_coin_metrics
 
 

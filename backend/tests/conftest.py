@@ -24,33 +24,33 @@ from sqlalchemy import delete, select
 
 os.environ.setdefault("EVENT_STREAM_NAME", "iris_events_test")
 
-from app.core.settings import get_settings
+from src.core.settings import get_settings
 
 get_settings.cache_clear()
 
-from app.core.db.session import AsyncSessionLocal, SessionLocal
-from app.runtime.streams.publisher import flush_publisher, reset_event_publisher
-from app.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
-from app.apps.market_data.models import Coin
-from app.apps.cross_market.models import CoinRelation
-from app.apps.market_structure.models import MarketStructureSource
-from app.apps.news.models import NewsItem, NewsItemLink, NewsSource
-from app.apps.portfolio.models import ExchangeAccount
-from app.apps.predictions.models import MarketPrediction
-from app.apps.patterns.models import PatternFeature
-from app.apps.patterns.models import PatternRegistry
-from app.apps.patterns.models import PatternStatistic
-from app.apps.portfolio.models import PortfolioAction
-from app.apps.portfolio.models import PortfolioBalance
-from app.apps.portfolio.models import PortfolioPosition
-from app.apps.portfolio.models import PortfolioState
-from app.apps.predictions.models import PredictionResult
-from app.apps.cross_market.models import SectorMetric
-from app.apps.market_data.schemas import CoinCreate
-from app.apps.market_data.service_layer import create_coin
-from app.apps.market_data.domain import utc_now
-from app.apps.market_data.sources.base import MarketBar
-from app.apps.market_data.repos import upsert_base_candles
+from src.core.db.session import AsyncSessionLocal, SessionLocal
+from src.runtime.streams.publisher import flush_publisher, reset_event_publisher
+from src.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
+from src.apps.market_data.models import Coin
+from src.apps.cross_market.models import CoinRelation
+from src.apps.market_structure.models import MarketStructureSource
+from src.apps.news.models import NewsItem, NewsItemLink, NewsSource
+from src.apps.portfolio.models import ExchangeAccount
+from src.apps.predictions.models import MarketPrediction
+from src.apps.patterns.models import PatternFeature
+from src.apps.patterns.models import PatternRegistry
+from src.apps.patterns.models import PatternStatistic
+from src.apps.portfolio.models import PortfolioAction
+from src.apps.portfolio.models import PortfolioBalance
+from src.apps.portfolio.models import PortfolioPosition
+from src.apps.portfolio.models import PortfolioState
+from src.apps.predictions.models import PredictionResult
+from src.apps.cross_market.models import SectorMetric
+from src.apps.market_data.schemas import CoinCreate
+from src.apps.market_data.service_layer import create_coin
+from src.apps.market_data.domain import utc_now
+from src.apps.market_data.sources.base import MarketBar
+from src.apps.market_data.repos import upsert_base_candles
 from tests.factories.market_data import CoinCreateFactory
 
 TEST_SYMBOLS = {
@@ -86,7 +86,7 @@ def settings():
 def migrated_database(settings) -> None:
     backend_root = Path(__file__).resolve().parents[1]
     config = Config(str(backend_root / "alembic.ini"))
-    config.set_main_option("script_location", str(backend_root / "alembic"))
+    config.set_main_option("script_location", str(backend_root / "src" / "migrations"))
     config.set_main_option("sqlalchemy.url", settings.database_url)
     command.upgrade(config, "head")
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.apps.news.exceptions import InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError
-from app.apps.news.plugins import (
+from src.apps.news.exceptions import InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError
+from src.apps.news.plugins import (
     DiscordBotNewsPlugin,
     TelegramUserNewsPlugin,
     TruthSocialUnsupportedPlugin,

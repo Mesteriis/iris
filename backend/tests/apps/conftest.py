@@ -9,16 +9,16 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select
 
-from app.apps.cross_market.models import CoinRelation, SectorMetric
-from app.apps.indicators.models import CoinMetrics
-from app.apps.market_data.models import Coin
-from app.apps.patterns.models import DiscoveredPattern, MarketCycle, PatternFeature, PatternRegistry, PatternStatistic
-from app.apps.portfolio.models import ExchangeAccount, PortfolioAction, PortfolioPosition, PortfolioState
-from app.apps.predictions.models import MarketPrediction, PredictionResult
-from app.apps.signals.models import FinalSignal, InvestmentDecision, MarketDecision, RiskMetric, Signal, SignalHistory, Strategy, StrategyPerformance, StrategyRule
-from app.apps.system.schemas import SourceStatusRead
-from app.core.bootstrap.app import create_app
-from app.core.settings import get_settings
+from src.apps.cross_market.models import CoinRelation, SectorMetric
+from src.apps.indicators.models import CoinMetrics
+from src.apps.market_data.models import Coin
+from src.apps.patterns.models import DiscoveredPattern, MarketCycle, PatternFeature, PatternRegistry, PatternStatistic
+from src.apps.portfolio.models import ExchangeAccount, PortfolioAction, PortfolioPosition, PortfolioState
+from src.apps.predictions.models import MarketPrediction, PredictionResult
+from src.apps.signals.models import FinalSignal, InvestmentDecision, MarketDecision, RiskMetric, Signal, SignalHistory, Strategy, StrategyPerformance, StrategyRule
+from src.apps.system.schemas import SourceStatusRead
+from src.core.bootstrap.app import create_app
+from src.core.settings import get_settings
 from tests.cross_market_support import DEFAULT_START
 from tests.factories.base import json_utc
 from tests.factories.seeds import DecisionSeedFactory, MetricSeedFactory, NarrativeSeedFactory, SectorSeedFactory, SignalSeedFactory, StrategySeedFactory

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from app.apps.patterns.domain.detectors.continuation import (
+from src.apps.patterns.domain.detectors.continuation import (
     BaseBreakoutDetector,
     BreakoutRetestDetector,
     ChannelContinuationDetector,

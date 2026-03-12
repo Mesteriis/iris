@@ -7,8 +7,8 @@ from polyfactory.factories.dataclass_factory import DataclassFactory
 from polyfactory.factories.pydantic_factory import ModelFactory
 from polyfactory.fields import Use
 
-from app.apps.market_data.repos import CandlePoint
-from app.apps.market_data.schemas import CoinCreate, PriceHistoryCreate
+from src.apps.market_data.repos import CandlePoint
+from src.apps.market_data.schemas import CoinCreate, PriceHistoryCreate
 from tests.factories.base import fake
 
 

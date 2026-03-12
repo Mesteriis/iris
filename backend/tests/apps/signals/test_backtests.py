@@ -4,9 +4,9 @@ from datetime import timedelta
 
 import pytest
 
-from app.apps.market_data.domain import utc_now
-from app.apps.signals.backtests import _clamp, _serialize_group, _sharpe_ratio, get_coin_backtests, list_backtests, list_top_backtests
-from app.apps.signals.models import SignalHistory
+from src.apps.market_data.domain import utc_now
+from src.apps.signals.backtests import _clamp, _serialize_group, _sharpe_ratio, get_coin_backtests, list_backtests, list_top_backtests
+from src.apps.signals.models import SignalHistory
 from tests.factories.signals import SignalHistorySeedFactory
 from tests.fusion_support import create_test_coin
 

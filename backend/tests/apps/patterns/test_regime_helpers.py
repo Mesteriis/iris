@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.apps.patterns.domain.regime import (
+from src.apps.patterns.domain.regime import (
     MARKET_REGIMES,
     calculate_regime_map,
     compute_live_regimes,

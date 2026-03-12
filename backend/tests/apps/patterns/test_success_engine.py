@@ -5,11 +5,11 @@ from datetime import datetime, timedelta, timezone
 from redis import Redis
 from sqlalchemy import delete
 
-from app.runtime.streams.publisher import flush_publisher
-from app.apps.patterns.models import PatternStatistic
-from app.apps.patterns.domain.base import PatternDetection
-from app.apps.patterns.domain.success import GLOBAL_MARKET_REGIME, apply_pattern_success_validation
-from app.apps.patterns.domain.registry import sync_pattern_metadata
+from src.runtime.streams.publisher import flush_publisher
+from src.apps.patterns.models import PatternStatistic
+from src.apps.patterns.domain.base import PatternDetection
+from src.apps.patterns.domain.success import GLOBAL_MARKET_REGIME, apply_pattern_success_validation
+from src.apps.patterns.domain.registry import sync_pattern_metadata
 
 
 def _pattern_stat(

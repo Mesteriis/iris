@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import importlib
 
-from app.apps.market_data.repos import CandlePoint
+from src.apps.market_data.repos import CandlePoint
 
-momentum = importlib.import_module("app.apps.patterns.domain.detectors.momentum")
+momentum = importlib.import_module("src.apps.patterns.domain.detectors.momentum")
 
 
 def _candles(count: int, *, start_price: float = 100.0) -> list[CandlePoint]:

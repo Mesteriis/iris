@@ -6,10 +6,10 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import delete, select
 
-from app.apps.cross_market.models import SectorMetric
-from app.apps.indicators.models import CoinMetrics
-from app.apps.market_data.repos import candle_close_timestamp, fetch_candle_points
-from app.apps.patterns.domain.decision import (
+from src.apps.cross_market.models import SectorMetric
+from src.apps.indicators.models import CoinMetrics
+from src.apps.market_data.repos import candle_close_timestamp, fetch_candle_points
+from src.apps.patterns.domain.decision import (
     _decision_confidence,
     _decision_from_score,
     _historical_pattern_success,
@@ -18,8 +18,8 @@ from app.apps.patterns.domain.decision import (
     evaluate_investment_decision,
     refresh_investment_decisions,
 )
-from app.apps.patterns.domain.narrative import SectorNarrative
-from app.apps.patterns.domain.risk import (
+from src.apps.patterns.domain.narrative import SectorNarrative
+from src.apps.patterns.domain.risk import (
     calculate_liquidity_score,
     calculate_risk_adjusted_score,
     calculate_slippage_risk,
@@ -28,7 +28,7 @@ from app.apps.patterns.domain.risk import (
     refresh_final_signals,
     update_risk_metrics,
 )
-from app.apps.patterns.domain.strategy import (
+from src.apps.patterns.domain.strategy import (
     _candle_index_map,
     _candidate_definitions,
     _round_confidence,
@@ -39,7 +39,7 @@ from app.apps.patterns.domain.strategy import (
     refresh_strategies,
     strategy_alignment,
 )
-from app.apps.signals.models import FinalSignal, InvestmentDecision, Signal
+from src.apps.signals.models import FinalSignal, InvestmentDecision, Signal
 from tests.factories.market_data import build_candle_points
 from tests.fusion_support import insert_signals
 
@@ -138,7 +138,7 @@ def test_strategy_domain_helpers_and_refresh_real_signal_groups(db_session, seed
         )
     db_session.commit()
 
-    monkeypatch.setattr("app.apps.patterns.domain.strategy.fetch_candle_points_between", lambda db, coin_id, timeframe, start, end: synthetic_candles)
+    monkeypatch.setattr("src.apps.patterns.domain.strategy.fetch_candle_points_between", lambda db, coin_id, timeframe, start, end: synthetic_candles)
     refreshed = refresh_strategies(db_session)
     assert refreshed["status"] == "ok"
     assert refreshed["strategies"] > 0
@@ -185,7 +185,7 @@ def test_decision_and_risk_domains_cover_real_business_flow(db_session, seeded_a
 
     published_decisions: list[dict[str, object]] = []
     monkeypatch.setattr(
-        "app.apps.patterns.domain.decision.publish_investment_decision_message",
+        "src.apps.patterns.domain.decision.publish_investment_decision_message",
         lambda coin, timeframe, decision, confidence, score, reason: published_decisions.append(
             {
                 "coin": coin.symbol,
@@ -229,7 +229,7 @@ def test_decision_and_risk_domains_cover_real_business_flow(db_session, seeded_a
 
     published_final_signals: list[dict[str, object]] = []
     monkeypatch.setattr(
-        "app.apps.patterns.domain.risk.publish_investment_signal_message",
+        "src.apps.patterns.domain.risk.publish_investment_signal_message",
         lambda coin, timeframe, decision, confidence, risk_score, reason: published_final_signals.append(
             {
                 "coin": coin.symbol,

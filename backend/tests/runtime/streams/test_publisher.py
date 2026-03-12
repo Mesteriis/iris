@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from redis.exceptions import RedisError
 
-from app.runtime.streams import publisher
+from src.runtime.streams import publisher
 
 
 class _FakeRedis:

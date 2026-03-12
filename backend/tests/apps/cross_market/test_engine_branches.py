@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from sqlalchemy import select
 
-from app.apps.cross_market.engine import (
+from src.apps.cross_market.engine import (
     _best_lagged_correlation,
     _candidate_leaders,
     _latest_leader_decision,
@@ -16,10 +16,10 @@ from app.apps.cross_market.engine import (
     refresh_sector_momentum,
     update_coin_relations,
 )
-from app.apps.indicators.models import CoinMetrics
-from app.apps.cross_market.models import CoinRelation, SectorMetric
-from app.apps.market_data.repos import CandlePoint
-from app.apps.signals.models import MarketDecision
+from src.apps.indicators.models import CoinMetrics
+from src.apps.cross_market.models import CoinRelation, SectorMetric
+from src.apps.market_data.repos import CandlePoint
+from src.apps.signals.models import MarketDecision
 from tests.cross_market_support import (
     DEFAULT_START,
     correlated_close_series,
@@ -108,7 +108,7 @@ def test_cross_market_helper_math_and_alignment_branches(db_session, monkeypatch
         volume_change_24h=18.0,
     )
 
-    monkeypatch.setattr("app.apps.cross_market.engine.read_cached_correlation", lambda **_: None)
+    monkeypatch.setattr("src.apps.cross_market.engine.read_cached_correlation", lambda **_: None)
     assert cross_market_alignment_weight(db_session, coin_id=int(follower.id), timeframe=60, directional_bias=0) == 1.0
     assert cross_market_alignment_weight(db_session, coin_id=int(follower.id), timeframe=60, directional_bias=1) > 1.0
     assert cross_market_alignment_weight(db_session, coin_id=int(follower.id), timeframe=60, directional_bias=-1) < 1.0
@@ -151,9 +151,9 @@ def test_cross_market_relation_and_sector_skip_paths(db_session, monkeypatch) ->
     assert relations_result["reason"] == "relations_not_found"
 
     captured: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("app.apps.cross_market.engine.publish_event", lambda event_type, payload: captured.append((event_type, payload)))
+    monkeypatch.setattr("src.apps.cross_market.engine.publish_event", lambda event_type, payload: captured.append((event_type, payload)))
     monkeypatch.setattr(
-        "app.apps.cross_market.engine.create_market_predictions",
+        "src.apps.cross_market.engine.create_market_predictions",
         lambda *args, **kwargs: {"status": "ok", "created": 1},
     )
     set_market_metrics(
@@ -242,22 +242,22 @@ def test_sector_rotation_and_process_dispatch(db_session, monkeypatch) -> None:
         volume_change_24h=80.0,
     )
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("app.apps.cross_market.engine.publish_event", lambda event_type, payload: published.append((event_type, payload)))
+    monkeypatch.setattr("src.apps.cross_market.engine.publish_event", lambda event_type, payload: published.append((event_type, payload)))
     second = refresh_sector_momentum(db_session, timeframe=isolated_timeframe, emit_events=True)
     assert second["status"] == "ok"
     assert second["updated"] >= 2
 
     calls: list[tuple[str, object]] = []
     monkeypatch.setattr(
-        "app.apps.cross_market.engine.update_coin_relations",
+        "src.apps.cross_market.engine.update_coin_relations",
         lambda *args, **kwargs: calls.append(("relations", kwargs["emit_events"])) or {"status": "ok"},
     )
     monkeypatch.setattr(
-        "app.apps.cross_market.engine.refresh_sector_momentum",
+        "src.apps.cross_market.engine.refresh_sector_momentum",
         lambda *args, **kwargs: calls.append(("sectors", kwargs["emit_events"])) or {"status": "ok"},
     )
     monkeypatch.setattr(
-        "app.apps.cross_market.engine.detect_market_leader",
+        "src.apps.cross_market.engine.detect_market_leader",
         lambda *args, **kwargs: calls.append(("leader", kwargs["emit_events"])) or {"status": "ok"},
     )
 
@@ -314,7 +314,7 @@ def test_cross_market_candidate_publish_and_fallback_branches(db_session, monkey
         name="Alt Event Test",
         sector_name="smart_contract",
     )
-    monkeypatch.setattr("app.apps.cross_market.engine.LEADER_SYMBOLS", ("BTCUSD_EVT",))
+    monkeypatch.setattr("src.apps.cross_market.engine.LEADER_SYMBOLS", ("BTCUSD_EVT",))
     set_market_metrics(
         db_session,
         coin_id=int(preferred.id),
@@ -357,7 +357,7 @@ def test_cross_market_candidate_publish_and_fallback_branches(db_session, monkey
     assert any(int(coin.id) == int(same_sector_short.id) for coin in leaders)
 
     published: list[str] = []
-    monkeypatch.setattr("app.apps.cross_market.engine.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr("src.apps.cross_market.engine.publish_event", lambda event_type, payload: published.append(event_type))
     first = update_coin_relations(db_session, follower_coin_id=int(follower.id), timeframe=60, emit_events=True)
     second = update_coin_relations(db_session, follower_coin_id=int(follower.id), timeframe=60, emit_events=True)
     assert first["status"] == "ok"
@@ -379,7 +379,7 @@ def test_cross_market_candidate_publish_and_fallback_branches(db_session, monkey
         name="No Metrics Event Test",
         sector_name="payments",
     )
-    monkeypatch.setattr("app.apps.cross_market.engine.LEADER_SYMBOLS", ("BTCUSD_EVT", "NOMETRICS_EVT"))
+    monkeypatch.setattr("src.apps.cross_market.engine.LEADER_SYMBOLS", ("BTCUSD_EVT", "NOMETRICS_EVT"))
     no_sector_leaders = _candidate_leaders(db_session, follower=follower_without_sector)
     assert orphan_preferred not in no_sector_leaders
     assert no_sector_leaders[0].symbol == "BTCUSD_EVT"
@@ -502,7 +502,7 @@ def test_cross_market_decision_and_alignment_fallback_branches(db_session, monke
     )
     db_session.commit()
 
-    monkeypatch.setattr("app.apps.cross_market.engine.read_cached_correlation", lambda **_: None)
+    monkeypatch.setattr("src.apps.cross_market.engine.read_cached_correlation", lambda **_: None)
     bearish_weight = cross_market_alignment_weight(db_session, coin_id=int(follower.id), timeframe=240, directional_bias=-1)
     bullish_weight = cross_market_alignment_weight(db_session, coin_id=int(follower.id), timeframe=240, directional_bias=1)
     assert bearish_weight > 1.0
@@ -625,7 +625,7 @@ def test_cross_market_refresh_sector_momentum_edge_branches(monkeypatch) -> None
         ),
     ]
     published: list[str] = []
-    monkeypatch.setattr("app.apps.cross_market.engine.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr("src.apps.cross_market.engine.publish_event", lambda event_type, payload: published.append(event_type))
     rotating_session = SessionStub(
         [
             Result(first=SimpleNamespace(sector_id=1, name="old_sector", relative_strength=-1.0)),

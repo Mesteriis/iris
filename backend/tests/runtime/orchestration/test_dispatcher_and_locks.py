@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
 from redis.exceptions import LockError
 
-from app.runtime.orchestration import dispatcher, locks
+from src.runtime.orchestration import dispatcher, locks
 
 
 @pytest.mark.asyncio
@@ -97,12 +98,14 @@ async def test_async_lock_client_double_checked_branch(monkeypatch) -> None:
     class LockStub:
         def __enter__(self):
             locks._async_redis_client = fake_redis
+            locks._async_redis_loop = asyncio.get_running_loop()
             return self
 
         def __exit__(self, exc_type, exc, tb) -> bool:
             return False
 
     locks._async_redis_client = None
+    locks._async_redis_loop = None
     monkeypatch.setattr(locks, "_async_redis_client_lock", LockStub())
 
     client = await locks.get_async_lock_redis()

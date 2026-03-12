@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.apps.market_data.domain import (
+from src.apps.market_data.domain import (
     align_timestamp,
     ensure_utc,
     history_window_start,

@@ -5,11 +5,11 @@ from types import SimpleNamespace
 
 from sqlalchemy import delete, select
 
-from app.apps.patterns.domain import decision as decision_domain
-from app.apps.patterns.domain import risk as risk_domain
-from app.apps.patterns.domain import strategy as strategy_domain
-from app.apps.market_data.repos import candle_close_timestamp
-from app.apps.patterns.domain.decision import (
+from src.apps.patterns.domain import decision as decision_domain
+from src.apps.patterns.domain import risk as risk_domain
+from src.apps.patterns.domain import strategy as strategy_domain
+from src.apps.market_data.repos import candle_close_timestamp
+from src.apps.patterns.domain.decision import (
     _cycle_alignment,
     _decision_from_score,
     _historical_pattern_success,
@@ -17,9 +17,9 @@ from app.apps.patterns.domain.decision import (
     _sector_strength_factor,
     evaluate_investment_decision,
 )
-from app.apps.patterns.domain.narrative import SectorNarrative
-from app.apps.patterns.domain.risk import _risk_adjusted_decision, update_risk_metrics
-from app.apps.patterns.domain.strategy import (
+from src.apps.patterns.domain.narrative import SectorNarrative
+from src.apps.patterns.domain.risk import _risk_adjusted_decision, update_risk_metrics
+from src.apps.patterns.domain.strategy import (
     StrategyCandidate,
     _candidate_definitions,
     _candle_index_map,
@@ -30,7 +30,7 @@ from app.apps.patterns.domain.strategy import (
     refresh_strategies,
     strategy_alignment,
 )
-from app.apps.signals.models import InvestmentDecision, RiskMetric, Strategy, StrategyPerformance, StrategyRule
+from src.apps.signals.models import InvestmentDecision, RiskMetric, Strategy, StrategyPerformance, StrategyRule
 from tests.factories.market_data import build_candle_points
 
 

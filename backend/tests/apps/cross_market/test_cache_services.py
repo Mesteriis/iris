@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 
-import app.apps.cross_market.cache as correlation_cache_module
-import app.apps.cross_market.services as cross_market_services_module
-from app.apps.cross_market.cache import (
+import src.apps.cross_market.cache as correlation_cache_module
+import src.apps.cross_market.services as cross_market_services_module
+from src.apps.cross_market.cache import (
     CORRELATION_CACHE_TTL_SECONDS,
     _parse_correlation_payload,
     cache_correlation_snapshot,

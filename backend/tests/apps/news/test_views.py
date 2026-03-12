@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.apps.news.models import NewsItem, NewsSource
+from src.apps.news.models import NewsItem, NewsSource
 
 
 @pytest.mark.asyncio
@@ -96,7 +96,7 @@ async def test_news_endpoints(api_app_client, db_session, monkeypatch) -> None:
 
     queued: dict[str, object] = {}
 
-    from app.apps.news.tasks import poll_news_source_job
+    from src.apps.news.tasks import poll_news_source_job
 
     async def fake_kiq(**kwargs):
         queued.update(kwargs)
@@ -171,9 +171,9 @@ async def test_telegram_onboarding_endpoints(api_app_client, monkeypatch) -> Non
             }
         ]
 
-    monkeypatch.setattr("app.apps.news.views.TelegramSessionOnboardingService.request_code", fake_request)
-    monkeypatch.setattr("app.apps.news.views.TelegramSessionOnboardingService.confirm_code", fake_confirm)
-    monkeypatch.setattr("app.apps.news.views.TelegramSessionOnboardingService.list_dialogs", fake_dialogs)
+    monkeypatch.setattr("src.apps.news.views.TelegramSessionOnboardingService.request_code", fake_request)
+    monkeypatch.setattr("src.apps.news.views.TelegramSessionOnboardingService.confirm_code", fake_confirm)
+    monkeypatch.setattr("src.apps.news.views.TelegramSessionOnboardingService.list_dialogs", fake_dialogs)
 
     request_response = await client.post(
         "/news/onboarding/telegram/session/request",

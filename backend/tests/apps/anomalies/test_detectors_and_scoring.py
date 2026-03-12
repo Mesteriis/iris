@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.apps.anomalies.detectors import (
+from src.apps.anomalies.detectors import (
     CompressionExpansionDetector,
     CorrelationBreakdownDetector,
     CrossExchangeDislocationDetector,
@@ -15,9 +15,9 @@ from app.apps.anomalies.detectors import (
     VolumeSpikeDetector,
     VolatilityBreakDetector,
 )
-from app.apps.anomalies.scoring import AnomalyScorer
-from app.apps.anomalies.schemas import AnomalyDetectionContext, BenchmarkSeries, DetectorFinding, MarketStructurePoint
-from app.apps.market_data.repos import CandlePoint
+from src.apps.anomalies.scoring import AnomalyScorer
+from src.apps.anomalies.schemas import AnomalyDetectionContext, BenchmarkSeries, DetectorFinding, MarketStructurePoint
+from src.apps.market_data.repos import CandlePoint
 
 
 def _build_candles(

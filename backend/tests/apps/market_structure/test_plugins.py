@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.apps.market_structure.exceptions import InvalidMarketStructureSourceConfigurationError
-from app.apps.market_structure.models import MarketStructureSource
-from app.apps.market_structure.plugins import (
+from src.apps.market_structure.exceptions import InvalidMarketStructureSourceConfigurationError
+from src.apps.market_structure.models import MarketStructureSource
+from src.apps.market_structure.plugins import (
     BinanceUsdMarketStructurePlugin,
     BybitDerivativesMarketStructurePlugin,
     ManualPushMarketStructurePlugin,
@@ -117,7 +117,7 @@ def test_plugins_validate_required_fields() -> None:
 
 @pytest.mark.asyncio
 async def test_binance_and_bybit_plugins_parse_market_snapshots(monkeypatch) -> None:
-    monkeypatch.setattr("app.apps.market_structure.plugins.httpx.AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr("src.apps.market_structure.plugins.httpx.AsyncClient", _FakeAsyncClient)
 
     binance_snapshot = (
         await BinanceUsdMarketStructurePlugin(

@@ -5,16 +5,16 @@ from datetime import datetime, timedelta, timezone
 import httpx
 import pytest
 
-from app.apps.market_data.sources.alphavantage import AlphaVantageForexMarketSource
-from app.apps.market_data.sources.base import RateLimitedMarketSourceError, TemporaryMarketSourceError, UnsupportedMarketSourceQuery
-from app.apps.market_data.sources.binance import BinanceMarketSource
-from app.apps.market_data.sources.coinbase import CoinbaseMarketSource
-from app.apps.market_data.sources.kraken import KrakenMarketSource
-from app.apps.market_data.sources.kucoin import KucoinMarketSource
-from app.apps.market_data.sources.moex import MOEX_PAGE_SIZE, MoexIndexMarketSource
-from app.apps.market_data.sources.polygon import PolygonMarketSource
-from app.apps.market_data.sources.twelvedata import TwelveDataMarketSource
-from app.apps.market_data.sources.yfinance import YahooMarketSource
+from src.apps.market_data.sources.alphavantage import AlphaVantageForexMarketSource
+from src.apps.market_data.sources.base import RateLimitedMarketSourceError, TemporaryMarketSourceError, UnsupportedMarketSourceQuery
+from src.apps.market_data.sources.binance import BinanceMarketSource
+from src.apps.market_data.sources.coinbase import CoinbaseMarketSource
+from src.apps.market_data.sources.kraken import KrakenMarketSource
+from src.apps.market_data.sources.kucoin import KucoinMarketSource
+from src.apps.market_data.sources.moex import MOEX_PAGE_SIZE, MoexIndexMarketSource
+from src.apps.market_data.sources.polygon import PolygonMarketSource
+from src.apps.market_data.sources.twelvedata import TwelveDataMarketSource
+from src.apps.market_data.sources.yfinance import YahooMarketSource
 from tests.factories.base import fake
 from tests.factories.market_data import CoinCreateFactory
 
@@ -292,14 +292,14 @@ async def test_polygon_market_source_supports_parses_and_resamples(monkeypatch) 
 @pytest.mark.asyncio
 async def test_twelvedata_market_source_symbol_resolution_and_errors(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.apps.market_data.sources.twelvedata.get_settings",
+        "src.apps.market_data.sources.twelvedata.get_settings",
         lambda: type("Settings", (), {"twelve_data_api_key": "header-key"})(),
     )
     configured_source = TwelveDataMarketSource()
     assert configured_source.client.headers["Authorization"] == "apikey header-key"
 
     monkeypatch.setattr(
-        "app.apps.market_data.sources.twelvedata.get_settings",
+        "src.apps.market_data.sources.twelvedata.get_settings",
         lambda: type("Settings", (), {"twelve_data_api_key": ""})(),
     )
     source = TwelveDataMarketSource()

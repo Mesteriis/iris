@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.apps.portfolio.clients import BinancePlugin, BybitPlugin, ExchangePlugin, create_exchange_plugin, get_exchange_plugin, list_registered_exchanges, register_exchange
-from app.apps.portfolio.models import ExchangeAccount
+from src.apps.portfolio.clients import BinancePlugin, BybitPlugin, ExchangePlugin, create_exchange_plugin, get_exchange_plugin, list_registered_exchanges, register_exchange
+from src.apps.portfolio.models import ExchangeAccount
 
 
 class DummyExchangePlugin:

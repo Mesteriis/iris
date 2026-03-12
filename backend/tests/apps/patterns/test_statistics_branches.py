@@ -5,16 +5,16 @@ from types import SimpleNamespace
 
 from sqlalchemy import delete
 
-from app.apps.patterns.domain.statistics import (
+from src.apps.patterns.domain.statistics import (
     _select_drawdown,
     _select_return,
     calculate_temperature,
     refresh_pattern_statistics,
 )
-from app.apps.patterns.models import PatternRegistry, PatternStatistic
-from app.apps.signals.models import SignalHistory
-from app.apps.patterns.domain.registry import sync_pattern_metadata
-from app.apps.market_data.domain import utc_now
+from src.apps.patterns.models import PatternRegistry, PatternStatistic
+from src.apps.signals.models import SignalHistory
+from src.apps.patterns.domain.registry import sync_pattern_metadata
+from src.apps.market_data.domain import utc_now
 
 
 def _history_row(
@@ -139,7 +139,7 @@ def test_pattern_statistics_emits_lifecycle_events_and_skips_invalid_rows(db_ses
     db_session.commit()
 
     published: list[str] = []
-    monkeypatch.setattr("app.apps.patterns.domain.statistics.publish_pattern_state_event", lambda event_type, **kwargs: published.append(event_type))
+    monkeypatch.setattr("src.apps.patterns.domain.statistics.publish_pattern_state_event", lambda event_type, **kwargs: published.append(event_type))
     result = refresh_pattern_statistics(db_session, emit_events=True)
 
     global_bull = db_session.get(PatternStatistic, ("bull_flag", 15, "all"))
@@ -198,13 +198,13 @@ def test_pattern_statistics_tolerates_missing_registry_rows(monkeypatch) -> None
         def commit(self) -> None:
             return None
 
-    monkeypatch.setattr("app.apps.patterns.domain.statistics.sync_pattern_metadata", lambda db: None)
+    monkeypatch.setattr("src.apps.patterns.domain.statistics.sync_pattern_metadata", lambda db: None)
     monkeypatch.setattr(
-        "app.apps.patterns.domain.statistics.PATTERN_CATALOG",
+        "src.apps.patterns.domain.statistics.PATTERN_CATALOG",
         [SimpleNamespace(slug="ghost_pattern")],
     )
-    monkeypatch.setattr("app.apps.patterns.domain.statistics.SUPPORTED_STATISTIC_TIMEFRAMES", (15,))
-    monkeypatch.setattr("app.apps.patterns.domain.statistics._history_rows", lambda db: [])
+    monkeypatch.setattr("src.apps.patterns.domain.statistics.SUPPORTED_STATISTIC_TIMEFRAMES", (15,))
+    monkeypatch.setattr("src.apps.patterns.domain.statistics._history_rows", lambda db: [])
 
     result = refresh_pattern_statistics(SessionStub(), emit_events=False)
     assert result["status"] == "ok"
@@ -217,12 +217,12 @@ def test_pattern_statistics_no_rows_and_unchanged_state_branches(db_session, mon
     db_session.execute(delete(PatternStatistic))
     db_session.commit()
 
-    original_catalog = __import__("app.apps.patterns.domain.statistics", fromlist=["PATTERN_CATALOG"]).PATTERN_CATALOG
-    monkeypatch.setattr("app.apps.patterns.domain.statistics.PATTERN_CATALOG", [])
+    original_catalog = __import__("src.apps.patterns.domain.statistics", fromlist=["PATTERN_CATALOG"]).PATTERN_CATALOG
+    monkeypatch.setattr("src.apps.patterns.domain.statistics.PATTERN_CATALOG", [])
     result = refresh_pattern_statistics(db_session, emit_events=False)
     assert result["patterns"] == 0
 
-    monkeypatch.setattr("app.apps.patterns.domain.statistics.PATTERN_CATALOG", original_catalog)
+    monkeypatch.setattr("src.apps.patterns.domain.statistics.PATTERN_CATALOG", original_catalog)
     sync_pattern_metadata(db_session)
     coin_id = int(seeded_market["BTCUSD_EVT"]["coin_id"])
     start = utc_now() - timedelta(days=3)
@@ -246,7 +246,7 @@ def test_pattern_statistics_no_rows_and_unchanged_state_branches(db_session, mon
     db_session.commit()
 
     published: list[str] = []
-    monkeypatch.setattr("app.apps.patterns.domain.statistics.publish_pattern_state_event", lambda event_type, **kwargs: published.append(event_type))
+    monkeypatch.setattr("src.apps.patterns.domain.statistics.publish_pattern_state_event", lambda event_type, **kwargs: published.append(event_type))
     unchanged = refresh_pattern_statistics(db_session, emit_events=True)
     assert unchanged["status"] == "ok"
     assert "pattern_enabled" not in published
@@ -283,14 +283,14 @@ def test_pattern_statistics_unchanged_lifecycle_branch_with_stub(monkeypatch) ->
         def commit(self) -> None:
             return None
 
-    monkeypatch.setattr("app.apps.patterns.domain.statistics.sync_pattern_metadata", lambda db: None)
-    monkeypatch.setattr("app.apps.patterns.domain.statistics._history_rows", lambda db: [])
-    monkeypatch.setattr("app.apps.patterns.domain.statistics.PATTERN_CATALOG", [SimpleNamespace(slug="ghost_pattern")])
-    monkeypatch.setattr("app.apps.patterns.domain.statistics.SUPPORTED_STATISTIC_TIMEFRAMES", (15,))
-    monkeypatch.setattr("app.apps.patterns.domain.statistics.resolve_lifecycle_state", lambda temperature, enabled: SimpleNamespace(value="ACTIVE"))
+    monkeypatch.setattr("src.apps.patterns.domain.statistics.sync_pattern_metadata", lambda db: None)
+    monkeypatch.setattr("src.apps.patterns.domain.statistics._history_rows", lambda db: [])
+    monkeypatch.setattr("src.apps.patterns.domain.statistics.PATTERN_CATALOG", [SimpleNamespace(slug="ghost_pattern")])
+    monkeypatch.setattr("src.apps.patterns.domain.statistics.SUPPORTED_STATISTIC_TIMEFRAMES", (15,))
+    monkeypatch.setattr("src.apps.patterns.domain.statistics.resolve_lifecycle_state", lambda temperature, enabled: SimpleNamespace(value="ACTIVE"))
 
     published: list[str] = []
-    monkeypatch.setattr("app.apps.patterns.domain.statistics.publish_pattern_state_event", lambda event_type, **kwargs: published.append(event_type))
+    monkeypatch.setattr("src.apps.patterns.domain.statistics.publish_pattern_state_event", lambda event_type, **kwargs: published.append(event_type))
     result = refresh_pattern_statistics(SessionStub(), emit_events=True)
     assert result["status"] == "ok"
     assert published == []

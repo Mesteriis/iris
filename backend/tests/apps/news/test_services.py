@@ -8,11 +8,11 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 
-import app.apps.news.plugins as news_plugins
-from app.apps.news.exceptions import InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError
-from app.apps.news.models import NewsItem, NewsSource
-from app.apps.news.plugins import FetchedNewsItem, NewsFetchResult, NewsPluginDescriptor, NewsSourcePlugin, register_news_plugin
-from app.apps.news.schemas import (
+import src.apps.news.plugins as news_plugins
+from src.apps.news.exceptions import InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError
+from src.apps.news.models import NewsItem, NewsSource
+from src.apps.news.plugins import FetchedNewsItem, NewsFetchResult, NewsPluginDescriptor, NewsSourcePlugin, register_news_plugin
+from src.apps.news.schemas import (
     NewsSourceCreate,
     NewsSourceUpdate,
     TelegramBulkSubscribeRequest,
@@ -22,7 +22,7 @@ from app.apps.news.schemas import (
     TelegramSessionConfirmRequest,
     TelegramSourceFromDialogCreate,
 )
-from app.apps.news.services import NewsService, TelegramSessionOnboardingService, TelegramSourceProvisioningService
+from src.apps.news.services import NewsService, TelegramSessionOnboardingService, TelegramSourceProvisioningService
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,7 +88,7 @@ async def test_news_service_polls_persists_and_publishes(async_db_session, monke
     published: list[tuple[str, dict[str, object]]] = []
 
     monkeypatch.setattr(
-        "app.apps.news.services.publish_event",
+        "src.apps.news.services.publish_event",
         lambda event_name, payload: published.append((event_name, payload)),
     )
 

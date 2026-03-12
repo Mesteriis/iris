@@ -6,13 +6,13 @@ import pytest
 from redis import Redis
 from sqlalchemy import select
 
-from app.apps.anomalies.consumers.sector_anomaly_consumer import SectorAnomalyConsumer
-from app.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
-from app.apps.anomalies.tasks.anomaly_enrichment_tasks import market_structure_anomaly_scan
-from app.apps.market_data.repos import fetch_candle_points
-from app.core.db.session import SessionLocal
-from app.runtime.streams.publisher import flush_publisher
-from app.runtime.streams.types import IrisEvent
+from src.apps.anomalies.consumers.sector_anomaly_consumer import SectorAnomalyConsumer
+from src.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
+from src.apps.anomalies.tasks.anomaly_enrichment_tasks import market_structure_anomaly_scan
+from src.apps.market_data.repos import fetch_candle_points
+from src.core.db.session import SessionLocal
+from src.runtime.streams.publisher import flush_publisher
+from src.runtime.streams.types import IrisEvent
 
 
 def _insert_snapshot_series(db, *, coin_id: int, symbol: str, timeframe: int, venue: str, rows: list[dict[str, float | datetime]]) -> None:
@@ -158,7 +158,7 @@ async def test_sector_consumer_enqueues_market_structure_scan_for_high_severity(
         calls.append((getattr(task, "kiq_name", getattr(task, "__name__", "task")), kwargs))
 
     monkeypatch.setattr(
-        "app.apps.anomalies.consumers.sector_anomaly_consumer.enqueue_task",
+        "src.apps.anomalies.consumers.sector_anomaly_consumer.enqueue_task",
         _fake_enqueue,
     )
 

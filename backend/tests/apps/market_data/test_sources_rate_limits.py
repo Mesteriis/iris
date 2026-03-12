@@ -6,8 +6,8 @@ import httpx
 import pytest
 from redis.exceptions import RedisError, WatchError
 
-from app.apps.market_data.sources import rate_limits
-from app.apps.market_data.sources.base import RateLimitedMarketSourceError
+from src.apps.market_data.sources import rate_limits
+from src.apps.market_data.sources.base import RateLimitedMarketSourceError
 
 
 class FakePipeline:

@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.runtime.streams import workers
-from app.runtime.streams.types import (
+from src.runtime.streams import workers
+from src.runtime.streams.types import (
     ANALYSIS_SCHEDULER_WORKER_GROUP,
     ANOMALY_SECTOR_WORKER_GROUP,
     ANOMALY_WORKER_GROUP,

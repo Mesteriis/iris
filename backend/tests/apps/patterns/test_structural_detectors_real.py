@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.apps.patterns.domain.detectors.structural import (
+from src.apps.patterns.domain.detectors.structural import (
     BroadeningDetector,
     ChannelBreakDetector,
     DiamondDetector,

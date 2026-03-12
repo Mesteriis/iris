@@ -6,13 +6,13 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
-import app.apps.indicators.market_flow as market_flow_module
-import app.apps.indicators.market_radar as market_radar_module
-import app.apps.indicators.services as indicator_services_module
-from app.apps.indicators.market_flow import _recent_market_leaders, _recent_sector_rotations, get_market_flow
-from app.apps.indicators.market_radar import _metric_rows, _recent_regime_changes, get_market_radar
-from app.apps.indicators.models import FeatureSnapshot
-from app.apps.indicators.services import (
+import src.apps.indicators.market_flow as market_flow_module
+import src.apps.indicators.market_radar as market_radar_module
+import src.apps.indicators.services as indicator_services_module
+from src.apps.indicators.market_flow import _recent_market_leaders, _recent_sector_rotations, get_market_flow
+from src.apps.indicators.market_radar import _metric_rows, _recent_regime_changes, get_market_radar
+from src.apps.indicators.models import FeatureSnapshot
+from src.apps.indicators.services import (
     _recent_market_leaders_async,
     _recent_regime_changes_async,
     _recent_sector_rotations_async,
@@ -21,7 +21,7 @@ from app.apps.indicators.services import (
     get_market_radar_async,
     list_coin_metrics_async,
 )
-from app.apps.indicators.snapshots import capture_feature_snapshot
+from src.apps.indicators.snapshots import capture_feature_snapshot
 
 
 class _SyncRedisClient:

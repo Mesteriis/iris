@@ -237,27 +237,27 @@ async def test_signal_and_strategy_endpoints(api_app_client, seeded_api_state) -
 
 @pytest.mark.asyncio
 async def test_signal_view_branches(monkeypatch) -> None:
-    from app.apps.signals.views import read_coin_backtests, read_coin_decision, read_coin_final_signal, read_coin_market_decision
+    from src.apps.signals.views import read_coin_backtests, read_coin_decision, read_coin_final_signal, read_coin_market_decision
 
     async def missing_payload(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr("app.apps.signals.views.get_coin_decision_async", missing_payload)
+    monkeypatch.setattr("src.apps.signals.views.get_coin_decision_async", missing_payload)
     with pytest.raises(HTTPException) as missing_decision:
         await read_coin_decision("BTCUSD_EVT", db=object())
     assert missing_decision.value.status_code == 404
 
-    monkeypatch.setattr("app.apps.signals.views.get_coin_market_decision_async", missing_payload)
+    monkeypatch.setattr("src.apps.signals.views.get_coin_market_decision_async", missing_payload)
     with pytest.raises(HTTPException) as missing_market_decision:
         await read_coin_market_decision("BTCUSD_EVT", db=object())
     assert missing_market_decision.value.status_code == 404
 
-    monkeypatch.setattr("app.apps.signals.views.get_coin_final_signal_async", missing_payload)
+    monkeypatch.setattr("src.apps.signals.views.get_coin_final_signal_async", missing_payload)
     with pytest.raises(HTTPException) as missing_final_signal:
         await read_coin_final_signal("BTCUSD_EVT", db=object())
     assert missing_final_signal.value.status_code == 404
 
-    monkeypatch.setattr("app.apps.signals.views.get_coin_backtests_async", missing_payload)
+    monkeypatch.setattr("src.apps.signals.views.get_coin_backtests_async", missing_payload)
     with pytest.raises(HTTPException) as missing_backtests:
         await read_coin_backtests("BTCUSD_EVT", db=object())
     assert missing_backtests.value.status_code == 404
@@ -274,10 +274,10 @@ async def test_signal_view_branches(monkeypatch) -> None:
     async def backtests_payload(*_args, **_kwargs):
         return {"coin_id": 1, "symbol": "BTCUSD_EVT", "items": []}
 
-    monkeypatch.setattr("app.apps.signals.views.get_coin_decision_async", decision_payload)
-    monkeypatch.setattr("app.apps.signals.views.get_coin_market_decision_async", market_decision_payload)
-    monkeypatch.setattr("app.apps.signals.views.get_coin_final_signal_async", final_signal_payload)
-    monkeypatch.setattr("app.apps.signals.views.get_coin_backtests_async", backtests_payload)
+    monkeypatch.setattr("src.apps.signals.views.get_coin_decision_async", decision_payload)
+    monkeypatch.setattr("src.apps.signals.views.get_coin_market_decision_async", market_decision_payload)
+    monkeypatch.setattr("src.apps.signals.views.get_coin_final_signal_async", final_signal_payload)
+    monkeypatch.setattr("src.apps.signals.views.get_coin_backtests_async", backtests_payload)
 
     assert (await read_coin_decision("BTCUSD_EVT", db=object())).symbol == "BTCUSD_EVT"
     assert (await read_coin_market_decision("BTCUSD_EVT", db=object())).symbol == "BTCUSD_EVT"

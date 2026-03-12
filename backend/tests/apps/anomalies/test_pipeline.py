@@ -6,15 +6,15 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 
-from app.apps.anomalies.models import MarketAnomaly
-from app.apps.anomalies.tasks.anomaly_enrichment_tasks import anomaly_enrichment_job
-from app.apps.market_data.repos import fetch_candle_points, upsert_base_candles
-from app.apps.market_data.service_layer import get_coin_by_symbol
-from app.apps.market_data.sources.base import MarketBar
-from app.apps.portfolio.models import PortfolioPosition
-from app.core.db.session import SessionLocal
-from app.runtime.streams.publisher import flush_publisher, publish_event
-from app.runtime.streams.runner import run_worker_loop
+from src.apps.anomalies.models import MarketAnomaly
+from src.apps.anomalies.tasks.anomaly_enrichment_tasks import anomaly_enrichment_job
+from src.apps.market_data.repos import fetch_candle_points, upsert_base_candles
+from src.apps.market_data.service_layer import get_coin_by_symbol
+from src.apps.market_data.sources.base import MarketBar
+from src.apps.portfolio.models import PortfolioPosition
+from src.core.db.session import SessionLocal
+from src.runtime.streams.publisher import flush_publisher, publish_event
+from src.runtime.streams.runner import run_worker_loop
 
 
 def _append_shock_bar(db, *, symbol: str, close_multiplier: float, volume_multiplier: float, source: str) -> tuple[int, object]:

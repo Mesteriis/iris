@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.runtime import scheduler as scheduler_pkg
-from app.runtime.scheduler import runner
+from src.runtime import scheduler as scheduler_pkg
+from src.runtime.scheduler import runner
 
 
 async def _fast_sleep(_seconds: float) -> None:

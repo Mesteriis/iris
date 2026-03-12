@@ -6,16 +6,16 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
-from app.apps.anomalies.models import MarketStructureSnapshot
-from app.apps.market_structure.models import MarketStructureSource
-from app.apps.market_structure.schemas import (
+from src.apps.anomalies.models import MarketStructureSnapshot
+from src.apps.market_structure.models import MarketStructureSource
+from src.apps.market_structure.schemas import (
     ManualMarketStructureIngestRequest,
     MarketStructureSnapshotCreate,
     MarketStructureSourceCreate,
     MarketStructureSourceUpdate,
 )
-from app.apps.market_structure.services import MarketStructureService, MarketStructureSourceProvisioningService
-from app.apps.market_structure.exceptions import UnauthorizedMarketStructureIngestError
+from src.apps.market_structure.services import MarketStructureService, MarketStructureSourceProvisioningService
+from src.apps.market_structure.exceptions import UnauthorizedMarketStructureIngestError
 
 
 class _FakeResponse:
@@ -73,8 +73,8 @@ class _BrokenAsyncClient:
 @pytest.mark.asyncio
 async def test_market_structure_service_polls_persists_and_publishes(async_db_session, seeded_market, monkeypatch) -> None:
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("app.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload)))
-    monkeypatch.setattr("app.apps.market_structure.plugins.httpx.AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr("src.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload)))
+    monkeypatch.setattr("src.apps.market_structure.plugins.httpx.AsyncClient", _FakeAsyncClient)
 
     service = MarketStructureService(async_db_session)
     source = await service.create_source(
@@ -192,7 +192,7 @@ async def test_market_structure_service_manual_ingest_update_and_delete(async_db
 async def test_market_structure_service_refreshes_stale_health(async_db_session, seeded_market, monkeypatch) -> None:
     del seeded_market
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("app.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload)))
+    monkeypatch.setattr("src.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload)))
 
     service = MarketStructureService(async_db_session)
     created = await service.create_source(
@@ -212,7 +212,7 @@ async def test_market_structure_service_refreshes_stale_health(async_db_session,
     source.health_status = "healthy"
     await async_db_session.commit()
 
-    monkeypatch.setattr("app.apps.market_structure.services.utc_now", lambda: datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc))
+    monkeypatch.setattr("src.apps.market_structure.services.utc_now", lambda: datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc))
     result = await service.refresh_source_health()
 
     assert result == {"status": "ok", "sources": 1, "changed": 1}
@@ -239,10 +239,10 @@ async def test_market_structure_service_refreshes_stale_health(async_db_session,
 async def test_market_structure_service_applies_backoff_quarantine_and_release(async_db_session, seeded_market, monkeypatch) -> None:
     del seeded_market
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("app.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload)))
-    monkeypatch.setattr("app.apps.market_structure.plugins.httpx.AsyncClient", _BrokenAsyncClient)
+    monkeypatch.setattr("src.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload)))
+    monkeypatch.setattr("src.apps.market_structure.plugins.httpx.AsyncClient", _BrokenAsyncClient)
     monkeypatch.setattr(
-        "app.apps.market_structure.services.get_settings",
+        "src.apps.market_structure.services.get_settings",
         lambda: SimpleNamespace(
             taskiq_market_structure_snapshot_poll_interval_seconds=180,
             taskiq_market_structure_failure_backoff_base_seconds=30,
@@ -331,7 +331,7 @@ async def test_market_structure_service_applies_backoff_quarantine_and_release(a
 @pytest.mark.asyncio
 async def test_market_structure_service_poll_enabled_sources_skips_manual(async_db_session, seeded_market, monkeypatch) -> None:
     del seeded_market
-    monkeypatch.setattr("app.apps.market_structure.plugins.httpx.AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr("src.apps.market_structure.plugins.httpx.AsyncClient", _FakeAsyncClient)
     service = MarketStructureService(async_db_session)
 
     await service.create_source(

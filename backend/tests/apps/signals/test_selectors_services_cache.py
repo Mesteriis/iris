@@ -7,11 +7,11 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 
-import app.apps.signals.cache as signal_cache_module
-import app.apps.signals.market_decision_selectors as market_selector_module
-import app.apps.signals.services as signal_services_module
-from app.apps.patterns.selectors import _signal_select
-from app.apps.signals.cache import (
+import src.apps.signals.cache as signal_cache_module
+import src.apps.signals.market_decision_selectors as market_selector_module
+import src.apps.signals.services as signal_services_module
+from src.apps.patterns.selectors import _signal_select
+from src.apps.signals.cache import (
     DECISION_CACHE_TTL_SECONDS,
     DecisionCacheEntry,
     _parse_decision_payload,
@@ -23,11 +23,11 @@ from app.apps.signals.cache import (
     read_cached_market_decision,
     read_cached_market_decision_async,
 )
-from app.apps.signals.decision_selectors import get_coin_decision, list_decisions, list_top_decisions
-from app.apps.signals.final_signal_selectors import get_coin_final_signal, list_final_signals, list_top_final_signals
-from app.apps.signals.market_decision_selectors import get_coin_market_decision, list_market_decisions, list_top_market_decisions
-from app.apps.signals.models import FinalSignal, InvestmentDecision, Strategy, StrategyRule
-from app.apps.signals.services import (
+from src.apps.signals.decision_selectors import get_coin_decision, list_decisions, list_top_decisions
+from src.apps.signals.final_signal_selectors import get_coin_final_signal, list_final_signals, list_top_final_signals
+from src.apps.signals.market_decision_selectors import get_coin_market_decision, list_market_decisions, list_top_market_decisions
+from src.apps.signals.models import FinalSignal, InvestmentDecision, Strategy, StrategyRule
+from src.apps.signals.services import (
     _cluster_membership_map_async,
     _serialize_signal_rows_async,
     get_coin_backtests_async,
@@ -47,7 +47,7 @@ from app.apps.signals.services import (
     list_top_market_decisions_async,
     list_top_signals_async,
 )
-from app.apps.signals.strategies import list_strategies, list_strategy_performance
+from src.apps.signals.strategies import list_strategies, list_strategy_performance
 from tests.factories.seeds import DecisionSeedFactory, StrategySeedFactory
 
 

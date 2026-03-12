@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
-from app.apps.indicators.models import CoinMetrics
-from app.apps.patterns.models import PatternFeature
-from app.apps.patterns.selectors import (
+from src.apps.indicators.models import CoinMetrics
+from src.apps.patterns.models import PatternFeature
+from src.apps.patterns.selectors import (
     _cluster_membership_map,
     _signal_select,
     get_coin_regimes,
@@ -22,7 +22,7 @@ from app.apps.patterns.selectors import (
     update_pattern,
     update_pattern_feature,
 )
-from app.apps.signals.models import Signal
+from src.apps.signals.models import Signal
 
 
 def test_pattern_selectors_cover_listing_update_and_regime_branches(db_session, seeded_api_state) -> None:

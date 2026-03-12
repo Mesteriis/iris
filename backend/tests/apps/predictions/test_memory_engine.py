@@ -4,11 +4,11 @@ from datetime import timedelta
 
 from sqlalchemy import select
 
-from app.apps.predictions.engine import create_market_predictions
-from app.apps.cross_market.models import CoinRelation
-from app.apps.predictions.models import MarketPrediction
-from app.apps.predictions.cache import read_cached_prediction
-from app.apps.market_data.domain import utc_now
+from src.apps.predictions.engine import create_market_predictions
+from src.apps.cross_market.models import CoinRelation
+from src.apps.predictions.models import MarketPrediction
+from src.apps.predictions.cache import read_cached_prediction
+from src.apps.market_data.domain import utc_now
 from tests.cross_market_support import create_cross_market_coin
 
 

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from polyfactory.factories.dataclass_factory import DataclassFactory
 from polyfactory.fields import Use
 
-from app.apps.patterns.domain.base import PatternDetection
+from src.apps.patterns.domain.base import PatternDetection
 from tests.factories.base import fake
 
 

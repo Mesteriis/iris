@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
-from app.apps.market_data.models import Coin
-from app.apps.market_data.repos import (
+from src.apps.market_data.models import Coin
+from src.apps.market_data.repos import (
     BASE_TIMEFRAME_MINUTES,
     CandlePoint,
     _fetch_direct_candle_points,
@@ -30,7 +30,7 @@ from app.apps.market_data.repos import (
     timeframe_delta,
     upsert_base_candles,
 )
-from app.apps.market_data.sources.base import MarketBar
+from src.apps.market_data.sources.base import MarketBar
 
 
 def test_market_data_repos_direct_paths(db_session, seeded_market) -> None:
@@ -91,23 +91,23 @@ def test_market_data_repos_fallback_and_refresh_paths(monkeypatch) -> None:
         volume=12.0,
     )
 
-    monkeypatch.setattr("app.apps.market_data.repos._fetch_direct_candle_points", lambda *args, **kwargs: [])
-    monkeypatch.setattr("app.apps.market_data.repos._fetch_view_candle_points", lambda *args, **kwargs: [point])
+    monkeypatch.setattr("src.apps.market_data.repos._fetch_direct_candle_points", lambda *args, **kwargs: [])
+    monkeypatch.setattr("src.apps.market_data.repos._fetch_view_candle_points", lambda *args, **kwargs: [point])
     assert fetch_candle_points(object(), 1, 60, 5) == [point]
 
-    monkeypatch.setattr("app.apps.market_data.repos._fetch_view_candle_points", lambda *args, **kwargs: [])
-    monkeypatch.setattr("app.apps.market_data.repos.get_lowest_available_candle_timeframe", lambda *args, **kwargs: 15)
-    monkeypatch.setattr("app.apps.market_data.repos._fetch_resampled_candle_points", lambda *args, **kwargs: [point])
+    monkeypatch.setattr("src.apps.market_data.repos._fetch_view_candle_points", lambda *args, **kwargs: [])
+    monkeypatch.setattr("src.apps.market_data.repos.get_lowest_available_candle_timeframe", lambda *args, **kwargs: 15)
+    monkeypatch.setattr("src.apps.market_data.repos._fetch_resampled_candle_points", lambda *args, **kwargs: [point])
     assert fetch_candle_points(object(), 1, 60, 5) == [point]
     assert fetch_candle_points(object(), 1, 60, 0) == []
 
-    monkeypatch.setattr("app.apps.market_data.repos._fetch_direct_candle_points_between", lambda *args, **kwargs: [])
-    monkeypatch.setattr("app.apps.market_data.repos._fetch_view_candle_points_between", lambda *args, **kwargs: [point])
+    monkeypatch.setattr("src.apps.market_data.repos._fetch_direct_candle_points_between", lambda *args, **kwargs: [])
+    monkeypatch.setattr("src.apps.market_data.repos._fetch_view_candle_points_between", lambda *args, **kwargs: [point])
     assert fetch_candle_points_between(object(), 1, 60, point.timestamp, point.timestamp) == [point]
 
-    monkeypatch.setattr("app.apps.market_data.repos._fetch_view_candle_points_between", lambda *args, **kwargs: [])
+    monkeypatch.setattr("src.apps.market_data.repos._fetch_view_candle_points_between", lambda *args, **kwargs: [])
     monkeypatch.setattr(
-        "app.apps.market_data.repos._fetch_resampled_candle_points_between",
+        "src.apps.market_data.repos._fetch_resampled_candle_points_between",
         lambda *args, **kwargs: [point],
     )
     assert fetch_candle_points_between(object(), 1, 60, point.timestamp, point.timestamp) == [point]
@@ -129,8 +129,8 @@ def test_market_data_repos_fallback_and_refresh_paths(monkeypatch) -> None:
     aggregate_db = ScalarDb(None, SimpleNamespace(bucket=point.timestamp))
     assert get_latest_candle_timestamp(aggregate_db, 1, 60) == point.timestamp
 
-    monkeypatch.setattr("app.apps.market_data.repos.get_lowest_available_candle_timeframe", lambda *args, **kwargs: 15)
-    monkeypatch.setattr("app.apps.market_data.repos._fetch_resampled_candle_points", lambda *args, **kwargs: [point])
+    monkeypatch.setattr("src.apps.market_data.repos.get_lowest_available_candle_timeframe", lambda *args, **kwargs: 15)
+    monkeypatch.setattr("src.apps.market_data.repos._fetch_resampled_candle_points", lambda *args, **kwargs: [point])
     resampled_db = ScalarDb(None, SimpleNamespace(bucket=None))
     assert get_latest_candle_timestamp(resampled_db, 1, 60) == point.timestamp
     assert get_latest_candle_timestamp(resampled_db, 1, 17) is None
@@ -178,7 +178,7 @@ def test_market_data_repos_fallback_and_refresh_paths(monkeypatch) -> None:
 
     forwarded: list[tuple[int, datetime]] = []
     monkeypatch.setattr(
-        "app.apps.market_data.repos.refresh_continuous_aggregate_range",
+        "src.apps.market_data.repos.refresh_continuous_aggregate_range",
         lambda db, timeframe, window_start, window_end: forwarded.append((timeframe, window_start)),
     )
     refresh_continuous_aggregate_window(object(), 60, point.timestamp + timedelta(minutes=17))
@@ -240,23 +240,23 @@ def test_market_data_repos_helper_and_guard_branches(monkeypatch) -> None:
     assert get_lowest_available_candle_timeframe(RowsDb([], scalar_value=15), 1, max_timeframe=60) == 15
     assert get_lowest_available_candle_timeframe(RowsDb([], scalar_value=None), 1) is None
 
-    monkeypatch.setattr("app.apps.market_data.repos._fetch_direct_candle_points", lambda *args, **kwargs: [])
-    monkeypatch.setattr("app.apps.market_data.repos._fetch_view_candle_points", lambda *args, **kwargs: [])
-    monkeypatch.setattr("app.apps.market_data.repos.get_lowest_available_candle_timeframe", lambda *args, **kwargs: None)
+    monkeypatch.setattr("src.apps.market_data.repos._fetch_direct_candle_points", lambda *args, **kwargs: [])
+    monkeypatch.setattr("src.apps.market_data.repos._fetch_view_candle_points", lambda *args, **kwargs: [])
+    monkeypatch.setattr("src.apps.market_data.repos.get_lowest_available_candle_timeframe", lambda *args, **kwargs: None)
     assert fetch_candle_points(object(), 1, 60, 5) == []
     assert fetch_candle_points(object(), 1, 17, 5) == []
 
-    monkeypatch.setattr("app.apps.market_data.repos._fetch_direct_candle_points_between", lambda *args, **kwargs: [])
-    monkeypatch.setattr("app.apps.market_data.repos._fetch_view_candle_points_between", lambda *args, **kwargs: [])
-    monkeypatch.setattr("app.apps.market_data.repos.get_lowest_available_candle_timeframe", lambda *args, **kwargs: 60)
+    monkeypatch.setattr("src.apps.market_data.repos._fetch_direct_candle_points_between", lambda *args, **kwargs: [])
+    monkeypatch.setattr("src.apps.market_data.repos._fetch_view_candle_points_between", lambda *args, **kwargs: [])
+    monkeypatch.setattr("src.apps.market_data.repos.get_lowest_available_candle_timeframe", lambda *args, **kwargs: 60)
     assert fetch_candle_points_between(object(), 1, 60, point.timestamp, point.timestamp) == []
     assert fetch_candle_points_between(object(), 1, 17, point.timestamp, point.timestamp) == []
 
     none_latest_db = RowsDb([], scalar_value=None, first_row=SimpleNamespace(bucket=None))
-    monkeypatch.setattr("app.apps.market_data.repos.get_lowest_available_candle_timeframe", lambda *args, **kwargs: 60)
+    monkeypatch.setattr("src.apps.market_data.repos.get_lowest_available_candle_timeframe", lambda *args, **kwargs: 60)
     assert get_latest_candle_timestamp(none_latest_db, 1, 60) is None
-    monkeypatch.setattr("app.apps.market_data.repos._fetch_resampled_candle_points", lambda *args, **kwargs: [])
-    monkeypatch.setattr("app.apps.market_data.repos.get_lowest_available_candle_timeframe", lambda *args, **kwargs: 15)
+    monkeypatch.setattr("src.apps.market_data.repos._fetch_resampled_candle_points", lambda *args, **kwargs: [])
+    monkeypatch.setattr("src.apps.market_data.repos.get_lowest_available_candle_timeframe", lambda *args, **kwargs: 15)
     assert get_latest_candle_timestamp(none_latest_db, 1, 60) is None
 
     refresh_continuous_aggregate_range(object(), 17, point.timestamp, point.timestamp)
@@ -271,10 +271,10 @@ def test_market_data_repos_helper_and_guard_branches(monkeypatch) -> None:
         volume=10.0,
         source="fixture",
     )
-    monkeypatch.setattr("app.apps.market_data.repos.get_latest_candle_timestamp", lambda *args, **kwargs: point.timestamp)
+    monkeypatch.setattr("src.apps.market_data.repos.get_latest_candle_timestamp", lambda *args, **kwargs: point.timestamp)
     refresh_calls: list[int] = []
     monkeypatch.setattr(
-        "app.apps.market_data.repos.refresh_continuous_aggregate_range",
+        "src.apps.market_data.repos.refresh_continuous_aggregate_range",
         lambda db, timeframe, window_start, window_end: refresh_calls.append(timeframe),
     )
     upsert_db = RowsDb([])
