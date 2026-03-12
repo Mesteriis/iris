@@ -8,6 +8,8 @@ from sqlalchemy import select
 
 import src.apps.signals.services as signal_services_module
 from src.apps.signals.backtests import list_backtests
+from src.apps.signals.fusion import evaluate_market_decision
+from src.apps.signals.history import refresh_signal_history
 from src.apps.signals.models import MarketDecision, Signal, SignalHistory
 from src.apps.signals.query_services import SignalQueryService
 from src.apps.signals.services import SignalFusionService, SignalHistoryService
@@ -271,3 +273,27 @@ def test_signal_legacy_compatibility_queries_emit_deprecation_logs(db_session, s
 
     assert "compat.list_backtests.deprecated" in events
     assert "compat.list_strategies.deprecated" in events
+
+
+def test_signal_legacy_compatibility_services_emit_deprecation_logs(db_session, monkeypatch) -> None:
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+    monkeypatch.setattr(
+        "src.apps.signals.fusion.SignalFusionCompatibilityService.evaluate_market_decision",
+        lambda self, **_kwargs: {"status": "ok"},
+    )
+    monkeypatch.setattr(
+        "src.apps.signals.history.SignalHistoryCompatibilityService.refresh_signal_history",
+        lambda self, **_kwargs: {"status": "ok", "rows": 0, "evaluated": 0, "coin_id": None, "timeframe": None},
+    )
+
+    assert evaluate_market_decision(db_session, coin_id=1, timeframe=15, emit_event=False)["status"] == "ok"
+    assert refresh_signal_history(db_session, lookback_days=30, commit=False)["status"] == "ok"
+
+    assert "compat.evaluate_market_decision.deprecated" in events
+    assert "compat.refresh_signal_history.deprecated" in events

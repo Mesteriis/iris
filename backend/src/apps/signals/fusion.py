@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from datetime import timedelta
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -32,6 +34,7 @@ from src.apps.signals.fusion_support import (
     _signal_regime,
 )
 from src.apps.signals.models import MarketDecision, Signal
+from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 from src.runtime.streams.publisher import publish_event
 
 
@@ -238,6 +241,165 @@ def _fuse_signals(db: Session, *, signals: list[Signal], regime: str | None) -> 
     )
 
 
+class SignalFusionCompatibilityService:
+    def __init__(self, db: Session) -> None:
+        self._db = db
+
+    def _log(self, level: int, event: str, /, **fields: Any) -> None:
+        PERSISTENCE_LOGGER.log(
+            level,
+            event,
+            extra={
+                "persistence": {
+                    "event": event,
+                    "component_type": "compatibility_service",
+                    "domain": "signals",
+                    "component": "SignalFusionCompatibilityService",
+                    **{key: sanitize_log_value(value) for key, value in fields.items()},
+                }
+            },
+        )
+
+    def evaluate_news_fusion_event(
+        self,
+        *,
+        coin_id: int,
+        reference_timestamp: object | None = None,
+        emit_event: bool = True,
+    ) -> dict[str, object]:
+        timeframes = _candidate_fusion_timeframes(self._db, coin_id=coin_id)
+        if not timeframes:
+            return {"status": "skipped", "reason": "fusion_timeframes_not_found", "coin_id": coin_id}
+        items = [
+            self.evaluate_market_decision(
+                coin_id=coin_id,
+                timeframe=timeframe,
+                trigger_timestamp=None,
+                news_reference_timestamp=reference_timestamp,
+                emit_event=emit_event,
+            )
+            for timeframe in timeframes
+        ]
+        return {
+            "status": "ok",
+            "coin_id": coin_id,
+            "timeframes": timeframes,
+            "items": items,
+        }
+
+    def evaluate_market_decision(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        trigger_timestamp: object | None = None,
+        news_reference_timestamp: object | None = None,
+        emit_event: bool = True,
+    ) -> dict[str, object]:
+        enrich_signal_context(
+            self._db,
+            coin_id=coin_id,
+            timeframe=timeframe,
+            candle_timestamp=trigger_timestamp,
+            commit=True,
+        )
+        signals = _recent_signals(self._db, coin_id=coin_id, timeframe=timeframe)
+        if not signals:
+            return {"status": "skipped", "reason": "signals_not_found", "coin_id": coin_id, "timeframe": timeframe}
+
+        metrics = self._db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin_id))
+        regime = _signal_regime(metrics, timeframe)
+        reference_timestamp = ensure_utc(
+            news_reference_timestamp or trigger_timestamp or max(signal.candle_timestamp for signal in signals)
+        )
+        fused_base = _fuse_signals(self._db, signals=signals, regime=regime)
+        news_impact = _recent_news_impact(
+            self._db,
+            coin_id=coin_id,
+            timeframe=timeframe,
+            reference_timestamp=reference_timestamp,
+        )
+        fused = _apply_news_impact(fused_base, news_impact) if fused_base is not None else None
+        if fused is None:
+            return {"status": "skipped", "reason": "fusion_window_empty", "coin_id": coin_id, "timeframe": timeframe}
+
+        latest = _latest_decision(self._db, coin_id, timeframe)
+        if (
+            latest is not None
+            and latest.decision == fused.decision
+            and latest.signal_count == fused.signal_count
+            and abs(float(latest.confidence) - fused.confidence) < MATERIAL_CONFIDENCE_DELTA
+        ):
+            cache_market_decision_snapshot(
+                coin_id=coin_id,
+                timeframe=timeframe,
+                decision=latest.decision,
+                confidence=float(latest.confidence),
+                signal_count=int(latest.signal_count),
+                regime=regime,
+                created_at=latest.created_at,
+            )
+            return {
+                "status": "skipped",
+                "reason": "decision_unchanged",
+                "coin_id": coin_id,
+                "timeframe": timeframe,
+                "decision": latest.decision,
+                "confidence": float(latest.confidence),
+                "news_item_count": fused.news_item_count,
+            }
+
+        row = MarketDecision(
+            coin_id=coin_id,
+            timeframe=timeframe,
+            decision=fused.decision,
+            confidence=fused.confidence,
+            signal_count=fused.signal_count,
+        )
+        self._db.add(row)
+        self._db.commit()
+        self._db.refresh(row)
+        cache_market_decision_snapshot(
+            coin_id=coin_id,
+            timeframe=timeframe,
+            decision=row.decision,
+            confidence=float(row.confidence),
+            signal_count=int(row.signal_count),
+            regime=regime,
+            created_at=row.created_at,
+        )
+        if emit_event:
+            publish_event(
+                "decision_generated",
+                {
+                    "coin_id": coin_id,
+                    "timeframe": timeframe,
+                    "timestamp": fused.latest_timestamp,
+                    "decision": row.decision,
+                    "confidence": float(row.confidence),
+                    "signal_count": int(row.signal_count),
+                    "regime": regime,
+                    "news_item_count": int(fused.news_item_count),
+                    "news_bullish_score": round(float(fused.news_bullish_score), 4),
+                    "news_bearish_score": round(float(fused.news_bearish_score), 4),
+                    "source": "signal_fusion",
+                },
+            )
+        return {
+            "status": "ok",
+            "id": row.id,
+            "coin_id": coin_id,
+            "timeframe": timeframe,
+            "decision": row.decision,
+            "confidence": float(row.confidence),
+            "signal_count": int(row.signal_count),
+            "regime": regime,
+            "news_item_count": int(fused.news_item_count),
+            "news_bullish_score": round(float(fused.news_bullish_score), 4),
+            "news_bearish_score": round(float(fused.news_bearish_score), 4),
+        }
+
+
 def evaluate_news_fusion_event(
     db: Session,
     *,
@@ -245,26 +407,19 @@ def evaluate_news_fusion_event(
     reference_timestamp: object | None = None,
     emit_event: bool = True,
 ) -> dict[str, object]:
-    timeframes = _candidate_fusion_timeframes(db, coin_id=coin_id)
-    if not timeframes:
-        return {"status": "skipped", "reason": "fusion_timeframes_not_found", "coin_id": coin_id}
-    items = [
-        evaluate_market_decision(
-            db,
-            coin_id=coin_id,
-            timeframe=timeframe,
-            trigger_timestamp=None,
-            news_reference_timestamp=reference_timestamp,
-            emit_event=emit_event,
-        )
-        for timeframe in timeframes
-    ]
-    return {
-        "status": "ok",
-        "coin_id": coin_id,
-        "timeframes": timeframes,
-        "items": items,
-    }
+    service = SignalFusionCompatibilityService(db)
+    service._log(
+        logging.WARNING,
+        "compat.evaluate_news_fusion_event.deprecated",
+        mode="write",
+        coin_id=coin_id,
+        emit_event=emit_event,
+    )
+    return service.evaluate_news_fusion_event(
+        coin_id=coin_id,
+        reference_timestamp=reference_timestamp,
+        emit_event=emit_event,
+    )
 
 
 def evaluate_market_decision(
@@ -276,103 +431,26 @@ def evaluate_market_decision(
     news_reference_timestamp: object | None = None,
     emit_event: bool = True,
 ) -> dict[str, object]:
-    enrich_signal_context(
-        db,
+    service = SignalFusionCompatibilityService(db)
+    service._log(
+        logging.WARNING,
+        "compat.evaluate_market_decision.deprecated",
+        mode="write",
         coin_id=coin_id,
         timeframe=timeframe,
-        candle_timestamp=trigger_timestamp,
-        commit=True,
+        emit_event=emit_event,
     )
-    signals = _recent_signals(db, coin_id=coin_id, timeframe=timeframe)
-    if not signals:
-        return {"status": "skipped", "reason": "signals_not_found", "coin_id": coin_id, "timeframe": timeframe}
+    return service.evaluate_market_decision(
+        coin_id=coin_id,
+        timeframe=timeframe,
+        trigger_timestamp=trigger_timestamp,
+        news_reference_timestamp=news_reference_timestamp,
+        emit_event=emit_event,
+    )
 
-    metrics = db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin_id))
-    regime = _signal_regime(metrics, timeframe)
-    reference_timestamp = ensure_utc(news_reference_timestamp or trigger_timestamp or max(signal.candle_timestamp for signal in signals))
-    fused_base = _fuse_signals(db, signals=signals, regime=regime)
-    news_impact = _recent_news_impact(
-        db,
-        coin_id=coin_id,
-        timeframe=timeframe,
-        reference_timestamp=reference_timestamp,
-    )
-    fused = _apply_news_impact(fused_base, news_impact) if fused_base is not None else None
-    if fused is None:
-        return {"status": "skipped", "reason": "fusion_window_empty", "coin_id": coin_id, "timeframe": timeframe}
 
-    latest = _latest_decision(db, coin_id, timeframe)
-    if (
-        latest is not None
-        and latest.decision == fused.decision
-        and latest.signal_count == fused.signal_count
-        and abs(float(latest.confidence) - fused.confidence) < MATERIAL_CONFIDENCE_DELTA
-    ):
-        cache_market_decision_snapshot(
-            coin_id=coin_id,
-            timeframe=timeframe,
-            decision=latest.decision,
-            confidence=float(latest.confidence),
-            signal_count=int(latest.signal_count),
-            regime=regime,
-            created_at=latest.created_at,
-        )
-        return {
-            "status": "skipped",
-            "reason": "decision_unchanged",
-            "coin_id": coin_id,
-            "timeframe": timeframe,
-            "decision": latest.decision,
-            "confidence": float(latest.confidence),
-            "news_item_count": fused.news_item_count,
-        }
-
-    row = MarketDecision(
-        coin_id=coin_id,
-        timeframe=timeframe,
-        decision=fused.decision,
-        confidence=fused.confidence,
-        signal_count=fused.signal_count,
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    cache_market_decision_snapshot(
-        coin_id=coin_id,
-        timeframe=timeframe,
-        decision=row.decision,
-        confidence=float(row.confidence),
-        signal_count=int(row.signal_count),
-        regime=regime,
-        created_at=row.created_at,
-    )
-    if emit_event:
-        publish_event(
-            "decision_generated",
-            {
-                "coin_id": coin_id,
-                "timeframe": timeframe,
-                "timestamp": fused.latest_timestamp,
-                "decision": row.decision,
-                "confidence": float(row.confidence),
-                "signal_count": int(row.signal_count),
-                "regime": regime,
-                "news_item_count": int(fused.news_item_count),
-                "news_bullish_score": round(float(fused.news_bullish_score), 4),
-                "news_bearish_score": round(float(fused.news_bearish_score), 4),
-                "source": "signal_fusion",
-            },
-        )
-    return {
-        "status": "ok",
-        "id": row.id,
-        "coin_id": coin_id,
-        "timeframe": timeframe,
-        "decision": row.decision,
-        "confidence": float(row.confidence),
-        "signal_count": int(row.signal_count),
-        "regime": regime,
-        "news_item_count": int(fused.news_item_count),
-        "news_bullish_score": round(float(fused.news_bullish_score), 4),
-        "news_bearish_score": round(float(fused.news_bearish_score), 4),
-    }
+__all__ = [
+    "SignalFusionCompatibilityService",
+    "evaluate_market_decision",
+    "evaluate_news_fusion_event",
+]

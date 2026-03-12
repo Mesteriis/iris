@@ -231,6 +231,7 @@ Status: migrated on the async/public API read surface plus signal-fusion and sig
 - [backend/src/apps/patterns/task_service_history.py](backend/src/apps/patterns/task_service_history.py) now delegates signal-history refresh to `SignalHistoryService`, removing the duplicated async history persistence path
 - active async query/service code now uses [backend/src/apps/signals/backtest_support.py](backend/src/apps/signals/backtest_support.py), [backend/src/apps/signals/fusion_support.py](backend/src/apps/signals/fusion_support.py) and [backend/src/apps/signals/history_support.py](backend/src/apps/signals/history_support.py) instead of importing pure helper logic from the legacy sync compatibility modules directly
 - sync compatibility readers in [backend/src/apps/signals/backtests.py](backend/src/apps/signals/backtests.py) and [backend/src/apps/signals/strategies.py](backend/src/apps/signals/strategies.py) now use class-based adapters with structured deprecation logs
+- sync compatibility write entrypoints in [backend/src/apps/signals/fusion.py](backend/src/apps/signals/fusion.py) and [backend/src/apps/signals/history.py](backend/src/apps/signals/history.py) now run through class-based compatibility services with structured deprecation logs
 - market-decision detail reads keep their cache-first behavior but the fallback and DB projection are now logged through the shared persistence logger inside `SignalQueryService`
 - remaining follow-up:
   - legacy sync compatibility helpers inside [backend/src/apps/signals/fusion.py](backend/src/apps/signals/fusion.py) still remain and should be retired once all remaining callers move to `SignalFusionService`
@@ -264,7 +265,7 @@ Classification:
 
 These domains are still dominated by synchronous `Session` access inside selectors/engines and represent the largest remaining migration surface:
 
-- residual sync compatibility analytics inside `apps/signals/backtests.py`, `apps/signals/strategies.py`, `apps/signals/fusion.py` and `apps/signals/history.py`
+- residual sync compatibility modules inside `apps/signals/backtests.py`, `apps/signals/strategies.py`, `apps/signals/fusion.py` and `apps/signals/history.py` (now class-based adapters/services, still sync contracts)
 - legacy `apps/portfolio/engine.py` and `apps/portfolio/selectors.py`
 
 Shared issues:
