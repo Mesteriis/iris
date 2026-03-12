@@ -42,7 +42,7 @@ class BinanceMarketSource(BaseMarketSource):
     def bars_per_request(self, interval: str) -> int:
         return 1000
 
-    def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
+    async def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
         symbol = self.get_symbol(coin)
         if symbol is None:
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol}.")
@@ -59,7 +59,7 @@ class BinanceMarketSource(BaseMarketSource):
         }
 
         try:
-            response = self.request(self.base_url, params=params)
+            response = await self.request(self.base_url, params=params)
             if response.status_code == 400:
                 raise UnsupportedMarketSourceQuery(f"{self.name} rejected params for {coin.symbol}.")
             response.raise_for_status()

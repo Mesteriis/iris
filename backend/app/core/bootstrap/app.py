@@ -1,15 +1,26 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from alembic import command
+_BACKEND_ROOT = Path(__file__).resolve().parents[3]
+_ORIGINAL_SYS_PATH = list(sys.path)
+sys.path = [
+    path
+    for path in _ORIGINAL_SYS_PATH
+    if Path(path or ".").resolve() != _BACKEND_ROOT
+]
 from alembic.config import Config
+import alembic.command as command
+sys.path = _ORIGINAL_SYS_PATH
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.apps.indicators.views import router as indicators_router
 from app.apps.market_data.views import router as market_data_router
+from app.apps.market_structure.views import router as market_structure_router
+from app.apps.news.views import router as news_router
 from app.apps.patterns.views import router as patterns_router
 from app.apps.portfolio.views import router as portfolio_router
 from app.apps.predictions.views import router as predictions_router
@@ -53,6 +64,8 @@ def create_app() -> FastAPI:
 
     app.include_router(system_router)
     app.include_router(market_data_router)
+    app.include_router(market_structure_router)
+    app.include_router(news_router)
     app.include_router(indicators_router)
     app.include_router(patterns_router)
     app.include_router(signals_router)

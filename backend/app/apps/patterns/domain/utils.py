@@ -67,8 +67,6 @@ def linear_slope(values: Sequence[float]) -> float:
     mean_y = average(values)
     numerator = sum((index - mean_x) * (value - mean_y) for index, value in enumerate(values))
     denominator = sum((index - mean_x) ** 2 for index in range(count))
-    if denominator == 0:
-        return 0.0
     return numerator / denominator
 
 

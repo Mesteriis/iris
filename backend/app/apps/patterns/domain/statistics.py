@@ -105,12 +105,8 @@ def refresh_pattern_statistics(db: Session, *, emit_events: bool = True) -> dict
         if not is_pattern_signal(str(row.signal_type)):
             continue
         slug = slug_from_signal_type(str(row.signal_type))
-        if slug is None:
-            continue
         terminal_return = _select_return(row)
         drawdown = _select_drawdown(row)
-        if terminal_return is None or drawdown is None:
-            continue
         market_regime = normalize_market_regime(row.market_regime)
         outcome = PatternOutcome(
             pattern_slug=slug,

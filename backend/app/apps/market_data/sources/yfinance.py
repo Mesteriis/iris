@@ -88,7 +88,7 @@ class YahooMarketSource(BaseMarketSource):
     def allows_terminal_gap(self, coin: "Coin") -> bool:
         return coin.asset_type != "crypto"
 
-    def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
+    async def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
         symbol = self.get_symbol(coin)
         if symbol is None:
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol}.")
@@ -105,7 +105,7 @@ class YahooMarketSource(BaseMarketSource):
         }
 
         try:
-            response = self.request(
+            response = await self.request(
                 url,
                 params=params,
                 fallback_retry_after_seconds=300,
@@ -165,8 +165,6 @@ class YahooMarketSource(BaseMarketSource):
         resampled: list[MarketBar] = []
         for bucket in sorted(grouped):
             group = sorted(grouped[bucket], key=lambda item: item.timestamp)
-            if not group:
-                continue
             resampled.append(
                 MarketBar(
                     timestamp=bucket,

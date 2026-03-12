@@ -1,9 +1,8 @@
 __all__ = [
+    "analytics_broker",
     "broker",
-    "close_task_lock_client",
     "dispatch_task_locally",
-    "get_lock_redis",
+    "enqueue_task",
     "ping_redis",
-    "redis_task_lock",
     "wait_for_redis",
 ]

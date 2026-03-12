@@ -1,9 +1,14 @@
-FROM python:3.11
+FROM python:3.11-slim
+
+COPY --from=ghcr.io/astral-sh/uv:0.10.4 /uv /uvx /bin/
 
 WORKDIR /app
 
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+ENV UV_LINK_MODE=copy
+ENV PATH="/app/.venv/bin:$PATH"
+
+COPY pyproject.toml uv.lock* .python-version ./
+RUN uv sync --frozen --no-dev
 
 COPY . .
 

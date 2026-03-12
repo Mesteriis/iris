@@ -7,13 +7,13 @@ from app.apps.system.schemas import SourceStatusRead, SystemStatusRead
 router = APIRouter(tags=["system"])
 
 
-def _source_status_rows() -> list[SourceStatusRead]:
+async def _source_status_rows() -> list[SourceStatusRead]:
     carousel = get_market_source_carousel()
     manager = get_rate_limit_manager()
     rows: list[SourceStatusRead] = []
 
     for name, source in sorted(carousel.sources.items()):
-        snapshot = manager.snapshot(name)
+        snapshot = await manager.snapshot(name)
         rows.append(
             SourceStatusRead(
                 name=name,
@@ -35,18 +35,18 @@ def _source_status_rows() -> list[SourceStatusRead]:
 
 
 @router.get("/status", response_model=SystemStatusRead)
-def status(request: Request) -> SystemStatusRead:
-    listener_task = getattr(request.app.state, "taskiq_listener_task", None)
+async def status(request: Request) -> SystemStatusRead:
+    worker_processes = getattr(request.app.state, "taskiq_worker_processes", [])
     return SystemStatusRead(
         service="iris",
         status="ok",
-        taskiq_mode="embedded",
-        taskiq_running=bool(listener_task and not listener_task.done()),
-        sources=_source_status_rows(),
+        taskiq_mode="process_workers",
+        taskiq_running=bool(worker_processes) and all(process.is_alive() for process in worker_processes),
+        sources=await _source_status_rows(),
     )
 
 
 @router.get("/health")
-def health() -> dict[str, str]:
-    ping_database()
+async def health() -> dict[str, str]:
+    await ping_database()
     return {"status": "healthy"}

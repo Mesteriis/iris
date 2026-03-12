@@ -48,7 +48,7 @@ class MoexIndexMarketSource(BaseMarketSource):
         del coin
         return True
 
-    def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
+    async def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
         symbol = self.get_symbol(coin)
         if symbol is None:
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol}.")
@@ -69,7 +69,7 @@ class MoexIndexMarketSource(BaseMarketSource):
         page_start = 0
         while True:
             try:
-                response = self.request(url, params={**params, "start": page_start})
+                response = await self.request(url, params={**params, "start": page_start})
                 if response.status_code in {400, 404}:
                     raise UnsupportedMarketSourceQuery(f"{self.name} rejected params for {coin.symbol}.")
                 response.raise_for_status()
@@ -117,8 +117,6 @@ class MoexIndexMarketSource(BaseMarketSource):
         resampled: list[MarketBar] = []
         for bucket in sorted(grouped):
             group = sorted(grouped[bucket], key=lambda item: item.timestamp)
-            if not group:
-                continue
             resampled.append(
                 MarketBar(
                     timestamp=bucket,

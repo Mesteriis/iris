@@ -15,6 +15,10 @@ LOGGER = logging.getLogger(__name__)
 _QUEUE_WAIT_SECONDS = 0.25
 
 
+# NOTE:
+# This publisher remains synchronous internally on purpose, but all Redis I/O is
+# drained on a dedicated background thread. Async request/task code only enqueues
+# events, so the main event loop does not block on stream writes here.
 class RedisEventPublisher:
     def __init__(self, redis_url: str, *, stream_name: str) -> None:
         self._redis = Redis.from_url(redis_url, decode_responses=True)

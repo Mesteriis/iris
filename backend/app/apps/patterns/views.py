@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.apps.patterns.schemas import (
     CoinRegimeRead,
@@ -12,15 +12,15 @@ from app.apps.patterns.schemas import (
     SectorRead,
 )
 from app.apps.patterns.services import (
-    get_coin_regimes,
-    list_coin_patterns,
-    list_discovered_patterns,
-    list_pattern_features,
-    list_patterns,
-    list_sector_metrics,
-    list_sectors,
-    update_pattern,
-    update_pattern_feature,
+    get_coin_regimes_async,
+    list_coin_patterns_async,
+    list_discovered_patterns_async,
+    list_pattern_features_async,
+    list_patterns_async,
+    list_sector_metrics_async,
+    list_sectors_async,
+    update_pattern_async,
+    update_pattern_feature_async,
 )
 from app.apps.signals.schemas import SignalRead
 from app.core.db.session import get_db
@@ -29,22 +29,22 @@ router = APIRouter(tags=["patterns"])
 
 
 @router.get("/patterns", response_model=list[PatternRead])
-def read_patterns(db: Session = Depends(get_db)) -> list[PatternRead]:
-    return list(list_patterns(db))
+async def read_patterns(db: AsyncSession = Depends(get_db)) -> list[PatternRead]:
+    return list(await list_patterns_async(db))
 
 
 @router.get("/patterns/features", response_model=list[PatternFeatureRead])
-def read_pattern_features(db: Session = Depends(get_db)) -> list[PatternFeatureRead]:
-    return list(list_pattern_features(db))
+async def read_pattern_features(db: AsyncSession = Depends(get_db)) -> list[PatternFeatureRead]:
+    return list(await list_pattern_features_async(db))
 
 
 @router.patch("/patterns/features/{feature_slug}", response_model=PatternFeatureRead)
-def patch_pattern_feature(
+async def patch_pattern_feature(
     feature_slug: str,
     payload: PatternFeatureUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> PatternFeatureRead:
-    row = update_pattern_feature(db, feature_slug, enabled=payload.enabled)
+    row = await update_pattern_feature_async(db, feature_slug, enabled=payload.enabled)
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -54,13 +54,13 @@ def patch_pattern_feature(
 
 
 @router.patch("/patterns/{slug}", response_model=PatternRead)
-def patch_pattern(
+async def patch_pattern(
     slug: str,
     payload: PatternUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> PatternRead:
     try:
-        row = update_pattern(
+        row = await update_pattern_async(
             db,
             slug,
             enabled=payload.enabled,
@@ -78,26 +78,26 @@ def patch_pattern(
 
 
 @router.get("/patterns/discovered", response_model=list[DiscoveredPatternRead])
-def read_discovered_patterns(
+async def read_discovered_patterns(
     timeframe: int | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> list[DiscoveredPatternRead]:
-    return list(list_discovered_patterns(db, timeframe=timeframe, limit=limit))
+    return list(await list_discovered_patterns_async(db, timeframe=timeframe, limit=limit))
 
 
 @router.get("/coins/{symbol}/patterns", response_model=list[SignalRead])
-def read_coin_patterns(
+async def read_coin_patterns(
     symbol: str,
     limit: int = Query(default=200, ge=1, le=1000),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> list[SignalRead]:
-    return list(list_coin_patterns(db, symbol, limit=limit))
+    return list(await list_coin_patterns_async(db, symbol, limit=limit))
 
 
 @router.get("/coins/{symbol}/regime", response_model=CoinRegimeRead)
-def read_coin_regime(symbol: str, db: Session = Depends(get_db)) -> CoinRegimeRead:
-    payload = get_coin_regimes(db, symbol)
+async def read_coin_regime(symbol: str, db: AsyncSession = Depends(get_db)) -> CoinRegimeRead:
+    payload = await get_coin_regimes_async(db, symbol)
     if payload is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -107,13 +107,13 @@ def read_coin_regime(symbol: str, db: Session = Depends(get_db)) -> CoinRegimeRe
 
 
 @router.get("/sectors", response_model=list[SectorRead], tags=["sectors"])
-def read_sectors(db: Session = Depends(get_db)) -> list[SectorRead]:
-    return list(list_sectors(db))
+async def read_sectors(db: AsyncSession = Depends(get_db)) -> list[SectorRead]:
+    return list(await list_sectors_async(db))
 
 
 @router.get("/sectors/metrics", response_model=SectorMetricsResponse, tags=["sectors"])
-def read_sector_metrics(
+async def read_sector_metrics(
     timeframe: int | None = Query(default=None),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> SectorMetricsResponse:
-    return SectorMetricsResponse.model_validate(list_sector_metrics(db, timeframe=timeframe))
+    return SectorMetricsResponse.model_validate(await list_sector_metrics_async(db, timeframe=timeframe))

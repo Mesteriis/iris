@@ -1,43 +1,48 @@
 from __future__ import annotations
 
-from app.core.db.session import SessionLocal
-from app.apps.patterns.services import PatternEngine
+from app.core.db.session import AsyncSessionLocal
 from app.apps.market_data.services import (
-    get_coin_by_symbol,
-    get_next_pending_backfill_due_at,
-    list_coins_pending_backfill,
-    list_coins_ready_for_latest_sync,
-    sync_coin_history_backfill,
-    sync_coin_history_backfill_forced,
-    sync_coin_latest_history,
-    sync_watched_assets,
+    get_coin_by_symbol_async,
+    get_next_pending_backfill_due_at_async,
+    list_coin_symbols_pending_backfill_async,
+    list_coin_symbols_ready_for_latest_sync_async,
+    sync_coin_history_backfill_async,
+    sync_coin_history_backfill_forced_async,
+    sync_coin_latest_history_async,
+    sync_watched_assets_async,
 )
+from app.apps.patterns.tasks import patterns_bootstrap_scan
 from app.runtime.orchestration.broker import broker
-from app.runtime.orchestration.locks import redis_task_lock
+from app.runtime.orchestration.locks import async_redis_task_lock
 
 HISTORY_BACKFILL_LOCK_TIMEOUT_SECONDS = 3600
 HISTORY_REFRESH_LOCK_TIMEOUT_SECONDS = 900
 COIN_HISTORY_LOCK_TIMEOUT_SECONDS = 1800
-_PATTERN_ENGINE = PatternEngine()
 
 
-def get_next_history_backfill_due_at():
-    db = SessionLocal()
-    try:
-        return get_next_pending_backfill_due_at(db)
-    finally:
-        db.close()
+async def get_next_history_backfill_due_at():
+    return await get_next_pending_backfill_due_at_async()
 
 
 def _with_coin_history_lock(symbol: str):
-    return redis_task_lock(
+    return async_redis_task_lock(
         f"iris:tasklock:history_coin:{symbol.upper()}",
         timeout=COIN_HISTORY_LOCK_TIMEOUT_SECONDS,
     )
 
 
-def _sync_coin_backfill_item(db, coin, *, force: bool = False) -> dict[str, object]:
-    with _with_coin_history_lock(coin.symbol) as acquired:
+async def _enqueue_patterns_bootstrap(*, symbol: str, force: bool = False) -> dict[str, object]:
+    await patterns_bootstrap_scan.kiq(symbol=symbol, force=force)
+    return {
+        "status": "queued",
+        "queue": "analytics",
+        "symbol": symbol.upper(),
+        "force": force,
+    }
+
+
+async def _sync_coin_backfill_item(db, coin, *, force: bool = False) -> dict[str, object]:
+    async with _with_coin_history_lock(coin.symbol) as acquired:
         if not acquired:
             return {
                 "symbol": coin.symbol,
@@ -45,14 +50,18 @@ def _sync_coin_backfill_item(db, coin, *, force: bool = False) -> dict[str, obje
                 "status": "skipped",
                 "reason": "coin_history_in_progress",
             }
-        result = sync_coin_history_backfill_forced(db, coin) if force else sync_coin_history_backfill(db, coin)
+        result = await (
+            sync_coin_history_backfill_forced_async(db, coin)
+            if force
+            else sync_coin_history_backfill_async(db, coin)
+        )
         if result.get("status") == "ok":
-            result["patterns_bootstrap"] = _PATTERN_ENGINE.bootstrap_coin(db, coin=coin, force=force)
+            result["patterns_bootstrap"] = await _enqueue_patterns_bootstrap(symbol=coin.symbol, force=force)
         return result
 
 
-def _sync_coin_latest_item(db, coin, *, force: bool = False) -> dict[str, object]:
-    with _with_coin_history_lock(coin.symbol) as acquired:
+async def _sync_coin_latest_item(db, coin, *, force: bool = False) -> dict[str, object]:
+    async with _with_coin_history_lock(coin.symbol) as acquired:
         if not acquired:
             return {
                 "symbol": coin.symbol,
@@ -60,11 +69,11 @@ def _sync_coin_latest_item(db, coin, *, force: bool = False) -> dict[str, object
                 "status": "skipped",
                 "reason": "coin_history_in_progress",
             }
-        return sync_coin_latest_history(db, coin, force=force)
+        return await sync_coin_latest_history_async(db, coin, force=force)
 
 
-def _run_history_backfill(*, symbol: str | None = None) -> dict[str, object]:
-    with redis_task_lock(
+async def _run_history_backfill(*, symbol: str | None = None) -> dict[str, object]:
+    async with async_redis_task_lock(
         "iris:tasklock:history_backfill",
         timeout=HISTORY_BACKFILL_LOCK_TIMEOUT_SECONDS,
     ) as acquired:
@@ -75,24 +84,26 @@ def _run_history_backfill(*, symbol: str | None = None) -> dict[str, object]:
                 "mode": "backfill",
             }
 
-        db = SessionLocal()
-        try:
-            sync_watched_assets(db)
-            coins = list_coins_pending_backfill(db, symbol=symbol)
-            items = [_sync_coin_backfill_item(db, coin) for coin in coins]
+        async with AsyncSessionLocal() as db:
+            await sync_watched_assets_async(db)
+            coin_symbols = await list_coin_symbols_pending_backfill_async(db, symbol=symbol)
+            items: list[dict[str, object]] = []
+            for coin_symbol in coin_symbols:
+                coin = await get_coin_by_symbol_async(db, coin_symbol)
+                if coin is None:
+                    continue
+                items.append(await _sync_coin_backfill_item(db, coin))
             return {
                 "status": "ok",
                 "mode": "backfill",
-                "coins": len(coins),
+                "coins": len(coin_symbols),
                 "history_points_created": sum(int(item["created"]) for item in items),
                 "items": items,
             }
-        finally:
-            db.close()
 
 
-def _run_latest_history_sync() -> dict[str, object]:
-    with redis_task_lock(
+async def _run_latest_history_sync() -> dict[str, object]:
+    async with async_redis_task_lock(
         "iris:tasklock:history_refresh",
         timeout=HISTORY_REFRESH_LOCK_TIMEOUT_SECONDS,
     ) as acquired:
@@ -103,22 +114,24 @@ def _run_latest_history_sync() -> dict[str, object]:
                 "mode": "latest",
             }
 
-        db = SessionLocal()
-        try:
-            coins = list_coins_ready_for_latest_sync(db)
-            items = [_sync_coin_latest_item(db, coin) for coin in coins]
+        async with AsyncSessionLocal() as db:
+            coin_symbols = await list_coin_symbols_ready_for_latest_sync_async(db)
+            items: list[dict[str, object]] = []
+            for coin_symbol in coin_symbols:
+                coin = await get_coin_by_symbol_async(db, coin_symbol)
+                if coin is None:
+                    continue
+                items.append(await _sync_coin_latest_item(db, coin))
             return {
                 "status": "ok",
                 "mode": "latest",
-                "coins": len(coins),
+                "coins": len(coin_symbols),
                 "history_points_created": sum(int(item["created"]) for item in items),
                 "items": items,
             }
-        finally:
-            db.close()
 
 
-def _run_manual_coin_history_job(
+async def _run_manual_coin_history_job(
     *,
     symbol: str,
     mode: str = "auto",
@@ -132,9 +145,8 @@ def _run_manual_coin_history_job(
             "reason": f"Unsupported mode '{mode}'.",
         }
 
-    db = SessionLocal()
-    try:
-        coin = get_coin_by_symbol(db, symbol)
+    async with AsyncSessionLocal() as db:
+        coin = await get_coin_by_symbol_async(db, symbol)
         if coin is None:
             return {
                 "status": "error",
@@ -143,42 +155,40 @@ def _run_manual_coin_history_job(
             }
 
         if normalized_mode == "backfill":
-            result = _sync_coin_backfill_item(db, coin, force=force)
+            result = await _sync_coin_backfill_item(db, coin, force=force)
             return {"status": "ok", "mode": "backfill", "forced": force, **result}
 
         if normalized_mode == "latest":
-            result = _sync_coin_latest_item(db, coin, force=force)
+            result = await _sync_coin_latest_item(db, coin, force=force)
             return {"status": "ok", "mode": "latest", "forced": force, **result}
 
         if coin.history_backfill_completed_at is None:
-            result = _sync_coin_backfill_item(db, coin, force=force)
+            result = await _sync_coin_backfill_item(db, coin, force=force)
             return {"status": "ok", "mode": "backfill", "forced": force, **result}
 
-        result = _sync_coin_latest_item(db, coin, force=force)
+        result = await _sync_coin_latest_item(db, coin, force=force)
         return {"status": "ok", "mode": "latest", "forced": force, **result}
-    finally:
-        db.close()
 
 
 @broker.task
-def bootstrap_observed_coins_history() -> dict[str, object]:
-    return _run_history_backfill()
+async def bootstrap_observed_coins_history() -> dict[str, object]:
+    return await _run_history_backfill()
 
 
 @broker.task
-def backfill_observed_coins_history(symbol: str | None = None) -> dict[str, object]:
-    return _run_history_backfill(symbol=symbol)
+async def backfill_observed_coins_history(symbol: str | None = None) -> dict[str, object]:
+    return await _run_history_backfill(symbol=symbol)
 
 
 @broker.task
-def refresh_observed_coins_history() -> dict[str, object]:
-    return _run_latest_history_sync()
+async def refresh_observed_coins_history() -> dict[str, object]:
+    return await _run_latest_history_sync()
 
 
 @broker.task
-def run_coin_history_job(
+async def run_coin_history_job(
     symbol: str,
     mode: str = "auto",
     force: bool = True,
 ) -> dict[str, object]:
-    return _run_manual_coin_history_job(symbol=symbol, mode=mode, force=force)
+    return await _run_manual_coin_history_job(symbol=symbol, mode=mode, force=force)

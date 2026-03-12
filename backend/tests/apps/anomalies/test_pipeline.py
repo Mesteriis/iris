@@ -1,0 +1,218 @@
+from __future__ import annotations
+
+import multiprocessing
+from datetime import timedelta
+
+import pytest
+from sqlalchemy import select
+
+from app.apps.anomalies.models import MarketAnomaly
+from app.apps.anomalies.tasks.anomaly_enrichment_tasks import anomaly_enrichment_job
+from app.apps.market_data.repos import fetch_candle_points, upsert_base_candles
+from app.apps.market_data.service_layer import get_coin_by_symbol
+from app.apps.market_data.sources.base import MarketBar
+from app.apps.portfolio.models import PortfolioPosition
+from app.core.db.session import SessionLocal
+from app.runtime.streams.publisher import flush_publisher, publish_event
+from app.runtime.streams.runner import run_worker_loop
+
+
+def _append_shock_bar(db, *, symbol: str, close_multiplier: float, volume_multiplier: float, source: str) -> tuple[int, object]:
+    coin = get_coin_by_symbol(db, symbol)
+    assert coin is not None
+    candles = fetch_candle_points(db, int(coin.id), 15, 2)
+    latest = candles[-1]
+    next_timestamp = latest.timestamp + timedelta(minutes=15)
+    bar = MarketBar(
+        timestamp=next_timestamp,
+        open=float(latest.close),
+        high=float(latest.close) * max(close_multiplier, 1.0) * 1.02,
+        low=float(latest.close) * 0.995,
+        close=float(latest.close) * close_multiplier,
+        volume=(float(latest.volume or 1000.0) * volume_multiplier),
+        source=source,
+    )
+    upsert_base_candles(db, coin, "15m", [bar])
+    return int(coin.id), next_timestamp
+
+
+@pytest.mark.asyncio
+async def test_candle_closed_pipeline_persists_and_publishes_anomaly(seeded_market, settings, wait_until) -> None:
+    db = SessionLocal()
+    try:
+        eth_coin_id, event_timestamp = _append_shock_bar(
+            db,
+            symbol="ETHUSD_EVT",
+            close_multiplier=1.14,
+            volume_multiplier=7.0,
+            source="anomaly_test",
+        )
+        _append_shock_bar(
+            db,
+            symbol="BTCUSD_EVT",
+            close_multiplier=1.004,
+            volume_multiplier=1.2,
+            source="anomaly_test",
+        )
+    finally:
+        db.close()
+
+    ctx = multiprocessing.get_context("spawn")
+    worker = ctx.Process(
+        target=run_worker_loop,
+        args=("anomaly_workers",),
+        daemon=True,
+    )
+    worker.start()
+    try:
+        publish_event(
+            "candle_closed",
+            {
+                "coin_id": eth_coin_id,
+                "timeframe": 15,
+                "timestamp": event_timestamp,
+                "source": "anomaly_test",
+            },
+        )
+        assert flush_publisher(timeout=5.0)
+
+        def _anomaly_published() -> bool:
+            messages = redis_client.xrange(settings.event_stream_name, "-", "+")
+            return any(fields["event_type"] == "anomaly_detected" for _, fields in messages)
+
+        from redis import Redis
+
+        redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            await wait_until(_anomaly_published, timeout=20.0, interval=0.2)
+            db = SessionLocal()
+            try:
+                anomaly = (
+                    db.execute(
+                        select(MarketAnomaly)
+                        .where(MarketAnomaly.coin_id == eth_coin_id, MarketAnomaly.timeframe == 15)
+                        .order_by(MarketAnomaly.detected_at.desc())
+                    )
+                ).scalars().first()
+                assert anomaly is not None
+                assert anomaly.status == "new"
+                assert anomaly.anomaly_type in {
+                    "price_spike",
+                    "volume_spike",
+                    "volatility_regime_break",
+                    "relative_divergence",
+                    "failed_breakout",
+                    "compression_expansion",
+                    "price_volume_divergence",
+                    "correlation_breakdown",
+                }
+
+                stream_messages = redis_client.xrange(settings.event_stream_name, "-", "+")
+                anomaly_messages = [fields for _, fields in stream_messages if fields["event_type"] == "anomaly_detected"]
+                assert anomaly_messages
+                assert any('"severity"' in item["payload"] for item in anomaly_messages)
+            finally:
+                db.close()
+        finally:
+            redis_client.close()
+    finally:
+        worker.terminate()
+        worker.join(timeout=2.0)
+
+
+@pytest.mark.asyncio
+async def test_anomaly_enrichment_task_updates_status_and_context(seeded_market, wait_until) -> None:
+    db = SessionLocal()
+    try:
+        eth_coin_id, event_timestamp = _append_shock_bar(
+            db,
+            symbol="ETHUSD_EVT",
+            close_multiplier=1.12,
+            volume_multiplier=6.0,
+            source="anomaly_enrichment_test",
+        )
+        _append_shock_bar(
+            db,
+            symbol="BTCUSD_EVT",
+            close_multiplier=1.003,
+            volume_multiplier=1.1,
+            source="anomaly_enrichment_test",
+        )
+        db.add(
+            PortfolioPosition(
+                coin_id=eth_coin_id,
+                timeframe=15,
+                entry_price=100.0,
+                position_size=1.0,
+                position_value=100.0,
+                status="open",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    ctx = multiprocessing.get_context("spawn")
+    worker = ctx.Process(
+        target=run_worker_loop,
+        args=("anomaly_workers",),
+        daemon=True,
+    )
+    worker.start()
+    try:
+        publish_event(
+            "candle_closed",
+            {
+                "coin_id": eth_coin_id,
+                "timeframe": 15,
+                "timestamp": event_timestamp,
+                "source": "anomaly_enrichment_test",
+            },
+        )
+        assert flush_publisher(timeout=5.0)
+
+        def _load_anomaly_id() -> int:
+            db = SessionLocal()
+            try:
+                anomaly = (
+                    db.execute(
+                        select(MarketAnomaly)
+                        .where(MarketAnomaly.coin_id == eth_coin_id, MarketAnomaly.timeframe == 15)
+                        .order_by(MarketAnomaly.detected_at.desc())
+                    )
+                ).scalars().first()
+                return int(anomaly.id) if anomaly is not None else 0
+            finally:
+                db.close()
+
+        await wait_until(lambda: _load_anomaly_id() > 0, timeout=20.0, interval=0.2)
+    finally:
+        worker.terminate()
+        worker.join(timeout=2.0)
+
+    db = SessionLocal()
+    try:
+        anomaly = (
+            db.execute(
+                select(MarketAnomaly)
+                .where(MarketAnomaly.coin_id == eth_coin_id, MarketAnomaly.timeframe == 15)
+                .order_by(MarketAnomaly.detected_at.desc())
+            )
+        ).scalars().first()
+        assert anomaly is not None
+        anomaly_id = int(anomaly.id)
+    finally:
+        db.close()
+
+    result = await anomaly_enrichment_job(anomaly_id)
+    assert result["status"] == "ok"
+
+    db = SessionLocal()
+    try:
+        anomaly = db.get(MarketAnomaly, anomaly_id)
+        assert anomaly is not None
+        assert anomaly.status == "active"
+        assert anomaly.payload_json["context"]["portfolio_relevant"] is True
+        assert anomaly.payload_json["explainability"]["portfolio_impact"] == "portfolio exposure present"
+    finally:
+        db.close()

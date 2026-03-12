@@ -474,6 +474,12 @@ def _fetch_market_cap(symbol: str) -> float | None:
     if gecko_id is None:
         return None
     try:
+        # NOTE:
+        # This HTTP call remains synchronous intentionally because the current
+        # analytics pipeline is still a legacy sync worker core.
+        # This code does not run inside the FastAPI request lifecycle.
+        # It executes only in dedicated worker processes, so it no longer
+        # blocks the main application event loop.
         with httpx.Client(
             timeout=httpx.Timeout(connect=5.0, read=15.0, write=15.0, pool=15.0),
             headers={"User-Agent": "IRIS/0.1 analytics", "Accept": "application/json"},

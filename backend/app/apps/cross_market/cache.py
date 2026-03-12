@@ -6,6 +6,7 @@ from datetime import datetime
 from functools import lru_cache
 
 from redis import Redis
+from redis.asyncio import Redis as AsyncRedis
 
 from app.core.settings import get_settings
 from app.apps.market_data.domain import ensure_utc
@@ -14,6 +15,9 @@ CORRELATION_CACHE_PREFIX = "iris:correlation"
 CORRELATION_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
 
 
+# NOTE:
+# This synchronous cache client remains intentionally for legacy sync analytics
+# code running outside the main HTTP request lifecycle.
 @dataclass(slots=True, frozen=True)
 class CorrelationCacheEntry:
     leader_coin_id: int
@@ -30,11 +34,17 @@ def get_correlation_cache_client() -> Redis:
     return Redis.from_url(settings.redis_url, decode_responses=True)
 
 
+@lru_cache(maxsize=1)
+def get_async_correlation_cache_client() -> AsyncRedis:
+    settings = get_settings()
+    return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+
+
 def correlation_cache_key(leader_coin_id: int, follower_coin_id: int) -> str:
     return f"{CORRELATION_CACHE_PREFIX}:{int(leader_coin_id)}:{int(follower_coin_id)}"
 
 
-def cache_correlation_snapshot(
+def _serialize_correlation_payload(
     *,
     leader_coin_id: int,
     follower_coin_id: int,
@@ -42,8 +52,8 @@ def cache_correlation_snapshot(
     lag_hours: int,
     confidence: float,
     updated_at: datetime | None,
-) -> None:
-    payload = json.dumps(
+) -> str:
+    return json.dumps(
         {
             "leader_coin_id": int(leader_coin_id),
             "follower_coin_id": int(follower_coin_id),
@@ -56,17 +66,14 @@ def cache_correlation_snapshot(
         sort_keys=True,
         separators=(",", ":"),
     )
-    get_correlation_cache_client().set(
-        correlation_cache_key(leader_coin_id, follower_coin_id),
-        payload,
-        ex=CORRELATION_CACHE_TTL_SECONDS,
-    )
 
 
-def read_cached_correlation(*, leader_coin_id: int, follower_coin_id: int) -> CorrelationCacheEntry | None:
-    raw = get_correlation_cache_client().get(correlation_cache_key(leader_coin_id, follower_coin_id))
-    if raw is None:
-        return None
+def _parse_correlation_payload(
+    raw: str,
+    *,
+    fallback_leader_coin_id: int,
+    fallback_follower_coin_id: int,
+) -> CorrelationCacheEntry | None:
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
@@ -79,10 +86,86 @@ def read_cached_correlation(*, leader_coin_id: int, follower_coin_id: int) -> Co
         except ValueError:
             updated_at = None
     return CorrelationCacheEntry(
-        leader_coin_id=int(payload.get("leader_coin_id", leader_coin_id)),
-        follower_coin_id=int(payload.get("follower_coin_id", follower_coin_id)),
+        leader_coin_id=int(payload.get("leader_coin_id", fallback_leader_coin_id)),
+        follower_coin_id=int(payload.get("follower_coin_id", fallback_follower_coin_id)),
         correlation=float(payload.get("correlation", 0.0)),
         lag_hours=int(payload.get("lag_hours", 0)),
         confidence=float(payload.get("confidence", 0.0)),
         updated_at=updated_at,
+    )
+
+
+def cache_correlation_snapshot(
+    *,
+    leader_coin_id: int,
+    follower_coin_id: int,
+    correlation: float,
+    lag_hours: int,
+    confidence: float,
+    updated_at: datetime | None,
+) -> None:
+    payload = _serialize_correlation_payload(
+        leader_coin_id=leader_coin_id,
+        follower_coin_id=follower_coin_id,
+        correlation=correlation,
+        lag_hours=lag_hours,
+        confidence=confidence,
+        updated_at=updated_at,
+    )
+    get_correlation_cache_client().set(
+        correlation_cache_key(leader_coin_id, follower_coin_id),
+        payload,
+        ex=CORRELATION_CACHE_TTL_SECONDS,
+    )
+
+
+async def cache_correlation_snapshot_async(
+    *,
+    leader_coin_id: int,
+    follower_coin_id: int,
+    correlation: float,
+    lag_hours: int,
+    confidence: float,
+    updated_at: datetime | None,
+) -> None:
+    payload = _serialize_correlation_payload(
+        leader_coin_id=leader_coin_id,
+        follower_coin_id=follower_coin_id,
+        correlation=correlation,
+        lag_hours=lag_hours,
+        confidence=confidence,
+        updated_at=updated_at,
+    )
+    await get_async_correlation_cache_client().set(
+        correlation_cache_key(leader_coin_id, follower_coin_id),
+        payload,
+        ex=CORRELATION_CACHE_TTL_SECONDS,
+    )
+
+
+def read_cached_correlation(*, leader_coin_id: int, follower_coin_id: int) -> CorrelationCacheEntry | None:
+    raw = get_correlation_cache_client().get(correlation_cache_key(leader_coin_id, follower_coin_id))
+    if raw is None:
+        return None
+    return _parse_correlation_payload(
+        raw,
+        fallback_leader_coin_id=leader_coin_id,
+        fallback_follower_coin_id=follower_coin_id,
+    )
+
+
+async def read_cached_correlation_async(
+    *,
+    leader_coin_id: int,
+    follower_coin_id: int,
+) -> CorrelationCacheEntry | None:
+    raw = await get_async_correlation_cache_client().get(
+        correlation_cache_key(leader_coin_id, follower_coin_id)
+    )
+    if raw is None:
+        return None
+    return _parse_correlation_payload(
+        raw,
+        fallback_leader_coin_id=leader_coin_id,
+        fallback_follower_coin_id=follower_coin_id,
     )

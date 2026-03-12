@@ -54,7 +54,7 @@ class BaseMarketSource:
     rate_limit_status_codes: set[int] = {429}
 
     def __init__(self) -> None:
-        self.client = httpx.Client(
+        self.client = httpx.AsyncClient(
             timeout=httpx.Timeout(connect=5.0, read=15.0, write=15.0, pool=15.0),
             headers={
                 "User-Agent": "IRIS/0.1 market-sync",
@@ -63,8 +63,8 @@ class BaseMarketSource:
             follow_redirects=True,
         )
 
-    def close(self) -> None:
-        self.client.close()
+    async def close(self) -> None:
+        await self.client.aclose()
 
     def supports_coin(self, coin: "Coin", interval: str) -> bool:
         normalized_interval = normalize_interval(interval)
@@ -77,7 +77,7 @@ class BaseMarketSource:
     def get_symbol(self, coin: "Coin") -> str | None:
         raise NotImplementedError
 
-    def fetch_bars(
+    async def fetch_bars(
         self,
         coin: "Coin",
         interval: str,
@@ -86,14 +86,14 @@ class BaseMarketSource:
     ) -> list[MarketBar]:
         raise NotImplementedError
 
-    def is_rate_limited(self) -> bool:
-        return get_rate_limit_manager().is_rate_limited(self.name)
+    async def is_rate_limited(self) -> bool:
+        return await get_rate_limit_manager().is_rate_limited(self.name)
 
-    def set_rate_limit(self, seconds: int) -> None:
-        get_rate_limit_manager().set_cooldown(self.name, seconds)
+    async def set_rate_limit(self, seconds: int) -> None:
+        await get_rate_limit_manager().set_cooldown(self.name, seconds)
 
-    def clear_rate_limit(self) -> None:
-        get_rate_limit_manager().clear_cooldown(self.name)
+    async def clear_rate_limit(self) -> None:
+        await get_rate_limit_manager().clear_cooldown(self.name)
 
     def bars_per_request(self, interval: str) -> int:
         raise NotImplementedError
@@ -108,7 +108,7 @@ class BaseMarketSource:
         delta = interval_delta(interval)
         return int((normalized_end - normalized_start) / delta) + 1
 
-    def request(
+    async def request(
         self,
         url: str,
         *,
@@ -119,7 +119,7 @@ class BaseMarketSource:
         cost: int | None = None,
     ) -> httpx.Response:
         try:
-            return rate_limited_get(
+            return await rate_limited_get(
                 self.name,
                 self.client,
                 url,
@@ -134,7 +134,7 @@ class BaseMarketSource:
         except httpx.HTTPError as exc:
             raise TemporaryMarketSourceError(f"{self.name} transport error: {exc}") from exc
 
-    def raise_rate_limited(
+    async def raise_rate_limited(
         self,
         *,
         retry_after_seconds: int | None = None,
@@ -142,7 +142,7 @@ class BaseMarketSource:
     ) -> None:
         policy = get_rate_limit_policy(self.name)
         delay = max(int(retry_after_seconds or policy.fallback_retry_after_seconds), 1)
-        self.set_rate_limit(delay)
+        await self.set_rate_limit(delay)
         raise RateLimitedMarketSourceError(self.name, delay, message or f"{self.name} rate limited")
 
     @staticmethod

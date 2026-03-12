@@ -6,6 +6,7 @@ from datetime import datetime
 from functools import lru_cache
 
 from redis import Redis
+from redis.asyncio import Redis as AsyncRedis
 
 from app.core.settings import get_settings
 from app.apps.market_data.domain import ensure_utc
@@ -14,6 +15,9 @@ DECISION_CACHE_PREFIX = "iris:decision"
 DECISION_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
 
 
+# NOTE:
+# This synchronous cache client remains intentionally for legacy sync analytics
+# code running outside the main HTTP request lifecycle.
 @dataclass(slots=True, frozen=True)
 class DecisionCacheEntry:
     coin_id: int
@@ -31,11 +35,17 @@ def get_decision_cache_client() -> Redis:
     return Redis.from_url(settings.redis_url, decode_responses=True)
 
 
+@lru_cache(maxsize=1)
+def get_async_decision_cache_client() -> AsyncRedis:
+    settings = get_settings()
+    return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+
+
 def decision_cache_key(coin_id: int, timeframe: int) -> str:
     return f"{DECISION_CACHE_PREFIX}:{int(coin_id)}:{int(timeframe)}"
 
 
-def cache_market_decision_snapshot(
+def _serialize_decision_payload(
     *,
     coin_id: int,
     timeframe: int,
@@ -44,8 +54,8 @@ def cache_market_decision_snapshot(
     signal_count: int,
     regime: str | None,
     created_at: datetime | None,
-) -> None:
-    payload = json.dumps(
+) -> str:
+    return json.dumps(
         {
             "coin_id": int(coin_id),
             "timeframe": int(timeframe),
@@ -59,17 +69,9 @@ def cache_market_decision_snapshot(
         sort_keys=True,
         separators=(",", ":"),
     )
-    get_decision_cache_client().set(
-        decision_cache_key(coin_id, timeframe),
-        payload,
-        ex=DECISION_CACHE_TTL_SECONDS,
-    )
 
 
-def read_cached_market_decision(*, coin_id: int, timeframe: int) -> DecisionCacheEntry | None:
-    raw = get_decision_cache_client().get(decision_cache_key(coin_id, timeframe))
-    if raw is None:
-        return None
+def _parse_decision_payload(raw: str, *, fallback_coin_id: int, fallback_timeframe: int) -> DecisionCacheEntry | None:
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
@@ -96,11 +98,77 @@ def read_cached_market_decision(*, coin_id: int, timeframe: int) -> DecisionCach
     if regime is not None and not isinstance(regime, str):
         regime = None
     return DecisionCacheEntry(
-        coin_id=int(payload.get("coin_id", coin_id)),
-        timeframe=int(payload.get("timeframe", timeframe)),
+        coin_id=int(payload.get("coin_id", fallback_coin_id)),
+        timeframe=int(payload.get("timeframe", fallback_timeframe)),
         decision=decision,
         confidence=confidence,
         signal_count=signal_count,
         regime=regime,
         created_at=created_at,
     )
+
+
+def cache_market_decision_snapshot(
+    *,
+    coin_id: int,
+    timeframe: int,
+    decision: str,
+    confidence: float,
+    signal_count: int,
+    regime: str | None,
+    created_at: datetime | None,
+) -> None:
+    payload = _serialize_decision_payload(
+        coin_id=coin_id,
+        timeframe=timeframe,
+        decision=decision,
+        confidence=confidence,
+        signal_count=signal_count,
+        regime=regime,
+        created_at=created_at,
+    )
+    get_decision_cache_client().set(
+        decision_cache_key(coin_id, timeframe),
+        payload,
+        ex=DECISION_CACHE_TTL_SECONDS,
+    )
+
+
+async def cache_market_decision_snapshot_async(
+    *,
+    coin_id: int,
+    timeframe: int,
+    decision: str,
+    confidence: float,
+    signal_count: int,
+    regime: str | None,
+    created_at: datetime | None,
+) -> None:
+    payload = _serialize_decision_payload(
+        coin_id=coin_id,
+        timeframe=timeframe,
+        decision=decision,
+        confidence=confidence,
+        signal_count=signal_count,
+        regime=regime,
+        created_at=created_at,
+    )
+    await get_async_decision_cache_client().set(
+        decision_cache_key(coin_id, timeframe),
+        payload,
+        ex=DECISION_CACHE_TTL_SECONDS,
+    )
+
+
+def read_cached_market_decision(*, coin_id: int, timeframe: int) -> DecisionCacheEntry | None:
+    raw = get_decision_cache_client().get(decision_cache_key(coin_id, timeframe))
+    if raw is None:
+        return None
+    return _parse_decision_payload(raw, fallback_coin_id=coin_id, fallback_timeframe=timeframe)
+
+
+async def read_cached_market_decision_async(*, coin_id: int, timeframe: int) -> DecisionCacheEntry | None:
+    raw = await get_async_decision_cache_client().get(decision_cache_key(coin_id, timeframe))
+    if raw is None:
+        return None
+    return _parse_decision_payload(raw, fallback_coin_id=coin_id, fallback_timeframe=timeframe)

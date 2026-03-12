@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Anomaly Detection subsystem under `backend/app/apps/anomalies` with dedicated `candle_closed -> anomaly_detected` consumers, `MarketAnomaly` persistence, fast-path price/volume/volatility/relative detectors, slow-path sector/market-structure scans, explainable scoring and anomaly enrichment tasks.
+- Expanded anomaly coverage with failed breakout, compression/expansion, price-volume divergence, correlation breakdown, funding/open-interest, cross-exchange dislocation and liquidation-cascade detectors plus async persistence, cooldown/hysteresis policies and anomaly stream publishing.
+- News ingestion subsystem under `backend/app/apps/news` with plugin registry, source CRUD API, polling/manual jobs, normalized `news_items`, symbol correlation links and downstream fusion from `news_item_ingested` into `decision_generated`.
+- Telegram user onboarding flow for news sources with session request/confirm endpoints, dialog discovery, single/bulk source provisioning and private channel/group support via entity id plus access hash.
+- News source support for X, Telegram user sessions and Discord bots, with explicit unsupported-provider handling for Truth Social style sources.
+- Market Structure ingestion subsystem under `backend/app/apps/market_structure` with polling/manual/webhook sources, snapshot storage, onboarding presets, native webhook normalization and `market_structure_snapshot_ingested` events.
+- Provider-specific market structure webhook presets and native payload normalizers for Liqscope, generic liquidation collectors, derivatives collectors, Coinglass, Hyblock and Coinalyze.
+- Source health model for market structure feeds with `idle` / `healthy` / `stale` / `error` / `disabled` / `quarantined` states, read APIs, scheduler-driven refresh and stream events for SSE consumption.
+- Source reliability controls for market structure polling with per-source retry backoff, consecutive failure tracking, auto-quarantine, alert events and manual quarantine release through source update API.
+- Frontend-first onboarding contracts for market structure and news sources so UI flows can provision sources without constructing low-level plugin settings or raw provider payload mappings.
+- New Alembic migrations `20260312_000021` through `20260312_000027` covering anomaly entities, news sources/items/links, market structure snapshots/sources/health/resilience fields.
+- Domain-scoped backend test layout under `backend/tests/apps`, `backend/tests/runtime`, `backend/tests/core` and `backend/tests/factories`, with dedicated coverage for anomalies, news, market structure, runtime streams, orchestration and scheduler behavior.
+- Python project metadata migrated to `pyproject.toml`/`uv.lock` with `.python-version`, updated container/runtime configuration and development bootstrap aligned to the new dependency workflow.
 - Cross-Market Intelligence Layer with `coin_relations`, rolling lagged-correlation detection, sector momentum refresh, leader detection, Redis correlation cache keys `iris:correlation:{leader_coin_id}:{follower_coin_id}` and a dedicated `cross_market_workers` consumer group.
 - Market Prediction Memory Engine with `market_predictions`, `prediction_results`, Redis prediction cache keys `iris:prediction:{id}`, scheduled `prediction_evaluation_job` feedback and prediction outcome events.
 - Market Flow API surface: `/market/flow` and `/predictions`.
@@ -59,6 +72,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- Signal fusion now incorporates normalized news correlation context instead of relying only on pattern/signal stacks, while keeping news as a bounded contextual input rather than synthetic trading signals.
+- Event-driven runtime wiring now includes dedicated news, anomaly and market-structure consumer groups/tasks so ingestion, anomaly detection, source polling and downstream enrichment scale independently from candle ingestion.
+- Market structure source reads now expose operational metadata such as `consecutive_failures`, `backoff_until`, `quarantined_at`, `quarantine_reason`, `last_alerted_at` and `last_alert_kind` for backend consumers and future SSE projections.
+- Health evaluation for market structure sources now treats successful polling/ingest activity as the canonical heartbeat, so clearing an error no longer marks a source healthy before the first successful snapshot.
+- Tests and runtime imports were reorganized around the new domain packages, replacing the older flat backend test layout with app/runtime/core slices that match the production architecture.
 - Backend layout was fully realigned around `backend/app/apps`, `backend/app/core` and `backend/app/runtime`; real implementations now live in domain apps, portfolio exchange plugins moved into `apps/portfolio`, and the legacy horizontal layers under `api`, `services`, `events`, `db`, `models`, `schemas`, `patterns`, `analysis`, `taskiq`, `messaging` and `exchanges` were removed.
 - Event-driven runtime now includes `cross_market_workers` consuming `candle_closed` and `indicator_updated`, and Signal Fusion now folds cross-market alignment into fused confidence.
 - `coins` now expose a dedicated `sector` code alongside the existing sector relationship so cross-market and frontend reads can reason about sector momentum without breaking current taxonomy logic.
@@ -91,6 +109,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Decision scoring now incorporates active strategy alignment from auto-discovered strategies, and the dashboard shows top strategy performance.
 
 ### Fixed
+- Prevented market structure sources from reporting false healthy status after a simple error reset by requiring successful activity before transitioning from `idle`/`error` into `healthy` or `stale`.
+- Added loop-safe async TaskIQ locking for anomaly/market-structure background work so Redis-backed locks no longer flake between worker event loops.
+- Hardened webhook/manual ingest auth for market structure feeds with source-level token rotation, native webhook auth checks and clean failure responses for invalid ingest tokens.
+- Cleaned dead helper duplication inside market structure provisioning so health/event behavior has a single runtime implementation path.
 - Isolated pattern registry/statistics state between tests so full-suite runs no longer leak lifecycle state across evaluation jobs.
 - Restored `indicator_updated` emission from the event-driven analytics pipeline by returning the computed item payloads from `process_indicator_event`.
 - Removed a circular import between `patterns.success`, `events.publisher` and `patterns.context` that only surfaced in spawned event workers.

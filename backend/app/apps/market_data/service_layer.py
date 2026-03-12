@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
@@ -490,9 +491,6 @@ def calculate_backfill_progress(
         retention_bars,
     )
 
-    if total_points == 0:
-        return 0, 0, 100.0
-
     progress_percent = min((loaded_points / total_points) * 100, 100.0)
     return loaded_points, total_points, round(progress_percent, 1)
 
@@ -567,7 +565,11 @@ def _sync_coin_history(
         start = latest_existing + interval_delta(interval)
 
     if start <= latest_available:
-        fetch_result = carousel.fetch_history_window(coin, interval, start, latest_available)
+        # NOTE:
+        # This legacy synchronous history path remains available intentionally
+        # for non-async maintenance/test code. Runtime orchestration uses the
+        # async market-data facade instead of this bridge.
+        fetch_result = asyncio.run(carousel.fetch_history_window(coin, interval, start, latest_available))
         latest_candle_timestamp = upsert_base_candles(db, coin, interval, fetch_result.bars)
         total_created += len(fetch_result.bars)
         if latest_candle_timestamp is not None:

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime
-from threading import Lock
 from typing import TYPE_CHECKING
 
 from app.apps.market_data.domain import ensure_utc, interval_delta, latest_completed_timestamp, normalize_interval
@@ -50,11 +50,11 @@ class MarketSourceCarousel:
             "yahoo": YahooMarketSource(),
         }
         self._cursor: dict[tuple[str, str], int] = {}
-        self._lock = Lock()
+        self._lock = asyncio.Lock()
 
-    def close(self) -> None:
+    async def close(self) -> None:
         for source in self.sources.values():
-            source.close()
+            await source.close()
 
     def provider_names_for_coin(self, coin: "Coin") -> list[str]:
         preferred = coin.source.strip().lower() if coin.source else "default"
@@ -73,7 +73,7 @@ class MarketSourceCarousel:
             names = [preferred, *[name for name in names if name != preferred]]
         return names
 
-    def fetch_history_window(
+    async def fetch_history_window(
         self,
         coin: "Coin",
         interval: str,
@@ -93,7 +93,7 @@ class MarketSourceCarousel:
             )
 
         cursor_key = (coin.symbol, normalized_interval)
-        with self._lock:
+        async with self._lock:
             start_index = self._cursor.get(cursor_key, 0) % len(provider_names)
         current = ensure_utc(start)
         last_available = latest_completed_timestamp(normalized_interval, end + interval_delta(normalized_interval))
@@ -110,7 +110,7 @@ class MarketSourceCarousel:
                 source = self.sources[source_name]
                 source_names_used.append(source_name)
 
-                if source.is_rate_limited():
+                if await source.is_rate_limited():
                     last_error = f"{source_name} is temporarily rate limited."
                     continue
 
@@ -119,7 +119,7 @@ class MarketSourceCarousel:
                         last_available,
                         current + interval_delta(normalized_interval) * (source.bars_per_request(normalized_interval) - 1),
                     )
-                    bars = source.fetch_bars(coin, normalized_interval, current, request_end)
+                    bars = await source.fetch_bars(coin, normalized_interval, current, request_end)
                 except RateLimitedMarketSourceError as exc:
                     last_error = str(exc)
                     continue
@@ -135,7 +135,7 @@ class MarketSourceCarousel:
 
                 if not bars:
                     if collected and request_end >= last_available and source.allows_terminal_gap(coin):
-                        with self._lock:
+                        async with self._lock:
                             self._cursor[cursor_key] = (index + 1) % len(provider_names)
                         return MarketFetchResult(
                             bars=sorted(collected.values(), key=lambda item: item.timestamp),
@@ -146,7 +146,7 @@ class MarketSourceCarousel:
                     last_error = f"{source_name} returned no bars for {coin.symbol}."
                     continue
 
-                source.clear_rate_limit()
+                await source.clear_rate_limit()
                 next_current = current
                 for bar in bars:
                     bar_timestamp = ensure_utc(bar.timestamp)
@@ -162,7 +162,7 @@ class MarketSourceCarousel:
                 current = next_current
                 attempts_without_progress = 0
                 progress_made = True
-                with self._lock:
+                async with self._lock:
                     self._cursor[cursor_key] = (index + 1) % len(provider_names)
                 break
 

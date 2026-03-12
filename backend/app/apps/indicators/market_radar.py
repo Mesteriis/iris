@@ -14,6 +14,9 @@ from app.apps.indicators.schemas import MarketRadarCoinRead, MarketRadarRead, Ma
 from app.apps.market_data.domain import ensure_utc
 
 
+# NOTE:
+# This legacy sync read-model remains for compatibility only.
+# HTTP/runtime code should use the async indicator services facade instead.
 def _metric_rows(
     db: Session,
     *,

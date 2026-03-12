@@ -45,6 +45,18 @@ const systemBadge = computed(() => {
   return "Degraded";
 });
 
+const taskiqRuntimeLabel = computed(() => {
+  if (!coinStore.status?.taskiq_running) {
+    return "Down";
+  }
+
+  if (coinStore.status.taskiq_mode === "process_workers") {
+    return "Workers";
+  }
+
+  return "Embedded";
+});
+
 const sidebarSignals = computed(() => coinStore.recentSignals.slice(0, 6));
 const sidebarRows = computed(() => coinStore.dashboardRows.slice(0, 5));
 const sidebarJobs = computed(() => coinStore.jobStatusRows.slice(0, 6));
@@ -95,7 +107,7 @@ function toggleSidebar() {
           </div>
           <div>
             <dt>TaskIQ</dt>
-            <dd>{{ coinStore.status?.taskiq_running ? "Embedded" : "Down" }}</dd>
+            <dd>{{ taskiqRuntimeLabel }}</dd>
           </div>
           <div>
             <dt>Metrics rows</dt>

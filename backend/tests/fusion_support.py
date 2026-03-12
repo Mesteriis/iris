@@ -6,6 +6,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.apps.indicators.models import CoinMetrics
+from app.apps.patterns.models import PatternRegistry
 from app.apps.patterns.models import PatternStatistic
 from app.apps.signals.models import Signal
 from app.apps.market_data.schemas import CoinCreate
@@ -23,6 +24,18 @@ def create_test_coin(db: Session, *, symbol: str, name: str):
             source="fixture",
         ),
     )
+
+
+def _pattern_category(slug: str) -> str:
+    if slug in {"bull_flag", "bear_flag", "high_tight_flag"}:
+        return "continuation"
+    if slug in {"head_shoulders", "inverse_head_shoulders", "breakout_retest"}:
+        return "structural"
+    if slug.startswith("bollinger") or "volatility" in slug:
+        return "volatility"
+    if slug.endswith("cross") or slug.startswith("macd"):
+        return "momentum"
+    return "structural"
 
 
 def upsert_coin_metrics(
@@ -78,6 +91,25 @@ def replace_pattern_statistics(
             PatternStatistic.timeframe == timeframe,
         )
     )
+    registry_rows = {
+        row.slug: row
+        for row in db.scalars(select(PatternRegistry).where(PatternRegistry.slug.in_(slugs))).all()
+    }
+    for slug in slugs:
+        registry_row = registry_rows.get(slug)
+        if registry_row is None:
+            db.add(
+                PatternRegistry(
+                    slug=slug,
+                    category=_pattern_category(slug),
+                    enabled=True,
+                    cpu_cost=1,
+                    lifecycle_state="ACTIVE",
+                )
+            )
+            continue
+        registry_row.enabled = True
+        registry_row.lifecycle_state = "ACTIVE"
     for slug, market_regime, success_rate, total_signals in rows:
         successful_signals = int(round(success_rate * total_signals))
         db.add(

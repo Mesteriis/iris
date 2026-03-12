@@ -85,7 +85,7 @@ class TwelveDataMarketSource(BaseMarketSource):
         symbol = self.get_symbol(coin)
         return [symbol] if symbol else []
 
-    def _request_symbol(
+    async def _request_symbol(
         self,
         symbol: str,
         interval: str,
@@ -104,7 +104,7 @@ class TwelveDataMarketSource(BaseMarketSource):
         }
 
         try:
-            response = self.request(self.base_url, params=params)
+            response = await self.request(self.base_url, params=params)
             response.raise_for_status()
             payload = response.json()
         except httpx.HTTPStatusError as exc:
@@ -115,7 +115,7 @@ class TwelveDataMarketSource(BaseMarketSource):
             message = str(payload.get("message") or f"{self.name} returned an error")
             message_lower = message.lower()
             if code == 429 or "run out of api credits" in message_lower or "rate limit" in message_lower:
-                self.raise_rate_limited(retry_after_seconds=60, message=f"{self.name} rate limited")
+                await self.raise_rate_limited(retry_after_seconds=60, message=f"{self.name} rate limited")
             if "available starting with grow" in message_lower or "consider upgrading" in message_lower:
                 raise UnsupportedMarketSourceQuery(message)
             if code in {400, 401, 403, 404}:
@@ -146,11 +146,11 @@ class TwelveDataMarketSource(BaseMarketSource):
         bars.sort(key=lambda bar: bar.timestamp)
         return [bar for bar in bars if ensure_utc(start) <= bar.timestamp <= ensure_utc(end)]
 
-    def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
+    async def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
         last_error: str | None = None
         for candidate in self._candidate_symbols(coin):
             try:
-                bars = self._request_symbol(candidate, interval, start, end)
+                bars = await self._request_symbol(candidate, interval, start, end)
             except UnsupportedMarketSourceQuery as exc:
                 last_error = str(exc)
                 continue

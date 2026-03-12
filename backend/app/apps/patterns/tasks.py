@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from app.core.db.session import SessionLocal
-from app.apps.market_data.services import get_coin_by_symbol, list_coins_ready_for_latest_sync
+from app.core.db.session import AsyncSessionLocal
+from app.apps.market_data.models import Coin
+from app.apps.market_data.services import get_coin_by_symbol_async, list_coin_symbols_ready_for_latest_sync_async
 from app.apps.patterns.services import (
     PatternEngine,
     enrich_signal_context,
@@ -15,8 +16,8 @@ from app.apps.patterns.services import (
     run_pattern_evaluation_cycle,
 )
 from app.apps.patterns.domain.risk import evaluate_final_signal, refresh_final_signals
-from app.runtime.orchestration.broker import broker
-from app.runtime.orchestration.locks import redis_task_lock
+from app.runtime.orchestration.broker import analytics_broker
+from app.runtime.orchestration.locks import async_redis_task_lock
 
 PATTERN_BOOTSTRAP_LOCK_TIMEOUT_SECONDS = 7200
 PATTERN_STATISTICS_LOCK_TIMEOUT_SECONDS = 7200
@@ -26,161 +27,172 @@ STRATEGY_DISCOVERY_LOCK_TIMEOUT_SECONDS = 14400
 _ENGINE = PatternEngine()
 
 
-@broker.task
-def patterns_bootstrap_scan(symbol: str | None = None, force: bool = False) -> dict[str, object]:
+async def _run_sync_pattern_core(db, fn):
+    # NOTE:
+    # The pattern engine is still implemented as a large synchronous analytics
+    # core. It remains synchronous intentionally while the deeper
+    # domain/repository split is migrated incrementally.
+    # This code runs only on the dedicated analytics TaskIQ worker queue,
+    # outside the main FastAPI request/event loop critical path.
+    return await db.run_sync(fn)
+
+
+@analytics_broker.task
+async def patterns_bootstrap_scan(symbol: str | None = None, force: bool = False) -> dict[str, object]:
     lock_suffix = symbol.upper() if symbol is not None else "all"
-    with redis_task_lock(
+    async with async_redis_task_lock(
         f"iris:tasklock:patterns_bootstrap:{lock_suffix}",
         timeout=PATTERN_BOOTSTRAP_LOCK_TIMEOUT_SECONDS,
     ) as acquired:
         if not acquired:
             return {"status": "skipped", "reason": "patterns_bootstrap_in_progress", "symbol": lock_suffix}
 
-        db = SessionLocal()
-        try:
+        async with AsyncSessionLocal() as db:
             if symbol is not None:
-                coin = get_coin_by_symbol(db, symbol)
+                coin = await get_coin_by_symbol_async(db, symbol)
                 if coin is None:
                     return {"status": "error", "reason": "coin_not_found", "symbol": symbol.upper()}
-                result = _ENGINE.bootstrap_coin(db, coin=coin, force=force)
+                result = await _run_sync_pattern_core(
+                    db,
+                    lambda sync_db: _ENGINE.bootstrap_coin(
+                        sync_db,
+                        coin=sync_db.get(Coin, int(coin.id)),
+                        force=force,
+                    ),
+                )
                 return {"status": "ok", "coins": 1, "items": [result]}
 
-            coins = list_coins_ready_for_latest_sync(db)
-            items = [_ENGINE.bootstrap_coin(db, coin=coin, force=force) for coin in coins]
+            coin_symbols = await list_coin_symbols_ready_for_latest_sync_async(db)
+            items = []
+            for coin_symbol in coin_symbols:
+                coin = await get_coin_by_symbol_async(db, coin_symbol)
+                if coin is None:
+                    continue
+                items.append(
+                    await _run_sync_pattern_core(
+                        db,
+                        lambda sync_db, coin_id=int(coin.id): _ENGINE.bootstrap_coin(
+                            sync_db,
+                            coin=sync_db.get(Coin, coin_id),
+                            force=force,
+                        ),
+                    )
+                )
             return {
                 "status": "ok",
-                "coins": len(coins),
+                "coins": len(coin_symbols),
                 "created": sum(int(item.get("created", 0)) for item in items),
                 "items": items,
             }
-        finally:
-            db.close()
 
 
-def _run_pattern_evaluation() -> dict[str, object]:
-    with redis_task_lock(
+async def _run_pattern_evaluation() -> dict[str, object]:
+    async with async_redis_task_lock(
         "iris:tasklock:pattern_statistics_refresh",
         timeout=PATTERN_STATISTICS_LOCK_TIMEOUT_SECONDS,
     ) as acquired:
         if not acquired:
             return {"status": "skipped", "reason": "pattern_statistics_refresh_in_progress"}
 
-        db = SessionLocal()
-        try:
-            return run_pattern_evaluation_cycle(db)
-        finally:
-            db.close()
+        async with AsyncSessionLocal() as db:
+            return await _run_sync_pattern_core(db, lambda sync_db: run_pattern_evaluation_cycle(sync_db))
 
 
-@broker.task
-def pattern_evaluation_job() -> dict[str, object]:
-    return _run_pattern_evaluation()
+@analytics_broker.task
+async def pattern_evaluation_job() -> dict[str, object]:
+    return await _run_pattern_evaluation()
 
 
-@broker.task
-def update_pattern_statistics() -> dict[str, object]:
-    return _run_pattern_evaluation()
+@analytics_broker.task
+async def update_pattern_statistics() -> dict[str, object]:
+    return await _run_pattern_evaluation()
 
 
-@broker.task
-def signal_context_enrichment(
+@analytics_broker.task
+async def signal_context_enrichment(
     coin_id: int,
     timeframe: int,
     candle_timestamp: str | None = None,
 ) -> dict[str, object]:
-    db = SessionLocal()
-    try:
-        context_result = enrich_signal_context(
+    async with AsyncSessionLocal() as db:
+        return await _run_sync_pattern_core(
             db,
-            coin_id=int(coin_id),
-            timeframe=int(timeframe),
-            candle_timestamp=candle_timestamp,
+            lambda sync_db: {
+                "status": "ok",
+                "context": enrich_signal_context(
+                    sync_db,
+                    coin_id=int(coin_id),
+                    timeframe=int(timeframe),
+                    candle_timestamp=candle_timestamp,
+                ),
+                "decision": evaluate_investment_decision(
+                    sync_db,
+                    coin_id=int(coin_id),
+                    timeframe=int(timeframe),
+                    emit_event=False,
+                ),
+                "final_signal": evaluate_final_signal(
+                    sync_db,
+                    coin_id=int(coin_id),
+                    timeframe=int(timeframe),
+                    emit_event=False,
+                ),
+            },
         )
-        decision_result = evaluate_investment_decision(
-            db,
-            coin_id=int(coin_id),
-            timeframe=int(timeframe),
-            emit_event=False,
-        )
-        final_signal_result = evaluate_final_signal(
-            db,
-            coin_id=int(coin_id),
-            timeframe=int(timeframe),
-            emit_event=False,
-        )
-        return {
-            "status": "ok",
-            "context": context_result,
-            "decision": decision_result,
-            "final_signal": final_signal_result,
-        }
-    finally:
-        db.close()
 
 
-@broker.task
-def refresh_market_structure() -> dict[str, object]:
-    with redis_task_lock(
+@analytics_broker.task
+async def refresh_market_structure() -> dict[str, object]:
+    async with async_redis_task_lock(
         "iris:tasklock:market_structure_refresh",
         timeout=MARKET_STRUCTURE_LOCK_TIMEOUT_SECONDS,
     ) as acquired:
         if not acquired:
             return {"status": "skipped", "reason": "market_structure_refresh_in_progress"}
 
-        db = SessionLocal()
-        try:
-            sector_result = refresh_sector_metrics(db)
-            cycle_result = refresh_market_cycles(db)
-            context_result = refresh_recent_signal_contexts(db, lookback_days=30)
-            decision_result = refresh_investment_decisions(db, lookback_days=30, emit_events=False)
-            final_signal_result = refresh_final_signals(db, lookback_days=30, emit_events=False)
-            return {
-                "status": "ok",
-                "sectors": sector_result,
-                "cycles": cycle_result,
-                "context": context_result,
-                "decisions": decision_result,
-                "final_signals": final_signal_result,
-            }
-        finally:
-            db.close()
+        async with AsyncSessionLocal() as db:
+            return await _run_sync_pattern_core(
+                db,
+                lambda sync_db: {
+                    "status": "ok",
+                    "sectors": refresh_sector_metrics(sync_db),
+                    "cycles": refresh_market_cycles(sync_db),
+                    "context": refresh_recent_signal_contexts(sync_db, lookback_days=30),
+                    "decisions": refresh_investment_decisions(sync_db, lookback_days=30, emit_events=False),
+                    "final_signals": refresh_final_signals(sync_db, lookback_days=30, emit_events=False),
+                },
+            )
 
 
-@broker.task
-def run_pattern_discovery() -> dict[str, object]:
-    with redis_task_lock(
+@analytics_broker.task
+async def run_pattern_discovery() -> dict[str, object]:
+    async with async_redis_task_lock(
         "iris:tasklock:pattern_discovery_refresh",
         timeout=PATTERN_DISCOVERY_LOCK_TIMEOUT_SECONDS,
     ) as acquired:
         if not acquired:
             return {"status": "skipped", "reason": "pattern_discovery_refresh_in_progress"}
 
-        db = SessionLocal()
-        try:
-            return refresh_discovered_patterns(db)
-        finally:
-            db.close()
+        async with AsyncSessionLocal() as db:
+            return await _run_sync_pattern_core(db, lambda sync_db: refresh_discovered_patterns(sync_db))
 
 
-@broker.task
-def strategy_discovery_job() -> dict[str, object]:
-    with redis_task_lock(
+@analytics_broker.task
+async def strategy_discovery_job() -> dict[str, object]:
+    async with async_redis_task_lock(
         "iris:tasklock:strategy_discovery_refresh",
         timeout=STRATEGY_DISCOVERY_LOCK_TIMEOUT_SECONDS,
     ) as acquired:
         if not acquired:
             return {"status": "skipped", "reason": "strategy_discovery_refresh_in_progress"}
 
-        db = SessionLocal()
-        try:
-            strategy_result = refresh_strategies(db)
-            decision_result = refresh_investment_decisions(db, lookback_days=30, emit_events=False)
-            final_signal_result = refresh_final_signals(db, lookback_days=30, emit_events=False)
-            return {
-                "status": "ok",
-                "strategies": strategy_result,
-                "decisions": decision_result,
-                "final_signals": final_signal_result,
-            }
-        finally:
-            db.close()
+        async with AsyncSessionLocal() as db:
+            return await _run_sync_pattern_core(
+                db,
+                lambda sync_db: {
+                    "status": "ok",
+                    "strategies": refresh_strategies(sync_db),
+                    "decisions": refresh_investment_decisions(sync_db, lookback_days=30, emit_events=False),
+                    "final_signals": refresh_final_signals(sync_db, lookback_days=30, emit_events=False),
+                },
+            )

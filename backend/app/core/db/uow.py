@@ -1,34 +1,33 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import AbstractContextManager, contextmanager
+from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db.session import SessionLocal
+from app.core.db.session import AsyncSessionLocal
 
 
-class UnitOfWork(AbstractContextManager["UnitOfWork"]):
+class AsyncUnitOfWork(AbstractAsyncContextManager["AsyncUnitOfWork"]):
     def __init__(self) -> None:
-        self.session: Session = SessionLocal()
+        self.session: AsyncSession = AsyncSessionLocal()
 
-    def __enter__(self) -> "UnitOfWork":
+    async def __aenter__(self) -> "AsyncUnitOfWork":
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
         if exc_type is None:
-            self.session.commit()
+            await self.session.commit()
         else:
-            self.session.rollback()
-        self.session.close()
+            await self.session.rollback()
+        await self.session.close()
 
 
-@contextmanager
-def session_scope() -> Iterator[Session]:
-    uow = UnitOfWork()
+@asynccontextmanager
+async def async_session_scope() -> AsyncIterator[AsyncSession]:
+    uow = AsyncUnitOfWork()
     try:
-        with uow:
+        async with uow:
             yield uow.session
     finally:
-        if uow.session.is_active:
-            uow.session.close()
+        await uow.session.close()

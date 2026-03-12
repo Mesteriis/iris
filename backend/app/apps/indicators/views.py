@@ -1,41 +1,41 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.apps.indicators.schemas import CoinMetricsRead, MarketFlowRead, MarketRadarRead
 from app.apps.patterns.schemas import MarketCycleRead
-from app.apps.indicators.services import get_market_flow, get_market_radar, list_coin_metrics
-from app.apps.patterns.services import list_market_cycles
+from app.apps.indicators.services import get_market_flow_async, get_market_radar_async, list_coin_metrics_async
+from app.apps.patterns.services import list_market_cycles_async
 from app.core.db.session import get_db
 
 router = APIRouter(tags=["indicators"])
 
 
 @router.get("/coins/metrics", response_model=list[CoinMetricsRead], tags=["metrics"])
-def read_coin_metrics(db: Session = Depends(get_db)) -> list[CoinMetricsRead]:
-    return list(list_coin_metrics(db))
+async def read_coin_metrics(db: AsyncSession = Depends(get_db)) -> list[CoinMetricsRead]:
+    return list(await list_coin_metrics_async(db))
 
 
 @router.get("/market/cycle", response_model=list[MarketCycleRead], tags=["market"])
-def read_market_cycles(
+async def read_market_cycles(
     symbol: str | None = Query(default=None),
     timeframe: int | None = Query(default=None),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> list[MarketCycleRead]:
-    return list(list_market_cycles(db, symbol=symbol, timeframe=timeframe))
+    return list(await list_market_cycles_async(db, symbol=symbol, timeframe=timeframe))
 
 
 @router.get("/market/radar", response_model=MarketRadarRead, tags=["market"])
-def read_market_radar(
+async def read_market_radar(
     limit: int = Query(default=8, ge=1, le=24),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> MarketRadarRead:
-    return get_market_radar(db, limit=limit)
+    return await get_market_radar_async(db, limit=limit)
 
 
 @router.get("/market/flow", response_model=MarketFlowRead, tags=["market"])
-def read_market_flow(
+async def read_market_flow(
     limit: int = Query(default=8, ge=1, le=24),
     timeframe: int = Query(default=60, ge=15, le=1440),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> MarketFlowRead:
-    return get_market_flow(db, limit=limit, timeframe=timeframe)
+    return await get_market_flow_async(db, limit=limit, timeframe=timeframe)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import socket
 import threading
 import time
@@ -25,8 +26,13 @@ MESSAGE_RECEIVER_GROUPS = {
     "ha": "ha",
 }
 READ_BLOCK_MILLISECONDS = 1000
+PUBLISH_QUEUE_WAIT_SECONDS = 0.25
 
 
+# NOTE:
+# This message bus still uses synchronous Redis primitives intentionally.
+# The publish side is isolated behind a background thread, and the receiver side
+# is legacy console/debug infrastructure outside the main HTTP request path.
 @dataclass(frozen=True, slots=True)
 class AnalysisMessage:
     topic: str
@@ -42,9 +48,16 @@ class RedisMessageBus:
         self._stream_name = stream_name
         self._consumer_name = f"{socket.gethostname()}-{os.getpid()}"
         self._stop_event = threading.Event()
+        self._publish_queue: queue.SimpleQueue[dict[str, str] | None] = queue.SimpleQueue()
         self._threads: dict[str, threading.Thread] = {}
         self._receivers: dict[str, tuple[str, str]] = {}
         self._lock = threading.Lock()
+        self._publisher_thread = threading.Thread(
+            target=self._publish_loop,
+            daemon=True,
+            name="iris-message-bus-publisher",
+        )
+        self._publisher_thread.start()
 
     def _ensure_group(self, group_name: str) -> None:
         try:
@@ -123,6 +136,22 @@ class RedisMessageBus:
                                 flush=True,
                             )
 
+    def _publish_loop(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                fields = self._publish_queue.get(timeout=PUBLISH_QUEUE_WAIT_SECONDS)
+            except queue.Empty:
+                continue
+            if fields is None:
+                break
+            try:
+                self._redis.xadd(self._stream_name, fields=fields)
+            except RedisError as exc:  # pragma: no cover
+                print(
+                    f"[message-bus][publisher] publish failed for {fields.get('topic', 'unknown')}: {exc}",
+                    flush=True,
+                )
+
     def start_console_receiver(self, receiver_name: str) -> None:
         with self._lock:
             if receiver_name in self._threads:
@@ -148,16 +177,18 @@ class RedisMessageBus:
             "created_at": message.created_at.isoformat(),
             "payload": json.dumps(message.payload, ensure_ascii=True, sort_keys=True),
         }
-        self._redis.xadd(self._stream_name, fields=fields)
+        self._publish_queue.put(fields)
 
     def close(self) -> None:
         with self._lock:
             self._stop_event.set()
+            self._publish_queue.put(None)
             threads = list(self._threads.values())
             receivers = list(self._receivers.values())
             self._threads.clear()
             self._receivers.clear()
 
+        self._publisher_thread.join(timeout=2.0)
         for thread in threads:
             thread.join(timeout=(READ_BLOCK_MILLISECONDS / 1000) + 1)
 

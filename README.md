@@ -36,12 +36,12 @@ Guidelines:
 
 - `core/` holds shared settings, DB primitives and FastAPI bootstrap.
 - `apps/` is the domain axis. Each app exposes django-like entrypoints such as `views.py`, `services.py`, `tasks.py`, `models.py`, `schemas.py`.
-- `runtime/` owns execution wiring: Redis Streams, TaskIQ orchestration and embedded scheduler loops.
+- `runtime/` owns execution wiring: Redis Streams, TaskIQ orchestration, worker-process runners and scheduler loops.
 - legacy horizontal modules under `app/api`, `app/events`, `app/taskiq`, `app/db`, `app/core/config.py` remain as compatibility shims while the codebase migrates to the new axis.
 
 ## Stack
 
-- FastAPI backend with SQLAlchemy, Alembic and embedded TaskIQ runtime
+- FastAPI backend with SQLAlchemy, Alembic and process-based TaskIQ workers
 - Vue 3 dashboard with Pinia, Tailwind, Vite and ECharts
 - PostgreSQL / TimescaleDB candle storage
 - Redis Streams event bus for internal analytics
@@ -58,6 +58,38 @@ Services:
 
 - Backend: http://localhost:8000
 - Frontend: http://localhost:3000
+
+## Local Backend With uv
+
+The backend now uses `uv` as the package manager.
+
+1. Start only the infrastructure services:
+
+```bash
+docker compose up -d db redis
+```
+
+2. Create the local backend environment:
+
+```bash
+cd backend
+cp .env.example .env
+uv sync --group dev
+```
+
+3. Apply migrations and run the tests from the host machine:
+
+```bash
+uv run alembic upgrade head
+uv run pytest
+```
+
+Notes:
+
+- `backend/.env.example` is configured for host-side execution with `localhost` DB and Redis URLs.
+- Host-side infrastructure ports are published as `55432` for Postgres and `56379` for Redis to avoid conflicts with already-running local services.
+- Docker Compose still injects container-specific `db` / `redis` hostnames into the backend container, so the containerized flow keeps working.
+- If these host ports are already occupied too, adjust the published ports in `docker-compose.yml` and update `backend/.env`.
 
 ## Core data model
 
@@ -334,7 +366,7 @@ There is no parallel legacy analytics trigger path. Runtime candle analytics now
 
 ### Scheduled TaskIQ jobs
 
-All background work stays inside the existing backend runtime. No new worker container is introduced.
+Background jobs stay inside the backend service, but execution is isolated into dedicated TaskIQ worker processes. No separate worker container is required.
 
 - `patterns_bootstrap_scan`
   One-time historical pattern bootstrap.
@@ -516,7 +548,7 @@ Runtime behavior:
 
 - Reuses `coin_metrics.volume_24h`, `coin_metrics.market_cap` and timeframe ATR data from `indicator_cache`.
 - Runs immediately after decision generation inside the existing new-candle pipeline.
-- Re-runs after nightly decision refreshes and market-structure refreshes inside the same embedded TaskIQ runtime.
+- Re-runs after nightly decision refreshes and market-structure refreshes inside the dedicated analytics TaskIQ worker queue.
 - Stores the latest risk state in `risk_metrics` and historical actionable outputs in `final_signals`.
 
 The Home Assistant integration also polls final-signal updates and fires `iris.investment_signal` with:
@@ -709,6 +741,17 @@ The frontend uses these endpoints to show:
 
 Redis Stream pipeline coverage is implemented with `pytest` and `pytest-asyncio`.
 
+Host-side test flow:
+
+```bash
+docker compose up -d db redis
+cd backend
+uv sync --group dev
+cp .env.example .env
+uv run alembic upgrade head
+uv run pytest
+```
+
 Current integration tests cover:
 
 - polling-style candle insert publishing `candle_inserted` and `candle_closed`
@@ -751,7 +794,7 @@ The test fixture uses real 15m OHLCV candles for:
 
 ## Notes
 
-- TaskIQ workers run inside the backend service lifecycle. There is no separate worker container.
+- TaskIQ workers run as dedicated child processes inside the backend service lifecycle. There is no separate worker container.
 - The backend applies Alembic migrations during startup.
 - On startup, a TaskIQ historical sync seeds watched assets into `coins` and backfills `candles`.
 - A periodic TaskIQ task incrementally appends new bars for enabled assets.

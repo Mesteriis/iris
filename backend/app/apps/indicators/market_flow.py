@@ -17,6 +17,9 @@ from app.apps.indicators.schemas import CoinRelationRead, MarketFlowRead, Market
 from app.apps.market_data.domain import ensure_utc
 
 
+# NOTE:
+# This legacy sync read-model remains for compatibility only.
+# HTTP/runtime code should use the async indicator services facade instead.
 def _recent_market_leaders(db: Session, *, limit: int) -> list[MarketLeaderRead]:
     settings = get_settings()
     redis = Redis.from_url(settings.redis_url, decode_responses=True)

@@ -19,9 +19,9 @@ The backend owns three concerns inside one service:
 
 - FastAPI HTTP API
 - SQLAlchemy/Alembic database access and migrations
-- embedded TaskIQ broker and receiver
+- TaskIQ brokers plus dedicated worker processes
 
-TaskIQ uses a ZeroMQ broker and an in-process `Receiver` started from the FastAPI lifespan hook. This keeps the worker inside the backend runtime so the same container or `systemd` unit owns the API and background task execution.
+FastAPI only enqueues TaskIQ jobs. Task execution runs in dedicated worker processes started from the backend lifespan hook, so long-running analytics never execute inside the main HTTP event loop.
 
 Background tasks:
 

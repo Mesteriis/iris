@@ -2,13 +2,23 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from collections.abc import AsyncIterator, Iterator
 from datetime import datetime
 from pathlib import Path
 
 import pytest
-from alembic import command
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+_ORIGINAL_SYS_PATH = list(sys.path)
+sys.path = [
+    path
+    for path in _ORIGINAL_SYS_PATH
+    if Path(path or ".").resolve() != _BACKEND_ROOT
+]
 from alembic.config import Config
+import alembic.command as command
+sys.path = _ORIGINAL_SYS_PATH
 from redis import Redis
 from sqlalchemy import delete, select
 
@@ -18,10 +28,13 @@ from app.core.settings import get_settings
 
 get_settings.cache_clear()
 
-from app.core.db.session import SessionLocal
+from app.core.db.session import AsyncSessionLocal, SessionLocal
 from app.runtime.streams.publisher import flush_publisher, reset_event_publisher
+from app.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
 from app.apps.market_data.models import Coin
 from app.apps.cross_market.models import CoinRelation
+from app.apps.market_structure.models import MarketStructureSource
+from app.apps.news.models import NewsItem, NewsItemLink, NewsSource
 from app.apps.portfolio.models import ExchangeAccount
 from app.apps.predictions.models import MarketPrediction
 from app.apps.patterns.models import PatternFeature
@@ -38,6 +51,7 @@ from app.apps.market_data.service_layer import create_coin
 from app.apps.market_data.domain import utc_now
 from app.apps.market_data.sources.base import MarketBar
 from app.apps.market_data.repos import upsert_base_candles
+from tests.factories.market_data import CoinCreateFactory
 
 TEST_SYMBOLS = {
     "BTCUSD_EVT": ("BTCUSD", "Bitcoin Event Test"),
@@ -128,6 +142,12 @@ def db_session() -> Iterator:
         db.close()
 
 
+@pytest.fixture
+async def async_db_session() -> AsyncIterator:
+    async with AsyncSessionLocal() as db:
+        yield db
+
+
 @pytest.fixture(autouse=True)
 def cleanup_test_coins() -> Iterator[None]:
     db = SessionLocal()
@@ -187,13 +207,58 @@ def cleanup_pattern_state() -> Iterator[None]:
         db.close()
 
 
+@pytest.fixture(autouse=True)
+def cleanup_anomaly_state() -> Iterator[None]:
+    db = SessionLocal()
+    try:
+        db.execute(delete(MarketStructureSnapshot))
+        db.execute(delete(MarketAnomaly))
+        db.commit()
+        yield
+    finally:
+        db.execute(delete(MarketStructureSnapshot))
+        db.execute(delete(MarketAnomaly))
+        db.commit()
+        db.close()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_market_structure_state() -> Iterator[None]:
+    db = SessionLocal()
+    try:
+        db.execute(delete(MarketStructureSource))
+        db.commit()
+        yield
+    finally:
+        db.execute(delete(MarketStructureSource))
+        db.commit()
+        db.close()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_news_state() -> Iterator[None]:
+    db = SessionLocal()
+    try:
+        db.execute(delete(NewsItemLink))
+        db.execute(delete(NewsItem))
+        db.execute(delete(NewsSource))
+        db.commit()
+        yield
+    finally:
+        db.execute(delete(NewsItemLink))
+        db.execute(delete(NewsItem))
+        db.execute(delete(NewsSource))
+        db.commit()
+        db.close()
+
+
 @pytest.fixture
 def seeded_market(db_session, fixture_candles):
     seeded: dict[str, dict[str, object]] = {}
     for target_symbol, (source_symbol, name) in TEST_SYMBOLS.items():
         coin = create_coin(
             db_session,
-            CoinCreate(
+            CoinCreateFactory.build(
                 symbol=target_symbol,
                 name=name,
                 asset_type="crypto",

@@ -63,9 +63,9 @@ class AlphaVantageForexMarketSource(BaseMarketSource):
         del coin
         return True
 
-    def _request_payload(self, params: dict[str, str]) -> dict[str, object]:
+    async def _request_payload(self, params: dict[str, str]) -> dict[str, object]:
         try:
-            response = self.request(
+            response = await self.request(
                 self.base_url,
                 params=params,
                 fallback_retry_after_seconds=300,
@@ -76,7 +76,7 @@ class AlphaVantageForexMarketSource(BaseMarketSource):
             raise TemporaryMarketSourceError(f"{self.name} http error: {exc.response.status_code}") from exc
 
         if "Note" in payload:
-            self.raise_rate_limited(retry_after_seconds=300, message=f"{self.name} rate limited")
+            await self.raise_rate_limited(retry_after_seconds=300, message=f"{self.name} rate limited")
         if "Information" in payload:
             information = str(payload["Information"])
             information_lower = information.lower()
@@ -167,7 +167,7 @@ class AlphaVantageForexMarketSource(BaseMarketSource):
         bars.sort(key=lambda bar: bar.timestamp)
         return [bar for bar in bars if ensure_utc(start) <= bar.timestamp <= ensure_utc(end)]
 
-    def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
+    async def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
         pair = ALPHA_VANTAGE_FOREX_PAIRS.get(coin.symbol)
         if pair is None:
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol}.")
@@ -176,7 +176,7 @@ class AlphaVantageForexMarketSource(BaseMarketSource):
         base_symbol, quote_symbol = pair
 
         if normalized_interval == "1d":
-            payload = self._request_payload(
+            payload = await self._request_payload(
                 {
                     "function": "FX_DAILY",
                     "from_symbol": base_symbol,
@@ -187,7 +187,7 @@ class AlphaVantageForexMarketSource(BaseMarketSource):
             )
             return self._parse_daily_payload(payload, start, end)
 
-        payload = self._request_payload(
+        payload = await self._request_payload(
             {
                 "function": "FX_INTRADAY",
                 "from_symbol": base_symbol,
@@ -208,8 +208,6 @@ class AlphaVantageForexMarketSource(BaseMarketSource):
         resampled: list[MarketBar] = []
         for bucket in sorted(grouped):
             group = sorted(grouped[bucket], key=lambda item: item.timestamp)
-            if not group:
-                continue
             resampled.append(
                 MarketBar(
                     timestamp=bucket,

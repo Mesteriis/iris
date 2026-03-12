@@ -516,6 +516,9 @@ def sync_exchange_balances(db: Session, *, emit_events: bool = True) -> dict[str
     cached_rows: list[dict[str, object]] = []
     for account in accounts:
         plugin = create_exchange_plugin(account)
+        # NOTE:
+        # This synchronous bridge remains intentionally for legacy/test code.
+        # Runtime task orchestration uses the async portfolio service instead.
         balances = asyncio.run(plugin.fetch_balances())
         for balance_row in balances:
             symbol = str(balance_row.get("symbol", "")).upper()
