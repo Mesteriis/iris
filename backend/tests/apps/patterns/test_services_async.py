@@ -8,16 +8,7 @@ from sqlalchemy import select
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics
 from src.apps.patterns.models import PatternFeature
-from src.apps.patterns.query_services import (
-    _build_sector_narratives_async,
-    _capital_wave_bucket,
-    _cluster_membership_map_async,
-    _coin_bar_return_async,
-    _compute_live_regimes_async,
-    _fetch_candle_points_async,
-    _serialize_signal_rows_async,
-    PatternQueryService,
-)
+from src.apps.patterns.query_services import PatternQueryService
 from src.apps.patterns.services import PatternAdminService
 from src.apps.patterns.selectors import _signal_select
 from src.apps.signals.models import Signal
@@ -29,6 +20,7 @@ async def test_pattern_async_services_cover_runtime_helpers(async_db_session, db
     btc = seeded_api_state["btc"]
     eth = seeded_api_state["eth"]
     signal_timestamp = seeded_api_state["signal_timestamp"]
+    query_service = PatternQueryService(async_db_session)
 
     rows = (
         await async_db_session.execute(
@@ -38,34 +30,37 @@ async def test_pattern_async_services_cover_runtime_helpers(async_db_session, db
         )
     ).all()
 
-    assert await _cluster_membership_map_async(async_db_session, []) == {}
-    membership = await _cluster_membership_map_async(async_db_session, rows)
+    assert await query_service.cluster_membership_map([]) == {}
+    membership = await query_service.cluster_membership_map(rows)
     assert membership[(int(btc.id), 15, signal_timestamp)] == ("pattern_cluster_breakout",)
 
-    serialized = await _serialize_signal_rows_async(async_db_session, rows)
+    serialized = await query_service.serialize_signal_rows(rows)
     assert serialized[0].cluster_membership == ("pattern_cluster_breakout",)
     assert serialized[0].market_regime == "bull_trend"
     assert serialized[0].cycle_phase == "markup"
 
-    candles = await _fetch_candle_points_async(async_db_session, coin_id=int(btc.id), timeframe=15, limit=25)
+    candles = await query_service.fetch_candle_points(coin_id=int(btc.id), timeframe=15, limit=25)
     assert len(candles) == 25
     assert candles[-1].timestamp > candles[0].timestamp
 
-    short_return = await _coin_bar_return_async(async_db_session, coin_id=int(btc.id), timeframe=240)
+    short_return = await query_service.coin_bar_return(coin_id=int(btc.id), timeframe=240)
     assert short_return == (None, None)
-    price_change, volatility = await _coin_bar_return_async(async_db_session, coin_id=int(btc.id), timeframe=15)
+    price_change, volatility = await query_service.coin_bar_return(coin_id=int(btc.id), timeframe=15)
     assert price_change is not None
     assert volatility is not None
     assert price_change > -1.0
     assert volatility >= 0.0
 
-    live_regimes = await _compute_live_regimes_async(async_db_session, int(btc.id))
+    live_regimes = await query_service.compute_live_regimes(int(btc.id))
     assert len(live_regimes) == 1
     assert live_regimes[0].timeframe == 15
 
-    assert _capital_wave_bucket(SimpleNamespace(symbol="BTCUSD", sector_id=1), None, top_sector_id=None) == "btc"
     assert (
-        _capital_wave_bucket(
+        PatternQueryService.capital_wave_bucket(SimpleNamespace(symbol="BTCUSD", sector_id=1), None, top_sector_id=None)
+        == "btc"
+    )
+    assert (
+        PatternQueryService.capital_wave_bucket(
             SimpleNamespace(symbol="ETHUSD", sector_id=1),
             SimpleNamespace(market_cap=20_000_000_000),
             top_sector_id=None,
@@ -73,19 +68,19 @@ async def test_pattern_async_services_cover_runtime_helpers(async_db_session, db
         == "large_caps"
     )
     assert (
-        _capital_wave_bucket(
+        PatternQueryService.capital_wave_bucket(
             SimpleNamespace(symbol="ETHUSD", sector_id=77), SimpleNamespace(market_cap=5_000_000_000), top_sector_id=77
         )
         == "sector_leaders"
     )
     assert (
-        _capital_wave_bucket(
+        PatternQueryService.capital_wave_bucket(
             SimpleNamespace(symbol="ALTUSD", sector_id=1), SimpleNamespace(market_cap=2_000_000_000), top_sector_id=None
         )
         == "mid_caps"
     )
     assert (
-        _capital_wave_bucket(
+        PatternQueryService.capital_wave_bucket(
             SimpleNamespace(symbol="MICROUSD", sector_id=1), SimpleNamespace(market_cap=200_000_000), top_sector_id=None
         )
         == "micro_caps"
@@ -121,7 +116,7 @@ async def test_pattern_async_services_cover_runtime_helpers(async_db_session, db
     )
     db_session.commit()
 
-    narratives = await _build_sector_narratives_async(async_db_session)
+    narratives = await query_service.build_sector_narratives()
     narrative_15 = next(item for item in narratives if item.timeframe == 15)
     assert narrative_15.top_sector == "store_of_value"
     assert narrative_15.rotation_state == "btc_dominance_falling"
@@ -315,7 +310,7 @@ async def test_pattern_async_sector_narrative_rotation_branches(monkeypatch) -> 
         del timeframe
         return (0.03 if coin_id == 1 else 0.02, 0.01)
 
-    monkeypatch.setattr("src.apps.patterns.query_services._coin_bar_return_async", _coin_bar_return)
+    monkeypatch.setattr(PatternQueryService, "coin_bar_return", _coin_bar_return)
 
     none_session = _NarrativeSession(
         [
@@ -326,7 +321,7 @@ async def test_pattern_async_sector_narrative_rotation_branches(monkeypatch) -> 
             list(coin_metrics.values()),
         ]
     )
-    none_narratives = await _build_sector_narratives_async(none_session)
+    none_narratives = await PatternQueryService(none_session).build_sector_narratives()
     assert none_narratives[0].rotation_state is None
 
     rising_session = _NarrativeSession(
@@ -338,7 +333,7 @@ async def test_pattern_async_sector_narrative_rotation_branches(monkeypatch) -> 
             list(coin_metrics.values()),
         ]
     )
-    rising_narratives = await _build_sector_narratives_async(rising_session)
+    rising_narratives = await PatternQueryService(rising_session).build_sector_narratives()
     assert rising_narratives[0].rotation_state == "btc_dominance_rising"
 
     falling_session = _NarrativeSession(
@@ -350,7 +345,7 @@ async def test_pattern_async_sector_narrative_rotation_branches(monkeypatch) -> 
             list(coin_metrics.values()),
         ]
     )
-    falling_narratives = await _build_sector_narratives_async(falling_session)
+    falling_narratives = await PatternQueryService(falling_session).build_sector_narratives()
     assert falling_narratives[0].rotation_state == "btc_dominance_falling"
 
     leadership_session = _NarrativeSession(
@@ -362,7 +357,7 @@ async def test_pattern_async_sector_narrative_rotation_branches(monkeypatch) -> 
             list(coin_metrics.values()),
         ]
     )
-    leadership_narratives = await _build_sector_narratives_async(leadership_session)
+    leadership_narratives = await PatternQueryService(leadership_session).build_sector_narratives()
     assert leadership_narratives[0].rotation_state == "sector_leadership_change"
 
     empty_bucket_session = _NarrativeSession(
@@ -373,5 +368,5 @@ async def test_pattern_async_sector_narrative_rotation_branches(monkeypatch) -> 
             [],
         ]
     )
-    empty_bucket_narratives = await _build_sector_narratives_async(empty_bucket_session)
+    empty_bucket_narratives = await PatternQueryService(empty_bucket_session).build_sector_narratives()
     assert empty_bucket_narratives[0].capital_wave is None

@@ -41,255 +41,247 @@ from src.apps.patterns.read_models import (
     sector_read_model_from_mapping,
 )
 from src.apps.patterns.selectors import _signal_select
-from src.core.db.persistence import AsyncQueryService
-
-
-def _serialize_pattern_statistics(
-    stats: Sequence[PatternStatistic],
-) -> dict[str, tuple[PatternStatisticReadModel, ...]]:
-    stats_by_slug: dict[str, list[PatternStatisticReadModel]] = defaultdict(list)
-    for stat in stats:
-        stats_by_slug[str(stat.pattern_slug)].append(pattern_statistic_read_model_from_orm(stat))
-    return {slug: tuple(items) for slug, items in stats_by_slug.items()}
-
-
-async def _fetch_candle_points_async(
-    session: AsyncSession,
-    *,
-    coin_id: int,
-    timeframe: int,
-    limit: int,
-) -> list[CandlePoint]:
-    rows = (
-        await session.execute(
-            select(Candle.timestamp, Candle.open, Candle.high, Candle.low, Candle.close, Candle.volume)
-            .where(Candle.coin_id == coin_id, Candle.timeframe == timeframe)
-            .order_by(Candle.timestamp.desc())
-            .limit(max(limit, 1))
-        )
-    ).all()
-    return [
-        CandlePoint(
-            timestamp=ensure_utc(row.timestamp),
-            open=float(row.open),
-            high=float(row.high),
-            low=float(row.low),
-            close=float(row.close),
-            volume=float(row.volume) if row.volume is not None else None,
-        )
-        for row in reversed(rows)
-    ]
-
-
-async def _compute_live_regimes_async(
-    session: AsyncSession,
-    coin_id: int,
-) -> tuple[RegimeTimeframeReadModel, ...]:
-    items: list[RegimeTimeframeReadModel] = []
-    for timeframe in (15, 60, 240, 1440):
-        candles = await _fetch_candle_points_async(session, coin_id=coin_id, timeframe=timeframe, limit=200)
-        if len(candles) < 20:
-            continue
-        regime, confidence = detect_market_regime(current_indicator_map(candles))
-        items.append(regime_timeframe_read_model(timeframe=timeframe, regime=regime, confidence=confidence))
-    return tuple(items)
-
-
-async def _cluster_membership_map_async(
-    session: AsyncSession,
-    rows: Sequence[object],
-) -> dict[tuple[int, int, object], tuple[str, ...]]:
-    if not rows:
-        return {}
-    coin_ids = sorted({int(row.coin_id) for row in rows})
-    timeframes = sorted({int(row.timeframe) for row in rows})
-    timestamps = sorted({row.candle_timestamp for row in rows})
-    cluster_rows = (
-        await session.execute(
-            select(Signal.coin_id, Signal.timeframe, Signal.candle_timestamp, Signal.signal_type).where(
-                Signal.coin_id.in_(coin_ids),
-                Signal.timeframe.in_(timeframes),
-                Signal.candle_timestamp.in_(timestamps),
-                Signal.signal_type.like("pattern_cluster_%"),
-            )
-        )
-    ).all()
-    membership: dict[tuple[int, int, object], list[str]] = defaultdict(list)
-    for row in cluster_rows:
-        membership[(int(row.coin_id), int(row.timeframe), row.candle_timestamp)].append(str(row.signal_type))
-    return {key: tuple(value) for key, value in membership.items()}
-
-
-async def _serialize_signal_rows_async(
-    session: AsyncSession,
-    rows: Sequence[object],
-) -> tuple[PatternSignalReadModel, ...]:
-    membership = await _cluster_membership_map_async(session, rows)
-    items: list[PatternSignalReadModel] = []
-    for row in rows:
-        regime_snapshot = read_regime_details(row.market_regime_details, int(row.timeframe))
-        market_regime = row.signal_market_regime or (
-            regime_snapshot.regime if regime_snapshot is not None else row.market_regime
-        )
-        items.append(
-            pattern_signal_read_model_from_mapping(
-                row._mapping if hasattr(row, "_mapping") else row,
-                cluster_membership=membership.get((int(row.coin_id), int(row.timeframe), row.candle_timestamp), ()),
-                market_regime=market_regime,
-            )
-        )
-    return tuple(items)
-
-
-async def _coin_bar_return_async(
-    session: AsyncSession,
-    *,
-    coin_id: int,
-    timeframe: int,
-) -> tuple[float | None, float | None]:
-    candles = await _fetch_candle_points_async(session, coin_id=coin_id, timeframe=timeframe, limit=25)
-    if len(candles) < 2:
-        return None, None
-    previous = float(candles[-2].close)
-    current = float(candles[-1].close)
-    change = (current - previous) / previous if previous else 0.0
-    closes = [float(item.close) for item in candles[-20:]]
-    mean_close = sum(closes) / len(closes)
-    volatility = (sum((value - mean_close) ** 2 for value in closes) / len(closes)) ** 0.5 if closes else 0.0
-    return change, (volatility / current if current else 0.0)
-
-
-def _capital_wave_bucket(
-    coin: Coin,
-    metrics: CoinMetrics | None,
-    *,
-    top_sector_id: int | None,
-) -> str:
-    market_cap = float(metrics.market_cap or 0.0) if metrics is not None else 0.0
-    if coin.symbol == "BTCUSD":
-        return "btc"
-    if market_cap >= 15_000_000_000:
-        return "large_caps"
-    if top_sector_id is not None and coin.sector_id == top_sector_id:
-        return "sector_leaders"
-    if market_cap >= 1_000_000_000:
-        return "mid_caps"
-    return "micro_caps"
-
-
-async def _build_sector_narratives_async(session: AsyncSession) -> tuple[SectorNarrativeReadModel, ...]:
-    metrics = (
-        (
-            await session.execute(
-                select(SectorMetric)
-                .options(selectinload(SectorMetric.sector))
-                .order_by(SectorMetric.timeframe.asc(), SectorMetric.relative_strength.desc())
-            )
-        )
-        .scalars()
-        .all()
-    )
-    by_timeframe: dict[int, list[SectorMetric]] = defaultdict(list)
-    for metric in metrics:
-        by_timeframe[int(metric.timeframe)].append(metric)
-
-    btc_metrics = (
-        await session.execute(
-            select(CoinMetrics).join(Coin, CoinMetrics.coin_id == Coin.id).where(Coin.symbol == "BTCUSD")
-        )
-    ).scalar_one_or_none()
-    market_caps = (
-        (
-            await session.execute(
-                select(CoinMetrics.market_cap)
-                .join(Coin, CoinMetrics.coin_id == Coin.id)
-                .where(Coin.asset_type == "crypto", Coin.deleted_at.is_(None))
-            )
-        )
-        .scalars()
-        .all()
-    )
-    total_market_cap = sum(float(value or 0.0) for value in market_caps)
-    btc_dominance = (
-        float(btc_metrics.market_cap or 0.0) / total_market_cap
-        if btc_metrics is not None and total_market_cap > 0
-        else None
-    )
-    crypto_coins = (
-        (
-            await session.execute(
-                select(Coin)
-                .where(Coin.asset_type == "crypto", Coin.enabled.is_(True), Coin.deleted_at.is_(None))
-                .order_by(Coin.sort_order.asc(), Coin.symbol.asc())
-            )
-        )
-        .scalars()
-        .all()
-    )
-    metrics_by_coin: dict[int, CoinMetrics] = {}
-    if crypto_coins:
-        metrics_rows = (
-            (
-                await session.execute(
-                    select(CoinMetrics).where(CoinMetrics.coin_id.in_([coin.id for coin in crypto_coins]))
-                )
-            )
-            .scalars()
-            .all()
-        )
-        metrics_by_coin = {int(item.coin_id): item for item in metrics_rows}
-
-    items: list[SectorNarrativeReadModel] = []
-    for timeframe, timeframe_items in by_timeframe.items():
-        leader = next((item for item in timeframe_items if item.sector is not None), None)
-        top_sector = leader.sector.name if leader is not None and leader.sector is not None else None
-        top_sector_id = int(leader.sector_id) if leader is not None else None
-        if btc_dominance is None:
-            rotation_state = None
-        elif btc_dominance >= 0.45 and (btc_metrics.price_change_24h or 0.0) >= 0:
-            rotation_state = "btc_dominance_rising"
-        elif btc_dominance < 0.45 and (btc_metrics.price_change_24h or 0.0) < 0:
-            rotation_state = "btc_dominance_falling"
-        else:
-            rotation_state = "sector_leadership_change" if top_sector is not None else None
-
-        bucket_scores: dict[str, list[float]] = defaultdict(list)
-        for coin in crypto_coins:
-            metrics_row = metrics_by_coin.get(int(coin.id))
-            price_change, _ = await _coin_bar_return_async(session, coin_id=int(coin.id), timeframe=timeframe)
-            if price_change is None:
-                continue
-            bucket = _capital_wave_bucket(coin, metrics_row, top_sector_id=top_sector_id)
-            market_cap_weight = (
-                min(float(metrics_row.market_cap or 0.0) / 25_000_000_000, 2.0) if metrics_row is not None else 0.0
-            )
-            volume_flow = float(metrics_row.volume_change_24h or 0.0) / 100 if metrics_row is not None else 0.0
-            bucket_scores[bucket].append(price_change + volume_flow + (market_cap_weight * price_change))
-
-        capital_wave = None
-        if bucket_scores:
-            capital_wave = max(
-                ("btc", "large_caps", "sector_leaders", "mid_caps", "micro_caps"),
-                key=lambda bucket: sum(bucket_scores.get(bucket, [])) / len(bucket_scores.get(bucket, [1e-9])),
-            )
-        items.append(
-            sector_narrative_read_model(
-                timeframe=timeframe,
-                top_sector=top_sector,
-                rotation_state=rotation_state,
-                btc_dominance=btc_dominance,
-                capital_wave=capital_wave,
-            )
-        )
-    return tuple(items)
-
-
 from src.apps.signals.models import Signal
+from src.core.db.persistence import AsyncQueryService
 
 
 class PatternQueryService(AsyncQueryService):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, domain="patterns", service_name="PatternQueryService")
+
+    @staticmethod
+    def _serialize_pattern_statistics(
+        stats: Sequence[PatternStatistic],
+    ) -> dict[str, tuple[PatternStatisticReadModel, ...]]:
+        stats_by_slug: dict[str, list[PatternStatisticReadModel]] = defaultdict(list)
+        for stat in stats:
+            stats_by_slug[str(stat.pattern_slug)].append(pattern_statistic_read_model_from_orm(stat))
+        return {slug: tuple(items) for slug, items in stats_by_slug.items()}
+
+    @staticmethod
+    def capital_wave_bucket(
+        coin: Coin,
+        metrics: CoinMetrics | None,
+        *,
+        top_sector_id: int | None,
+    ) -> str:
+        market_cap = float(metrics.market_cap or 0.0) if metrics is not None else 0.0
+        if coin.symbol == "BTCUSD":
+            return "btc"
+        if market_cap >= 15_000_000_000:
+            return "large_caps"
+        if top_sector_id is not None and coin.sector_id == top_sector_id:
+            return "sector_leaders"
+        if market_cap >= 1_000_000_000:
+            return "mid_caps"
+        return "micro_caps"
+
+    async def fetch_candle_points(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        limit: int,
+    ) -> list[CandlePoint]:
+        rows = (
+            await self.session.execute(
+                select(Candle.timestamp, Candle.open, Candle.high, Candle.low, Candle.close, Candle.volume)
+                .where(Candle.coin_id == coin_id, Candle.timeframe == timeframe)
+                .order_by(Candle.timestamp.desc())
+                .limit(max(limit, 1))
+            )
+        ).all()
+        return [
+            CandlePoint(
+                timestamp=ensure_utc(row.timestamp),
+                open=float(row.open),
+                high=float(row.high),
+                low=float(row.low),
+                close=float(row.close),
+                volume=float(row.volume) if row.volume is not None else None,
+            )
+            for row in reversed(rows)
+        ]
+
+    async def compute_live_regimes(
+        self,
+        coin_id: int,
+    ) -> tuple[RegimeTimeframeReadModel, ...]:
+        items: list[RegimeTimeframeReadModel] = []
+        for timeframe in (15, 60, 240, 1440):
+            candles = await self.fetch_candle_points(coin_id=coin_id, timeframe=timeframe, limit=200)
+            if len(candles) < 20:
+                continue
+            regime, confidence = detect_market_regime(current_indicator_map(candles))
+            items.append(regime_timeframe_read_model(timeframe=timeframe, regime=regime, confidence=confidence))
+        return tuple(items)
+
+    async def cluster_membership_map(
+        self,
+        rows: Sequence[object],
+    ) -> dict[tuple[int, int, object], tuple[str, ...]]:
+        if not rows:
+            return {}
+        coin_ids = sorted({int(row.coin_id) for row in rows})
+        timeframes = sorted({int(row.timeframe) for row in rows})
+        timestamps = sorted({row.candle_timestamp for row in rows})
+        cluster_rows = (
+            await self.session.execute(
+                select(Signal.coin_id, Signal.timeframe, Signal.candle_timestamp, Signal.signal_type).where(
+                    Signal.coin_id.in_(coin_ids),
+                    Signal.timeframe.in_(timeframes),
+                    Signal.candle_timestamp.in_(timestamps),
+                    Signal.signal_type.like("pattern_cluster_%"),
+                )
+            )
+        ).all()
+        membership: dict[tuple[int, int, object], list[str]] = defaultdict(list)
+        for row in cluster_rows:
+            membership[(int(row.coin_id), int(row.timeframe), row.candle_timestamp)].append(str(row.signal_type))
+        return {key: tuple(value) for key, value in membership.items()}
+
+    async def serialize_signal_rows(
+        self,
+        rows: Sequence[object],
+    ) -> tuple[PatternSignalReadModel, ...]:
+        membership = await self.cluster_membership_map(rows)
+        items: list[PatternSignalReadModel] = []
+        for row in rows:
+            regime_snapshot = read_regime_details(row.market_regime_details, int(row.timeframe))
+            market_regime = row.signal_market_regime or (
+                regime_snapshot.regime if regime_snapshot is not None else row.market_regime
+            )
+            items.append(
+                pattern_signal_read_model_from_mapping(
+                    row._mapping if hasattr(row, "_mapping") else row,
+                    cluster_membership=membership.get((int(row.coin_id), int(row.timeframe), row.candle_timestamp), ()),
+                    market_regime=market_regime,
+                )
+            )
+        return tuple(items)
+
+    async def coin_bar_return(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+    ) -> tuple[float | None, float | None]:
+        candles = await self.fetch_candle_points(coin_id=coin_id, timeframe=timeframe, limit=25)
+        if len(candles) < 2:
+            return None, None
+        previous = float(candles[-2].close)
+        current = float(candles[-1].close)
+        change = (current - previous) / previous if previous else 0.0
+        closes = [float(item.close) for item in candles[-20:]]
+        mean_close = sum(closes) / len(closes)
+        volatility = (sum((value - mean_close) ** 2 for value in closes) / len(closes)) ** 0.5 if closes else 0.0
+        return change, (volatility / current if current else 0.0)
+
+    async def build_sector_narratives(self) -> tuple[SectorNarrativeReadModel, ...]:
+        metrics = (
+            (
+                await self.session.execute(
+                    select(SectorMetric)
+                    .options(selectinload(SectorMetric.sector))
+                    .order_by(SectorMetric.timeframe.asc(), SectorMetric.relative_strength.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_timeframe: dict[int, list[SectorMetric]] = defaultdict(list)
+        for metric in metrics:
+            by_timeframe[int(metric.timeframe)].append(metric)
+
+        btc_metrics = (
+            await self.session.execute(
+                select(CoinMetrics).join(Coin, CoinMetrics.coin_id == Coin.id).where(Coin.symbol == "BTCUSD")
+            )
+        ).scalar_one_or_none()
+        market_caps = (
+            (
+                await self.session.execute(
+                    select(CoinMetrics.market_cap)
+                    .join(Coin, CoinMetrics.coin_id == Coin.id)
+                    .where(Coin.asset_type == "crypto", Coin.deleted_at.is_(None))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        total_market_cap = sum(float(value or 0.0) for value in market_caps)
+        btc_dominance = (
+            float(btc_metrics.market_cap or 0.0) / total_market_cap
+            if btc_metrics is not None and total_market_cap > 0
+            else None
+        )
+        crypto_coins = (
+            (
+                await self.session.execute(
+                    select(Coin)
+                    .where(Coin.asset_type == "crypto", Coin.enabled.is_(True), Coin.deleted_at.is_(None))
+                    .order_by(Coin.sort_order.asc(), Coin.symbol.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        metrics_by_coin: dict[int, CoinMetrics] = {}
+        if crypto_coins:
+            metrics_rows = (
+                (
+                    await self.session.execute(
+                        select(CoinMetrics).where(CoinMetrics.coin_id.in_([coin.id for coin in crypto_coins]))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            metrics_by_coin = {int(item.coin_id): item for item in metrics_rows}
+
+        items: list[SectorNarrativeReadModel] = []
+        for timeframe, timeframe_items in by_timeframe.items():
+            leader = next((item for item in timeframe_items if item.sector is not None), None)
+            top_sector = leader.sector.name if leader is not None and leader.sector is not None else None
+            top_sector_id = int(leader.sector_id) if leader is not None else None
+            if btc_dominance is None:
+                rotation_state = None
+            elif btc_dominance >= 0.45 and (btc_metrics.price_change_24h or 0.0) >= 0:
+                rotation_state = "btc_dominance_rising"
+            elif btc_dominance < 0.45 and (btc_metrics.price_change_24h or 0.0) < 0:
+                rotation_state = "btc_dominance_falling"
+            else:
+                rotation_state = "sector_leadership_change" if top_sector is not None else None
+
+            bucket_scores: dict[str, list[float]] = defaultdict(list)
+            for coin in crypto_coins:
+                metrics_row = metrics_by_coin.get(int(coin.id))
+                price_change, _ = await self.coin_bar_return(coin_id=int(coin.id), timeframe=timeframe)
+                if price_change is None:
+                    continue
+                bucket = self.capital_wave_bucket(coin, metrics_row, top_sector_id=top_sector_id)
+                market_cap_weight = (
+                    min(float(metrics_row.market_cap or 0.0) / 25_000_000_000, 2.0) if metrics_row is not None else 0.0
+                )
+                volume_flow = float(metrics_row.volume_change_24h or 0.0) / 100 if metrics_row is not None else 0.0
+                bucket_scores[bucket].append(price_change + volume_flow + (market_cap_weight * price_change))
+
+            capital_wave = None
+            if bucket_scores:
+                capital_wave = max(
+                    ("btc", "large_caps", "sector_leaders", "mid_caps", "micro_caps"),
+                    key=lambda bucket: sum(bucket_scores.get(bucket, [])) / len(bucket_scores.get(bucket, [1e-9])),
+                )
+            items.append(
+                sector_narrative_read_model(
+                    timeframe=timeframe,
+                    top_sector=top_sector,
+                    rotation_state=rotation_state,
+                    btc_dominance=btc_dominance,
+                    capital_wave=capital_wave,
+                )
+            )
+        return tuple(items)
 
     async def list_patterns(self) -> tuple[PatternReadModel, ...]:
         self._log_debug("query.list_patterns", mode="read")
@@ -313,7 +305,7 @@ class PatternQueryService(AsyncQueryService):
             .scalars()
             .all()
         )
-        stats_by_slug = _serialize_pattern_statistics(stats)
+        stats_by_slug = self._serialize_pattern_statistics(stats)
         items = tuple(pattern_read_model_from_orm(row, stats_by_slug.get(str(row.slug), ())) for row in rows)
         self._log_debug("query.list_patterns.result", mode="read", count=len(items))
         return items
@@ -400,7 +392,7 @@ class PatternQueryService(AsyncQueryService):
                 .limit(max(limit, 1))
             )
         ).all()
-        items = await _serialize_signal_rows_async(self.session, rows)
+        items = await self.serialize_signal_rows(rows)
         self._log_debug("query.list_coin_patterns.result", mode="read", count=len(items))
         return items
 
@@ -438,7 +430,7 @@ class PatternQueryService(AsyncQueryService):
                 for item in items
             )
         else:
-            items = await _compute_live_regimes_async(self.session, int(coin.id))
+            items = await self.compute_live_regimes(int(coin.id))
         item = coin_regime_read_model(
             coin_id=int(coin.id),
             symbol=str(coin.symbol),
@@ -497,7 +489,7 @@ class PatternQueryService(AsyncQueryService):
         if timeframe is not None:
             stmt = stmt.where(SectorMetric.timeframe == timeframe)
         rows = (await self.session.execute(stmt)).all()
-        narratives = await _build_sector_narratives_async(self.session)
+        narratives = await self.build_sector_narratives()
         item = SectorMetricsReadModel(
             items=tuple(sector_metric_read_model_from_mapping(row._mapping) for row in rows),
             narratives=tuple(
@@ -549,13 +541,4 @@ class PatternQueryService(AsyncQueryService):
         return items
 
 
-__all__ = [
-    "PatternQueryService",
-    "_build_sector_narratives_async",
-    "_capital_wave_bucket",
-    "_cluster_membership_map_async",
-    "_coin_bar_return_async",
-    "_compute_live_regimes_async",
-    "_fetch_candle_points_async",
-    "_serialize_signal_rows_async",
-]
+__all__ = ["PatternQueryService"]
