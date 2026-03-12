@@ -39,6 +39,22 @@ Guidelines:
 - `runtime/` owns execution wiring: Redis Streams, TaskIQ orchestration, worker-process runners and scheduler loops.
 - legacy horizontal modules under `app/api`, `app/events`, `app/taskiq`, `app/db`, `app/core/config.py` remain as compatibility shims while the codebase migrates to the new axis.
 
+### Persistence Rules
+
+IRIS is standardizing database access behind an explicit persistence layer:
+
+- use repositories for write-side persistence and mutable aggregate loading
+- use query services for read-only list/detail/dashboard responses
+- treat `core/db/uow.py` as the transaction owner for commit/rollback/flush
+- prefer immutable typed read models over ORM entities or ad-hoc dictionaries
+- avoid direct `AsyncSession` usage from routes and other application-surface code
+- keep raw SQL isolated to documented infrastructure exceptions such as Timescale aggregate maintenance
+
+Reference docs:
+
+- [docs/persistence-audit.md](/Users/avm/projects/Personal/iris/docs/persistence-audit.md)
+- [docs/persistence-standard.md](/Users/avm/projects/Personal/iris/docs/persistence-standard.md)
+
 ## Stack
 
 - FastAPI backend with SQLAlchemy, Alembic and process-based TaskIQ workers
