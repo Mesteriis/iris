@@ -35,23 +35,28 @@ class _StopFlag:
 def test_run_worker_loop_and_run_group_with_stop(monkeypatch) -> None:
     first_worker = _Worker()
     second_worker = _Worker()
+    dispatcher_worker = _Worker()
     workers = iter([first_worker, second_worker])
     handlers: list[object] = []
 
     monkeypatch.setattr(runner, "create_worker", lambda group_name: next(workers))
+    monkeypatch.setattr(runner, "create_topology_dispatcher_consumer", lambda: dispatcher_worker)
     monkeypatch.setattr(runner.signal, "signal", lambda sig, handler: handlers.append(handler))
 
     runner.run_worker_loop("indicator_workers")
 
     stop_flag = _StopFlag()
     runner._run_group_with_stop("analysis_scheduler_workers", stop_flag)
+    runner._run_topology_dispatcher_with_stop(stop_flag)
 
     assert first_worker.run_calls == [None]
     assert first_worker.closed is True
     assert second_worker.closed is True
     assert second_worker.stopped is True
+    assert dispatcher_worker.closed is True
+    assert dispatcher_worker.stopped is True
     assert callable(second_worker.run_calls[0])
-    assert len(handlers) == 2
+    assert len(handlers) == 4
 
 
 def test_spawn_and_stop_event_worker_processes(monkeypatch) -> None:
@@ -100,11 +105,12 @@ def test_spawn_and_stop_event_worker_processes(monkeypatch) -> None:
     stop_event, processes = runner.spawn_event_worker_processes()
 
     assert stop_event is fake_context.event
-    assert len(processes) == 2
+    assert len(processes) == 3
+    assert processes[0].name == "iris-control-plane-dispatcher"
     assert all(process.started for process in processes)
 
     runner.stop_event_worker_processes(stop_event, processes)
 
     assert stop_event.is_set() is True
-    assert processes[0].terminated is True
-    assert processes[1].terminated is False
+    assert processes[1].terminated is True
+    assert processes[2].terminated is False

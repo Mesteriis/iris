@@ -88,6 +88,14 @@ The runtime side now also has a dedicated dispatcher/evaluator layer that can co
 - throttle windows
 - shadow observe-only behavior
 
+Topology snapshots are now loaded through a dedicated cache manager:
+
+- DB remains the source of truth
+- Redis stores the hot serialized topology snapshot
+- the runtime keeps an in-process snapshot copy
+- control events trigger cache refresh/invalidation
+- downstream domain workers now consume per-consumer delivery streams instead of filtering the ingress stream locally
+
 ## Database
 
 The database includes the market-data core plus higher-level analytical domains. Key persisted areas now include:

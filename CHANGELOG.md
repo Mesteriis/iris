@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Topology cache manager with Redis-backed snapshot storage, local hot cache, snapshot codec and control-event-driven refresh logic, plus runtime bridge code for delivery-stream fan-out.
 - Runtime control-plane dispatcher and route evaluator under `backend/src/runtime/control_plane` with route-status handling, filter evaluation, shadow/throttle decisions, in-memory dispatch metrics and dedicated pytest coverage.
 - Control-plane repositories and application services for event registry reads, route management, audit logging, topology snapshots and draft preview workflows, with pytest coverage for compatibility validation and change tracking.
 - Event Control Plane storage foundation under `backend/src/apps/control_plane` with persisted `event_definitions`, `event_consumers`, `event_routes`, `event_route_audit_logs`, `topology_config_versions`, `topology_drafts` and `topology_draft_changes`.

@@ -15,7 +15,7 @@ from src.core.db.session import AsyncSessionLocal
 from src.core.settings import get_settings
 from src.runtime.streams.consumer import EventConsumer, EventConsumerConfig, default_consumer_name
 from src.runtime.streams.publisher import publish_event
-from src.runtime.streams.router import subscribed_event_types
+from src.runtime.control_plane.worker import build_delivery_stream_name
 from src.runtime.streams.types import (
     ANALYSIS_SCHEDULER_WORKER_GROUP,
     ANOMALY_SECTOR_WORKER_GROUP,
@@ -470,35 +470,35 @@ def create_worker(group_name: str, consumer_name: str | None = None) -> EventCon
     config = EventConsumerConfig(
         group_name=group_name,
         consumer_name=effective_consumer_name,
-        stream_name=settings.event_stream_name,
+        stream_name=build_delivery_stream_name(group_name),
         batch_size=settings.event_worker_batch_size,
         block_milliseconds=settings.event_worker_block_milliseconds,
         pending_idle_milliseconds=settings.event_worker_pending_idle_milliseconds,
     )
     if group_name == INDICATOR_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_indicator_event, interested_event_types=subscribed_event_types(group_name))
+        return EventConsumer(config, handler=_handle_indicator_event, interested_event_types=None)
     if group_name == ANALYSIS_SCHEDULER_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_analysis_scheduler_event, interested_event_types=subscribed_event_types(group_name))
+        return EventConsumer(config, handler=_handle_analysis_scheduler_event, interested_event_types=None)
     if group_name == PATTERN_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_pattern_event, interested_event_types=subscribed_event_types(group_name))
+        return EventConsumer(config, handler=_handle_pattern_event, interested_event_types=None)
     if group_name == REGIME_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_regime_event, interested_event_types=subscribed_event_types(group_name))
+        return EventConsumer(config, handler=_handle_regime_event, interested_event_types=None)
     if group_name == DECISION_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_decision_event, interested_event_types=subscribed_event_types(group_name))
+        return EventConsumer(config, handler=_handle_decision_event, interested_event_types=None)
     if group_name == FUSION_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_fusion_event, interested_event_types=subscribed_event_types(group_name))
+        return EventConsumer(config, handler=_handle_fusion_event, interested_event_types=None)
     if group_name == CROSS_MARKET_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_cross_market_event, interested_event_types=subscribed_event_types(group_name))
+        return EventConsumer(config, handler=_handle_cross_market_event, interested_event_types=None)
     if group_name == PORTFOLIO_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_portfolio_event, interested_event_types=subscribed_event_types(group_name))
+        return EventConsumer(config, handler=_handle_portfolio_event, interested_event_types=None)
     if group_name == ANOMALY_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_anomaly_event, interested_event_types=subscribed_event_types(group_name))
+        return EventConsumer(config, handler=_handle_anomaly_event, interested_event_types=None)
     if group_name == ANOMALY_SECTOR_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_anomaly_sector_event, interested_event_types=subscribed_event_types(group_name))
+        return EventConsumer(config, handler=_handle_anomaly_sector_event, interested_event_types=None)
     if group_name == NEWS_NORMALIZATION_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_news_normalization_event, interested_event_types=subscribed_event_types(group_name))
+        return EventConsumer(config, handler=_handle_news_normalization_event, interested_event_types=None)
     if group_name == NEWS_CORRELATION_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_news_correlation_event, interested_event_types=subscribed_event_types(group_name))
+        return EventConsumer(config, handler=_handle_news_correlation_event, interested_event_types=None)
     if group_name == HYPOTHESIS_WORKER_GROUP:
-        return EventConsumer(config, handler=_handle_hypothesis_event, interested_event_types=subscribed_event_types(group_name))
+        return EventConsumer(config, handler=_handle_hypothesis_event, interested_event_types=None)
     raise ValueError(f"Unsupported event worker group '{group_name}'.")

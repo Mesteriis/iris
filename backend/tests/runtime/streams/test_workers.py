@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from src.runtime.streams import workers
+from src.runtime.control_plane.worker import build_delivery_stream_name
 from src.runtime.streams.types import (
     ANALYSIS_SCHEDULER_WORKER_GROUP,
     ANOMALY_SECTOR_WORKER_GROUP,
@@ -404,7 +405,7 @@ def test_worker_domain_helpers_and_factory(monkeypatch) -> None:
 
     class FakeConsumer:
         def __init__(self, config, *, handler, interested_event_types):
-            created.append((config.group_name, handler, interested_event_types))
+            created.append((config.group_name, config.stream_name, handler, interested_event_types))
 
     monkeypatch.setattr(
         workers,
@@ -417,7 +418,6 @@ def test_worker_domain_helpers_and_factory(monkeypatch) -> None:
         ),
     )
     monkeypatch.setattr(workers, "default_consumer_name", lambda group_name: f"default-{group_name}")
-    monkeypatch.setattr(workers, "subscribed_event_types", lambda group_name: {group_name})
     monkeypatch.setattr(workers, "EventConsumer", FakeConsumer)
 
     for group_name in (
@@ -437,7 +437,7 @@ def test_worker_domain_helpers_and_factory(monkeypatch) -> None:
     ):
         workers.create_worker(group_name)
 
-    assert [group_name for group_name, _, _ in created] == [
+    assert [group_name for group_name, _, _, _ in created] == [
         INDICATOR_WORKER_GROUP,
         ANALYSIS_SCHEDULER_WORKER_GROUP,
         PATTERN_WORKER_GROUP,
@@ -452,6 +452,22 @@ def test_worker_domain_helpers_and_factory(monkeypatch) -> None:
         NEWS_CORRELATION_WORKER_GROUP,
         HYPOTHESIS_WORKER_GROUP,
     ]
+    assert [stream_name for _, stream_name, _, _ in created] == [
+        build_delivery_stream_name(INDICATOR_WORKER_GROUP),
+        build_delivery_stream_name(ANALYSIS_SCHEDULER_WORKER_GROUP),
+        build_delivery_stream_name(PATTERN_WORKER_GROUP),
+        build_delivery_stream_name(REGIME_WORKER_GROUP),
+        build_delivery_stream_name(DECISION_WORKER_GROUP),
+        build_delivery_stream_name(FUSION_WORKER_GROUP),
+        build_delivery_stream_name(CROSS_MARKET_WORKER_GROUP),
+        build_delivery_stream_name(PORTFOLIO_WORKER_GROUP),
+        build_delivery_stream_name(ANOMALY_WORKER_GROUP),
+        build_delivery_stream_name(ANOMALY_SECTOR_WORKER_GROUP),
+        build_delivery_stream_name(NEWS_NORMALIZATION_WORKER_GROUP),
+        build_delivery_stream_name(NEWS_CORRELATION_WORKER_GROUP),
+        build_delivery_stream_name(HYPOTHESIS_WORKER_GROUP),
+    ]
+    assert {interested_event_types for _, _, _, interested_event_types in created} == {None}
 
     with pytest.raises(ValueError, match="Unsupported event worker group"):
         workers.create_worker("unsupported")

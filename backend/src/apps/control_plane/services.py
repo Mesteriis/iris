@@ -15,6 +15,13 @@ from src.apps.control_plane.contracts import (
     RouteThrottle,
     TopologyDiffItem,
 )
+from src.apps.control_plane.control_events import (
+    CONTROL_CACHE_INVALIDATED,
+    CONTROL_ROUTE_CREATED,
+    CONTROL_ROUTE_STATUS_CHANGED,
+    CONTROL_ROUTE_UPDATED,
+    publish_control_event,
+)
 from src.apps.control_plane.enums import (
     EventRouteScope,
     EventRouteStatus,
@@ -180,6 +187,20 @@ class RouteManagementService:
             after=route_to_snapshot(route),
         )
         await self._session.commit()
+        publish_control_event(
+            CONTROL_ROUTE_CREATED,
+            {
+                "route_key": route.route_key,
+                "event_type": command.event_type,
+                "consumer_key": command.consumer_key,
+                "status": route.status,
+                "actor": actor.actor,
+            },
+        )
+        publish_control_event(
+            CONTROL_CACHE_INVALIDATED,
+            {"reason": "route_created", "route_key": route.route_key, "actor": actor.actor},
+        )
         return route
 
     async def update_route(
@@ -223,6 +244,20 @@ class RouteManagementService:
             after=route_to_snapshot(route),
         )
         await self._session.commit()
+        publish_control_event(
+            CONTROL_ROUTE_UPDATED,
+            {
+                "route_key": route.route_key,
+                "event_type": command.event_type,
+                "consumer_key": command.consumer_key,
+                "status": route.status,
+                "actor": actor.actor,
+            },
+        )
+        publish_control_event(
+            CONTROL_CACHE_INVALIDATED,
+            {"reason": "route_updated", "route_key": route.route_key, "actor": actor.actor},
+        )
         return route
 
     async def change_status(
@@ -247,6 +282,18 @@ class RouteManagementService:
             after=route_to_snapshot(route),
         )
         await self._session.commit()
+        publish_control_event(
+            CONTROL_ROUTE_STATUS_CHANGED,
+            {
+                "route_key": route.route_key,
+                "status": route.status,
+                "actor": actor.actor,
+            },
+        )
+        publish_control_event(
+            CONTROL_CACHE_INVALIDATED,
+            {"reason": "route_status_changed", "route_key": route.route_key, "actor": actor.actor},
+        )
         return route
 
     async def _require_event_definition(self, event_type: str) -> EventDefinition:
