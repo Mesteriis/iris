@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.apps.predictions.services import PredictionService, apply_prediction_evaluation_side_effects
+from src.apps.predictions.services import PredictionService, PredictionSideEffectDispatcher
 from src.core.db.uow import AsyncUnitOfWork
 from src.runtime.orchestration.broker import analytics_broker
 from src.runtime.orchestration.locks import async_redis_task_lock
@@ -19,5 +19,5 @@ async def prediction_evaluation_job() -> dict[str, object]:
         async with AsyncUnitOfWork() as uow:
             result = await PredictionService(uow).evaluate_pending_predictions(emit_events=True)
             await uow.commit()
-        await apply_prediction_evaluation_side_effects(result)
+        await PredictionSideEffectDispatcher().apply_evaluation(result)
         return result.to_summary()

@@ -9,7 +9,7 @@ from src.apps.cross_market.query_services import CrossMarketQueryService
 from src.apps.cross_market.repositories import CoinRelationRepository, SectorMetricRepository
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.repositories import CandleRepository
-from src.apps.predictions.services import PredictionCreationBatch, PredictionService, apply_prediction_creation_side_effects
+from src.apps.predictions.services import PredictionCreationBatch, PredictionService, PredictionSideEffectDispatcher
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
@@ -171,7 +171,7 @@ class CrossMarketService(PersistenceComponent):
                 )
 
             if leader_effect is not None:
-                await apply_prediction_creation_side_effects(leader_effect.prediction_batch)
+                await PredictionSideEffectDispatcher().apply_creation(leader_effect.prediction_batch)
                 if leader_effect.emit_event:
                     publish_event(
                         "market_leader_detected",

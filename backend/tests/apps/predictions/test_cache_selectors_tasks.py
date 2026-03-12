@@ -20,8 +20,9 @@ from src.apps.predictions.cache import (
     read_cached_prediction,
     read_cached_prediction_async,
 )
+from src.apps.predictions.query_services import PredictionQueryService
 from src.apps.predictions.selectors import list_predictions
-from src.apps.predictions.services import PredictionEvaluationBatch, list_predictions_async
+from src.apps.predictions.services import PredictionEvaluationBatch
 
 
 class _SyncCacheClient:
@@ -138,10 +139,10 @@ def test_prediction_cache_and_sync_selector_paths(monkeypatch, settings, db_sess
 
 @pytest.mark.asyncio
 async def test_prediction_async_selector_and_task_wrapper(async_db_session, seeded_api_state, monkeypatch) -> None:
-    predictions = await list_predictions_async(async_db_session, status="confirmed", limit=10)
+    predictions = await PredictionQueryService(async_db_session).list_predictions(status="confirmed", limit=10)
     assert len(predictions) == 1
-    assert predictions[0]["status"] == "confirmed"
-    all_predictions = await list_predictions_async(async_db_session, limit=0)
+    assert predictions[0].status == "confirmed"
+    all_predictions = await PredictionQueryService(async_db_session).list_predictions(limit=0)
     assert all_predictions
 
     events: list[str] = []
@@ -189,11 +190,12 @@ async def test_prediction_async_selector_and_task_wrapper(async_db_session, seed
                 expired=1,
             )
 
-    async def _side_effects(result: PredictionEvaluationBatch) -> None:
-        events.append(f"side_effects:{result.evaluated}")
+    class _PredictionSideEffectDispatcher:
+        async def apply_evaluation(self, result: PredictionEvaluationBatch) -> None:
+            events.append(f"side_effects:{result.evaluated}")
 
     monkeypatch.setattr(prediction_tasks_module, "PredictionService", _PredictionService)
-    monkeypatch.setattr(prediction_tasks_module, "apply_prediction_evaluation_side_effects", _side_effects)
+    monkeypatch.setattr(prediction_tasks_module, "PredictionSideEffectDispatcher", _PredictionSideEffectDispatcher)
     executed = await prediction_tasks_module.prediction_evaluation_job()
     assert executed == {"status": "ok", "evaluated": 3, "confirmed": 1, "failed": 1, "expired": 1}
     assert events[1:6] == [

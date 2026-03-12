@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Mapping
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.cross_market.models import CoinRelation
 from src.apps.market_data.domain import ensure_utc, utc_now
@@ -24,10 +22,9 @@ from src.apps.predictions.engine import (
     evaluate_pending_predictions,
 )
 from src.apps.predictions.models import MarketPrediction, PredictionResult
-from src.apps.predictions.query_services import PredictionQueryService
 from src.apps.predictions.repositories import PredictionRelationRepository, PredictionRepository
-from src.core.db.persistence import PersistenceComponent, freeze_json_value
-from src.core.db.uow import BaseAsyncUnitOfWork, SessionUnitOfWork
+from src.core.db.persistence import PERSISTENCE_LOGGER, PersistenceComponent, freeze_json_value
+from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
 
 _PREDICTION_MOVE_THRESHOLD = 0.015
@@ -392,67 +389,41 @@ class PredictionService(PersistenceComponent):
         return relation
 
 
-async def apply_prediction_creation_side_effects(result: PredictionCreationBatch) -> None:
-    for snapshot in result.cache_snapshots:
-        await cache_prediction_snapshot_async(**snapshot.as_cache_kwargs())
-
-
-async def apply_prediction_evaluation_side_effects(result: PredictionEvaluationBatch) -> None:
-    for snapshot in result.cache_snapshots:
-        await cache_prediction_snapshot_async(**snapshot.as_cache_kwargs())
-    for event in result.events:
-        publish_event(event.event_type, dict(event.payload))
-
-
-async def list_predictions_async(
-    db: AsyncSession,
-    *,
-    limit: int = 100,
-    status: str | None = None,
-) -> list[dict[str, object]]:
-    items = await PredictionQueryService(db).list_predictions(limit=limit, status=status)
-    return [asdict(item) for item in items]
-
-
-async def create_market_predictions_async(
-    db: AsyncSession,
-    *,
-    leader_coin_id: int,
-    prediction_event: str,
-    expected_move: str,
-    base_confidence: float,
-    emit_events: bool = True,
-    cache_snapshots: bool = True,
-) -> dict[str, object]:
-    del emit_events
-    async with SessionUnitOfWork(db) as uow:
-        result = await PredictionService(uow).create_market_predictions(
-            leader_coin_id=leader_coin_id,
-            prediction_event=prediction_event,
-            expected_move=expected_move,
-            base_confidence=base_confidence,
+class PredictionSideEffectDispatcher:
+    async def apply_creation(self, result: PredictionCreationBatch) -> None:
+        PERSISTENCE_LOGGER.debug(
+            "prediction.side_effects.apply_creation",
+            extra={
+                "persistence": {
+                    "event": "prediction.side_effects.apply_creation",
+                    "component_type": "service",
+                    "domain": "predictions",
+                    "component": "PredictionSideEffectDispatcher",
+                    "count": len(result.cache_snapshots),
+                }
+            },
         )
-        await uow.commit()
-    if cache_snapshots:
-        await apply_prediction_creation_side_effects(result)
-    return result.to_summary(include_cache_snapshots=True)
+        for snapshot in result.cache_snapshots:
+            await cache_prediction_snapshot_async(**snapshot.as_cache_kwargs())
 
-
-async def evaluate_pending_predictions_async(
-    db: AsyncSession,
-    *,
-    limit: int = 200,
-    emit_events: bool = True,
-) -> dict[str, object]:
-    async with SessionUnitOfWork(db) as uow:
-        result = await PredictionService(uow).evaluate_pending_predictions(limit=limit, emit_events=emit_events)
-        await uow.commit()
-    await apply_prediction_evaluation_side_effects(result)
-    return result.to_summary()
-
-
-def prediction_cache_snapshot_from_entry(entry: PredictionCacheEntry) -> PredictionCacheSnapshot:
-    return PredictionCacheSnapshot.from_cache_entry(entry)
+    async def apply_evaluation(self, result: PredictionEvaluationBatch) -> None:
+        PERSISTENCE_LOGGER.debug(
+            "prediction.side_effects.apply_evaluation",
+            extra={
+                "persistence": {
+                    "event": "prediction.side_effects.apply_evaluation",
+                    "component_type": "service",
+                    "domain": "predictions",
+                    "component": "PredictionSideEffectDispatcher",
+                    "cache_snapshot_count": len(result.cache_snapshots),
+                    "event_count": len(result.events),
+                }
+            },
+        )
+        for snapshot in result.cache_snapshots:
+            await cache_prediction_snapshot_async(**snapshot.as_cache_kwargs())
+        for event in result.events:
+            publish_event(event.event_type, dict(event.payload))
 
 
 __all__ = [
@@ -460,18 +431,12 @@ __all__ = [
     "PredictionCreationBatch",
     "PredictionEvaluationBatch",
     "PredictionPublishedEvent",
-    "PredictionQueryService",
     "PredictionService",
-    "apply_prediction_creation_side_effects",
-    "apply_prediction_evaluation_side_effects",
+    "PredictionSideEffectDispatcher",
     "cache_prediction_snapshot",
     "cache_prediction_snapshot_async",
     "create_market_predictions",
-    "create_market_predictions_async",
     "evaluate_pending_predictions",
-    "evaluate_pending_predictions_async",
-    "list_predictions_async",
-    "prediction_cache_snapshot_from_entry",
     "read_cached_prediction",
     "read_cached_prediction_async",
 ]
