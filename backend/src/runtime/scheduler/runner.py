@@ -14,6 +14,7 @@ from src.apps.news import tasks as news_tasks
 from src.apps.patterns import tasks as pattern_tasks
 from src.apps.portfolio import tasks as portfolio_tasks
 from src.apps.predictions import tasks as prediction_tasks
+from src.apps.hypothesis_engine.tasks import hypothesis_tasks
 from src.core.settings import get_settings
 from src.runtime.orchestration.dispatcher import enqueue_task
 
@@ -209,6 +210,24 @@ async def schedule_news_poll(stop_event: asyncio.Event) -> None:
             await enqueue_task(news_tasks.poll_enabled_news_sources_job)
 
 
+async def schedule_hypothesis_evaluation(stop_event: asyncio.Event) -> None:
+    await asyncio.sleep(1)
+    if stop_event.is_set():
+        return
+
+    interval = settings.taskiq_hypothesis_eval_interval_seconds
+    if interval <= 0 or not settings.enable_hypothesis_engine:
+        await stop_event.wait()
+        return
+
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+        except TimeoutError:
+            LOGGER.info("Queueing hypothesis evaluation task.")
+            await enqueue_task(hypothesis_tasks.evaluate_hypotheses_job)
+
+
 async def schedule_market_structure_snapshot_poll(stop_event: asyncio.Event) -> None:
     await asyncio.sleep(1)
     if stop_event.is_set():
@@ -251,7 +270,7 @@ def start_scheduler(
     finish_event: asyncio.Event,
     backfill_event: asyncio.Event,
 ) -> Sequence[asyncio.Task[Any]]:
-    tasks = (
+    tasks: list[asyncio.Task[Any]] = [
         asyncio.create_task(schedule_history_backfills(finish_event, backfill_event)),
         asyncio.create_task(enqueue_latest_price_snapshots(finish_event)),
         asyncio.create_task(schedule_pattern_statistics_refresh(finish_event)),
@@ -261,9 +280,16 @@ def start_scheduler(
         asyncio.create_task(schedule_portfolio_sync(finish_event)),
         asyncio.create_task(schedule_prediction_evaluation(finish_event)),
         asyncio.create_task(schedule_news_poll(finish_event)),
-        asyncio.create_task(schedule_market_structure_snapshot_poll(finish_event)),
-        asyncio.create_task(schedule_market_structure_health_refresh(finish_event)),
-    )
+    ]
+    if settings.enable_hypothesis_engine:
+        hypothesis_task = asyncio.create_task(schedule_hypothesis_evaluation(finish_event))
+        tasks.append(hypothesis_task)
+        app.state.taskiq_hypothesis_evaluation_task = hypothesis_task
+    else:
+        app.state.taskiq_hypothesis_evaluation_task = None
+    market_structure_snapshot_task = asyncio.create_task(schedule_market_structure_snapshot_poll(finish_event))
+    market_structure_health_task = asyncio.create_task(schedule_market_structure_health_refresh(finish_event))
+    tasks.extend((market_structure_snapshot_task, market_structure_health_task))
     (
         app.state.taskiq_backfill_task,
         app.state.taskiq_refresh_task,
@@ -274,7 +300,17 @@ def start_scheduler(
         app.state.taskiq_portfolio_sync_task,
         app.state.taskiq_prediction_evaluation_task,
         app.state.taskiq_news_poll_task,
-        app.state.taskiq_market_structure_snapshot_poll_task,
-        app.state.taskiq_market_structure_health_task,
+        *remaining,
     ) = tasks
-    return tasks
+    if settings.enable_hypothesis_engine:
+        (
+            _hypothesis_task,
+            app.state.taskiq_market_structure_snapshot_poll_task,
+            app.state.taskiq_market_structure_health_task,
+        ) = remaining
+    else:
+        (
+            app.state.taskiq_market_structure_snapshot_poll_task,
+            app.state.taskiq_market_structure_health_task,
+        ) = remaining
+    return tuple(tasks)

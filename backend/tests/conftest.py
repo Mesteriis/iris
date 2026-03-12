@@ -40,6 +40,7 @@ from src.apps.predictions.models import MarketPrediction
 from src.apps.patterns.models import PatternFeature
 from src.apps.patterns.models import PatternRegistry
 from src.apps.patterns.models import PatternStatistic
+from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AIPrompt, AIWeight
 from src.apps.portfolio.models import PortfolioAction
 from src.apps.portfolio.models import PortfolioBalance
 from src.apps.portfolio.models import PortfolioPosition
@@ -117,6 +118,8 @@ def isolated_event_stream(redis_client: Redis, settings) -> Iterator[None]:
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:prediction:*"):
         redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:ai:*"):
+        redis_client.delete(key)
     yield
     flush_publisher(timeout=2.0)
     redis_client.delete(settings.event_stream_name)
@@ -129,6 +132,8 @@ def isolated_event_stream(redis_client: Redis, settings) -> Iterator[None]:
     for key in redis_client.scan_iter("iris:correlation:*"):
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:prediction:*"):
+        redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:ai:*"):
         redis_client.delete(key)
     reset_event_publisher()
 
@@ -248,6 +253,25 @@ def cleanup_news_state() -> Iterator[None]:
         db.execute(delete(NewsItemLink))
         db.execute(delete(NewsItem))
         db.execute(delete(NewsSource))
+        db.commit()
+        db.close()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_hypothesis_state() -> Iterator[None]:
+    db = SessionLocal()
+    try:
+        db.execute(delete(AIHypothesisEval))
+        db.execute(delete(AIHypothesis))
+        db.execute(delete(AIPrompt))
+        db.execute(delete(AIWeight))
+        db.commit()
+        yield
+    finally:
+        db.execute(delete(AIHypothesisEval))
+        db.execute(delete(AIHypothesis))
+        db.execute(delete(AIPrompt))
+        db.execute(delete(AIWeight))
         db.commit()
         db.close()
 

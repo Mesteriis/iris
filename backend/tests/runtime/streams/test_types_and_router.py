@@ -9,6 +9,7 @@ from src.runtime.streams.types import (
     ANOMALY_SECTOR_WORKER_GROUP,
     ANOMALY_WORKER_GROUP,
     FUSION_WORKER_GROUP,
+    HYPOTHESIS_WORKER_GROUP,
     INDICATOR_WORKER_GROUP,
     IrisEvent,
     NEWS_CORRELATION_WORKER_GROUP,
@@ -57,6 +58,8 @@ def test_subscribed_event_types_and_invalid_worker_group() -> None:
     assert "news_symbol_correlation_updated" in router.subscribed_event_types(FUSION_WORKER_GROUP)
     assert router.subscribed_event_types(NEWS_NORMALIZATION_WORKER_GROUP) == {"news_item_ingested"}
     assert router.subscribed_event_types(NEWS_CORRELATION_WORKER_GROUP) == {"news_item_normalized"}
+    assert "signal_created" in router.subscribed_event_types(HYPOTHESIS_WORKER_GROUP)
+    assert "portfolio_balance_updated" in router.subscribed_event_types(HYPOTHESIS_WORKER_GROUP)
 
     with pytest.raises(ValueError, match="Unsupported event worker group"):
         router.subscribed_event_types("unsupported")

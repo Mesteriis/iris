@@ -168,6 +168,7 @@ async def test_schedule_history_backfills_continues_when_due_is_unknown(monkeypa
         runner.schedule_portfolio_sync,
         runner.schedule_prediction_evaluation,
         runner.schedule_news_poll,
+        runner.schedule_hypothesis_evaluation,
         runner.schedule_market_structure_snapshot_poll,
         runner.schedule_market_structure_health_refresh,
     ],
@@ -179,6 +180,7 @@ async def test_periodic_schedulers_return_immediately_when_stopped(monkeypatch, 
 
     monkeypatch.setattr(runner.asyncio, "sleep", _fast_sleep)
     monkeypatch.setattr(runner, "enqueue_task", lambda task: asyncio.sleep(0, result=calls.append(task)))
+    monkeypatch.setattr(runner.settings, "enable_hypothesis_engine", True, raising=False)
 
     await function(stop_event)
 
@@ -197,6 +199,7 @@ async def test_periodic_schedulers_return_immediately_when_stopped(monkeypatch, 
         ("schedule_portfolio_sync", "taskiq_portfolio_sync_interval_seconds", "portfolio_sync_job"),
         ("schedule_prediction_evaluation", "taskiq_prediction_evaluation_interval_seconds", "prediction_evaluation_job"),
         ("schedule_news_poll", "taskiq_news_poll_interval_seconds", "poll_enabled_news_sources_job"),
+        ("schedule_hypothesis_evaluation", "taskiq_hypothesis_eval_interval_seconds", "evaluate_hypotheses_job"),
         ("schedule_market_structure_snapshot_poll", "taskiq_market_structure_snapshot_poll_interval_seconds", "poll_enabled_market_structure_sources_job"),
         ("schedule_market_structure_health_refresh", "taskiq_market_structure_health_interval_seconds", "refresh_market_structure_source_health_job"),
     ],
@@ -207,6 +210,7 @@ async def test_periodic_schedulers_wait_when_disabled(monkeypatch, function: str
 
     monkeypatch.setattr(runner.asyncio, "sleep", _fast_sleep)
     monkeypatch.setattr(runner.settings, setting_name, 0)
+    monkeypatch.setattr(runner.settings, "enable_hypothesis_engine", True, raising=False)
 
     async def fake_enqueue(task: object) -> None:
         calls.append(task)
@@ -226,6 +230,8 @@ async def test_periodic_schedulers_wait_when_disabled(monkeypatch, function: str
         if "pattern" in task_attr or "strategy" in task_attr or "market_structure" in task_attr
         else runner.portfolio_tasks
         if "portfolio" in task_attr
+        else runner.hypothesis_tasks
+        if "hypoth" in task_attr
         else runner.news_tasks
         if "news" in task_attr
         else runner.prediction_tasks
@@ -245,6 +251,7 @@ async def test_periodic_schedulers_wait_when_disabled(monkeypatch, function: str
         (runner.schedule_portfolio_sync, "taskiq_portfolio_sync_interval_seconds", runner.portfolio_tasks.portfolio_sync_job),
         (runner.schedule_prediction_evaluation, "taskiq_prediction_evaluation_interval_seconds", runner.prediction_tasks.prediction_evaluation_job),
         (runner.schedule_news_poll, "taskiq_news_poll_interval_seconds", runner.news_tasks.poll_enabled_news_sources_job),
+        (runner.schedule_hypothesis_evaluation, "taskiq_hypothesis_eval_interval_seconds", runner.hypothesis_tasks.evaluate_hypotheses_job),
         (runner.schedule_market_structure_snapshot_poll, "taskiq_market_structure_snapshot_poll_interval_seconds", runner.market_structure_tasks.poll_enabled_market_structure_sources_job),
         (runner.schedule_market_structure_health_refresh, "taskiq_market_structure_health_interval_seconds", runner.market_structure_tasks.refresh_market_structure_source_health_job),
     ],
@@ -265,6 +272,7 @@ async def test_periodic_schedulers_enqueue_one_cycle(monkeypatch, function, sett
     monkeypatch.setattr(runner.asyncio, "sleep", _fast_sleep)
     monkeypatch.setattr(runner.asyncio, "wait_for", fake_wait_for)
     monkeypatch.setattr(runner.settings, setting_name, 1)
+    monkeypatch.setattr(runner.settings, "enable_hypothesis_engine", True, raising=False)
     monkeypatch.setattr(runner, "enqueue_task", fake_enqueue)
 
     await function(stop_event)
@@ -282,6 +290,7 @@ def test_start_scheduler_assigns_created_tasks(monkeypatch) -> None:
         return task
 
     monkeypatch.setattr(runner.asyncio, "create_task", fake_create_task)
+    monkeypatch.setattr(runner.settings, "enable_hypothesis_engine", True, raising=False)
 
     app = SimpleNamespace(state=SimpleNamespace())
     finish_event = asyncio.Event()
@@ -291,8 +300,9 @@ def test_start_scheduler_assigns_created_tasks(monkeypatch) -> None:
 
     assert tuple(tasks) == tuple(created_tasks)
     assert app.state.taskiq_backfill_task is created_tasks[0]
-    assert app.state.taskiq_prediction_evaluation_task is created_tasks[-4]
-    assert app.state.taskiq_news_poll_task is created_tasks[-3]
+    assert app.state.taskiq_prediction_evaluation_task is created_tasks[-5]
+    assert app.state.taskiq_news_poll_task is created_tasks[-4]
+    assert app.state.taskiq_hypothesis_evaluation_task is created_tasks[-3]
     assert app.state.taskiq_market_structure_snapshot_poll_task is created_tasks[-2]
     assert app.state.taskiq_market_structure_health_task is created_tasks[-1]
     assert scheduler_pkg.start_scheduler is runner.start_scheduler

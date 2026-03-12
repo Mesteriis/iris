@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Hypothesis Engine under `backend/src/apps/hypothesis_engine` with prompt CRUD APIs, event-driven hypothesis generation from signals/anomalies/decisions/portfolio events, scheduled evaluation jobs, AI insight SSE streaming, heuristic/OpenAI-like/local HTTP providers, persistence for `ai_prompts` / `ai_hypotheses` / `ai_hypothesis_evals` / `ai_weights`, and dedicated pytest coverage.
+- Backend business and technical review documents under `docs/reviews` covering domain interactions, architecture quality, risks and operational recommendations.
 - Anomaly Detection subsystem under `backend/src/apps/anomalies` with dedicated `candle_closed -> anomaly_detected` consumers, `MarketAnomaly` persistence, fast-path price/volume/volatility/relative detectors, slow-path sector/market-structure scans, explainable scoring and anomaly enrichment tasks.
 - Expanded anomaly coverage with failed breakout, compression/expansion, price-volume divergence, correlation breakdown, funding/open-interest, cross-exchange dislocation and liquidation-cascade detectors plus async persistence, cooldown/hysteresis policies and anomaly stream publishing.
 - News ingestion subsystem under `backend/src/apps/news` with plugin registry, source CRUD API, polling/manual jobs, normalized `news_items`, symbol correlation links and downstream fusion from `news_item_ingested` into `decision_generated`.
@@ -72,6 +74,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- Runtime stream routing, analytics worker loading and embedded scheduler wiring now optionally enable `hypothesis_workers`, `evaluate_hypotheses_job` and `/hypothesis/*` routes behind `enable_hypothesis_engine`, with dedicated AI provider settings and isolated Redis/test cleanup for `iris:ai:*`.
 - Backend package root was renamed from `backend/app` to `backend/src`, and Alembic scripts were moved from `backend/alembic` to `backend/src/migrations` with matching updates in imports, bootstrap, Docker, service entrypoints and test tooling.
 - Signal fusion now incorporates normalized news correlation context instead of relying only on pattern/signal stacks, while keeping news as a bounded contextual input rather than synthetic trading signals.
 - Event-driven runtime wiring now includes dedicated news, anomaly and market-structure consumer groups/tasks so ingestion, anomaly detection, source polling and downstream enrichment scale independently from candle ingestion.

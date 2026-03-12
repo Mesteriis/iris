@@ -24,6 +24,7 @@ from src.apps.news.views import router as news_router
 from src.apps.patterns.views import router as patterns_router
 from src.apps.portfolio.views import router as portfolio_router
 from src.apps.predictions.views import router as predictions_router
+from src.apps.hypothesis_engine.views import router as hypothesis_router
 from src.apps.signals.views import router as signals_router
 from src.apps.system.views import router as system_router
 from src.core.settings import get_settings
@@ -71,4 +72,6 @@ def create_app() -> FastAPI:
     app.include_router(signals_router)
     app.include_router(portfolio_router)
     app.include_router(predictions_router)
+    if settings.enable_hypothesis_engine:
+        app.include_router(hypothesis_router)
     return app

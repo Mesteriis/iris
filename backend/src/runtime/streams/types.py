@@ -22,20 +22,30 @@ ANOMALY_WORKER_GROUP = "anomaly_workers"
 ANOMALY_SECTOR_WORKER_GROUP = "anomaly_sector_workers"
 NEWS_NORMALIZATION_WORKER_GROUP = "news_normalization_workers"
 NEWS_CORRELATION_WORKER_GROUP = "news_correlation_workers"
-EVENT_WORKER_GROUPS = (
-    INDICATOR_WORKER_GROUP,
-    ANALYSIS_SCHEDULER_WORKER_GROUP,
-    PATTERN_WORKER_GROUP,
-    REGIME_WORKER_GROUP,
-    DECISION_WORKER_GROUP,
-    FUSION_WORKER_GROUP,
-    PORTFOLIO_WORKER_GROUP,
-    CROSS_MARKET_WORKER_GROUP,
-    ANOMALY_WORKER_GROUP,
-    ANOMALY_SECTOR_WORKER_GROUP,
-    NEWS_NORMALIZATION_WORKER_GROUP,
-    NEWS_CORRELATION_WORKER_GROUP,
-)
+HYPOTHESIS_WORKER_GROUP = "hypothesis_workers"
+
+
+def get_event_worker_groups() -> tuple[str, ...]:
+    groups: list[str] = [
+        INDICATOR_WORKER_GROUP,
+        ANALYSIS_SCHEDULER_WORKER_GROUP,
+        PATTERN_WORKER_GROUP,
+        REGIME_WORKER_GROUP,
+        DECISION_WORKER_GROUP,
+        FUSION_WORKER_GROUP,
+        PORTFOLIO_WORKER_GROUP,
+        CROSS_MARKET_WORKER_GROUP,
+        ANOMALY_WORKER_GROUP,
+        ANOMALY_SECTOR_WORKER_GROUP,
+        NEWS_NORMALIZATION_WORKER_GROUP,
+        NEWS_CORRELATION_WORKER_GROUP,
+    ]
+    if get_settings().enable_hypothesis_engine:
+        groups.append(HYPOTHESIS_WORKER_GROUP)
+    return tuple(groups)
+
+
+EVENT_WORKER_GROUPS = get_event_worker_groups()
 
 
 @dataclass(frozen=True, slots=True)

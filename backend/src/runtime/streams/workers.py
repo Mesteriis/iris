@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from src.apps.anomalies.consumers import CandleAnomalyConsumer, SectorAnomalyConsumer
 from src.apps.cross_market.engine import process_cross_market_event
+from src.apps.hypothesis_engine.consumers import HypothesisConsumer
 from src.apps.news.consumers import NewsCorrelationConsumer, NewsNormalizationConsumer
 from src.apps.signals.fusion import evaluate_market_decision
 from src.apps.signals.fusion import evaluate_news_fusion_event
@@ -21,7 +22,9 @@ from src.runtime.streams.types import (
     ANOMALY_WORKER_GROUP,
     CROSS_MARKET_WORKER_GROUP,
     DECISION_WORKER_GROUP,
+    EVENT_WORKER_GROUPS,
     FUSION_WORKER_GROUP,
+    HYPOTHESIS_WORKER_GROUP,
     INDICATOR_WORKER_GROUP,
     IrisEvent,
     NEWS_CORRELATION_WORKER_GROUP,
@@ -50,25 +53,12 @@ from src.apps.patterns.cache import cache_regime_snapshot_async, read_cached_reg
 from src.apps.signals.history import refresh_recent_signal_history
 
 LOGGER = logging.getLogger(__name__)
-EVENT_WORKER_GROUPS = (
-    INDICATOR_WORKER_GROUP,
-    ANALYSIS_SCHEDULER_WORKER_GROUP,
-    PATTERN_WORKER_GROUP,
-    REGIME_WORKER_GROUP,
-    DECISION_WORKER_GROUP,
-    FUSION_WORKER_GROUP,
-    PORTFOLIO_WORKER_GROUP,
-    CROSS_MARKET_WORKER_GROUP,
-    ANOMALY_WORKER_GROUP,
-    ANOMALY_SECTOR_WORKER_GROUP,
-    NEWS_NORMALIZATION_WORKER_GROUP,
-    NEWS_CORRELATION_WORKER_GROUP,
-)
 _PATTERN_ENGINE = PatternEngine()
 _ANOMALY_CONSUMER = CandleAnomalyConsumer()
 _ANOMALY_SECTOR_CONSUMER = SectorAnomalyConsumer()
 _NEWS_NORMALIZATION_CONSUMER = NewsNormalizationConsumer()
 _NEWS_CORRELATION_CONSUMER = NewsCorrelationConsumer()
+_HYPOTHESIS_CONSUMER = HypothesisConsumer()
 
 # NOTE:
 # These stream workers now use async Redis/consumer orchestration, but the
@@ -355,6 +345,10 @@ async def _handle_news_correlation_event(event: IrisEvent) -> None:
     await _NEWS_CORRELATION_CONSUMER.handle_event(event)
 
 
+async def _handle_hypothesis_event(event: IrisEvent) -> None:
+    await _HYPOTHESIS_CONSUMER.handle_event(event)
+
+
 def _detect_pattern_signals(db, event: IrisEvent) -> list[str]:
     existing_signal_types = _signal_types_at_timestamp(
         db,
@@ -505,4 +499,6 @@ def create_worker(group_name: str, consumer_name: str | None = None) -> EventCon
         return EventConsumer(config, handler=_handle_news_normalization_event, interested_event_types=subscribed_event_types(group_name))
     if group_name == NEWS_CORRELATION_WORKER_GROUP:
         return EventConsumer(config, handler=_handle_news_correlation_event, interested_event_types=subscribed_event_types(group_name))
+    if group_name == HYPOTHESIS_WORKER_GROUP:
+        return EventConsumer(config, handler=_handle_hypothesis_event, interested_event_types=subscribed_event_types(group_name))
     raise ValueError(f"Unsupported event worker group '{group_name}'.")

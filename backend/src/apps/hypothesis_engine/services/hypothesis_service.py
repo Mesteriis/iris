@@ -1,0 +1,99 @@
+from __future__ import annotations
+
+from datetime import timedelta
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.apps.hypothesis_engine.agents import ReasoningService
+from src.apps.hypothesis_engine.constants import AI_EVENT_HYPOTHESIS_CREATED, AI_EVENT_INSIGHT, SUPPORTED_HYPOTHESIS_SOURCE_EVENTS
+from src.apps.hypothesis_engine.models import AIHypothesis
+from src.apps.hypothesis_engine.repos import HypothesisRepo
+from src.apps.market_data.domain import ensure_utc
+from src.runtime.streams.publisher import publish_event
+from src.runtime.streams.types import IrisEvent
+
+
+class HypothesisService:
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+        self._repo = HypothesisRepo(db)
+        self._reasoning = ReasoningService(db)
+
+    async def create_from_event(self, event: IrisEvent) -> int:
+        if event.event_type not in SUPPORTED_HYPOTHESIS_SOURCE_EVENTS or event.coin_id <= 0:
+            return 0
+        coin = await self._repo.get_coin(event.coin_id)
+        if coin is None:
+            return 0
+        effective_timeframe = int(event.timeframe) if int(event.timeframe) > 0 else 15
+        context: dict[str, Any] = {
+            "event_type": event.event_type,
+            "coin_id": int(event.coin_id),
+            "timeframe": effective_timeframe,
+            "timestamp": ensure_utc(event.timestamp).isoformat(),
+            "payload": dict(event.payload),
+            "symbol": coin.symbol,
+            "sector": coin.sector_code,
+        }
+        reasoning = await self._reasoning.generate(context)
+        hypothesis = await self._repo.create_hypothesis(
+            AIHypothesis(
+                coin_id=int(event.coin_id),
+                timeframe=effective_timeframe,
+                status="active",
+                hypothesis_type=reasoning["type"],
+                statement_json={
+                    "direction": reasoning["direction"],
+                    "target_move": reasoning["target_move"],
+                    "summary": reasoning["summary"],
+                    "assets": list(reasoning["assets"]),
+                    "explain": reasoning["explain"],
+                    "kind": reasoning["kind"],
+                },
+                confidence=float(reasoning["confidence"]),
+                horizon_min=int(reasoning["horizon_min"]),
+                eval_due_at=ensure_utc(event.timestamp) + timedelta(minutes=int(reasoning["horizon_min"])),
+                context_json={
+                    "symbol": coin.symbol,
+                    "sector": coin.sector_code,
+                    "trigger_timestamp": ensure_utc(event.timestamp).isoformat(),
+                    "source_event_type": event.event_type,
+                    "source_payload": dict(event.payload),
+                },
+                provider=reasoning["provider"],
+                model=reasoning["model"],
+                prompt_name=reasoning["prompt_name"],
+                prompt_version=int(reasoning["prompt_version"]),
+                source_event_type=event.event_type,
+                source_stream_id=event.stream_id,
+            )
+        )
+        publish_event(
+            AI_EVENT_HYPOTHESIS_CREATED,
+            {
+                "coin_id": int(hypothesis.coin_id),
+                "timeframe": int(hypothesis.timeframe),
+                "timestamp": ensure_utc(event.timestamp),
+                "hypothesis_id": int(hypothesis.id),
+                "type": hypothesis.hypothesis_type,
+                "horizon_min": int(hypothesis.horizon_min),
+                "confidence": float(hypothesis.confidence),
+                "assets": list(hypothesis.statement_json.get("assets", [])),
+                "prompt": hypothesis.prompt_name,
+                "provider": hypothesis.provider,
+            },
+        )
+        publish_event(
+            AI_EVENT_INSIGHT,
+            {
+                "coin_id": int(hypothesis.coin_id),
+                "timeframe": int(hypothesis.timeframe),
+                "timestamp": ensure_utc(event.timestamp),
+                "kind": str(hypothesis.statement_json.get("kind") or "explain"),
+                "text": str(hypothesis.statement_json.get("explain") or hypothesis.statement_json.get("summary") or ""),
+                "confidence": float(hypothesis.confidence),
+                "hypothesis_id": int(hypothesis.id),
+            },
+        )
+        return int(hypothesis.id)

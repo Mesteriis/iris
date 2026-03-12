@@ -13,6 +13,7 @@ from src.runtime.streams.types import (
     CROSS_MARKET_WORKER_GROUP,
     DECISION_WORKER_GROUP,
     FUSION_WORKER_GROUP,
+    HYPOTHESIS_WORKER_GROUP,
     INDICATOR_WORKER_GROUP,
     PATTERN_WORKER_GROUP,
     PORTFOLIO_WORKER_GROUP,
@@ -432,6 +433,7 @@ def test_worker_domain_helpers_and_factory(monkeypatch) -> None:
         ANOMALY_SECTOR_WORKER_GROUP,
         NEWS_NORMALIZATION_WORKER_GROUP,
         NEWS_CORRELATION_WORKER_GROUP,
+        HYPOTHESIS_WORKER_GROUP,
     ):
         workers.create_worker(group_name)
 
@@ -448,6 +450,7 @@ def test_worker_domain_helpers_and_factory(monkeypatch) -> None:
         ANOMALY_SECTOR_WORKER_GROUP,
         NEWS_NORMALIZATION_WORKER_GROUP,
         NEWS_CORRELATION_WORKER_GROUP,
+        HYPOTHESIS_WORKER_GROUP,
     ]
 
     with pytest.raises(ValueError, match="Unsupported event worker group"):
@@ -475,3 +478,19 @@ async def test_pattern_handler_non_pattern_signal_branch(monkeypatch) -> None:
 
     assert published == []
     assert emitted == [["macd_cross"]]
+
+
+@pytest.mark.asyncio
+async def test_hypothesis_handler_delegates_to_consumer(monkeypatch) -> None:
+    calls: list[IrisEvent] = []
+
+    class FakeConsumer:
+        async def handle_event(self, event: IrisEvent) -> None:
+            calls.append(event)
+
+    monkeypatch.setattr(workers, "_HYPOTHESIS_CONSUMER", FakeConsumer())
+
+    event = _event(event_type="signal_created", payload={"signal_type": "bull_breakout"})
+    await workers._handle_hypothesis_event(event)
+
+    assert calls == [event]

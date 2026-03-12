@@ -37,11 +37,12 @@ def _load_worker_broker(group_name: str):
 
     if group_name == "taskiq-analytics":
         from src.apps.anomalies import tasks as anomaly_tasks
+        from src.apps.hypothesis_engine.tasks import hypothesis_tasks
         from src.apps.patterns import tasks as pattern_tasks
         from src.apps.predictions import tasks as prediction_tasks
         from src.runtime.orchestration.broker import analytics_broker
 
-        del anomaly_tasks, pattern_tasks, prediction_tasks
+        del anomaly_tasks, hypothesis_tasks, pattern_tasks, prediction_tasks
         return analytics_broker
 
     raise ValueError(f"Unsupported TaskIQ worker group '{group_name}'.")
