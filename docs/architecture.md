@@ -108,6 +108,15 @@ The HTTP surface now exposes the control plane as a first-class backend boundary
 - `/control-plane/audit` for route audit history
 - `/control-plane/observability` for route/consumer throughput, failure, latency, lag and dead-consumer state
 
+The frontend now includes a first-party control-plane workbench at `/control-plane`:
+
+- graph/canvas view reads the published topology from `/control-plane/topology/graph`
+- palette uses event and consumer nodes from the graph payload rather than UI-hardcoded wiring
+- drag-and-drop from event node to consumer node stages a `route_created` draft change
+- inspector stages `route_status_changed` draft changes for selected live edges
+- apply/discard are explicit UI actions against the draft lifecycle endpoints
+- the canvas edits declarative route rules and draft changes only; it does not execute any visual low-code graph at runtime
+
 Control mode protection currently uses request headers:
 
 - `X-IRIS-Actor`

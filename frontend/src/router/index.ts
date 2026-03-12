@@ -23,6 +23,14 @@ const router = createRouter({
         title: "Coin analysis desk",
       },
     },
+    {
+      path: "/control-plane",
+      name: "control-plane",
+      component: () => import("../pages/ControlPlane.vue"),
+      meta: {
+        title: "Event control plane",
+      },
+    },
   ],
 });
 

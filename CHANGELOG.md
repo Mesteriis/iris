@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Frontend Event Control Plane workbench at `/control-plane` with graph/canvas topology view, draft selector, inspector, drag-and-drop route staging and apply/discard controls wired to the backend draft workflow.
 - Draft lifecycle endpoints and services for `apply` / `discard`, including stale-draft protection, published topology version bumps and audit linkage between drafts, routes and published versions.
 - Control-plane FastAPI surface under `/control-plane` covering registry reads, route mutations, topology snapshot/graph payloads, draft staging, audit history and observability projections.
 - Redis-backed control-plane observability store for route dispatch counters plus worker heartbeat/success/failure metrics, with API coverage for throughput, latency, lag and dead-consumer detection.
@@ -82,6 +83,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- Frontend API contracts now include typed control-plane graph, draft and observability payloads so the visual topology editor consumes the same declarative backend model as the runtime.
 - Draft application now promotes a new published topology snapshot in `topology_config_versions`, making the control plane the canonical runtime routing source instead of leaving draft diffs as side data.
 - Runtime delivery workers now emit control-plane consumer metrics on successful and failed route deliveries, so observability is sourced from the new topology model instead of ad hoc worker-local state.
 - Backend bootstrap now mounts the control-plane router, and control-mode mutations can be protected by `IRIS_CONTROL_TOKEN` plus `X-IRIS-Access-Mode`.

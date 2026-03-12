@@ -465,6 +465,188 @@ export interface CoinJobRunResponse {
   force: boolean;
 }
 
+export type ControlPlaneAccessMode = "observe" | "control";
+export type ControlPlaneRouteStatus = "active" | "muted" | "paused" | "throttled" | "shadow" | "disabled";
+export type ControlPlaneRouteScope = "global" | "domain" | "symbol" | "exchange" | "timeframe" | "environment";
+
+export interface ControlPlaneHeaders {
+  actor: string;
+  accessMode: ControlPlaneAccessMode;
+  reason?: string;
+  token?: string;
+}
+
+export interface ControlPlaneRouteFilters {
+  symbol: string[];
+  timeframe: number[];
+  exchange: string[];
+  confidence: number | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface ControlPlaneRouteThrottle {
+  limit: number | null;
+  window_seconds: number;
+}
+
+export interface ControlPlaneRouteShadow {
+  enabled: boolean;
+  sample_rate: number;
+  observe_only: boolean;
+}
+
+export interface ControlPlaneNode {
+  id: string;
+  node_type: "event" | "consumer";
+  key: string;
+  label: string;
+  domain: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ControlPlaneEdge {
+  id: string;
+  route_key: string;
+  source: string;
+  target: string;
+  status: ControlPlaneRouteStatus;
+  scope_type: ControlPlaneRouteScope;
+  scope_value: string | null;
+  environment: string;
+  filters: ControlPlaneRouteFilters;
+  throttle: ControlPlaneRouteThrottle;
+  shadow: ControlPlaneRouteShadow;
+  notes: string | null;
+  priority: number;
+  system_managed: boolean;
+  compatible: boolean;
+}
+
+export interface ControlPlaneGraph {
+  version_number: number;
+  created_at: string | null;
+  nodes: ControlPlaneNode[];
+  edges: ControlPlaneEdge[];
+  palette: {
+    events: string[];
+    consumers: string[];
+  };
+  compatibility: Record<string, string[]>;
+}
+
+export interface ControlPlaneDraft {
+  id: number;
+  name: string;
+  description: string | null;
+  status: "draft" | "applied" | "discarded";
+  access_mode: ControlPlaneAccessMode;
+  base_version_id: number | null;
+  created_by: string;
+  applied_version_id: number | null;
+  created_at: string;
+  updated_at: string;
+  applied_at: string | null;
+  discarded_at: string | null;
+}
+
+export interface ControlPlaneDraftCreatePayload {
+  name: string;
+  description?: string;
+  access_mode?: ControlPlaneAccessMode;
+}
+
+export interface ControlPlaneDraftChangePayload {
+  change_type: "route_created" | "route_updated" | "route_deleted" | "route_status_changed";
+  target_route_key?: string;
+  payload: Record<string, unknown>;
+}
+
+export interface ControlPlaneDraftChange {
+  id: number;
+  draft_id: number;
+  change_type: "route_created" | "route_updated" | "route_deleted" | "route_status_changed";
+  target_route_key: string | null;
+  payload_json: Record<string, unknown>;
+  created_by: string;
+  created_at: string;
+}
+
+export interface ControlPlaneDraftDiffItem {
+  change_type: "route_created" | "route_updated" | "route_deleted" | "route_status_changed";
+  route_key: string;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+}
+
+export interface ControlPlaneDraftLifecycle {
+  draft: ControlPlaneDraft;
+  published_version_number: number | null;
+}
+
+export interface ControlPlaneObservabilityRoute {
+  route_key: string;
+  event_type: string;
+  consumer_key: string;
+  status: ControlPlaneRouteStatus;
+  throughput: number;
+  failure_count: number;
+  avg_latency_ms: number | null;
+  last_delivered_at: string | null;
+  last_completed_at: string | null;
+  lag_seconds: number | null;
+  shadow_count: number;
+  muted: boolean;
+  last_reason: string | null;
+}
+
+export interface ControlPlaneObservabilityConsumer {
+  consumer_key: string;
+  domain: string;
+  processed_total: number;
+  failure_count: number;
+  avg_latency_ms: number | null;
+  last_seen_at: string | null;
+  last_failure_at: string | null;
+  lag_seconds: number | null;
+  dead: boolean;
+  supports_shadow: boolean;
+  delivery_stream: string;
+  last_error: string | null;
+}
+
+export interface ControlPlaneObservabilityOverview {
+  version_number: number;
+  generated_at: string;
+  throughput: number;
+  failure_count: number;
+  shadow_route_count: number;
+  muted_route_count: number;
+  dead_consumer_count: number;
+  routes: ControlPlaneObservabilityRoute[];
+  consumers: ControlPlaneObservabilityConsumer[];
+}
+
+function buildControlPlaneHeaders(context?: Partial<ControlPlaneHeaders>): Record<string, string> | undefined {
+  if (!context?.actor && !context?.token && !context?.reason && !context?.accessMode) {
+    return undefined;
+  }
+
+  const headers: Record<string, string> = {};
+  if (context.actor) {
+    headers["X-IRIS-Actor"] = context.actor;
+  }
+  if (context.accessMode) {
+    headers["X-IRIS-Access-Mode"] = context.accessMode;
+  }
+  if (context.reason) {
+    headers["X-IRIS-Reason"] = context.reason;
+  }
+  if (context.token) {
+    headers["X-IRIS-Control-Token"] = context.token;
+  }
+  return headers;
+}
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
   timeout: 10000,
@@ -646,6 +828,56 @@ export const irisApi = {
     const response = await api.get<PriceHistoryPoint[]>(`/coins/${symbol}/history`, {
       params: { interval },
     });
+    return response.data;
+  },
+  async getControlPlaneGraph(): Promise<ControlPlaneGraph> {
+    const response = await api.get<ControlPlaneGraph>("/control-plane/topology/graph");
+    return response.data;
+  },
+  async listControlPlaneDrafts(): Promise<ControlPlaneDraft[]> {
+    const response = await api.get<ControlPlaneDraft[]>("/control-plane/drafts");
+    return response.data;
+  },
+  async createControlPlaneDraft(
+    payload: ControlPlaneDraftCreatePayload,
+    context: ControlPlaneHeaders,
+  ): Promise<ControlPlaneDraft> {
+    const response = await api.post<ControlPlaneDraft>("/control-plane/drafts", payload, {
+      headers: buildControlPlaneHeaders(context),
+    });
+    return response.data;
+  },
+  async createControlPlaneDraftChange(
+    draftId: number,
+    payload: ControlPlaneDraftChangePayload,
+    context: ControlPlaneHeaders,
+  ): Promise<ControlPlaneDraftChange> {
+    const response = await api.post<ControlPlaneDraftChange>(`/control-plane/drafts/${draftId}/changes`, payload, {
+      headers: buildControlPlaneHeaders(context),
+    });
+    return response.data;
+  },
+  async getControlPlaneDraftDiff(draftId: number): Promise<ControlPlaneDraftDiffItem[]> {
+    const response = await api.get<ControlPlaneDraftDiffItem[]>(`/control-plane/drafts/${draftId}/diff`);
+    return response.data;
+  },
+  async applyControlPlaneDraft(draftId: number, context: ControlPlaneHeaders): Promise<ControlPlaneDraftLifecycle> {
+    const response = await api.post<ControlPlaneDraftLifecycle>(`/control-plane/drafts/${draftId}/apply`, null, {
+      headers: buildControlPlaneHeaders(context),
+    });
+    return response.data;
+  },
+  async discardControlPlaneDraft(
+    draftId: number,
+    context: ControlPlaneHeaders,
+  ): Promise<ControlPlaneDraftLifecycle> {
+    const response = await api.post<ControlPlaneDraftLifecycle>(`/control-plane/drafts/${draftId}/discard`, null, {
+      headers: buildControlPlaneHeaders(context),
+    });
+    return response.data;
+  },
+  async getControlPlaneObservability(): Promise<ControlPlaneObservabilityOverview> {
+    const response = await api.get<ControlPlaneObservabilityOverview>("/control-plane/observability");
     return response.data;
   },
 };

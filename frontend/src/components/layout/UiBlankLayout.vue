@@ -21,6 +21,9 @@ const pageTitle = computed(() => {
   if (route.name === "coin-history") {
     return `${String(route.params.symbol || "").toUpperCase()} analysis desk`;
   }
+  if (route.name === "control-plane") {
+    return "Event control plane";
+  }
 
   return "Long-horizon market board";
 });
@@ -28,6 +31,9 @@ const pageTitle = computed(() => {
 const pageSubtitle = computed(() => {
   if (route.name === "coin-history") {
     return "Trend structure, regime state and event flow from precomputed analytics.";
+  }
+  if (route.name === "control-plane") {
+    return "Live topology, draft routing changes and runtime observability over the DB-backed control plane.";
   }
 
   return "IRIS reads precomputed metrics, signals and candle history without scanning raw tables in the UI.";
@@ -84,6 +90,10 @@ function toggleSidebar() {
         <RouterLink class="iris-nav__link" :class="{ 'is-active': route.name === 'coins' }" to="/">
           <span>Overview</span>
           <small>{{ coinStore.enabledCoinsCount }} active</small>
+        </RouterLink>
+        <RouterLink class="iris-nav__link" :class="{ 'is-active': route.name === 'control-plane' }" to="/control-plane">
+          <span>Topology</span>
+          <small>event routes</small>
         </RouterLink>
         <RouterLink
           v-if="route.name === 'coin-history'"
