@@ -9,8 +9,7 @@ from src.apps.cross_market.query_services import CrossMarketQueryService
 from src.apps.cross_market.repositories import CoinRelationRepository, SectorMetricRepository
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.repositories import CandleRepository
-from src.apps.predictions.cache import cache_prediction_snapshot_async
-from src.apps.predictions.engine import create_market_predictions_async
+from src.apps.predictions.services import PredictionCreationBatch, PredictionService, apply_prediction_creation_side_effects
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
@@ -65,7 +64,7 @@ class _LeaderDetectionSideEffect:
     confidence: float
     market_regime: str
     emit_event: bool
-    prediction_snapshots: tuple[dict[str, object], ...]
+    prediction_batch: PredictionCreationBatch
 
 
 class CrossMarketService(PersistenceComponent):
@@ -172,8 +171,7 @@ class CrossMarketService(PersistenceComponent):
                 )
 
             if leader_effect is not None:
-                for snapshot in leader_effect.prediction_snapshots:
-                    await cache_prediction_snapshot_async(**snapshot)
+                await apply_prediction_creation_side_effects(leader_effect.prediction_batch)
                 if leader_effect.emit_event:
                     publish_event(
                         "market_leader_detected",
@@ -446,14 +444,11 @@ class CrossMarketService(PersistenceComponent):
             0.95,
         )
         direction = "up" if bullish else "down"
-        predictions = await create_market_predictions_async(
-            self.session,
+        predictions = await PredictionService(self._uow).create_market_predictions(
             leader_coin_id=coin_id,
             prediction_event="leader_breakout" if bullish else "leader_breakdown",
             expected_move=direction,
             base_confidence=confidence,
-            emit_events=emit_events,
-            cache_snapshots=False,
         )
         effect = _LeaderDetectionSideEffect(
             timeframe=int(timeframe),
@@ -463,9 +458,9 @@ class CrossMarketService(PersistenceComponent):
             confidence=float(confidence),
             market_regime=regime,
             emit_event=emit_events,
-            prediction_snapshots=tuple(predictions.get("cache_snapshots", ())),
+            prediction_batch=predictions,
         )
-        prediction_result = {key: value for key, value in predictions.items() if key != "cache_snapshots"}
+        prediction_result = predictions.to_summary()
         result = {
             "status": "ok",
             "leader_coin_id": coin_id,

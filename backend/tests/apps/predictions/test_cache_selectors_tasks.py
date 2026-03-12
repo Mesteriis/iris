@@ -21,7 +21,7 @@ from src.apps.predictions.cache import (
     read_cached_prediction_async,
 )
 from src.apps.predictions.selectors import list_predictions
-from src.apps.predictions.services import list_predictions_async
+from src.apps.predictions.services import PredictionEvaluationBatch, list_predictions_async
 
 
 class _SyncCacheClient:
@@ -155,23 +155,52 @@ async def test_prediction_async_selector_and_task_wrapper(async_db_session, seed
     skipped = await prediction_tasks_module.prediction_evaluation_job()
     assert skipped == {"status": "skipped", "reason": "prediction_evaluation_in_progress"}
 
-    class _SessionContext:
+    class _UowContext:
         async def __aenter__(self):
-            events.append("session_enter")
-            return "async-db"
+            events.append("uow_enter")
+            return self
 
         async def __aexit__(self, exc_type, exc, tb) -> bool:
-            events.append("session_exit")
+            events.append("uow_exit")
             return False
 
+        @property
+        def session(self):
+            return "async-db"
+
+        async def commit(self) -> None:
+            events.append("uow_commit")
+
     monkeypatch.setattr(prediction_tasks_module, "async_redis_task_lock", lambda *args, **kwargs: _lock(True))
-    monkeypatch.setattr(prediction_tasks_module, "AsyncSessionLocal", lambda: _SessionContext())
+    monkeypatch.setattr(prediction_tasks_module, "AsyncUnitOfWork", lambda: _UowContext())
 
-    async def _evaluate(db, *, emit_events: bool):
-        events.append(f"evaluate:{db}:{emit_events}")
-        return {"status": "ok", "evaluated": 3}
+    class _PredictionService:
+        def __init__(self, uow) -> None:
+            self._uow = uow
 
-    monkeypatch.setattr(prediction_tasks_module, "evaluate_pending_predictions_async", _evaluate)
+        async def evaluate_pending_predictions(self, *, emit_events: bool, limit: int = 200):
+            del limit
+            events.append(f"evaluate:{self._uow.session}:{emit_events}")
+            return PredictionEvaluationBatch(
+                status="ok",
+                evaluated=3,
+                confirmed=1,
+                failed=1,
+                expired=1,
+            )
+
+    async def _side_effects(result: PredictionEvaluationBatch) -> None:
+        events.append(f"side_effects:{result.evaluated}")
+
+    monkeypatch.setattr(prediction_tasks_module, "PredictionService", _PredictionService)
+    monkeypatch.setattr(prediction_tasks_module, "apply_prediction_evaluation_side_effects", _side_effects)
     executed = await prediction_tasks_module.prediction_evaluation_job()
-    assert executed == {"status": "ok", "evaluated": 3}
-    assert events[-3:] == ["lock:True", "session_enter", "evaluate:async-db:True"] or "session_exit" in events
+    assert executed == {"status": "ok", "evaluated": 3, "confirmed": 1, "failed": 1, "expired": 1}
+    assert events[1:6] == [
+        "lock:True",
+        "uow_enter",
+        "evaluate:async-db:True",
+        "uow_commit",
+        "uow_exit",
+    ]
+    assert events[-1] == "side_effects:3"

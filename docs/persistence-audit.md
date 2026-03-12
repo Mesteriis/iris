@@ -197,13 +197,31 @@ Classification:
 - `OK` on the async/background runtime surface
 - `later migration` for residual sync helper callers kept behind the compatibility engine module
 
+#### `apps/predictions`
+
+Status: migrated on the async API surface, scheduled evaluation job and cross-market leader path; legacy sync helpers still remain for compatibility callers/tests
+
+- repositories now isolate prediction candidate selection, pending-window checks and explicit relation-feedback locks in [backend/src/apps/predictions/repositories.py](/Users/avm/projects/Personal/iris/backend/src/apps/predictions/repositories.py)
+- read-only prediction list/detail flows now go through [backend/src/apps/predictions/query_services.py](/Users/avm/projects/Personal/iris/backend/src/apps/predictions/query_services.py)
+- immutable dataclass read models now live in [backend/src/apps/predictions/read_models.py](/Users/avm/projects/Personal/iris/backend/src/apps/predictions/read_models.py)
+- API reads now depend on the shared async UoW instead of injecting `AsyncSession` directly in [backend/src/apps/predictions/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/predictions/views.py)
+- scheduled evaluation now runs through [backend/src/apps/predictions/services.py](/Users/avm/projects/Personal/iris/backend/src/apps/predictions/services.py) under the shared async UoW, with cache writes and published events deferred until after commit
+- cross-market leader detection now calls the same class-based prediction service instead of issuing direct prediction writes through a module-level async helper
+- creation now batches pending-window lookups by leader/target set, removing the old per-relation pending-check N+1 path from the active async flow
+- remaining follow-up:
+  - legacy sync helpers in [backend/src/apps/predictions/engine.py](/Users/avm/projects/Personal/iris/backend/src/apps/predictions/engine.py) and [backend/src/apps/predictions/selectors.py](/Users/avm/projects/Personal/iris/backend/src/apps/predictions/selectors.py) still exist for compatibility callers/tests and should be retired incrementally as the remaining sync-heavy domains migrate
+
+Classification:
+
+- `OK` on the async/public API and scheduled runtime surface
+- `later migration` for residual sync helper callers kept behind the compatibility engine/selector modules
+
 ### Sync-Heavy Analytical Domains
 
 These domains are still dominated by synchronous `Session` access inside selectors/engines and represent the largest remaining migration surface:
 
 - `apps/signals`
 - `apps/portfolio`
-- `apps/predictions`
 
 Shared issues:
 
@@ -233,7 +251,6 @@ Priority note:
 Direct session injection exists in multiple route modules, including:
 
 - [backend/src/apps/portfolio/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/portfolio/views.py)
-- [backend/src/apps/predictions/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/predictions/views.py)
 - [backend/src/apps/signals/views.py](/Users/avm/projects/Personal/iris/backend/src/apps/signals/views.py)
 
 Required action:
@@ -297,8 +314,9 @@ Recommended rollout order:
 8. completed: `apps/indicators`
 9. completed on the async/public and TaskIQ orchestration surface: `apps/patterns`
 10. completed on the async/background runtime surface: `apps/cross_market`
-11. next: `apps/signals`
-12. later: `signals`, `portfolio`, `predictions`
+11. completed on the async/public API and scheduled runtime surface: `apps/predictions`
+12. next: `apps/signals`
+13. later: `portfolio` plus residual sync compatibility helpers in `signals`, `predictions`, `cross_market` and `patterns`
 
 ## Current Behavior To Preserve
 

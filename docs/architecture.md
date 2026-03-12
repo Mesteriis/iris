@@ -178,9 +178,10 @@ Supporting docs:
 Current implementation coverage:
 
 - shared `core/db` unit-of-work and persistence logging foundation
-- migrated `hypothesis_engine`, `control_plane`, `news`, `anomalies`, `market_structure`, `market_data` and `indicators` repository/query contracts
+- migrated `hypothesis_engine`, `control_plane`, `news`, `anomalies`, `market_structure`, `market_data`, `indicators` and `predictions` repository/query contracts
 - `apps/anomalies` now exposes immutable anomaly read models plus query services, while event consumers/tasks own transactions through the shared async UoW and sector peer scans batch candle loading explicitly
 - `apps/cross_market` now exposes immutable read models plus query services, while `cross_market_workers` own transactions through the shared async UoW and batch leader candle loading explicitly on the active runtime path
+- `apps/predictions` now exposes immutable prediction read models plus query services, while API reads, scheduled evaluation and cross-market leader detection all execute under the shared async UoW on the active runtime path
 - `patterns` API/read-write and TaskIQ orchestration surface now use repositories, async task services, query services, immutable read models and UoW-owned handlers
 - `apps/market_data` keeps legacy sync adapters only for Timescale-specific aggregate/resampling access and not for new async callers
 - `indicator_workers` now persist metrics/cache/signals through async repositories/UoW; `patterns` keeps only legacy sync helper modules under `domain/` while active task/runtime entrypoints run through async services

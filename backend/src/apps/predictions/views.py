@@ -1,17 +1,18 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.apps.predictions.query_services import PredictionQueryService
 from src.apps.predictions.schemas import PredictionRead
-from src.apps.predictions.services import list_predictions_async
-from src.core.db.session import get_db
+from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 
 router = APIRouter(tags=["predictions"])
+DB_UOW = Depends(get_uow)
 
 
 @router.get("/predictions", response_model=list[PredictionRead])
 async def read_predictions(
     limit: int = Query(default=50, ge=1, le=500),
     status: str | None = Query(default=None),
-    db: AsyncSession = Depends(get_db),
+    uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> list[PredictionRead]:
-    return list(await list_predictions_async(db, limit=limit, status=status))
+    items = await PredictionQueryService(uow.session).list_predictions(limit=limit, status=status)
+    return [PredictionRead.model_validate(item) for item in items]
