@@ -159,6 +159,22 @@ The database includes the market-data core plus higher-level analytical domains.
 - hypothesis prompts, hypotheses, evaluations and weights
 - event control-plane topology and audit metadata
 
+## Persistence Standard
+
+Database access is being standardized around explicit persistence boundaries:
+
+- repositories own write-side aggregate/entity persistence
+- query services own read-only list/detail/dashboard projections
+- `core/db/uow.py` owns transaction scope, commit, rollback and flush semantics
+- immutable read models are the default result for read paths
+- mutable ORM entities are allowed only through explicit write contracts
+- raw SQL is restricted to documented infrastructure exceptions, currently centered on Timescale-specific aggregate maintenance in `apps/market_data`
+
+Supporting docs:
+
+- [docs/persistence-audit.md](/Users/avm/projects/Personal/iris/docs/persistence-audit.md)
+- [docs/persistence-standard.md](/Users/avm/projects/Personal/iris/docs/persistence-standard.md)
+
 ## Home Assistant
 
 The custom integration polls `GET /status` and exposes `sensor.iris_status`.

@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Persistence audit and target standard docs under `docs/persistence-audit.md` and `docs/persistence-standard.md`, formalizing repository/query/UoW boundaries, immutable read-model policy, anti-N+1 rules and raw SQL exception policy.
 - Visual topology inspector now stages `route_updated` and `route_deleted` draft changes, so existing live edges can be edited or removed declaratively before publish.
 - Frontend Event Control Plane workbench at `/control-plane` with graph/canvas topology view, draft selector, inspector, drag-and-drop route staging and apply/discard controls wired to the backend draft workflow.
 - Draft lifecycle endpoints and services for `apply` / `discard`, including stale-draft protection, published topology version bumps and audit linkage between drafts, routes and published versions.
@@ -84,6 +85,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- README and architecture docs now document the new persistence standard, including where DB access is allowed, how transaction ownership works and when raw SQL is still acceptable.
 - Control-plane test coverage now includes draft preview/apply paths for route updates and deletions, not only route creation and status changes.
 - README and architecture docs now document the end-to-end control-plane routing model, draft/apply workflow, visual topology UI and the migration from legacy worker subscriptions into DB-backed topology state.
 - Frontend API contracts now include typed control-plane graph, draft and observability payloads so the visual topology editor consumes the same declarative backend model as the runtime.
