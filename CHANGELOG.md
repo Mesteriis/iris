@@ -136,6 +136,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Decision scoring now incorporates active strategy alignment from auto-discovered strategies, and the dashboard shows top strategy performance.
 
 ### Fixed
+- Control-plane draft change writes now stay inside the shared async unit-of-work boundary, and persistence contract tests no longer collide during pytest collection.
 - Prevented market structure sources from reporting false healthy status after a simple error reset by requiring successful activity before transitioning from `idle`/`error` into `healthy` or `stale`.
 - Added loop-safe async TaskIQ locking for anomaly/market-structure background work so Redis-backed locks no longer flake between worker event loops.
 - Hardened webhook/manual ingest auth for market structure feeds with source-level token rotation, native webhook auth checks and clean failure responses for invalid ingest tokens.

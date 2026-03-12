@@ -450,8 +450,8 @@ class TopologyDraftService:
         )
         change = await self._changes.add(change)
         draft.updated_at = utc_now()
-        await self._session.flush()
-        await self._session.commit()
+        await self._uow.flush()
+        await self._uow.commit()
         return change
 
     async def preview_diff(self, draft_id: int) -> list[TopologyDiffItem]:
