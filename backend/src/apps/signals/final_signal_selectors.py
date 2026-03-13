@@ -8,14 +8,14 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from src.apps.market_data.models import Coin
-from src.apps.market_data.service_layer import get_coin_by_symbol
 from src.apps.signals.models import RiskMetric
 from src.apps.signals.query_builders import latest_final_signals_subquery
 from src.apps.signals.read_models import (
     CoinFinalSignalItemReadModel,
     CoinFinalSignalReadModel,
-    FinalSignalReadModel,
     coin_final_signal_item_read_model_from_mapping,
+    coin_final_signal_payload,
+    final_signal_payload,
     final_signal_read_model_from_mapping,
 )
 from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
@@ -25,54 +25,12 @@ def _latest_final_signals_subquery():
     return latest_final_signals_subquery()
 
 
-def _final_signal_payload(item: FinalSignalReadModel) -> dict[str, Any]:
-    return {
-        "id": int(item.id),
-        "coin_id": int(item.coin_id),
-        "symbol": str(item.symbol),
-        "name": str(item.name),
-        "sector": item.sector,
-        "timeframe": int(item.timeframe),
-        "decision": str(item.decision),
-        "confidence": float(item.confidence),
-        "risk_adjusted_score": float(item.risk_adjusted_score),
-        "liquidity_score": float(item.liquidity_score),
-        "slippage_risk": float(item.slippage_risk),
-        "volatility_risk": float(item.volatility_risk),
-        "reason": str(item.reason),
-        "created_at": item.created_at,
-    }
-
-
-def _coin_final_signal_item_payload(item: CoinFinalSignalItemReadModel) -> dict[str, Any]:
-    return {
-        "timeframe": int(item.timeframe),
-        "decision": str(item.decision),
-        "confidence": float(item.confidence),
-        "risk_adjusted_score": float(item.risk_adjusted_score),
-        "liquidity_score": float(item.liquidity_score),
-        "slippage_risk": float(item.slippage_risk),
-        "volatility_risk": float(item.volatility_risk),
-        "reason": str(item.reason),
-        "created_at": item.created_at,
-    }
-
-
 def _canonical_decision(items: Sequence[CoinFinalSignalItemReadModel]) -> str | None:
     items_by_timeframe = {int(item.timeframe): str(item.decision) for item in items}
     for current_timeframe in (1440, 240, 60, 15):
         if current_timeframe in items_by_timeframe:
             return items_by_timeframe[current_timeframe]
     return None
-
-
-def _coin_final_signal_payload(item: CoinFinalSignalReadModel) -> dict[str, Any]:
-    return {
-        "coin_id": int(item.coin_id),
-        "symbol": str(item.symbol),
-        "canonical_decision": item.canonical_decision,
-        "items": [_coin_final_signal_item_payload(model) for model in item.items],
-    }
 
 
 class FinalSignalCompatibilityQuery:
@@ -144,7 +102,7 @@ class FinalSignalCompatibilityQuery:
         if timeframe is not None:
             stmt = stmt.where(latest.c.timeframe == timeframe)
         rows = self._db.execute(stmt).all()
-        return [_final_signal_payload(final_signal_read_model_from_mapping(row._mapping)) for row in rows]
+        return [final_signal_payload(final_signal_read_model_from_mapping(row._mapping)) for row in rows]
 
     def list_top_final_signals(self, *, limit: int = 20) -> Sequence[dict[str, Any]]:
         self._log(
@@ -183,7 +141,7 @@ class FinalSignalCompatibilityQuery:
             .order_by(latest.c.risk_adjusted_score.desc(), latest.c.confidence.desc(), latest.c.created_at.desc())
             .limit(max(limit, 1))
         ).all()
-        return [_final_signal_payload(final_signal_read_model_from_mapping(row._mapping)) for row in rows]
+        return [final_signal_payload(final_signal_read_model_from_mapping(row._mapping)) for row in rows]
 
     def get_coin_final_signal(self, symbol: str) -> dict[str, Any] | None:
         normalized_symbol = symbol.strip().upper()
@@ -193,7 +151,7 @@ class FinalSignalCompatibilityQuery:
             mode="read",
             symbol=normalized_symbol,
         )
-        coin = get_coin_by_symbol(self._db, normalized_symbol)
+        coin = self._db.scalar(select(Coin).where(Coin.symbol == normalized_symbol, Coin.deleted_at.is_(None)).limit(1))
         if coin is None:
             return None
         latest = _latest_final_signals_subquery()
@@ -226,7 +184,7 @@ class FinalSignalCompatibilityQuery:
             canonical_decision=_canonical_decision(items),
             items=items,
         )
-        return _coin_final_signal_payload(item)
+        return coin_final_signal_payload(item)
 
 
 def list_final_signals(

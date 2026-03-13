@@ -387,6 +387,120 @@ def strategy_read_model_from_mapping(mapping: Mapping[str, Any]) -> StrategyRead
     )
 
 
+def investment_decision_payload(item: InvestmentDecisionReadModel) -> dict[str, Any]:
+    return {
+        "id": int(item.id),
+        "coin_id": int(item.coin_id),
+        "symbol": str(item.symbol),
+        "name": str(item.name),
+        "sector": item.sector,
+        "timeframe": int(item.timeframe),
+        "decision": str(item.decision),
+        "confidence": float(item.confidence),
+        "score": float(item.score),
+        "reason": str(item.reason),
+        "created_at": item.created_at,
+    }
+
+
+def coin_decision_item_payload(item: CoinDecisionItemReadModel) -> dict[str, Any]:
+    return {
+        "timeframe": int(item.timeframe),
+        "decision": str(item.decision),
+        "confidence": float(item.confidence),
+        "score": float(item.score),
+        "reason": str(item.reason),
+        "created_at": item.created_at,
+    }
+
+
+def coin_decision_payload(item: CoinDecisionReadModel) -> dict[str, Any]:
+    return {
+        "coin_id": int(item.coin_id),
+        "symbol": str(item.symbol),
+        "canonical_decision": item.canonical_decision,
+        "items": [coin_decision_item_payload(model) for model in item.items],
+    }
+
+
+def market_decision_payload(item: MarketDecisionReadModel) -> dict[str, Any]:
+    return {
+        "id": int(item.id),
+        "coin_id": int(item.coin_id),
+        "symbol": str(item.symbol),
+        "name": str(item.name),
+        "sector": item.sector,
+        "timeframe": int(item.timeframe),
+        "decision": str(item.decision),
+        "confidence": float(item.confidence),
+        "signal_count": int(item.signal_count),
+        "regime": item.regime,
+        "created_at": item.created_at,
+    }
+
+
+def coin_market_decision_item_payload(item: CoinMarketDecisionItemReadModel) -> dict[str, Any]:
+    return {
+        "timeframe": int(item.timeframe),
+        "decision": str(item.decision),
+        "confidence": float(item.confidence),
+        "signal_count": int(item.signal_count),
+        "regime": item.regime,
+        "created_at": item.created_at,
+    }
+
+
+def coin_market_decision_payload(item: CoinMarketDecisionReadModel) -> dict[str, Any]:
+    return {
+        "coin_id": int(item.coin_id),
+        "symbol": str(item.symbol),
+        "canonical_decision": item.canonical_decision,
+        "items": [coin_market_decision_item_payload(model) for model in item.items],
+    }
+
+
+def final_signal_payload(item: FinalSignalReadModel) -> dict[str, Any]:
+    return {
+        "id": int(item.id),
+        "coin_id": int(item.coin_id),
+        "symbol": str(item.symbol),
+        "name": str(item.name),
+        "sector": item.sector,
+        "timeframe": int(item.timeframe),
+        "decision": str(item.decision),
+        "confidence": float(item.confidence),
+        "risk_adjusted_score": float(item.risk_adjusted_score),
+        "liquidity_score": float(item.liquidity_score),
+        "slippage_risk": float(item.slippage_risk),
+        "volatility_risk": float(item.volatility_risk),
+        "reason": str(item.reason),
+        "created_at": item.created_at,
+    }
+
+
+def coin_final_signal_item_payload(item: CoinFinalSignalItemReadModel) -> dict[str, Any]:
+    return {
+        "timeframe": int(item.timeframe),
+        "decision": str(item.decision),
+        "confidence": float(item.confidence),
+        "risk_adjusted_score": float(item.risk_adjusted_score),
+        "liquidity_score": float(item.liquidity_score),
+        "slippage_risk": float(item.slippage_risk),
+        "volatility_risk": float(item.volatility_risk),
+        "reason": str(item.reason),
+        "created_at": item.created_at,
+    }
+
+
+def coin_final_signal_payload(item: CoinFinalSignalReadModel) -> dict[str, Any]:
+    return {
+        "coin_id": int(item.coin_id),
+        "symbol": str(item.symbol),
+        "canonical_decision": item.canonical_decision,
+        "items": [coin_final_signal_item_payload(model) for model in item.items],
+    }
+
+
 def backtest_summary_payload(item: BacktestSummaryReadModel) -> dict[str, Any]:
     return {
         "symbol": item.symbol,
@@ -468,14 +582,23 @@ __all__ = [
     "backtest_summary_read_model_from_mapping",
     "coin_backtests_payload",
     "coin_backtests_read_model_from_mapping",
+    "coin_decision_item_payload",
     "coin_decision_item_read_model_from_mapping",
+    "coin_decision_payload",
     "coin_decision_read_model_from_mapping",
+    "coin_final_signal_item_payload",
     "coin_final_signal_item_read_model_from_mapping",
+    "coin_final_signal_payload",
     "coin_final_signal_read_model_from_mapping",
+    "coin_market_decision_item_payload",
     "coin_market_decision_item_read_model_from_mapping",
+    "coin_market_decision_payload",
     "coin_market_decision_read_model_from_mapping",
+    "final_signal_payload",
     "final_signal_read_model_from_mapping",
+    "investment_decision_payload",
     "investment_decision_read_model_from_mapping",
+    "market_decision_payload",
     "market_decision_read_model_from_mapping",
     "signal_read_model_from_mapping",
     "strategy_payload",

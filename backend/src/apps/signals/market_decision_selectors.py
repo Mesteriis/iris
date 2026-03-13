@@ -9,15 +9,15 @@ from sqlalchemy.orm import Session
 
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.models import Coin
-from src.apps.market_data.service_layer import get_coin_by_symbol
 from src.apps.patterns.domain.regime import read_regime_details
 from src.apps.signals.cache import read_cached_market_decision
 from src.apps.signals.query_builders import latest_market_decisions_subquery
 from src.apps.signals.read_models import (
     CoinMarketDecisionItemReadModel,
     CoinMarketDecisionReadModel,
-    MarketDecisionReadModel,
     coin_market_decision_item_read_model_from_mapping,
+    coin_market_decision_payload,
+    market_decision_payload,
     market_decision_read_model_from_mapping,
 )
 from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
@@ -29,48 +29,12 @@ def _latest_market_decisions_subquery():
     return latest_market_decisions_subquery()
 
 
-def _market_decision_payload(item: MarketDecisionReadModel) -> dict[str, Any]:
-    return {
-        "id": int(item.id),
-        "coin_id": int(item.coin_id),
-        "symbol": str(item.symbol),
-        "name": str(item.name),
-        "sector": item.sector,
-        "timeframe": int(item.timeframe),
-        "decision": str(item.decision),
-        "confidence": float(item.confidence),
-        "signal_count": int(item.signal_count),
-        "regime": item.regime,
-        "created_at": item.created_at,
-    }
-
-
-def _coin_market_decision_item_payload(item: CoinMarketDecisionItemReadModel) -> dict[str, Any]:
-    return {
-        "timeframe": int(item.timeframe),
-        "decision": str(item.decision),
-        "confidence": float(item.confidence),
-        "signal_count": int(item.signal_count),
-        "regime": item.regime,
-        "created_at": item.created_at,
-    }
-
-
 def _canonical_decision(items: Sequence[CoinMarketDecisionItemReadModel]) -> str | None:
     items_by_timeframe = {int(item.timeframe): str(item.decision) for item in items}
     for current_timeframe in PREFERRED_TIMEFRAMES:
         if current_timeframe in items_by_timeframe:
             return items_by_timeframe[current_timeframe]
     return None
-
-
-def _coin_market_decision_payload(item: CoinMarketDecisionReadModel) -> dict[str, Any]:
-    return {
-        "coin_id": int(item.coin_id),
-        "symbol": str(item.symbol),
-        "canonical_decision": item.canonical_decision,
-        "items": [_coin_market_decision_item_payload(model) for model in item.items],
-    }
 
 
 class MarketDecisionCompatibilityQuery:
@@ -133,7 +97,7 @@ class MarketDecisionCompatibilityQuery:
         if timeframe is not None:
             stmt = stmt.where(latest.c.timeframe == timeframe)
         rows = self._db.execute(stmt).all()
-        return [_market_decision_payload(market_decision_read_model_from_mapping(row._mapping)) for row in rows]
+        return [market_decision_payload(market_decision_read_model_from_mapping(row._mapping)) for row in rows]
 
     def list_top_market_decisions(self, *, limit: int = 20) -> Sequence[dict[str, Any]]:
         self._log(
@@ -163,7 +127,7 @@ class MarketDecisionCompatibilityQuery:
             .order_by(latest.c.confidence.desc(), latest.c.signal_count.desc(), latest.c.created_at.desc())
             .limit(max(limit, 1))
         ).all()
-        return [_market_decision_payload(market_decision_read_model_from_mapping(row._mapping)) for row in rows]
+        return [market_decision_payload(market_decision_read_model_from_mapping(row._mapping)) for row in rows]
 
     def get_coin_market_decision(self, symbol: str) -> dict[str, Any] | None:
         normalized_symbol = symbol.strip().upper()
@@ -173,7 +137,7 @@ class MarketDecisionCompatibilityQuery:
             mode="read",
             symbol=normalized_symbol,
         )
-        coin = get_coin_by_symbol(self._db, normalized_symbol)
+        coin = self._db.scalar(select(Coin).where(Coin.symbol == normalized_symbol, Coin.deleted_at.is_(None)).limit(1))
         if coin is None:
             return None
         metrics = self._db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin.id))
@@ -247,7 +211,7 @@ class MarketDecisionCompatibilityQuery:
             canonical_decision=_canonical_decision(items),
             items=items,
         )
-        return _coin_market_decision_payload(item)
+        return coin_market_decision_payload(item)
 
 
 def list_market_decisions(

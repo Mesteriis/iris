@@ -8,13 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.apps.market_data.models import Coin
-from src.apps.market_data.service_layer import get_coin_by_symbol
 from src.apps.signals.query_builders import latest_decisions_subquery
 from src.apps.signals.read_models import (
     CoinDecisionItemReadModel,
     CoinDecisionReadModel,
-    InvestmentDecisionReadModel,
+    coin_decision_payload,
     coin_decision_item_read_model_from_mapping,
+    investment_decision_payload,
     investment_decision_read_model_from_mapping,
 )
 from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
@@ -24,48 +24,12 @@ def _latest_decisions_subquery():
     return latest_decisions_subquery()
 
 
-def _decision_payload(item: InvestmentDecisionReadModel) -> dict[str, Any]:
-    return {
-        "id": int(item.id),
-        "coin_id": int(item.coin_id),
-        "symbol": str(item.symbol),
-        "name": str(item.name),
-        "sector": item.sector,
-        "timeframe": int(item.timeframe),
-        "decision": str(item.decision),
-        "confidence": float(item.confidence),
-        "score": float(item.score),
-        "reason": str(item.reason),
-        "created_at": item.created_at,
-    }
-
-
-def _coin_decision_item_payload(item: CoinDecisionItemReadModel) -> dict[str, Any]:
-    return {
-        "timeframe": int(item.timeframe),
-        "decision": str(item.decision),
-        "confidence": float(item.confidence),
-        "score": float(item.score),
-        "reason": str(item.reason),
-        "created_at": item.created_at,
-    }
-
-
 def _canonical_decision(items: Sequence[CoinDecisionItemReadModel]) -> str | None:
     items_by_timeframe = {int(item.timeframe): str(item.decision) for item in items}
     for current_timeframe in (1440, 240, 60, 15):
         if current_timeframe in items_by_timeframe:
             return items_by_timeframe[current_timeframe]
     return None
-
-
-def _coin_decision_payload(item: CoinDecisionReadModel) -> dict[str, Any]:
-    return {
-        "coin_id": int(item.coin_id),
-        "symbol": str(item.symbol),
-        "canonical_decision": item.canonical_decision,
-        "items": [_coin_decision_item_payload(model) for model in item.items],
-    }
 
 
 class SignalDecisionCompatibilityQuery:
@@ -127,7 +91,7 @@ class SignalDecisionCompatibilityQuery:
         if timeframe is not None:
             stmt = stmt.where(latest.c.timeframe == timeframe)
         rows = self._db.execute(stmt).all()
-        return [_decision_payload(investment_decision_read_model_from_mapping(row._mapping)) for row in rows]
+        return [investment_decision_payload(investment_decision_read_model_from_mapping(row._mapping)) for row in rows]
 
     def list_top_decisions(self, *, limit: int = 20) -> Sequence[dict[str, Any]]:
         self._log(
@@ -156,7 +120,7 @@ class SignalDecisionCompatibilityQuery:
             .order_by(latest.c.score.desc(), latest.c.confidence.desc(), latest.c.created_at.desc())
             .limit(max(limit, 1))
         ).all()
-        return [_decision_payload(investment_decision_read_model_from_mapping(row._mapping)) for row in rows]
+        return [investment_decision_payload(investment_decision_read_model_from_mapping(row._mapping)) for row in rows]
 
     def get_coin_decision(self, symbol: str) -> dict[str, Any] | None:
         normalized_symbol = symbol.strip().upper()
@@ -166,7 +130,7 @@ class SignalDecisionCompatibilityQuery:
             mode="read",
             symbol=normalized_symbol,
         )
-        coin = get_coin_by_symbol(self._db, normalized_symbol)
+        coin = self._db.scalar(select(Coin).where(Coin.symbol == normalized_symbol, Coin.deleted_at.is_(None)).limit(1))
         if coin is None:
             return None
         latest = _latest_decisions_subquery()
@@ -189,7 +153,7 @@ class SignalDecisionCompatibilityQuery:
             canonical_decision=_canonical_decision(items),
             items=items,
         )
-        return _coin_decision_payload(item)
+        return coin_decision_payload(item)
 
 
 def list_decisions(
