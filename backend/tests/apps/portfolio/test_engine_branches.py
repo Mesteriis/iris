@@ -129,6 +129,40 @@ def test_portfolio_sync_skips_blank_balances(db_session) -> None:
     assert db_session.scalar(select(PortfolioAction.id).limit(1)) is None
 
 
+def test_portfolio_sync_emits_auto_watch_after_commit(db_session, monkeypatch) -> None:
+    class WatchPlugin:
+        def __init__(self, account: ExchangeAccount) -> None:
+            self.account = account
+
+        async def fetch_balances(self):
+            return [{"symbol": "WATCHUSD_EVT", "balance": 8.0, "value_usd": 420.0}]
+
+        async def fetch_positions(self):
+            return []
+
+        async def fetch_orders(self):
+            return []
+
+        async def fetch_trades(self):
+            return []
+
+    from src.apps.portfolio.clients import register_exchange
+
+    register_exchange("fixture_watch_events", WatchPlugin)
+    create_exchange_account(db_session, exchange_name="fixture_watch_events")
+    published: list[str] = []
+    monkeypatch.setattr("src.apps.portfolio.engine.publish_event", lambda event_type, payload: published.append(event_type))
+
+    result = sync_exchange_balances(db_session, emit_events=True)
+
+    assert result["status"] == "ok"
+    assert published[:3] == [
+        "coin_auto_watch_enabled",
+        "portfolio_balance_updated",
+        "portfolio_position_changed",
+    ]
+
+
 def test_portfolio_helper_and_event_branches(db_session, monkeypatch) -> None:
     sideways = calculate_position_size(
         total_capital=100_000.0,

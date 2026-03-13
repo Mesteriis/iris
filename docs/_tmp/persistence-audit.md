@@ -279,6 +279,7 @@ Status: migrated on the async/public API read surface, scheduled balance-sync pa
 - async portfolio cache clients in [backend/src/apps/portfolio/cache.py](backend/src/apps/portfolio/cache.py) are now loop-scoped instead of process-global cached clients
 - the active sync path no longer re-fetches `ExchangeAccount` per balance row, removing an avoidable per-item read on the balance-sync loop
 - sync balance compatibility coin creation in [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) now stays inside the portfolio persistence adapter instead of delegating to legacy [backend/src/apps/market_data/service_layer.py](backend/src/apps/market_data/service_layer.py), and it aligns default `Coin` / `CoinMetrics` initialization with the async service path
+- sync balance compatibility events in [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) are now queued until after the balance-row commit instead of being published from nested helper-owned write paths, reducing another legacy transaction/side-effect interleave
 - remaining follow-up:
   - [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) and [backend/src/apps/portfolio/selectors.py](backend/src/apps/portfolio/selectors.py) still own sync analytical logic plus the remaining balance-sync commit boundaries that require a later async/class-first retirement of the compatibility layer
 

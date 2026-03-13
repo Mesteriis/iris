@@ -420,7 +420,15 @@ def _ensure_coin_for_balance(db: Session, *, symbol: str, exchange_name: str) ->
     return coin
 
 
-def _maybe_auto_watch_coin(db: Session, *, coin: Coin, value_usd: float, exchange_name: str) -> bool:
+def _maybe_auto_watch_coin(
+    db: Session,
+    *,
+    coin: Coin,
+    value_usd: float,
+    exchange_name: str,
+    commit: bool = True,
+    emit_event: bool = True,
+) -> bool:
     settings = get_settings()
     if value_usd < settings.auto_watch_min_position_value:
         return False
@@ -429,8 +437,11 @@ def _maybe_auto_watch_coin(db: Session, *, coin: Coin, value_usd: float, exchang
     coin.auto_watch_enabled = True
     coin.auto_watch_source = "portfolio"
     coin.next_history_sync_at = utc_now()
-    db.commit()
-    if changed:
+    if commit:
+        db.commit()
+    else:
+        db.flush()
+    if changed and emit_event:
         publish_event(
             "coin_auto_watch_enabled",
             {
@@ -511,6 +522,7 @@ def _sync_exchange_balances_impl(db: Session, *, emit_events: bool = True) -> di
     ).all()
     items: list[dict[str, object]] = []
     cached_rows: list[dict[str, object]] = []
+    pending_events: list[tuple[str, dict[str, object]]] = []
     for account in accounts:
         plugin = create_exchange_plugin(account)
         # NOTE:
@@ -559,6 +571,8 @@ def _sync_exchange_balances_impl(db: Session, *, emit_events: bool = True) -> di
                 coin=coin,
                 value_usd=value_usd,
                 exchange_name=account.exchange_name,
+                commit=False,
+                emit_event=False,
             )
             db.commit()
             cached_rows.append(
@@ -573,6 +587,20 @@ def _sync_exchange_balances_impl(db: Session, *, emit_events: bool = True) -> di
                     "auto_watch_enabled": auto_watch_enabled,
                 }
             )
+            if auto_watch_enabled:
+                pending_events.append(
+                    (
+                        "coin_auto_watch_enabled",
+                        {
+                            "coin_id": coin.id,
+                            "timeframe": DEFAULT_PORTFOLIO_TIMEFRAME,
+                            "timestamp": utc_now(),
+                            "source": account.exchange_name.lower(),
+                            "symbol": symbol,
+                            "value_usd": value_usd,
+                        },
+                    )
+                )
             if emit_events and abs(previous_value - value_usd) > 1e-9:
                 event_payload = {
                     "coin_id": coin.id,
@@ -584,8 +612,8 @@ def _sync_exchange_balances_impl(db: Session, *, emit_events: bool = True) -> di
                     "balance": balance_value,
                     "value_usd": value_usd,
                 }
-                publish_event("portfolio_balance_updated", event_payload)
-                publish_event("portfolio_position_changed", event_payload)
+                pending_events.append(("portfolio_balance_updated", dict(event_payload)))
+                pending_events.append(("portfolio_position_changed", dict(event_payload)))
             items.append(
                 {
                     "exchange_account_id": account.id,
@@ -596,19 +624,15 @@ def _sync_exchange_balances_impl(db: Session, *, emit_events: bool = True) -> di
             )
     cache_portfolio_balances(cached_rows)
     state = _refresh_portfolio_state_impl(db)
+    if emit_events:
+        for event_type, payload in pending_events:
+            publish_event(event_type, payload)
     return {
         "status": "ok",
         "accounts": len(accounts),
         "balances": len(items),
         "items": items,
-        "portfolio_state": {
-            "total_capital": float(state.total_capital),
-            "allocated_capital": float(state.allocated_capital),
-            "available_capital": float(state.available_capital),
-            "updated_at": state.updated_at.isoformat(),
-            "open_positions": len(_open_positions(db)),
-            "max_positions": int(get_settings().portfolio_max_positions),
-        },
+        "portfolio_state": _portfolio_state_snapshot(db, state=state),
     }
 
 
