@@ -25,3 +25,28 @@ def test_http_availability_matrix_render_includes_route_counts() -> None:
     assert "| `control-plane` | `read`, `commands` | `read`, `commands` | `read` |" in rendered
     assert "| `hypothesis` | `read`, `commands`, `jobs`, `streams` | `read`, `commands`, `jobs`, `streams` | `read`, `commands` |" in rendered
     assert "| `news` | `onboarding` |" in rendered
+
+
+def test_http_availability_matrix_check_matches_generated_snapshot(tmp_path) -> None:
+    settings = bootstrap_app_module.settings.model_copy(update={"enable_hypothesis_engine": True})
+    snapshot_path = matrix_module.write_http_availability_matrix(
+        settings=settings,
+        output=tmp_path / "http-availability-matrix.md",
+    )
+
+    matches, diff = matrix_module.check_http_availability_matrix(settings=settings, snapshot=snapshot_path)
+
+    assert matches is True
+    assert diff == ""
+
+
+def test_http_availability_matrix_check_reports_diff(tmp_path) -> None:
+    settings = bootstrap_app_module.settings.model_copy(update={"enable_hypothesis_engine": True})
+    snapshot_path = tmp_path / "http-availability-matrix.md"
+    snapshot_path.write_text("# broken matrix\n", encoding="utf-8")
+
+    matches, diff = matrix_module.check_http_availability_matrix(settings=settings, snapshot=snapshot_path)
+
+    assert matches is False
+    assert str(snapshot_path) in diff
+    assert f"{snapshot_path}.generated" in diff

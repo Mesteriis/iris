@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from difflib import unified_diff
 from pathlib import Path
 
 from src.core.http.launch_modes import DeploymentProfile, LaunchMode
@@ -136,6 +137,31 @@ def write_http_availability_matrix(*, settings: Settings, output: str | Path) ->
     return output_path
 
 
+def read_http_availability_matrix(path: str | Path) -> str:
+    return Path(path).read_text(encoding="utf-8")
+
+
+def diff_http_availability_matrix(*, settings: Settings, snapshot: str | Path) -> str:
+    snapshot_path = Path(snapshot)
+    expected = read_http_availability_matrix(snapshot_path)
+    actual = render_http_availability_matrix(settings=settings)
+    if actual == expected:
+        return ""
+    return "".join(
+        unified_diff(
+            expected.splitlines(keepends=True),
+            actual.splitlines(keepends=True),
+            fromfile=str(snapshot_path),
+            tofile=f"{snapshot_path}.generated",
+        )
+    )
+
+
+def check_http_availability_matrix(*, settings: Settings, snapshot: str | Path) -> tuple[bool, str]:
+    diff = diff_http_availability_matrix(settings=settings, snapshot=snapshot)
+    return diff == "", diff
+
+
 def _format_mode_cell(categories: dict[str, int]) -> str:
     if not categories:
         return "-"
@@ -144,7 +170,10 @@ def _format_mode_cell(categories: dict[str, int]) -> str:
 
 __all__ = [
     "build_http_mode_matrix",
+    "check_http_availability_matrix",
     "collect_http_route_inventory",
+    "diff_http_availability_matrix",
+    "read_http_availability_matrix",
     "render_http_availability_matrix",
     "write_http_availability_matrix",
 ]

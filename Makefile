@@ -1,5 +1,6 @@
 .PHONY: lint start backend frontend all backend-start frontend-start _lint-all _lint-backend _lint-frontend \
-	openapi-export-full openapi-export-ha openapi-check-full openapi-check-ha openapi-check api-matrix-export
+	openapi-export-full openapi-export-ha openapi-check-full openapi-check-ha openapi-check \
+	api-matrix-export api-matrix-check
 
 BACKEND_HOOKS := \
 	ruff \
@@ -23,6 +24,7 @@ OPENAPI_DIR := openapi
 OPENAPI_EXPORT := cd backend && uv run python scripts/export_openapi.py
 OPENAPI_CHECK := cd backend && uv run python scripts/check_openapi.py
 API_MATRIX_EXPORT := cd backend && uv run python scripts/export_http_matrix.py
+API_MATRIX_CHECK := cd backend && uv run python scripts/check_http_matrix.py
 
 LINT_SCOPE := $(firstword $(filter backend frontend all,$(filter-out lint start,$(MAKECMDGOALS))))
 LINT_SCOPE := $(if $(LINT_SCOPE),$(LINT_SCOPE),all)
@@ -99,6 +101,11 @@ openapi-check: openapi-check-full openapi-check-ha
 api-matrix-export:
 	@$(API_MATRIX_EXPORT) \
 		--output ../docs/_generated/http-availability-matrix.md \
+		--enable-hypothesis-engine
+
+api-matrix-check:
+	@$(API_MATRIX_CHECK) \
+		--snapshot ../docs/_generated/http-availability-matrix.md \
 		--enable-hypothesis-engine
 
 backend frontend all:
