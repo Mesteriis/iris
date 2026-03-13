@@ -10,6 +10,7 @@ from src.apps.patterns.task_service_context import PatternContextMixin
 from src.apps.patterns.task_service_decisions import PatternDecisionSignalsMixin
 from src.apps.patterns.task_service_history import PatternHistoryStatisticsMixin
 from src.apps.patterns.task_service_market import PatternMarketDiscoveryMixin
+from src.apps.patterns.task_service_runtime import PatternRealtimeService
 from src.core.db.uow import BaseAsyncUnitOfWork
 
 
@@ -47,6 +48,19 @@ class PatternEvaluationService(_PatternTaskSupport):
 class PatternSignalContextService(_PatternTaskSupport):
     def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
         super().__init__(uow, service_name="PatternSignalContextService")
+
+    async def enrich_context_only(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        candle_timestamp: object | None = None,
+    ) -> dict[str, object]:
+        return await self._enrich_signal_context(
+            coin_id=int(coin_id),
+            timeframe=int(timeframe),
+            candle_timestamp=candle_timestamp,
+        )
 
     async def enrich(
         self,
@@ -145,6 +159,7 @@ __all__ = [
     "PatternDiscoveryService",
     "PatternEvaluationService",
     "PatternMarketStructureService",
+    "PatternRealtimeService",
     "PatternSignalContextService",
     "PatternStrategyService",
 ]

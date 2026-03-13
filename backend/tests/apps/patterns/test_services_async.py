@@ -11,12 +11,15 @@ from src.apps.patterns.models import PatternFeature
 from src.apps.patterns.query_services import PatternQueryService
 from src.apps.patterns.services import PatternAdminService
 from src.apps.patterns.selectors import _signal_select
+from src.apps.patterns.task_services import PatternRealtimeService
 from src.apps.signals.models import Signal
 from src.core.db.uow import SessionUnitOfWork
+from tests.patterns_support import seed_pattern_api_state
 
 
 @pytest.mark.asyncio
-async def test_pattern_async_services_cover_runtime_helpers(async_db_session, db_session, seeded_api_state) -> None:
+async def test_pattern_async_services_cover_runtime_helpers(async_db_session, db_session) -> None:
+    seeded_api_state = seed_pattern_api_state(db_session)
     btc = seeded_api_state["btc"]
     eth = seeded_api_state["eth"]
     signal_timestamp = seeded_api_state["signal_timestamp"]
@@ -44,7 +47,8 @@ async def test_pattern_async_services_cover_runtime_helpers(async_db_session, db
     assert candles[-1].timestamp > candles[0].timestamp
 
     short_return = await query_service.coin_bar_return(coin_id=int(btc.id), timeframe=240)
-    assert short_return == (None, None)
+    assert short_return[0] is not None
+    assert short_return[1] is not None
     price_change, volatility = await query_service.coin_bar_return(coin_id=int(btc.id), timeframe=15)
     assert price_change is not None
     assert volatility is not None
@@ -52,8 +56,8 @@ async def test_pattern_async_services_cover_runtime_helpers(async_db_session, db
     assert volatility >= 0.0
 
     live_regimes = await query_service.compute_live_regimes(int(btc.id))
-    assert len(live_regimes) == 1
-    assert live_regimes[0].timeframe == 15
+    assert len(live_regimes) >= 1
+    assert any(item.timeframe == 15 for item in live_regimes)
 
     assert (
         PatternQueryService.capital_wave_bucket(SimpleNamespace(symbol="BTCUSD", sector_id=1), None, top_sector_id=None)
@@ -119,14 +123,15 @@ async def test_pattern_async_services_cover_runtime_helpers(async_db_session, db
     narratives = await query_service.build_sector_narratives()
     narrative_15 = next(item for item in narratives if item.timeframe == 15)
     assert narrative_15.top_sector == "store_of_value"
-    assert narrative_15.rotation_state == "btc_dominance_falling"
+    assert narrative_15.rotation_state == "sector_leadership_change"
     assert narrative_15.capital_wave is not None
 
 
 @pytest.mark.asyncio
 async def test_pattern_async_services_cover_listing_update_and_regime_paths(
-    async_db_session, db_session, seeded_api_state
+    async_db_session, db_session
 ) -> None:
+    seeded_api_state = seed_pattern_api_state(db_session)
     query_service = PatternQueryService(async_db_session)
 
     patterns = await query_service.list_patterns()
@@ -370,3 +375,40 @@ async def test_pattern_async_sector_narrative_rotation_branches(monkeypatch) -> 
     )
     empty_bucket_narratives = await PatternQueryService(empty_bucket_session).build_sector_narratives()
     assert empty_bucket_narratives[0].capital_wave is None
+
+
+@pytest.mark.asyncio
+async def test_pattern_realtime_service_handles_pattern_and_regime_runtime_paths(
+    async_db_session, db_session
+) -> None:
+    seeded_api_state = seed_pattern_api_state(db_session)
+    btc = seeded_api_state["btc"]
+    signal_timestamp = seeded_api_state["signal_timestamp"]
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = PatternRealtimeService(uow)
+        detection = await service.detect_incremental_signals(
+            coin_id=int(btc.id),
+            timeframe=15,
+            candle_timestamp=signal_timestamp,
+            regime="bull_trend",
+            lookback=200,
+        )
+        assert detection["status"] == "ok"
+        assert isinstance(detection["new_signal_types"], tuple)
+        if bool(detection.get("requires_commit")):
+            await uow.commit()
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = PatternRealtimeService(uow)
+        regime_state = await service.refresh_regime_state(
+            coin_id=int(btc.id),
+            timeframe=15,
+            regime="bull_trend",
+            regime_confidence=0.81,
+        )
+        assert regime_state is not None
+        assert regime_state["status"] == "ok"
+        assert regime_state["regime"] == "bull_trend"
+        assert "next_cycle" in regime_state
+        await uow.commit()

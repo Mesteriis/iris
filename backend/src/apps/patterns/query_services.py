@@ -15,6 +15,7 @@ from src.apps.market_data.repos import CandlePoint
 from src.apps.patterns.domain.regime import detect_market_regime, read_regime_details
 from src.apps.patterns.domain.utils import current_indicator_map
 from src.apps.patterns.models import DiscoveredPattern, MarketCycle, PatternFeature, PatternRegistry, PatternStatistic
+from src.apps.patterns.query_builders import signal_select as _signal_select
 from src.apps.patterns.read_models import (
     CoinRegimeReadModel,
     DiscoveredPatternReadModel,
@@ -40,7 +41,6 @@ from src.apps.patterns.read_models import (
     sector_narrative_read_model,
     sector_read_model_from_mapping,
 )
-from src.apps.patterns.selectors import _signal_select
 from src.apps.signals.models import Signal
 from src.core.db.persistence import AsyncQueryService
 

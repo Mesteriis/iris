@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy import select
 
@@ -23,9 +25,23 @@ from src.apps.patterns.selectors import (
     update_pattern_feature,
 )
 from src.apps.signals.models import Signal
+from tests.patterns_support import seed_pattern_api_state
 
 
-def test_pattern_selectors_cover_listing_update_and_regime_branches(db_session, seeded_api_state) -> None:
+def test_pattern_selectors_cover_listing_update_and_regime_branches(db_session, monkeypatch) -> None:
+    seeded_api_state = seed_pattern_api_state(db_session)
+    monkeypatch.setattr(
+        "src.apps.patterns.selectors.build_sector_narratives",
+        lambda _db: [
+            SimpleNamespace(
+                timeframe=60,
+                top_sector="store_of_value",
+                rotation_state="sector_leadership_change",
+                btc_dominance=None,
+                capital_wave="large_caps",
+            )
+        ],
+    )
     patterns = list_patterns(db_session)
     assert {"bull_flag", "breakout_retest"} <= {row["slug"] for row in patterns}
     assert next(row for row in patterns if row["slug"] == "bull_flag")["statistics"]
