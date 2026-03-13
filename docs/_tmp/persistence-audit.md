@@ -68,7 +68,7 @@ Status: migrated on the background/runtime surface
 - repositories are centralized in [backend/src/apps/anomalies/repos/anomaly_repo.py](backend/src/apps/anomalies/repos/anomaly_repo.py)
 - read-only anomaly list/detail flows now go through [backend/src/apps/anomalies/query_services.py](backend/src/apps/anomalies/query_services.py)
 - immutable dataclass read models now live in [backend/src/apps/anomalies/read_models.py](backend/src/apps/anomalies/read_models.py)
-- the compatibility selector module now delegates to the query service instead of issuing ad-hoc session queries directly
+- the old compatibility selector module under [backend/src/apps/anomalies/selectors](backend/src/apps/anomalies/selectors) has been reduced to a tombstone; callers read anomalies directly through [backend/src/apps/anomalies/query_services.py](backend/src/apps/anomalies/query_services.py)
 - `candle_closed` consumers and anomaly enrichment / sector-scan tasks now own persistence through the shared async UoW instead of raw session commits
 - persistence logging now covers anomaly repositories, query services, service orchestration and transaction lifecycle events
 - sector and related-peer candle loading now batches peer reads in one explicit query path, removing the old loop-driven N+1 pattern from sector scan context building
