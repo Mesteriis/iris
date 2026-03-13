@@ -48,6 +48,7 @@ def _create_market_predictions_impl(
         return {"status": "skipped", "reason": "relations_not_found", "leader_coin_id": leader_coin_id}
 
     created = 0
+    snapshots: list[dict[str, object]] = []
     for relation in relations:
         target_coin = db.get(Coin, relation.follower_coin_id)
         if target_coin is None or target_coin.deleted_at is not None or not target_coin.enabled:
@@ -80,21 +81,25 @@ def _create_market_predictions_impl(
         )
         db.add(prediction)
         db.flush()
-        cache_prediction_snapshot(
-            prediction_id=int(prediction.id),
-            prediction_type=prediction.prediction_type,
-            leader_coin_id=int(prediction.leader_coin_id),
-            target_coin_id=int(prediction.target_coin_id),
-            prediction_event=prediction.prediction_event,
-            expected_move=prediction.expected_move,
-            lag_hours=int(prediction.lag_hours),
-            confidence=float(prediction.confidence),
-            created_at=prediction.created_at,
-            evaluation_time=prediction.evaluation_time,
-            status=prediction.status,
+        snapshots.append(
+            {
+                "prediction_id": int(prediction.id),
+                "prediction_type": prediction.prediction_type,
+                "leader_coin_id": int(prediction.leader_coin_id),
+                "target_coin_id": int(prediction.target_coin_id),
+                "prediction_event": prediction.prediction_event,
+                "expected_move": prediction.expected_move,
+                "lag_hours": int(prediction.lag_hours),
+                "confidence": float(prediction.confidence),
+                "created_at": prediction.created_at,
+                "evaluation_time": prediction.evaluation_time,
+                "status": prediction.status,
+            }
         )
         created += 1
     db.commit()
+    for snapshot in snapshots:
+        cache_prediction_snapshot(**snapshot)
     return {"status": "ok", "created": created, "leader_coin_id": leader_coin_id}
 
 
@@ -323,6 +328,8 @@ def _evaluate_pending_predictions_impl(
     confirmed = 0
     failed = 0
     expired = 0
+    snapshots: list[dict[str, object]] = []
+    pending_events: list[tuple[str, dict[str, object]]] = []
     for prediction in rows:
         outcome = _evaluate_prediction_window(db, prediction, now=now)
         if outcome is None:
@@ -344,18 +351,20 @@ def _evaluate_pending_predictions_impl(
             result.profit = outcome.profit
             result.evaluated_at = now
         relation = _apply_relation_feedback(db, prediction, success=outcome.success)
-        cache_prediction_snapshot(
-            prediction_id=int(prediction.id),
-            prediction_type=prediction.prediction_type,
-            leader_coin_id=int(prediction.leader_coin_id),
-            target_coin_id=int(prediction.target_coin_id),
-            prediction_event=prediction.prediction_event,
-            expected_move=prediction.expected_move,
-            lag_hours=int(prediction.lag_hours),
-            confidence=float(prediction.confidence),
-            created_at=prediction.created_at,
-            evaluation_time=prediction.evaluation_time,
-            status=prediction.status,
+        snapshots.append(
+            {
+                "prediction_id": int(prediction.id),
+                "prediction_type": prediction.prediction_type,
+                "leader_coin_id": int(prediction.leader_coin_id),
+                "target_coin_id": int(prediction.target_coin_id),
+                "prediction_event": prediction.prediction_event,
+                "expected_move": prediction.expected_move,
+                "lag_hours": int(prediction.lag_hours),
+                "confidence": float(prediction.confidence),
+                "created_at": prediction.created_at,
+                "evaluation_time": prediction.evaluation_time,
+                "status": prediction.status,
+            }
         )
         if outcome.status == "confirmed":
             confirmed += 1
@@ -365,24 +374,30 @@ def _evaluate_pending_predictions_impl(
             failed += 1
         if emit_events:
             event_type = "prediction_confirmed" if outcome.status == "confirmed" else "prediction_failed"
-            publish_event(
-                event_type,
-                {
-                    "coin_id": int(prediction.target_coin_id),
-                    "timeframe": 15,
-                    "timestamp": now,
-                    "prediction_id": int(prediction.id),
-                    "leader_coin_id": int(prediction.leader_coin_id),
-                    "target_coin_id": int(prediction.target_coin_id),
-                    "prediction_event": prediction.prediction_event,
-                    "expected_move": prediction.expected_move,
-                    "actual_move": outcome.actual_move,
-                    "profit": outcome.profit,
-                    "status": outcome.status,
-                    "relation_confidence": float(relation.confidence) if relation is not None else None,
-                },
+            pending_events.append(
+                (
+                    event_type,
+                    {
+                        "coin_id": int(prediction.target_coin_id),
+                        "timeframe": 15,
+                        "timestamp": now,
+                        "prediction_id": int(prediction.id),
+                        "leader_coin_id": int(prediction.leader_coin_id),
+                        "target_coin_id": int(prediction.target_coin_id),
+                        "prediction_event": prediction.prediction_event,
+                        "expected_move": prediction.expected_move,
+                        "actual_move": outcome.actual_move,
+                        "profit": outcome.profit,
+                        "status": outcome.status,
+                        "relation_confidence": float(relation.confidence) if relation is not None else None,
+                    },
+                )
             )
     db.commit()
+    for snapshot in snapshots:
+        cache_prediction_snapshot(**snapshot)
+    for event_type, payload in pending_events:
+        publish_event(event_type, payload)
     return {
         "status": "ok",
         "evaluated": len(rows),

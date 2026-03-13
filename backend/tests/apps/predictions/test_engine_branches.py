@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import types
 
 import pytest
 from sqlalchemy import select
@@ -106,6 +107,44 @@ def test_prediction_creation_and_window_branches(db_session) -> None:
         expected_move="down",
     )
     assert _evaluate_prediction_window(db_session, too_short, now=DEFAULT_START + timedelta(hours=1)) is None
+
+
+def test_prediction_creation_defers_cache_until_after_commit(db_session, monkeypatch) -> None:
+    leader = create_cross_market_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test", sector_name="store_of_value")
+    follower = create_cross_market_coin(db_session, symbol="ETHUSD_EVT", name="Ethereum Event Test", sector_name="smart_contract")
+    db_session.add(
+        CoinRelation(
+            leader_coin_id=int(leader.id),
+            follower_coin_id=int(follower.id),
+            correlation=0.82,
+            lag_hours=4,
+            confidence=0.78,
+            updated_at=DEFAULT_START,
+        )
+    )
+    db_session.commit()
+
+    events: list[str] = []
+    original_commit = db_session.commit
+
+    def _commit(self):
+        events.append("commit")
+        return original_commit()
+
+    monkeypatch.setattr(db_session, "commit", types.MethodType(_commit, db_session))
+    monkeypatch.setattr("src.apps.predictions.engine.cache_prediction_snapshot", lambda **_kwargs: events.append("cache"))
+
+    result = create_market_predictions(
+        db_session,
+        leader_coin_id=int(leader.id),
+        prediction_event="leader_breakout",
+        expected_move="up",
+        base_confidence=0.8,
+        emit_events=False,
+    )
+
+    assert result["created"] == 1
+    assert events == ["commit", "cache"]
 
 
 def test_prediction_evaluation_handles_expired_existing_result_and_relation_feedback(db_session) -> None:
@@ -233,6 +272,53 @@ def test_prediction_sync_failure_expiry_and_pending_branches(db_session, monkeyp
     assert db_session.get(MarketPrediction, int(expired_prediction.id)).status == "expired"
     assert db_session.get(MarketPrediction, int(pending_prediction.id)).status == "pending"
     assert published.count("prediction_failed") == 2
+
+
+def test_prediction_evaluation_defers_cache_and_events_until_after_commit(db_session, monkeypatch) -> None:
+    leader = create_cross_market_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test", sector_name="store_of_value")
+    follower = create_cross_market_coin(db_session, symbol="ETHUSD_EVT", name="Ethereum Event Test", sector_name="smart_contract")
+    db_session.add(
+        CoinRelation(
+            leader_coin_id=int(leader.id),
+            follower_coin_id=int(follower.id),
+            correlation=0.82,
+            lag_hours=4,
+            confidence=0.78,
+            updated_at=DEFAULT_START,
+        )
+    )
+    db_session.commit()
+    seed_candles(
+        db_session,
+        coin=follower,
+        interval="15m",
+        closes=generate_close_series(start_price=50.0, returns=[0.004] * 20),
+        start=DEFAULT_START,
+    )
+    create_pending_prediction(
+        db_session,
+        leader_coin_id=int(leader.id),
+        target_coin_id=int(follower.id),
+        created_at=DEFAULT_START,
+        lag_hours=4,
+        expected_move="up",
+    )
+
+    events: list[str] = []
+    original_commit = db_session.commit
+
+    def _commit(self):
+        events.append("commit")
+        return original_commit()
+
+    monkeypatch.setattr(db_session, "commit", types.MethodType(_commit, db_session))
+    monkeypatch.setattr("src.apps.predictions.engine.cache_prediction_snapshot", lambda **_kwargs: events.append("cache"))
+    monkeypatch.setattr("src.apps.predictions.engine.publish_event", lambda *_args, **_kwargs: events.append("publish"))
+
+    result = evaluate_pending_predictions(db_session, emit_events=True)
+
+    assert result["confirmed"] == 1
+    assert events == ["commit", "cache", "publish"]
 
 
 def test_prediction_window_direct_confirmed_and_pending_paths(db_session) -> None:

@@ -45,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - legacy `cross_market` compatibility engine now also emits structured execute/result logging for relation refresh, sector momentum refresh, leader detection, orchestration and alignment-weight reads, including skipped branches.
 - legacy `predictions` compatibility service now also emits structured execute/result logging for prediction creation and pending-evaluation runs instead of relying only on wrapper-level deprecation logs.
 - legacy `predictions` compatibility query adapter now also emits structured execute/result logging for prediction list reads instead of relying only on deprecation warnings.
+- legacy sync `predictions` engine now defers compatibility cache writes, and pending-evaluation event publication, until after the top-level `commit()`, aligning the residual sync transaction boundary more closely with the async service policy.
 - legacy `signals` backtest and strategy compatibility queries now also emit structured execute/result logging for list/top/detail reads instead of relying only on deprecation warnings.
 - legacy `signals` decision, market-decision and final-signal compatibility selectors now also emit structured execute/result logging for list/top/detail reads instead of relying only on deprecation warnings.
 - legacy `signals` recent-history compatibility wrapper now also emits its own structured `result` log after delegating to history refresh, completing execute/result parity for the residual sync history surface.
