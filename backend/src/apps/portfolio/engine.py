@@ -765,7 +765,26 @@ def ensure_portfolio_state(db: Session) -> PortfolioState:
         component="ensure_portfolio_state",
         mode="write",
     )
-    return _ensure_portfolio_state_impl(db)
+    _log_compat(
+        logging.DEBUG,
+        "compat.ensure_portfolio_state.execute",
+        component_type="compatibility_service",
+        component="ensure_portfolio_state",
+        mode="write",
+    )
+    state = _ensure_portfolio_state_impl(db)
+    state_payload = _portfolio_state_snapshot(db, state=state)
+    _log_compat(
+        logging.INFO,
+        "compat.ensure_portfolio_state.result",
+        component_type="compatibility_service",
+        component="ensure_portfolio_state",
+        mode="write",
+        state_id=int(state.id),
+        total_capital=float(state_payload["total_capital"]),
+        open_positions=int(state_payload["open_positions"]),
+    )
+    return state
 
 
 def refresh_portfolio_state(db: Session) -> PortfolioState:
@@ -776,7 +795,26 @@ def refresh_portfolio_state(db: Session) -> PortfolioState:
         component="refresh_portfolio_state",
         mode="write",
     )
-    return _refresh_portfolio_state_impl(db)
+    _log_compat(
+        logging.DEBUG,
+        "compat.refresh_portfolio_state.execute",
+        component_type="compatibility_service",
+        component="refresh_portfolio_state",
+        mode="write",
+    )
+    state = _refresh_portfolio_state_impl(db)
+    state_payload = _portfolio_state_snapshot(db, state=state)
+    _log_compat(
+        logging.INFO,
+        "compat.refresh_portfolio_state.result",
+        component_type="compatibility_service",
+        component="refresh_portfolio_state",
+        mode="write",
+        state_id=int(state.id),
+        total_capital=float(state_payload["total_capital"]),
+        open_positions=int(state_payload["open_positions"]),
+    )
+    return state
 
 
 def evaluate_portfolio_action(

@@ -298,9 +298,15 @@ def test_portfolio_legacy_compatibility_services_emit_execution_logs(db_session,
     monkeypatch.setattr(portfolio_services_module, "create_exchange_plugin", lambda account: _SingleBalancePlugin())
     monkeypatch.setattr("src.apps.portfolio.engine.create_exchange_plugin", lambda account: _SingleBalancePlugin())
 
+    assert ensure_portfolio_state(db_session).id == 1
+    assert refresh_portfolio_state(db_session).id == 1
     assert evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=False)["status"] == "ok"
     assert sync_exchange_balances(db_session, emit_events=False)["status"] == "ok"
 
+    assert "compat.ensure_portfolio_state.execute" in events
+    assert "compat.ensure_portfolio_state.result" in events
+    assert "compat.refresh_portfolio_state.execute" in events
+    assert "compat.refresh_portfolio_state.result" in events
     assert "compat.evaluate_portfolio_action.execute" in events
     assert "compat.evaluate_portfolio_action.result" in events
     assert "compat.sync_exchange_balances.execute" in events
