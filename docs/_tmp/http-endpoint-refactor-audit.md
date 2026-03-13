@@ -21,6 +21,7 @@
 - корневой router tree: `backend/src/api/router.py` -> `backend/src/api/v1/router.py`
 - shared transport foundation: `backend/src/core/http/*`
 - app-level OpenAPI governance: centralized `operationId` generation and schema tests for unique operation ids, category tags and mode-aware route exposure
+- OpenAPI export utility: `backend/scripts/export_openapi.py` plus `core/http/openapi.py` for deterministic schema snapshots by `mode/profile`
 - `backend/src/apps/control_plane/api/*`
 - `backend/src/apps/market_structure/api/*`
 - `backend/src/apps/news/api/*`
@@ -1128,7 +1129,7 @@ HTTP/API governance должен учитывать эволюцию surface, а
 9. Перевести `news`, отдельно разведя source API, item reads, jobs и onboarding.
 10. Разбить `signals` на несколько bounded read routers и проверить URL semantics.
 11. Active domain HTTP cutover закрыт; `operationId`/tag governance уже enforced кодом и bootstrap tests.
-12. Дальше остаются meta-governance tasks: OpenAPI diff control в CI, capability matrix automation и review checklist enforcement.
+12. Дальше остаются meta-governance tasks: привязать `backend/scripts/export_openapi.py` к OpenAPI diff control в CI, автоматизировать capability matrix и зафиксировать review checklist enforcement.
 
 ## Правила миграции
 

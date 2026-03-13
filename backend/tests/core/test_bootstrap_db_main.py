@@ -11,6 +11,7 @@ import src.core.bootstrap.app as bootstrap_app_module
 import src.core.bootstrap.lifespan as lifespan_module
 import src.core.db.session as session_module
 import src.core.db.uow as uow_module
+import src.core.http.openapi as openapi_module
 import src.core.settings.base as settings_base_module
 import src.main as main_module
 from fastapi import FastAPI
@@ -102,6 +103,31 @@ def test_ha_addon_openapi_excludes_mode_limited_routes(monkeypatch) -> None:
     assert "/api/v1/hypothesis/prompts" in paths
     assert "/api/v1/market-structure/sources" in paths
     assert "/api/v1/system/status" in paths
+
+
+def test_openapi_snapshot_helper_writes_mode_aware_schema(tmp_path) -> None:
+    settings = bootstrap_app_module.settings.model_copy(
+        update={
+            "enable_hypothesis_engine": True,
+            "api_launch_mode": "ha_addon",
+            "api_deployment_profile": "",
+        }
+    )
+    schema = openapi_module.build_openapi_schema(settings)
+    paths = set(schema["paths"].keys())
+
+    assert "/api/v1/hypothesis/jobs/evaluate" not in paths
+    assert "/api/v1/hypothesis/prompts" in paths
+
+    output_path = openapi_module.write_openapi_schema(
+        settings=settings,
+        output=tmp_path / "openapi-ha-addon.json",
+    )
+    dumped = output_path.read_text(encoding="utf-8")
+
+    assert output_path.name == "openapi-ha-addon.json"
+    assert '"openapi"' in dumped
+    assert '"/api/v1/hypothesis/prompts"' in dumped
 
 
 @pytest.mark.asyncio
