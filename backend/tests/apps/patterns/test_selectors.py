@@ -109,6 +109,8 @@ def test_pattern_selectors_cover_listing_update_and_regime_branches(db_session, 
     assert regime is not None
     assert regime["canonical_regime"] == "bull_trend"
     assert regime["items"][0]["timeframe"] == 15
+    lowercase_regime = get_coin_regimes(db_session, "btcusd_evt")
+    assert lowercase_regime == regime
     assert get_coin_regimes(db_session, "missing_evt") is None
 
     market_regime_feature = db_session.get(PatternFeature, "market_regime_engine")

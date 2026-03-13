@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from src.apps.cross_market.models import Sector, SectorMetric
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.models import Coin
-from src.apps.market_data.service_layer import get_coin_by_symbol
 from src.apps.patterns.domain.lifecycle import PatternLifecycleState
 from src.apps.patterns.domain.narrative import build_sector_narratives
 from src.apps.patterns.domain.regime import RegimeRead, compute_live_regimes, read_regime_details
@@ -260,7 +259,8 @@ def _serialize_signal_rows(
 
 
 def _coin_regime_read_model_for_symbol(db: Session, symbol: str) -> CoinRegimeReadModel | None:
-    coin = get_coin_by_symbol(db, symbol)
+    normalized_symbol = symbol.strip().upper()
+    coin = db.scalar(select(Coin).where(Coin.symbol == normalized_symbol, Coin.deleted_at.is_(None)))
     if coin is None:
         return None
     metrics = db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin.id))
