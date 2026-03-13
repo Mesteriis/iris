@@ -177,3 +177,24 @@ def test_patterns_legacy_compatibility_services_emit_deprecation_logs(db_session
     assert updated["cpu_cost"] == 1
     assert "compat.update_pattern_feature.deprecated" in events
     assert "compat.update_pattern.deprecated" in events
+
+
+def test_patterns_legacy_compatibility_services_emit_execution_logs(db_session, monkeypatch) -> None:
+    seed_pattern_api_state(db_session)
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+
+    feature = update_pattern_feature(db_session, "pattern_context_engine", enabled=False)
+    updated = update_pattern(db_session, "bull_flag", enabled=False, lifecycle_state=None, cpu_cost=0)
+
+    assert feature is not None and feature["enabled"] is False
+    assert updated is not None and updated["enabled"] is False
+    assert "compat.update_pattern_feature.execute" in events
+    assert "compat.update_pattern_feature.result" in events
+    assert "compat.update_pattern.execute" in events
+    assert "compat.update_pattern.result" in events

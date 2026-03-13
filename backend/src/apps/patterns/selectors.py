@@ -554,13 +554,36 @@ class PatternCompatibilityService:
             feature_slug=normalized_slug,
             enabled=enabled,
         )
+        self._log(
+            logging.DEBUG,
+            "compat.update_pattern_feature.execute",
+            mode="write",
+            feature_slug=normalized_slug,
+            enabled=enabled,
+        )
         row = self._db.get(PatternFeature, normalized_slug)
         if row is None:
+            self._log(
+                logging.INFO,
+                "compat.update_pattern_feature.result",
+                mode="write",
+                feature_slug=normalized_slug,
+                found=False,
+            )
             return None
         row.enabled = enabled
         self._db.commit()
         self._db.refresh(row)
-        return _pattern_feature_payload(pattern_feature_read_model_from_orm(row))
+        result = _pattern_feature_payload(pattern_feature_read_model_from_orm(row))
+        self._log(
+            logging.INFO,
+            "compat.update_pattern_feature.result",
+            mode="write",
+            feature_slug=normalized_slug,
+            found=True,
+            enabled=result["enabled"],
+        )
+        return result
 
     def update_pattern(
         self,
@@ -580,8 +603,24 @@ class PatternCompatibilityService:
             lifecycle_state=lifecycle_state,
             cpu_cost=cpu_cost,
         )
+        self._log(
+            logging.DEBUG,
+            "compat.update_pattern.execute",
+            mode="write",
+            slug=normalized_slug,
+            enabled=enabled,
+            lifecycle_state=lifecycle_state,
+            cpu_cost=cpu_cost,
+        )
         row = self._db.get(PatternRegistry, normalized_slug)
         if row is None:
+            self._log(
+                logging.INFO,
+                "compat.update_pattern.result",
+                mode="write",
+                slug=normalized_slug,
+                found=False,
+            )
             return None
         if enabled is not None:
             row.enabled = enabled
@@ -597,7 +636,17 @@ class PatternCompatibilityService:
         self._db.commit()
         self._db.refresh(row)
         item = _get_pattern_read_model(self._db, normalized_slug)
-        return _pattern_payload(item) if item is not None else None
+        result = _pattern_payload(item) if item is not None else None
+        self._log(
+            logging.INFO,
+            "compat.update_pattern.result",
+            mode="write",
+            slug=normalized_slug,
+            found=result is not None,
+            enabled=result.get("enabled") if isinstance(result, dict) else None,
+            lifecycle_state=result.get("lifecycle_state") if isinstance(result, dict) else None,
+        )
+        return result
 
 
 def list_patterns(db: Session) -> Sequence[dict[str, Any]]:
