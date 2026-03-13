@@ -2,11 +2,22 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from src.apps.signals.fusion import evaluate_market_decision
+import pytest
+
+from src.apps.signals.services import SignalFusionService
+from src.core.db.uow import SessionUnitOfWork
 from tests.fusion_support import create_test_coin, insert_signals, replace_pattern_statistics
 
 
-def test_signal_fusion_conflicting_stack_returns_hold(db_session) -> None:
+async def _evaluate_market_decision(async_db_session, **kwargs):
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await SignalFusionService(uow).evaluate_market_decision(**kwargs)
+        await uow.commit()
+        return result
+
+
+@pytest.mark.asyncio
+async def test_signal_fusion_conflicting_stack_returns_hold(async_db_session, db_session) -> None:
     coin = create_test_coin(db_session, symbol="ETHUSD_EVT", name="Ethereum Event Test")
     coin_id = int(coin.id)
     timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=timezone.utc)
@@ -29,14 +40,14 @@ def test_signal_fusion_conflicting_stack_returns_hold(db_session) -> None:
         ],
     )
 
-    result = evaluate_market_decision(
-        db_session,
+    result = await _evaluate_market_decision(
+        async_db_session,
         coin_id=coin_id,
         timeframe=15,
         trigger_timestamp=timestamp,
         emit_event=False,
     )
 
-    assert result["status"] == "ok"
-    assert result["decision"] == "HOLD"
-    assert float(result["confidence"]) >= 0.35
+    assert result.status == "ok"
+    assert result.decision == "HOLD"
+    assert float(result.confidence or 0.0) >= 0.35

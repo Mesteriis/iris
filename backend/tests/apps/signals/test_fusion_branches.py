@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import timedelta
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import select
 
-from src.apps.patterns.models import PatternStatistic
 from src.apps.patterns.domain.registry import sync_pattern_metadata
+from src.apps.patterns.models import PatternStatistic
 from src.apps.signals.fusion import (
     _decision_from_scores,
     _fuse_signals,
@@ -15,13 +16,32 @@ from src.apps.signals.fusion import (
     _signal_archetype,
     _signal_regime,
     _signal_success_rate,
-    evaluate_market_decision,
 )
 from src.apps.signals.models import MarketDecision, Signal
-from src.core.db.persistence import PERSISTENCE_LOGGER
+from src.apps.signals.services import SignalFusionService, SignalFusionSideEffectDispatcher
+from src.core.db.uow import SessionUnitOfWork
 from tests.cross_market_support import DEFAULT_START
 from tests.fusion_support import create_test_coin, replace_pattern_statistics, upsert_coin_metrics
-from tests.portfolio_support import create_market_decision
+
+
+async def _noop_enrich_context(self, *, coin_id: int, timeframe: int, candle_timestamp: object | None) -> None:
+    del self, coin_id, timeframe, candle_timestamp
+
+
+async def _evaluate_market_decision(
+    async_db_session,
+    *,
+    commit: bool = True,
+    apply_side_effects: bool = False,
+    **kwargs,
+):
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await SignalFusionService(uow).evaluate_market_decision(**kwargs)
+        if commit:
+            await uow.commit()
+        if apply_side_effects:
+            await SignalFusionSideEffectDispatcher().apply(result)
+        return result
 
 
 def test_fusion_helper_branches(db_session) -> None:
@@ -30,10 +50,46 @@ def test_fusion_helper_branches(db_session) -> None:
     timestamp = DEFAULT_START
     db_session.add_all(
         [
-            Signal(coin_id=int(coin.id), timeframe=15, signal_type="pattern_bull_flag", confidence=0.8, priority_score=1.0, context_score=1.0, regime_alignment=1.0, candle_timestamp=timestamp),
-            Signal(coin_id=int(coin.id), timeframe=15, signal_type="pattern_head_shoulders", confidence=0.75, priority_score=1.0, context_score=1.0, regime_alignment=1.0, candle_timestamp=timestamp + timedelta(minutes=15)),
-            Signal(coin_id=int(coin.id), timeframe=15, signal_type="pattern_cluster_breakout", confidence=0.7, priority_score=1.0, context_score=1.0, regime_alignment=1.0, candle_timestamp=timestamp + timedelta(minutes=30)),
-            Signal(coin_id=int(coin.id), timeframe=15, signal_type="pattern_hierarchy_trend", confidence=0.7, priority_score=1.0, context_score=1.0, regime_alignment=1.0, candle_timestamp=timestamp + timedelta(minutes=45)),
+            Signal(
+                coin_id=int(coin.id),
+                timeframe=15,
+                signal_type="pattern_bull_flag",
+                confidence=0.8,
+                priority_score=1.0,
+                context_score=1.0,
+                regime_alignment=1.0,
+                candle_timestamp=timestamp,
+            ),
+            Signal(
+                coin_id=int(coin.id),
+                timeframe=15,
+                signal_type="pattern_head_shoulders",
+                confidence=0.75,
+                priority_score=1.0,
+                context_score=1.0,
+                regime_alignment=1.0,
+                candle_timestamp=timestamp + timedelta(minutes=15),
+            ),
+            Signal(
+                coin_id=int(coin.id),
+                timeframe=15,
+                signal_type="pattern_cluster_breakout",
+                confidence=0.7,
+                priority_score=1.0,
+                context_score=1.0,
+                regime_alignment=1.0,
+                candle_timestamp=timestamp + timedelta(minutes=30),
+            ),
+            Signal(
+                coin_id=int(coin.id),
+                timeframe=15,
+                signal_type="pattern_hierarchy_trend",
+                confidence=0.7,
+                priority_score=1.0,
+                context_score=1.0,
+                regime_alignment=1.0,
+                candle_timestamp=timestamp + timedelta(minutes=45),
+            ),
         ]
     )
     db_session.add(
@@ -70,13 +126,19 @@ def test_fusion_helper_branches(db_session) -> None:
     assert _fuse_signals(db_session, signals=[], regime="bull_trend") is None
 
 
-def test_evaluate_market_decision_skip_and_unchanged_branches(db_session, monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_evaluate_market_decision_skip_and_unchanged_branches(async_db_session, db_session, monkeypatch) -> None:
     coin = create_test_coin(db_session, symbol="ETHUSD_EVT", name="Ethereum Event Test")
     upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=15)
 
-    monkeypatch.setattr("src.apps.signals.fusion.enrich_signal_context", lambda *args, **kwargs: {"status": "ok"})
-    skipped = evaluate_market_decision(db_session, coin_id=int(coin.id), timeframe=15, emit_event=False)
-    assert skipped["reason"] == "signals_not_found"
+    monkeypatch.setattr(SignalFusionService, "_enrich_context", _noop_enrich_context)
+    skipped = await _evaluate_market_decision(
+        async_db_session,
+        coin_id=int(coin.id),
+        timeframe=15,
+        emit_event=False,
+    )
+    assert skipped.reason == "signals_not_found"
 
     timestamp = DEFAULT_START + timedelta(hours=1)
     replace_pattern_statistics(
@@ -98,52 +160,24 @@ def test_evaluate_market_decision_skip_and_unchanged_branches(db_session, monkey
     )
     db_session.commit()
 
-    first = evaluate_market_decision(db_session, coin_id=int(coin.id), timeframe=15, emit_event=False)
-    unchanged = evaluate_market_decision(db_session, coin_id=int(coin.id), timeframe=15, emit_event=False)
-    assert first["status"] == "ok"
-    assert unchanged["reason"] == "decision_unchanged"
+    first = await _evaluate_market_decision(
+        async_db_session,
+        coin_id=int(coin.id),
+        timeframe=15,
+        emit_event=False,
+    )
+    unchanged = await _evaluate_market_decision(
+        async_db_session,
+        coin_id=int(coin.id),
+        timeframe=15,
+        emit_event=False,
+    )
+    assert first.status == "ok"
+    assert unchanged.reason == "decision_unchanged"
 
 
-def test_evaluate_market_decision_disables_nested_context_commit(db_session, monkeypatch) -> None:
-    coin = create_test_coin(db_session, symbol="LINKUSD_EVT", name="Chainlink Event Test")
-    upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=15)
-    captured: dict[str, object] = {}
-
-    def _capture_context(*args, **kwargs):
-        del args
-        captured.update(kwargs)
-        return {"status": "ok"}
-
-    monkeypatch.setattr("src.apps.signals.fusion.enrich_signal_context", _capture_context)
-    skipped = evaluate_market_decision(db_session, coin_id=int(coin.id), timeframe=15, emit_event=False)
-
-    assert skipped["reason"] == "signals_not_found"
-    assert captured["commit"] is False
-    assert int(captured["coin_id"]) == int(coin.id)
-    assert int(captured["timeframe"]) == 15
-
-
-def test_evaluate_market_decision_emits_compatibility_execution_logs(db_session, monkeypatch) -> None:
-    coin = create_test_coin(db_session, symbol="ATOMUSD_EVT", name="Cosmos Event Test")
-    upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=15)
-    events: list[str] = []
-
-    def _log(level: int, message: str, *args, **kwargs) -> None:
-        del level, args, kwargs
-        events.append(message)
-
-    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
-    monkeypatch.setattr("src.apps.signals.fusion.enrich_signal_context", lambda *args, **kwargs: {"status": "ok"})
-
-    result = evaluate_market_decision(db_session, coin_id=int(coin.id), timeframe=15, emit_event=False)
-
-    assert result["reason"] == "signals_not_found"
-    assert "compat.evaluate_market_decision.deprecated" in events
-    assert "compat.evaluate_market_decision.execute" in events
-    assert "compat.evaluate_market_decision.result" in events
-
-
-def test_evaluate_market_decision_handles_null_fusion_window(db_session, monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_evaluate_market_decision_handles_null_fusion_window(async_db_session, db_session, monkeypatch) -> None:
     coin = create_test_coin(db_session, symbol="SOLUSD_EVT", name="Solana Event Test")
     upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=15)
     db_session.add(
@@ -159,13 +193,21 @@ def test_evaluate_market_decision_handles_null_fusion_window(db_session, monkeyp
         )
     )
     db_session.commit()
-    monkeypatch.setattr("src.apps.signals.fusion.enrich_signal_context", lambda *args, **kwargs: {"status": "ok"})
-    monkeypatch.setattr("src.apps.signals.fusion._fuse_signals", lambda *args, **kwargs: None)
-    result = evaluate_market_decision(db_session, coin_id=int(coin.id), timeframe=15, emit_event=False)
-    assert result["reason"] == "fusion_window_empty"
+    monkeypatch.setattr(SignalFusionService, "_enrich_context", _noop_enrich_context)
+    monkeypatch.setattr(SignalFusionService, "_fuse_signals", lambda self, **kwargs: None)
+
+    result = await _evaluate_market_decision(
+        async_db_session,
+        coin_id=int(coin.id),
+        timeframe=15,
+        emit_event=False,
+    )
+
+    assert result.reason == "fusion_window_empty"
 
 
-def test_fusion_additional_regime_and_event_branches(db_session, monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_fusion_additional_regime_and_event_branches(async_db_session, db_session, monkeypatch) -> None:
     assert _signal_regime(None, 15) is None
     assert _regime_weight(SimpleNamespace(signal_type="pattern_inverse_head_shoulders", confidence=0.8), "bull_trend") == 1.05
     assert _regime_weight(SimpleNamespace(signal_type="pattern_bull_flag", confidence=0.8), "bear_trend") == 0.8
@@ -234,8 +276,25 @@ def test_fusion_additional_regime_and_event_branches(db_session, monkeypatch) ->
     db_session.commit()
 
     published: list[str] = []
-    monkeypatch.setattr("src.apps.signals.fusion.publish_event", lambda event_type, payload: published.append(event_type))
-    monkeypatch.setattr("src.apps.signals.fusion.enrich_signal_context", lambda *args, **kwargs: {"status": "ok"})
-    result = evaluate_market_decision(db_session, coin_id=int(coin.id), timeframe=15, emit_event=True)
-    assert result["status"] == "ok"
+    monkeypatch.setattr("src.apps.signals.services.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr(SignalFusionService, "_enrich_context", _noop_enrich_context)
+
+    result = await _evaluate_market_decision(
+        async_db_session,
+        coin_id=int(coin.id),
+        timeframe=15,
+        emit_event=True,
+        apply_side_effects=True,
+    )
+
+    assert result.status == "ok"
     assert published[-1] == "decision_generated"
+
+    db_session.expire_all()
+    latest = db_session.scalar(
+        select(MarketDecision)
+        .where(MarketDecision.coin_id == int(coin.id), MarketDecision.timeframe == 15)
+        .order_by(MarketDecision.created_at.desc(), MarketDecision.id.desc())
+        .limit(1)
+    )
+    assert latest is not None

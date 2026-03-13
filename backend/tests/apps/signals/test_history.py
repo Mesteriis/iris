@@ -1,29 +1,27 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any
 
 import pytest
 from sqlalchemy import select
 
-import src.apps.signals.history as signal_history_module
-from src.apps.market_data.domain import ensure_utc, utc_now
+from src.apps.market_data.domain import ensure_utc
 from src.apps.market_data.repos import CandlePoint
 from src.apps.signals.history import (
     _candle_index_map,
     _close_timestamps,
     _drawdown_for_window,
     _evaluate_signal,
+    _fetch_signals,
     _index_at_or_after,
     _open_timestamp_from_signal,
     _return_for_index,
     _signal_direction,
-    _fetch_signals,
-    refresh_recent_signal_history,
-    refresh_signal_history,
 )
 from src.apps.signals.models import Signal, SignalHistory
+from src.apps.signals.services import SignalHistoryRefreshResult, SignalHistoryService
 from src.core.db.persistence import PERSISTENCE_LOGGER
+from src.core.db.uow import SessionUnitOfWork
 from tests.cross_market_support import DEFAULT_START, seed_candles
 from tests.factories.seeds import SignalSeedFactory
 from tests.fusion_support import create_test_coin
@@ -61,6 +59,44 @@ def _build_signal(
         created_at=candle_timestamp,
     )
     return Signal(coin_id=coin_id, timeframe=timeframe, **seed.__dict__)
+
+
+async def _refresh_history(
+    async_db_session,
+    *,
+    commit: bool,
+    lookback_days: int,
+    coin_id: int | None = None,
+    timeframe: int | None = None,
+    limit_per_scope: int | None = None,
+) -> SignalHistoryRefreshResult:
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await SignalHistoryService(uow).refresh_history(
+            lookback_days=lookback_days,
+            coin_id=coin_id,
+            timeframe=timeframe,
+            limit_per_scope=limit_per_scope,
+        )
+        if commit:
+            await uow.commit()
+        return result
+
+
+async def _refresh_recent_history(
+    async_db_session,
+    *,
+    coin_id: int,
+    timeframe: int,
+    commit: bool,
+) -> SignalHistoryRefreshResult:
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await SignalHistoryService(uow).refresh_recent_history(
+            coin_id=coin_id,
+            timeframe=timeframe,
+        )
+        if commit:
+            await uow.commit()
+        return result
 
 
 def test_signal_history_helper_math_covers_direction_indexing_and_returns() -> None:
@@ -120,6 +156,7 @@ def test_signal_history_helper_math_covers_direction_indexing_and_returns() -> N
     assert _drawdown_for_window(pattern_signal, 100.0, candles[1:]) == pytest.approx(0.01)
     assert _drawdown_for_window(bearish_signal, 100.0, candles[1:]) == pytest.approx(-0.05)
     assert _drawdown_for_window(bullish_signal, 100.0, []) is None
+    assert fallback_signal.signal_type == "custom_unknown"
 
 
 def test_signal_history_evaluate_signal_handles_complete_and_missing_windows() -> None:
@@ -158,9 +195,16 @@ def test_signal_history_evaluate_signal_handles_complete_and_missing_windows() -
     assert missing_outcome.evaluated_at is None
 
 
-def test_refresh_signal_history_returns_empty_when_no_signals(db_session) -> None:
-    result = refresh_signal_history(db_session, coin_id=999_999, timeframe=60, lookback_days=30)
-    assert result == {
+@pytest.mark.asyncio
+async def test_refresh_signal_history_returns_empty_when_no_signals(async_db_session) -> None:
+    result = await _refresh_history(
+        async_db_session,
+        coin_id=999_999,
+        timeframe=60,
+        lookback_days=30,
+        commit=False,
+    )
+    assert result.to_summary() == {
         "status": "ok",
         "rows": 0,
         "evaluated": 0,
@@ -169,7 +213,8 @@ def test_refresh_signal_history_returns_empty_when_no_signals(db_session) -> Non
     }
 
 
-def test_refresh_signal_history_emits_compatibility_execution_logs(db_session, monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_signal_history_service_emits_execution_logs(async_db_session, monkeypatch) -> None:
     events: list[str] = []
 
     def _log(level: int, message: str, *args, **kwargs) -> None:
@@ -178,15 +223,22 @@ def test_refresh_signal_history_emits_compatibility_execution_logs(db_session, m
 
     monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
 
-    result = refresh_signal_history(db_session, coin_id=999_999, timeframe=60, lookback_days=30, commit=False)
+    result = await _refresh_history(
+        async_db_session,
+        coin_id=999_999,
+        timeframe=60,
+        lookback_days=30,
+        commit=False,
+    )
 
-    assert result["rows"] == 0
-    assert "compat.refresh_signal_history.deprecated" in events
-    assert "compat.refresh_signal_history.execute" in events
-    assert "compat.refresh_signal_history.result" in events
+    assert result.rows == 0
+    assert "service.refresh_signal_history" in events
+    assert "repo.list_signal_history_signals" in events
+    assert "service.refresh_signal_history.result" in events
 
 
-def test_refresh_recent_signal_history_emits_compatibility_execution_logs(db_session, monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_signal_history_service_refresh_recent_logs(async_db_session, monkeypatch) -> None:
     events: list[str] = []
 
     def _log(level: int, message: str, *args, **kwargs) -> None:
@@ -195,15 +247,20 @@ def test_refresh_recent_signal_history_emits_compatibility_execution_logs(db_ses
 
     monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
 
-    result = refresh_recent_signal_history(db_session, coin_id=999_999, timeframe=60, commit=False)
+    result = await _refresh_recent_history(
+        async_db_session,
+        coin_id=999_999,
+        timeframe=60,
+        commit=False,
+    )
 
-    assert result["rows"] == 0
-    assert "compat.refresh_recent_signal_history.deprecated" in events
-    assert "compat.refresh_recent_signal_history.execute" in events
-    assert "compat.refresh_recent_signal_history.result" in events
+    assert result.rows == 0
+    assert "service.refresh_recent_signal_history" in events
+    assert "service.refresh_signal_history.result" in events
 
 
-def test_refresh_signal_history_handles_missing_candles(db_session) -> None:
+@pytest.mark.asyncio
+async def test_refresh_signal_history_handles_missing_candles(async_db_session, db_session) -> None:
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     signal_timestamp = DEFAULT_START + timedelta(hours=1)
     db_session.add(
@@ -217,10 +274,17 @@ def test_refresh_signal_history_handles_missing_candles(db_session) -> None:
     )
     db_session.commit()
 
-    result = refresh_signal_history(db_session, coin_id=int(coin.id), timeframe=60, lookback_days=30)
-    assert result["rows"] == 1
-    assert result["evaluated"] == 0
+    result = await _refresh_history(
+        async_db_session,
+        coin_id=int(coin.id),
+        timeframe=60,
+        lookback_days=30,
+        commit=True,
+    )
+    assert result.rows == 1
+    assert result.evaluated == 0
 
+    db_session.expire_all()
     history_row = db_session.scalar(
         select(SignalHistory)
         .where(SignalHistory.coin_id == int(coin.id), SignalHistory.timeframe == 60)
@@ -231,7 +295,8 @@ def test_refresh_signal_history_handles_missing_candles(db_session) -> None:
     assert history_row.evaluated_at is None
 
 
-def test_refresh_signal_history_handles_short_windows_without_commit(db_session) -> None:
+@pytest.mark.asyncio
+async def test_signal_history_service_handles_short_windows(async_db_session, db_session) -> None:
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     closes = [100.0, 101.0, 102.0]
     seed_candles(db_session, coin=coin, interval="1h", closes=closes, start=DEFAULT_START)
@@ -257,17 +322,18 @@ def test_refresh_signal_history_handles_short_windows_without_commit(db_session)
     assert len(fetched) == 1
     assert len(_fetch_signals(db_session, lookback_days=30, limit_per_scope=1)) >= 1
 
-    result = refresh_signal_history(
-        db_session,
+    result = await _refresh_history(
+        async_db_session,
         coin_id=int(coin.id),
         timeframe=60,
         lookback_days=30,
         limit_per_scope=1,
-        commit=False,
+        commit=True,
     )
-    assert result["rows"] == 1
-    assert result["evaluated"] == 0
+    assert result.rows == 1
+    assert result.evaluated == 0
 
+    db_session.expire_all()
     history_row = db_session.scalar(
         select(SignalHistory)
         .where(SignalHistory.coin_id == int(coin.id), SignalHistory.timeframe == 60)
@@ -278,45 +344,8 @@ def test_refresh_signal_history_handles_short_windows_without_commit(db_session)
     assert history_row.evaluated_at is None
 
 
-def test_refresh_signal_history_covers_empty_group_guard(monkeypatch) -> None:
-    signal = _build_signal(
-        coin_id=1,
-        timeframe=60,
-        signal_type="golden_cross",
-        confidence=0.7,
-        candle_timestamp=DEFAULT_START + timedelta(hours=1),
-    )
-
-    class FakeDefaultDict(dict):
-        def __init__(self, factory: Any = None) -> None:
-            super().__init__()
-            self.factory = factory
-
-        def __getitem__(self, key):
-            if key not in self:
-                self[key] = self.factory() if self.factory is not None else None
-            return dict.__getitem__(self, key)
-
-        def values(self):
-            return [[]]
-
-        def items(self):
-            return [((1, 60), [])]
-
-    monkeypatch.setattr(signal_history_module, "_fetch_signals", lambda *_args, **_kwargs: [signal])
-    monkeypatch.setattr(signal_history_module, "defaultdict", FakeDefaultDict)
-
-    result = signal_history_module.refresh_signal_history(object(), lookback_days=30, commit=False)
-    assert result == {
-        "status": "ok",
-        "rows": 0,
-        "evaluated": 0,
-        "coin_id": None,
-        "timeframe": None,
-    }
-
-
-def test_refresh_signal_history_upserts_rows_and_recent_wrapper(db_session) -> None:
+@pytest.mark.asyncio
+async def test_signal_history_service_upserts_rows_and_recent_refresh(async_db_session, db_session) -> None:
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     closes = [100.0 + index for index in range(80)]
     seed_candles(db_session, coin=coin, interval="1h", closes=closes, start=DEFAULT_START)
@@ -332,10 +361,17 @@ def test_refresh_signal_history_upserts_rows_and_recent_wrapper(db_session) -> N
     db_session.add(signal)
     db_session.commit()
 
-    result = refresh_signal_history(db_session, coin_id=int(coin.id), timeframe=60, lookback_days=30)
-    assert result["rows"] == 1
-    assert result["evaluated"] == 1
+    result = await _refresh_history(
+        async_db_session,
+        coin_id=int(coin.id),
+        timeframe=60,
+        lookback_days=30,
+        commit=True,
+    )
+    assert result.rows == 1
+    assert result.evaluated == 1
 
+    db_session.expire_all()
     history_row = db_session.scalar(
         select(SignalHistory)
         .where(
@@ -354,8 +390,14 @@ def test_refresh_signal_history_upserts_rows_and_recent_wrapper(db_session) -> N
     signal.confidence = 0.41
     db_session.commit()
 
-    recent_result = refresh_recent_signal_history(db_session, coin_id=int(coin.id), timeframe=60)
-    assert recent_result["rows"] == 1
+    recent_result = await _refresh_recent_history(
+        async_db_session,
+        coin_id=int(coin.id),
+        timeframe=60,
+        commit=True,
+    )
+    assert recent_result.rows == 1
+
     db_session.expire_all()
     refreshed_row = db_session.scalar(
         select(SignalHistory)

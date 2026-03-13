@@ -4,10 +4,10 @@ from dataclasses import FrozenInstanceError
 from datetime import timedelta
 
 import pytest
+import src.apps.signals.fusion as signal_fusion_module
+import src.apps.signals.history as signal_history_module
 import src.apps.signals.services as signal_services_module
 from sqlalchemy import select
-from src.apps.signals.fusion import evaluate_market_decision
-from src.apps.signals.history import refresh_signal_history
 from src.apps.signals.models import MarketDecision, Signal, SignalHistory
 from src.apps.signals.query_services import SignalQueryService
 from src.apps.signals.services import SignalFusionService, SignalHistoryService
@@ -255,25 +255,16 @@ def test_signal_services_exports_no_public_async_query_wrappers() -> None:
     for export_name in forbidden_exports:
         assert not hasattr(signal_services_module, export_name), export_name
 
-def test_signal_legacy_compatibility_services_emit_deprecation_logs(db_session, monkeypatch) -> None:
-    events: list[str] = []
 
-    def _log(level: int, message: str, *args, **kwargs) -> None:
-        del level, args, kwargs
-        events.append(message)
-
-    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
-    monkeypatch.setattr(
-        "src.apps.signals.fusion.SignalFusionCompatibilityService.evaluate_market_decision",
-        lambda self, **_kwargs: {"status": "ok"},
-    )
-    monkeypatch.setattr(
-        "src.apps.signals.history.SignalHistoryCompatibilityService.refresh_signal_history",
-        lambda self, **_kwargs: {"status": "ok", "rows": 0, "evaluated": 0, "coin_id": None, "timeframe": None},
+def test_signal_modules_export_no_public_sync_wrappers() -> None:
+    forbidden_exports = (
+        (signal_fusion_module, "SignalFusionCompatibilityService"),
+        (signal_fusion_module, "evaluate_market_decision"),
+        (signal_fusion_module, "evaluate_news_fusion_event"),
+        (signal_history_module, "SignalHistoryCompatibilityService"),
+        (signal_history_module, "refresh_signal_history"),
+        (signal_history_module, "refresh_recent_signal_history"),
     )
 
-    assert evaluate_market_decision(db_session, coin_id=1, timeframe=15, emit_event=False)["status"] == "ok"
-    assert refresh_signal_history(db_session, lookback_days=30, commit=False)["status"] == "ok"
-
-    assert "compat.evaluate_market_decision.deprecated" in events
-    assert "compat.refresh_signal_history.deprecated" in events
+    for module, export_name in forbidden_exports:
+        assert not hasattr(module, export_name), f"{module.__name__}.{export_name}"

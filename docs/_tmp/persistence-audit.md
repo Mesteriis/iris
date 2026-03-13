@@ -250,21 +250,14 @@ Status: migrated on the async/public API read surface plus signal-fusion and sig
 - active async query/service code now uses [backend/src/apps/signals/backtest_support.py](backend/src/apps/signals/backtest_support.py), [backend/src/apps/signals/fusion_support.py](backend/src/apps/signals/fusion_support.py) and [backend/src/apps/signals/history_support.py](backend/src/apps/signals/history_support.py) instead of importing pure helper logic from the legacy sync compatibility modules directly
 - active async query paths now resolve latest decision/final-signal/market-decision ranking subqueries via [backend/src/apps/signals/query_builders.py](backend/src/apps/signals/query_builders.py), removing direct imports from compatibility selector modules inside [backend/src/apps/signals/query_services.py](backend/src/apps/signals/query_services.py)
 - the public sync read modules formerly living in [backend/src/apps/signals/backtests.py](backend/src/apps/signals/backtests.py), [backend/src/apps/signals/strategies.py](backend/src/apps/signals/strategies.py), [backend/src/apps/signals/decision_selectors.py](backend/src/apps/signals/decision_selectors.py), [backend/src/apps/signals/market_decision_selectors.py](backend/src/apps/signals/market_decision_selectors.py) and [backend/src/apps/signals/final_signal_selectors.py](backend/src/apps/signals/final_signal_selectors.py) have now been removed; callers and tests read only through [backend/src/apps/signals/query_services.py](backend/src/apps/signals/query_services.py), while reusable helper logic stays in support modules such as [backend/src/apps/signals/backtest_support.py](backend/src/apps/signals/backtest_support.py)
+- the public sync write wrappers formerly living in [backend/src/apps/signals/fusion.py](backend/src/apps/signals/fusion.py) and [backend/src/apps/signals/history.py](backend/src/apps/signals/history.py) have now been removed; callers and tests write only through [backend/src/apps/signals/services.py](backend/src/apps/signals/services.py), while `fusion.py` and `history.py` keep only deterministic helper logic for unit-level coverage
 - `SignalFusionService` now enriches pattern context through async [backend/src/apps/patterns/task_services.py](backend/src/apps/patterns/task_services.py) (`PatternSignalContextService.enrich_context_only`) under shared UoW ownership, removing the old `AsyncSession.run_sync` bridge to `patterns.domain.context`
-- sync compatibility write entrypoints in [backend/src/apps/signals/fusion.py](backend/src/apps/signals/fusion.py) and [backend/src/apps/signals/history.py](backend/src/apps/signals/history.py) now run through class-based compatibility services with structured deprecation logs and emit the same summary-shape contracts as the active async services
-- sync compatibility fusion writes in [backend/src/apps/signals/fusion.py](backend/src/apps/signals/fusion.py) now keep signal-context enrichment on the compatibility service's own top-level commit/skip boundary instead of committing from nested `patterns.domain.context` helpers
-- sync compatibility fusion writes in [backend/src/apps/signals/fusion.py](backend/src/apps/signals/fusion.py) now also emit structured execute/result logging across skipped, unchanged and successful decision branches instead of relying only on wrapper-level deprecation logs
-- sync compatibility history writes in [backend/src/apps/signals/history.py](backend/src/apps/signals/history.py) now emit structured execute/result logging, including missing-candle group branches, instead of relying only on wrapper-level deprecation logs
-- sync compatibility recent-history writes in [backend/src/apps/signals/history.py](backend/src/apps/signals/history.py) now also emit their own structured `result` log after delegating to the shared history refresh path, completing execute/result parity on the residual sync history surface
+- [backend/tests/apps/patterns/test_evaluation_job.py](backend/tests/apps/patterns/test_evaluation_job.py) now exercises async [backend/src/apps/patterns/task_services.py](backend/src/apps/patterns/task_services.py) `PatternEvaluationService`, and the legacy sync orchestration helper [backend/src/apps/patterns/domain/evaluation.py](backend/src/apps/patterns/domain/evaluation.py) has been removed
 - market-decision detail reads keep their cache-first behavior but the fallback and DB projection are now logged through the shared persistence logger inside `SignalQueryService`
-- remaining follow-up:
-  - legacy sync compatibility helpers inside [backend/src/apps/signals/fusion.py](backend/src/apps/signals/fusion.py) still remain and should be retired once all remaining callers move to `SignalFusionService`
-  - legacy sync compatibility helpers inside [backend/src/apps/signals/history.py](backend/src/apps/signals/history.py) still remain and should be retired once all remaining callers move to `SignalHistoryService`
 
 Classification:
 
-- `OK` on the async/public API read surface and active signal-fusion/signal-history runtime surfaces
-- `later migration` for residual sync write paths in `fusion.py` and `history.py`
+- `OK` on the async/public API, runtime worker and test-facing read/write surfaces
 
 #### `apps/portfolio`
 
@@ -304,7 +297,7 @@ Classification:
 
 These domains are still dominated by synchronous `Session` access inside selectors/engines and represent the largest remaining migration surface:
 
-- residual sync compatibility write modules inside `apps/signals/fusion.py` and `apps/signals/history.py` (now class-based services, still sync contracts)
+- legacy `apps/cross_market/engine.py`
 - legacy `apps/portfolio/engine.py` and `apps/portfolio/selectors.py`
 
 Shared issues:
@@ -399,10 +392,10 @@ Recommended rollout order:
 9. completed on the async/public, TaskIQ orchestration and runtime worker surfaces: `apps/patterns`
 10. completed on the async/background runtime surface: `apps/cross_market`
 11. completed on the async/public API and scheduled runtime surface: `apps/predictions`
-12. completed on the async/public API read plus signal-fusion/signal-history runtime surfaces: `apps/signals`
+12. completed on the async/public API plus signal-fusion/signal-history runtime and test-facing surfaces: `apps/signals`
 13. completed on the async/public API and scheduled sync surface: `apps/portfolio`
-14. next: residual sync write helpers in `signals`
-15. later: compatibility helpers in `cross_market` and legacy sync `portfolio` engine/selectors
+14. next: compatibility helpers in `cross_market` and legacy sync `portfolio` engine/selectors
+15. later: helper-only sync analytical modules and leftover compatibility assertions in tests
 
 ## Current Behavior To Preserve
 

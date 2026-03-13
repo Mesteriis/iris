@@ -2,19 +2,27 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import pytest
 from redis import Redis
 from sqlalchemy import delete
 
-from src.runtime.streams.publisher import flush_publisher
+from src.apps.market_data.domain import utc_now
+from src.apps.patterns.domain.registry import sync_pattern_metadata
 from src.apps.patterns.models import PatternRegistry
 from src.apps.patterns.models import PatternStatistic
+from src.apps.patterns.task_services import PatternEvaluationService
 from src.apps.signals.models import SignalHistory
-from src.apps.patterns.domain.evaluation import run_pattern_evaluation_cycle
-from src.apps.patterns.domain.registry import sync_pattern_metadata
-from src.apps.market_data.domain import utc_now
+from src.core.db.uow import SessionUnitOfWork
+from src.runtime.streams.publisher import flush_publisher
 
 
-def test_pattern_evaluation_job_disables_weak_patterns_and_emits_events(db_session, seeded_market, settings) -> None:
+@pytest.mark.asyncio
+async def test_pattern_evaluation_job_disables_weak_patterns_and_emits_events(
+    async_db_session,
+    db_session,
+    seeded_market,
+    settings,
+) -> None:
     sync_pattern_metadata(db_session)
     db_session.execute(delete(SignalHistory))
     db_session.execute(delete(PatternStatistic))
@@ -43,7 +51,8 @@ def test_pattern_evaluation_job_disables_weak_patterns_and_emits_events(db_sessi
     )
     db_session.commit()
 
-    result = run_pattern_evaluation_cycle(db_session)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await PatternEvaluationService(uow).run()
     assert result["status"] == "ok"
     assert result["statistics"]["rolling_window"] == 200
     assert flush_publisher(timeout=5.0)
