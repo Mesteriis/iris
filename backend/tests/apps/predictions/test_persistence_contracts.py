@@ -137,6 +137,47 @@ def test_prediction_legacy_compatibility_query_emits_deprecation_logs(db_session
     assert "compat.list_predictions.deprecated" in events
 
 
+def test_prediction_legacy_compatibility_query_emits_execution_logs(db_session, monkeypatch) -> None:
+    leader = create_cross_market_coin(
+        db_session,
+        symbol="BTCUSD_EVT",
+        name="Bitcoin Event Test",
+        sector_name="store_of_value",
+    )
+    follower = create_cross_market_coin(
+        db_session,
+        symbol="ETHUSD_EVT",
+        name="Ethereum Event Test",
+        sector_name="smart_contract",
+    )
+    db_session.add(
+        MarketPrediction(
+            prediction_type="cross_market_follow_through",
+            leader_coin_id=int(leader.id),
+            target_coin_id=int(follower.id),
+            prediction_event="leader_breakout",
+            expected_move="up",
+            lag_hours=4,
+            confidence=0.8,
+            created_at=DEFAULT_START,
+            evaluation_time=DEFAULT_START + timedelta(hours=4),
+            status="pending",
+        )
+    )
+    db_session.commit()
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+
+    assert list_predictions(db_session, limit=5)
+    assert "compat.list_predictions.execute" in events
+    assert "compat.list_predictions.result" in events
+
+
 def test_prediction_legacy_compatibility_services_emit_deprecation_logs(db_session, monkeypatch) -> None:
     events: list[str] = []
 

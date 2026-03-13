@@ -65,13 +65,29 @@ class PredictionCompatibilityQuery:
             limit=limit,
             status=status,
         )
+        self._log(
+            logging.DEBUG,
+            "compat.list_predictions.execute",
+            mode="read",
+            limit=limit,
+            status=status,
+        )
         stmt = _prediction_select().order_by(MarketPrediction.created_at.desc(), MarketPrediction.id.desc()).limit(
             max(limit, 1)
         )
         if status is not None:
             stmt = stmt.where(MarketPrediction.status == status)
         rows = self._db.execute(stmt).all()
-        return [_prediction_payload(prediction_read_model_from_mapping(row._mapping)) for row in rows]
+        result = [_prediction_payload(prediction_read_model_from_mapping(row._mapping)) for row in rows]
+        self._log(
+            logging.INFO,
+            "compat.list_predictions.result",
+            mode="read",
+            limit=limit,
+            status=status,
+            count=len(result),
+        )
+        return result
 
 
 def list_predictions(
