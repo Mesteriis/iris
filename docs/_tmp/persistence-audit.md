@@ -231,13 +231,14 @@ Status: migrated on the async API surface, scheduled evaluation job and cross-ma
 - legacy sync read helpers in [backend/src/apps/predictions/selectors.py](backend/src/apps/predictions/selectors.py) now also emit structured execute/result logging for prediction list reads instead of relying only on deprecation warnings
 - legacy sync prediction creation/evaluation in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) now defer cache writes, and evaluation event publication, until after the top-level compatibility `commit()`, reducing another gap versus the async service side-effect policy
 - async prediction cache clients in [backend/src/apps/predictions/cache.py](backend/src/apps/predictions/cache.py) are now loop-scoped instead of process-global cached objects
+- the sync [backend/src/apps/predictions/selectors.py](backend/src/apps/predictions/selectors.py) layer has now been removed; active callers and tests read predictions only through async [backend/src/apps/predictions/query_services.py](backend/src/apps/predictions/query_services.py)
 - remaining follow-up:
   - legacy sync helpers in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) and [backend/src/apps/predictions/selectors.py](backend/src/apps/predictions/selectors.py) still exist for compatibility callers/tests and should be retired incrementally as the remaining sync-heavy domains migrate
 
 Classification:
 
 - `OK` on the async/public API and scheduled runtime surface
-- `later migration` for residual sync helper callers kept behind the compatibility engine/selector modules
+- `later migration` for residual sync helper callers kept behind the compatibility engine module
 
 #### `apps/signals`
 

@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import asyncio
 import json
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -21,7 +19,6 @@ from src.apps.predictions.cache import (
     read_cached_prediction_async,
 )
 from src.apps.predictions.query_services import PredictionQueryService
-from src.apps.predictions.selectors import list_predictions
 from src.apps.predictions.services import PredictionEvaluationBatch
 
 
@@ -51,7 +48,8 @@ class _AsyncCacheClient:
         return self.storage.get(key)
 
 
-def test_prediction_cache_and_sync_selector_paths(monkeypatch, settings, db_session, seeded_api_state) -> None:
+@pytest.mark.asyncio
+async def test_prediction_cache_and_query_service_paths(monkeypatch, settings, async_db_session, db_session, seeded_api_state) -> None:
     sync_client = _SyncCacheClient()
     async_client = _AsyncCacheClient()
     timestamp = seeded_api_state["signal_timestamp"]
@@ -88,27 +86,24 @@ def test_prediction_cache_and_sync_selector_paths(monkeypatch, settings, db_sess
     assert cached.status == "confirmed"
     assert read_cached_prediction(77) is None
 
-    async def _async_cache_checks() -> None:
-        await cache_prediction_snapshot_async(
-            prediction_id=6,
-            prediction_type="lagged_sector_rotation",
-            leader_coin_id=3,
-            target_coin_id=4,
-            prediction_event="sector_rotation",
-            expected_move="down",
-            lag_hours=12,
-            confidence=0.61,
-            created_at=timestamp,
-            evaluation_time=None,
-            status="pending",
-        )
-        assert async_client.last_ex == PREDICTION_CACHE_TTL_SECONDS
-        async_cached = await read_cached_prediction_async(6)
-        assert async_cached is not None
-        assert async_cached.expected_move == "down"
-        assert await read_cached_prediction_async(88) is None
-
-    asyncio.run(_async_cache_checks())
+    await cache_prediction_snapshot_async(
+        prediction_id=6,
+        prediction_type="lagged_sector_rotation",
+        leader_coin_id=3,
+        target_coin_id=4,
+        prediction_event="sector_rotation",
+        expected_move="down",
+        lag_hours=12,
+        confidence=0.61,
+        created_at=timestamp,
+        evaluation_time=None,
+        status="pending",
+    )
+    assert async_client.last_ex == PREDICTION_CACHE_TTL_SECONDS
+    async_cached = await read_cached_prediction_async(6)
+    assert async_cached is not None
+    assert async_cached.expected_move == "down"
+    assert await read_cached_prediction_async(88) is None
 
     assert _parse_prediction_payload("{", fallback_prediction_id=9) is None
     assert _parse_prediction_payload(json.dumps({"prediction_type": 3}), fallback_prediction_id=9) is None
@@ -129,12 +124,12 @@ def test_prediction_cache_and_sync_selector_paths(monkeypatch, settings, db_sess
     assert parsed.evaluation_time is not None
     assert prediction_cache_key(5) == "iris:prediction:5"
 
-    predictions = list_predictions(db_session, status="confirmed", limit=10)
+    predictions = await PredictionQueryService(async_db_session).list_predictions(status="confirmed", limit=10)
     assert len(predictions) == 1
-    assert predictions[0]["leader_symbol"] == "BTCUSD_EVT"
-    assert predictions[0]["target_symbol"] == "ETHUSD_EVT"
-    assert list_predictions(db_session, limit=1)
-    assert list_predictions(db_session, status="pending", limit=10) == []
+    assert predictions[0].leader_symbol == "BTCUSD_EVT"
+    assert predictions[0].target_symbol == "ETHUSD_EVT"
+    assert await PredictionQueryService(async_db_session).list_predictions(limit=1)
+    assert await PredictionQueryService(async_db_session).list_predictions(status="pending", limit=10) == ()
 
 
 @pytest.mark.asyncio
