@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from src.apps.cross_market.engine import refresh_sector_momentum
+import pytest
+
 from src.apps.cross_market.models import SectorMetric
-from tests.cross_market_support import create_cross_market_coin, set_market_metrics
+from tests.cross_market_support import create_cross_market_coin, run_cross_market_sector_refresh, set_market_metrics
 
 
-def test_sector_momentum_refreshes_relative_strength_and_trend(db_session) -> None:
+@pytest.mark.asyncio
+async def test_sector_momentum_refreshes_relative_strength_and_trend(async_db_session, db_session) -> None:
     sol = create_cross_market_coin(
         db_session,
         symbol="SOLUSD_EVT",
@@ -82,8 +84,13 @@ def test_sector_momentum_refreshes_relative_strength_and_trend(db_session) -> No
         market_cap=4_500_000_000.0,
     )
 
-    result = refresh_sector_momentum(db_session, timeframe=60, emit_events=False)
+    result = await run_cross_market_sector_refresh(
+        async_db_session,
+        timeframe=60,
+        emit_events=False,
+    )
 
+    db_session.expire_all()
     smart_contract = db_session.get(SectorMetric, (int(sol.sector_id), 60))
     defi = db_session.get(SectorMetric, (int(aave.sector_id), 60))
     sideways = db_session.get(SectorMetric, (int(gaming.sector_id), 60))

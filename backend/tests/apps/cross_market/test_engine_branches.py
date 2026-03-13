@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import select
 
 from src.apps.cross_market.engine import (
@@ -11,13 +11,10 @@ from src.apps.cross_market.engine import (
     _latest_leader_decision,
     _pearson,
     cross_market_alignment_weight,
-    detect_market_leader,
-    process_cross_market_event,
-    refresh_sector_momentum,
-    update_coin_relations,
 )
-from src.apps.indicators.models import CoinMetrics
 from src.apps.cross_market.models import CoinRelation, SectorMetric
+from src.apps.cross_market.services import CrossMarketRelationUpdateResult, CrossMarketSectorMomentumResult, CrossMarketService
+from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.repos import CandlePoint
 from src.apps.signals.models import MarketDecision
 from tests.cross_market_support import (
@@ -25,6 +22,10 @@ from tests.cross_market_support import (
     correlated_close_series,
     create_cross_market_coin,
     generate_close_series,
+    run_cross_market_leader_detection,
+    run_cross_market_process_event,
+    run_cross_market_relation_update,
+    run_cross_market_sector_refresh,
     seed_candles,
     set_market_metrics,
 )
@@ -118,9 +119,23 @@ def test_cross_market_helper_math_and_alignment_branches(db_session, monkeypatch
     assert confidence >= 0.25
 
 
-def test_cross_market_relation_and_sector_skip_paths(db_session, monkeypatch) -> None:
-    assert update_coin_relations(db_session, follower_coin_id=999999, timeframe=60, emit_events=False)["reason"] == "follower_not_found"
-    assert refresh_sector_momentum(db_session, timeframe=137, emit_events=False)["status"] in {"ok", "skipped"}
+@pytest.mark.asyncio
+async def test_cross_market_relation_and_sector_skip_paths(async_db_session, db_session, monkeypatch) -> None:
+    assert (
+        await run_cross_market_relation_update(
+            async_db_session,
+            follower_coin_id=999999,
+            timeframe=60,
+            emit_events=False,
+        )
+    )["reason"] == "follower_not_found"
+    assert (
+        await run_cross_market_sector_refresh(
+            async_db_session,
+            timeframe=137,
+            emit_events=False,
+        )
+    )["status"] in {"ok", "skipped"}
 
     empty_coin = create_cross_market_coin(
         db_session,
@@ -128,7 +143,14 @@ def test_cross_market_relation_and_sector_skip_paths(db_session, monkeypatch) ->
         name="Cardano Event Test",
         sector_name="layer1",
     )
-    assert update_coin_relations(db_session, follower_coin_id=int(empty_coin.id), timeframe=60, emit_events=False)["reason"] == "insufficient_follower_candles"
+    assert (
+        await run_cross_market_relation_update(
+            async_db_session,
+            follower_coin_id=int(empty_coin.id),
+            timeframe=60,
+            emit_events=False,
+        )
+    )["reason"] == "insufficient_follower_candles"
 
     follower = create_cross_market_coin(
         db_session,
@@ -147,15 +169,16 @@ def test_cross_market_relation_and_sector_skip_paths(db_session, monkeypatch) ->
     seed_candles(db_session, coin=leader, interval="1h", closes=leader_closes, start=DEFAULT_START)
     seed_candles(db_session, coin=follower, interval="1h", closes=follower_closes, start=DEFAULT_START)
 
-    relations_result = update_coin_relations(db_session, follower_coin_id=int(follower.id), timeframe=60, emit_events=False)
+    relations_result = await run_cross_market_relation_update(
+        async_db_session,
+        follower_coin_id=int(follower.id),
+        timeframe=60,
+        emit_events=False,
+    )
     assert relations_result["reason"] == "relations_not_found"
 
     captured: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("src.apps.cross_market.engine.publish_event", lambda event_type, payload: captured.append((event_type, payload)))
-    monkeypatch.setattr(
-        "src.apps.cross_market.engine._create_market_predictions_impl",
-        lambda *args, **kwargs: {"status": "ok", "created": 1},
-    )
+    monkeypatch.setattr("tests.cross_market_support.publish_event", lambda event_type, payload: captured.append((event_type, payload)))
     set_market_metrics(
         db_session,
         coin_id=int(follower.id),
@@ -163,12 +186,15 @@ def test_cross_market_relation_and_sector_skip_paths(db_session, monkeypatch) ->
         price_change_24h=0.5,
         volume_change_24h=5.0,
     )
-    assert detect_market_leader(
-        db_session,
-        coin_id=int(follower.id),
-        timeframe=60,
-        payload={"activity_bucket": "COLD"},
-        emit_events=True,
+    assert (
+        await run_cross_market_leader_detection(
+            async_db_session,
+            coin_id=int(follower.id),
+            timeframe=60,
+            payload={"activity_bucket": "COLD"},
+            emit_events=True,
+            apply_side_effects=False,
+        )
     )["reason"] == "leader_threshold_not_met"
 
     bear = create_cross_market_coin(
@@ -184,19 +210,21 @@ def test_cross_market_relation_and_sector_skip_paths(db_session, monkeypatch) ->
         price_change_24h=-4.5,
         volume_change_24h=20.0,
     )
-    result = detect_market_leader(
-        db_session,
+    result = await run_cross_market_leader_detection(
+        async_db_session,
         coin_id=int(bear.id),
         timeframe=60,
         payload={"activity_bucket": "HOT", "price_change_24h": -4.5, "market_regime": "bear_trend"},
         emit_events=True,
+        apply_side_effects=True,
     )
     assert result["status"] == "ok"
     assert result["direction"] == "down"
     assert captured[-1][0] == "market_leader_detected"
 
 
-def test_sector_rotation_and_process_dispatch(db_session, monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_sector_rotation_and_process_dispatch(async_db_session, db_session, monkeypatch) -> None:
     smart = create_cross_market_coin(
         db_session,
         symbol="SOLUSD_EVT",
@@ -224,7 +252,11 @@ def test_sector_rotation_and_process_dispatch(db_session, monkeypatch) -> None:
         volume_change_24h=8.0,
     )
     isolated_timeframe = 137
-    first = refresh_sector_momentum(db_session, timeframe=isolated_timeframe, emit_events=False)
+    first = await run_cross_market_sector_refresh(
+        async_db_session,
+        timeframe=isolated_timeframe,
+        emit_events=False,
+    )
     assert first["status"] == "ok"
 
     set_market_metrics(
@@ -242,35 +274,46 @@ def test_sector_rotation_and_process_dispatch(db_session, monkeypatch) -> None:
         volume_change_24h=80.0,
     )
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("src.apps.cross_market.engine.publish_event", lambda event_type, payload: published.append((event_type, payload)))
-    second = refresh_sector_momentum(db_session, timeframe=isolated_timeframe, emit_events=True)
+    monkeypatch.setattr("tests.cross_market_support.publish_event", lambda event_type, payload: published.append((event_type, payload)))
+    second = await run_cross_market_sector_refresh(
+        async_db_session,
+        timeframe=isolated_timeframe,
+        emit_events=True,
+    )
     assert second["status"] == "ok"
     assert second["updated"] >= 2
 
     calls: list[tuple[str, object]] = []
-    monkeypatch.setattr(
-        "src.apps.cross_market.engine.update_coin_relations",
-        lambda *args, **kwargs: calls.append(("relations", kwargs["emit_events"])) or {"status": "ok"},
-    )
-    monkeypatch.setattr(
-        "src.apps.cross_market.engine.refresh_sector_momentum",
-        lambda *args, **kwargs: calls.append(("sectors", kwargs["emit_events"])) or {"status": "ok"},
-    )
-    monkeypatch.setattr(
-        "src.apps.cross_market.engine.detect_market_leader",
-        lambda *args, **kwargs: calls.append(("leader", kwargs["emit_events"])) or {"status": "ok"},
-    )
 
-    candle_result = process_cross_market_event(
-        db_session,
+    async def _fake_update(self, *, follower_coin_id: int, timeframe: int, emit_events: bool):
+        del self, follower_coin_id, timeframe
+        calls.append(("relations", emit_events))
+        return CrossMarketRelationUpdateResult(status="ok"), ()
+
+    async def _fake_refresh(self, *, timeframe: int, emit_events: bool):
+        del self, timeframe
+        calls.append(("sectors", emit_events))
+        return CrossMarketSectorMomentumResult(status="ok"), None
+
+    async def _fake_detect(self, *, coin_id: int, timeframe: int, payload: dict[str, object], emit_events: bool):
+        del self, coin_id, timeframe, payload
+        calls.append(("leader", emit_events))
+        return {"status": "ok"}, None, False
+
+    monkeypatch.setattr(CrossMarketService, "_update_coin_relations", _fake_update)
+    monkeypatch.setattr(CrossMarketService, "_refresh_sector_momentum", _fake_refresh)
+    monkeypatch.setattr(CrossMarketService, "_detect_market_leader", _fake_detect)
+
+    candle_result = await run_cross_market_process_event(
+        async_db_session,
         coin_id=int(smart.id),
         timeframe=60,
         event_type="candle_closed",
         payload={},
         emit_events=True,
     )
-    indicator_result = process_cross_market_event(
-        db_session,
+    indicator_result = await run_cross_market_process_event(
+        async_db_session,
         coin_id=int(smart.id),
         timeframe=60,
         event_type="indicator_updated",
@@ -288,7 +331,8 @@ def test_sector_rotation_and_process_dispatch(db_session, monkeypatch) -> None:
     ]
 
 
-def test_cross_market_candidate_publish_and_fallback_branches(db_session, monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_cross_market_candidate_publish_and_fallback_branches(async_db_session, db_session, monkeypatch) -> None:
     short_points = _points_from_closes(generate_close_series(start_price=100.0, returns=[0.01] * 10))
     assert _best_lagged_correlation(short_points, short_points, timeframe=60) == (0.0, 0, 10)
     exact_points = _points_from_closes(generate_close_series(start_price=100.0, returns=[0.01] * 48))
@@ -341,7 +385,13 @@ def test_cross_market_candidate_publish_and_fallback_branches(db_session, monkey
     )
     leader_returns = [0.008 if index % 6 else -0.002 for index in range(90)]
     follower_closes = correlated_close_series(leader_returns=leader_returns, lag_bars=3, start_price=60.0)
-    seed_candles(db_session, coin=preferred, interval="1h", closes=generate_close_series(start_price=100.0, returns=leader_returns), start=DEFAULT_START)
+    seed_candles(
+        db_session,
+        coin=preferred,
+        interval="1h",
+        closes=generate_close_series(start_price=100.0, returns=leader_returns),
+        start=DEFAULT_START,
+    )
     seed_candles(db_session, coin=follower, interval="1h", closes=follower_closes, start=DEFAULT_START)
     seed_candles(
         db_session,
@@ -357,9 +407,19 @@ def test_cross_market_candidate_publish_and_fallback_branches(db_session, monkey
     assert any(int(coin.id) == int(same_sector_short.id) for coin in leaders)
 
     published: list[str] = []
-    monkeypatch.setattr("src.apps.cross_market.engine.publish_event", lambda event_type, payload: published.append(event_type))
-    first = update_coin_relations(db_session, follower_coin_id=int(follower.id), timeframe=60, emit_events=True)
-    second = update_coin_relations(db_session, follower_coin_id=int(follower.id), timeframe=60, emit_events=True)
+    monkeypatch.setattr("tests.cross_market_support.publish_event", lambda event_type, payload: published.append(event_type))
+    first = await run_cross_market_relation_update(
+        async_db_session,
+        follower_coin_id=int(follower.id),
+        timeframe=60,
+        emit_events=True,
+    )
+    second = await run_cross_market_relation_update(
+        async_db_session,
+        follower_coin_id=int(follower.id),
+        timeframe=60,
+        emit_events=True,
+    )
     assert first["status"] == "ok"
     assert first["published"] >= 1
     assert second["published"] == 0
@@ -385,8 +445,18 @@ def test_cross_market_candidate_publish_and_fallback_branches(db_session, monkey
     assert no_sector_leaders[0].symbol == "BTCUSD_EVT"
 
 
-def test_cross_market_decision_and_alignment_fallback_branches(db_session, monkeypatch) -> None:
-    assert detect_market_leader(db_session, coin_id=999999, timeframe=60, payload={}, emit_events=False)["reason"] == "coin_metrics_not_found"
+@pytest.mark.asyncio
+async def test_cross_market_decision_and_alignment_fallback_branches(async_db_session, db_session, monkeypatch) -> None:
+    assert (
+        await run_cross_market_leader_detection(
+            async_db_session,
+            coin_id=999999,
+            timeframe=60,
+            payload={},
+            emit_events=False,
+            apply_side_effects=False,
+        )
+    )["reason"] == "coin_metrics_not_found"
 
     follower = create_cross_market_coin(
         db_session,
@@ -445,12 +515,13 @@ def test_cross_market_decision_and_alignment_fallback_branches(db_session, monke
     assert _latest_leader_decision(db_session, leader_coin_id=int(bearish_leader.id), timeframe=240) == ("BUY", 0.91)
     assert _latest_leader_decision(db_session, leader_coin_id=int(bearish_metrics_leader.id), timeframe=60)[0] == "SELL"
     assert _latest_leader_decision(db_session, leader_coin_id=int(missing_leader.id), timeframe=60) == (None, 0.0)
-    success_without_event = detect_market_leader(
-        db_session,
+    success_without_event = await run_cross_market_leader_detection(
+        async_db_session,
         coin_id=int(bearish_metrics_leader.id),
         timeframe=60,
         payload={"activity_bucket": "HOT", "price_change_24h": -5.5, "market_regime": "bear_trend"},
         emit_events=False,
+        apply_side_effects=False,
     )
     assert success_without_event["status"] == "ok"
     neutral = create_cross_market_coin(
@@ -578,62 +649,9 @@ def test_cross_market_decision_and_alignment_fallback_branches(db_session, monke
         )
     )
     db_session.commit()
-    assert 0.75 <= cross_market_alignment_weight(db_session, coin_id=int(follower_without_sector_metric.id), timeframe=240, directional_bias=1) <= 1.35
-
-
-def test_cross_market_refresh_sector_momentum_edge_branches(monkeypatch) -> None:
-    class Result:
-        def __init__(self, *, first=None, rows=None) -> None:
-            self._first = first
-            self._rows = rows or []
-
-        def first(self):
-            return self._first
-
-        def all(self):
-            return self._rows
-
-    class SessionStub:
-        def __init__(self, responses: list[Result]) -> None:
-            self._responses = iter(responses)
-
-        def execute(self, _stmt):
-            return next(self._responses)
-
-        def commit(self) -> None:
-            return None
-
-    empty_session = SessionStub([Result(first=None), Result(rows=[])])
-    assert refresh_sector_momentum(empty_session, timeframe=60, emit_events=False)["reason"] == "sector_rows_not_found"
-
-    rotating_rows = [
-        SimpleNamespace(
-            sector_id=1,
-            avg_price_change_24h=-3.0,
-            avg_volume_change_24h=-12.0,
-            avg_volatility=0.05,
-            sector_strength=-3.0,
-            capital_flow=-0.3,
-        ),
-        SimpleNamespace(
-            sector_id=2,
-            avg_price_change_24h=5.0,
-            avg_volume_change_24h=18.0,
-            avg_volatility=0.07,
-            sector_strength=5.0,
-            capital_flow=0.6,
-        ),
-    ]
-    published: list[str] = []
-    monkeypatch.setattr("src.apps.cross_market.engine.publish_event", lambda event_type, payload: published.append(event_type))
-    rotating_session = SessionStub(
-        [
-            Result(first=SimpleNamespace(sector_id=1, name="old_sector", relative_strength=-1.0)),
-            Result(rows=rotating_rows),
-            Result(),
-            Result(first=SimpleNamespace(sector_id=2, name="new_sector", relative_strength=2.5)),
-        ]
-    )
-    result = refresh_sector_momentum(rotating_session, timeframe=60, emit_events=True)
-    assert result["updated"] == 2
-    assert published == ["sector_rotation_detected"]
+    assert 0.75 <= cross_market_alignment_weight(
+        db_session,
+        coin_id=int(follower_without_sector_metric.id),
+        timeframe=240,
+        directional_bias=1,
+    ) <= 1.35

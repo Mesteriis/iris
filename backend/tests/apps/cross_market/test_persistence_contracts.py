@@ -4,14 +4,8 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 from sqlalchemy import select
+import src.apps.cross_market.engine as cross_market_engine_module
 from src.apps.cross_market.models import CoinRelation
-from src.apps.cross_market.engine import (
-    cross_market_alignment_weight,
-    detect_market_leader,
-    process_cross_market_event,
-    refresh_sector_momentum,
-    update_coin_relations,
-)
 from src.apps.cross_market.query_services import CrossMarketQueryService
 from src.apps.cross_market.read_models import RelationComputationContextReadModel
 from src.apps.cross_market.services import CrossMarketService
@@ -282,160 +276,13 @@ async def test_cross_market_persistence_logs_cover_query_repo_service_and_uow(as
     assert "uow.commit" in events
 
 
-def test_cross_market_legacy_compatibility_entrypoints_emit_deprecation_logs(db_session, monkeypatch) -> None:
-    events: list[str] = []
-
-    def _log(level: int, message: str, *args, **kwargs) -> None:
-        del level, args, kwargs
-        events.append(message)
-
-    class _MissingSession:
-        def get(self, *_args, **_kwargs):
-            return None
-
-        def scalar(self, *_args, **_kwargs):
-            return None
-
-    class _Result:
-        def __init__(self, *, first=None, rows=None) -> None:
-            self._first = first
-            self._rows = rows or []
-
-        def first(self):
-            return self._first
-
-        def all(self):
-            return self._rows
-
-    class _SectorSession:
-        def __init__(self) -> None:
-            self._responses = iter([_Result(first=None), _Result(rows=[])])
-
-        def execute(self, _stmt):
-            return next(self._responses)
-
-        def commit(self) -> None:
-            return None
-
-    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
-    assert update_coin_relations(_MissingSession(), follower_coin_id=1, timeframe=60, emit_events=False)["reason"] == "follower_not_found"
-    assert refresh_sector_momentum(_SectorSession(), timeframe=60, emit_events=False)["reason"] == "sector_rows_not_found"
-    assert detect_market_leader(_MissingSession(), coin_id=1, timeframe=60, payload={}, emit_events=False)["reason"] == "coin_metrics_not_found"
-    assert cross_market_alignment_weight(_MissingSession(), coin_id=1, timeframe=60, directional_bias=0) == 1.0
-
-    monkeypatch.setattr(
-        "src.apps.cross_market.engine.update_coin_relations",
-        lambda *args, **kwargs: {"status": "ok", "updated": 0, "published": 0, "follower_coin_id": 1},
-    )
-    monkeypatch.setattr(
-        "src.apps.cross_market.engine.refresh_sector_momentum",
-        lambda *args, **kwargs: {"status": "ok", "updated": 0, "timeframe": 60},
-    )
-    monkeypatch.setattr(
-        "src.apps.cross_market.engine.detect_market_leader",
-        lambda *args, **kwargs: {"status": "ok", "leader_coin_id": 1, "direction": "up", "confidence": 0.6},
+def test_cross_market_modules_export_no_public_sync_wrappers() -> None:
+    forbidden_exports = (
+        "update_coin_relations",
+        "refresh_sector_momentum",
+        "detect_market_leader",
+        "process_cross_market_event",
     )
 
-    assert process_cross_market_event(
-        db_session,
-        coin_id=1,
-        timeframe=60,
-        event_type="indicator_updated",
-        payload={},
-        emit_events=False,
-    )["status"] == "ok"
-
-    assert "compat.update_coin_relations.deprecated" in events
-    assert "compat.refresh_sector_momentum.deprecated" in events
-    assert "compat.detect_market_leader.deprecated" in events
-    assert "compat.cross_market_alignment_weight.deprecated" in events
-    assert "compat.process_cross_market_event.deprecated" in events
-
-
-def test_cross_market_legacy_compatibility_entrypoints_emit_execution_logs(db_session, monkeypatch) -> None:
-    events: list[str] = []
-
-    def _log(level: int, message: str, *args, **kwargs) -> None:
-        del level, args, kwargs
-        events.append(message)
-
-    class _MissingSession:
-        def get(self, *_args, **_kwargs):
-            return None
-
-        def scalar(self, *_args, **_kwargs):
-            return None
-
-        def scalars(self, *_args, **_kwargs):
-            return []
-
-    class _ScalarResult:
-        def __init__(self, values) -> None:
-            self._values = values
-
-        def all(self):
-            return self._values
-
-    class _SectorResult:
-        def __init__(self, *, first=None, rows=None) -> None:
-            self._first = first
-            self._rows = rows or []
-
-        def first(self):
-            return self._first
-
-        def all(self):
-            return self._rows
-
-    class _SectorSession:
-        def __init__(self) -> None:
-            self._responses = iter([_SectorResult(first=None), _SectorResult(rows=[])])
-
-        def execute(self, _stmt):
-            return next(self._responses)
-
-        def commit(self) -> None:
-            return None
-
-    class _AlignmentSession:
-        def scalars(self, *_args, **_kwargs):
-            return _ScalarResult([])
-
-    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
-    assert update_coin_relations(_MissingSession(), follower_coin_id=1, timeframe=60, emit_events=False)["reason"] == "follower_not_found"
-    assert refresh_sector_momentum(_SectorSession(), timeframe=60, emit_events=False)["reason"] == "sector_rows_not_found"
-    assert detect_market_leader(_MissingSession(), coin_id=1, timeframe=60, payload={}, emit_events=False)["reason"] == "coin_metrics_not_found"
-    assert cross_market_alignment_weight(_AlignmentSession(), coin_id=1, timeframe=60, directional_bias=0.5) == 1.0
-
-    monkeypatch.setattr(
-        "src.apps.cross_market.engine.update_coin_relations",
-        lambda *args, **kwargs: {"status": "ok", "updated": 0, "published": 0, "follower_coin_id": 1},
-    )
-    monkeypatch.setattr(
-        "src.apps.cross_market.engine.refresh_sector_momentum",
-        lambda *args, **kwargs: {"status": "ok", "updated": 0, "timeframe": 60},
-    )
-    monkeypatch.setattr(
-        "src.apps.cross_market.engine.detect_market_leader",
-        lambda *args, **kwargs: {"status": "ok", "leader_coin_id": 1, "direction": "up", "confidence": 0.6},
-    )
-
-    assert process_cross_market_event(
-        db_session,
-        coin_id=1,
-        timeframe=60,
-        event_type="indicator_updated",
-        payload={},
-        emit_events=False,
-    )["status"] == "ok"
-
-    assert "compat.update_coin_relations.execute" in events
-    assert "compat.update_coin_relations.result" in events
-    assert "compat.refresh_sector_momentum.execute" in events
-    assert "compat.refresh_sector_momentum.result" in events
-    assert "compat.detect_market_leader.execute" in events
-    assert "compat.detect_market_leader.result" in events
-    assert "compat.cross_market_alignment_weight.execute" in events
-    assert "compat.cross_market_alignment_weight.result" in events
-    assert "compat.process_cross_market_event.execute" in events
-    assert "compat.process_cross_market_event.result" in events
+    for export_name in forbidden_exports:
+        assert not hasattr(cross_market_engine_module, export_name), export_name

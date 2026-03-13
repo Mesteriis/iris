@@ -191,7 +191,7 @@ Classification:
 
 #### `apps/cross_market`
 
-Status: migrated on the async runtime/worker surface; legacy sync helpers remain for compatibility callers
+Status: migrated on the async runtime/worker and test-facing surfaces; public sync wrappers removed
 
 - repositories now isolate Core upserts for `coin_relations` and `sector_metrics` in [backend/src/apps/cross_market/repositories.py](backend/src/apps/cross_market/repositories.py)
 - read-only computation contexts now go through [backend/src/apps/cross_market/query_services.py](backend/src/apps/cross_market/query_services.py)
@@ -199,16 +199,16 @@ Status: migrated on the async runtime/worker surface; legacy sync helpers remain
 - active worker writes now run through [backend/src/apps/cross_market/services.py](backend/src/apps/cross_market/services.py) under the shared async UoW instead of `AsyncSession.run_sync`
 - leader/follower candle loading now batches candidate leader history through [backend/src/apps/market_data/repositories.py](backend/src/apps/market_data/repositories.py), removing the old loop-driven N+1 path from relation updates
 - correlation cache writes, prediction cache writes and emitted leader/rotation/correlation events now happen only after the persistence transaction commits on the active runtime path
-- legacy sync helpers under [backend/src/apps/cross_market/engine.py](backend/src/apps/cross_market/engine.py) now emit structured deprecation logs and reuse the same summary result contracts as the async service layer, keeping compatibility callers on the same payload shape while migration continues
-- legacy sync helpers under [backend/src/apps/cross_market/engine.py](backend/src/apps/cross_market/engine.py) now also emit structured execute/result logging for relation refresh, sector refresh, leader detection, orchestration and alignment-weight reads, including skipped compatibility branches
+- the public sync `update_coin_relations(...)`, `refresh_sector_momentum(...)`, `detect_market_leader(...)` and `process_cross_market_event(...)` wrappers have now been removed from [backend/src/apps/cross_market/engine.py](backend/src/apps/cross_market/engine.py); active callers and tests use async [backend/src/apps/cross_market/services.py](backend/src/apps/cross_market/services.py) plus `SessionUnitOfWork`-backed helper harnesses
+- [backend/src/apps/cross_market/engine.py](backend/src/apps/cross_market/engine.py) is now narrowed to helper-only math/alignment logic used by `signals` and focused branch tests, instead of owning sync persistence writes
 - async correlation cache clients in [backend/src/apps/cross_market/cache.py](backend/src/apps/cross_market/cache.py) are now loop-scoped like `signals`/`predictions`, removing another shared-client edge from tests and worker runtimes
 - remaining follow-up:
-  - legacy sync helpers under [backend/src/apps/cross_market/engine.py](backend/src/apps/cross_market/engine.py) still exist for `signals`/compatibility callers and should be retired incrementally as those callers migrate off the compatibility module entirely
+  - helper-only sync alignment logic under [backend/src/apps/cross_market/engine.py](backend/src/apps/cross_market/engine.py) should eventually move behind async query/read contracts so `signals` no longer depends on a `Session`-backed helper module at all
 
 Classification:
 
-- `OK` on the async/background runtime surface
-- `later migration` for residual sync helper callers kept behind the compatibility engine module
+- `OK` on the async/background runtime and test-facing surfaces
+- `later migration` for residual sync helper-only alignment logic kept behind the engine module
 
 #### `apps/predictions`
 
@@ -227,7 +227,7 @@ Status: migrated on the async API surface, scheduled evaluation job and cross-ma
 - the sync [backend/src/apps/predictions/selectors.py](backend/src/apps/predictions/selectors.py) layer has now been removed; active callers and tests read predictions only through async [backend/src/apps/predictions/query_services.py](backend/src/apps/predictions/query_services.py)
 - the public sync `create_market_predictions(...)` / `evaluate_pending_predictions(...)` wrappers have now also been removed from [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py); residual sync callers either use async [backend/src/apps/predictions/services.py](backend/src/apps/predictions/services.py) or explicit internal engine impls during the remaining compatibility cutover
 - remaining follow-up:
-  - residual direct use of internal sync helpers in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) should disappear once the remaining sync-heavy `cross_market` compatibility layer and low-level sync tests are retired
+- residual direct use of internal sync helpers in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) should disappear once the remaining low-level sync tests and helper-only `portfolio` engine paths are retired
 
 Classification:
 
@@ -298,7 +298,6 @@ Classification:
 
 These domains are still dominated by synchronous `Session` access inside selectors/engines and represent the largest remaining migration surface:
 
-- legacy `apps/cross_market/engine.py`
 - legacy `apps/portfolio/engine.py`
 
 Shared issues:
@@ -391,11 +390,11 @@ Recommended rollout order:
 7. completed: `apps/market_data`
 8. completed: `apps/indicators`
 9. completed on the async/public, TaskIQ orchestration and runtime worker surfaces: `apps/patterns`
-10. completed on the async/background runtime surface: `apps/cross_market`
+10. completed on the async/background runtime and test-facing surfaces: `apps/cross_market`
 11. completed on the async/public API and scheduled runtime surface: `apps/predictions`
 12. completed on the async/public API plus signal-fusion/signal-history runtime and test-facing surfaces: `apps/signals`
 13. completed on the async/public API and scheduled sync surface: `apps/portfolio`
-14. next: compatibility helpers in `cross_market` and legacy sync `portfolio` engine
+14. next: helper-only sync logic in `portfolio` engine
 15. later: helper-only sync analytical modules and leftover compatibility assertions in tests
 
 ## Current Behavior To Preserve

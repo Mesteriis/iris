@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import select
 
-from src.apps.cross_market.engine import update_coin_relations
 from src.apps.cross_market.models import CoinRelation
 from src.apps.cross_market.cache import read_cached_correlation
 from tests.cross_market_support import (
@@ -10,12 +10,14 @@ from tests.cross_market_support import (
     correlated_close_series,
     create_cross_market_coin,
     generate_close_series,
+    run_cross_market_relation_update,
     seed_candles,
     set_market_metrics,
 )
 
 
-def test_correlation_detection_finds_lagged_market_leader(db_session) -> None:
+@pytest.mark.asyncio
+async def test_correlation_detection_finds_lagged_market_leader(async_db_session, db_session) -> None:
     leader = create_cross_market_coin(
         db_session,
         symbol="BTCUSD_EVT",
@@ -78,13 +80,14 @@ def test_correlation_detection_finds_lagged_market_leader(db_session) -> None:
         market_cap=1_100_000_000_000.0,
     )
 
-    result = update_coin_relations(
-        db_session,
+    result = await run_cross_market_relation_update(
+        async_db_session,
         follower_coin_id=int(follower.id),
         timeframe=60,
         emit_events=False,
     )
 
+    db_session.expire_all()
     relation = db_session.scalar(
         select(CoinRelation)
         .where(

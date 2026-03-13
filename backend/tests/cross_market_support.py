@@ -4,11 +4,18 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from src.apps.cross_market.cache import cache_correlation_snapshot_async
 from src.apps.market_data.models import Coin
 from src.apps.indicators.models import CoinMetrics
 from src.apps.predictions.models import MarketPrediction
+from src.apps.predictions.services import PredictionSideEffectDispatcher
+from src.apps.cross_market.services import CrossMarketService
+from src.apps.cross_market.support import relation_timeframe
+from src.apps.market_data.domain import utc_now
 from src.apps.market_data.repos import upsert_base_candles
 from src.apps.market_data.sources.base import MarketBar
+from src.core.db.uow import SessionUnitOfWork
+from src.runtime.streams.publisher import publish_event
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_sector
 
@@ -126,3 +133,135 @@ def create_pending_prediction(
 
 
 DEFAULT_START = datetime(2026, 3, 1, 0, 0, tzinfo=timezone.utc)
+
+
+async def run_cross_market_relation_update(
+    async_db_session,
+    *,
+    follower_coin_id: int,
+    timeframe: int,
+    emit_events: bool = True,
+    apply_side_effects: bool = True,
+) -> dict[str, object]:
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = CrossMarketService(uow)
+        result, side_effects = await service._update_coin_relations(
+            follower_coin_id=follower_coin_id,
+            timeframe=timeframe,
+            emit_events=emit_events,
+        )
+        if result.status == "ok":
+            await uow.commit()
+    if apply_side_effects:
+        for effect in side_effects:
+            await cache_correlation_snapshot_async(
+                leader_coin_id=effect.leader_coin_id,
+                follower_coin_id=effect.follower_coin_id,
+                correlation=effect.correlation,
+                lag_hours=effect.lag_hours,
+                confidence=effect.confidence,
+                updated_at=effect.updated_at,
+            )
+            if effect.publish_event:
+                publish_event(
+                    "correlation_updated",
+                    {
+                        "coin_id": effect.follower_coin_id,
+                        "timeframe": relation_timeframe(timeframe),
+                        "timestamp": effect.updated_at,
+                        "leader_coin_id": effect.leader_coin_id,
+                        "follower_coin_id": effect.follower_coin_id,
+                        "correlation": effect.correlation,
+                        "lag_hours": effect.lag_hours,
+                        "confidence": effect.confidence,
+                    },
+                )
+    return result.to_summary()
+
+
+async def run_cross_market_sector_refresh(
+    async_db_session,
+    *,
+    timeframe: int,
+    emit_events: bool = True,
+    apply_side_effects: bool = True,
+) -> dict[str, object]:
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = CrossMarketService(uow)
+        result, effect = await service._refresh_sector_momentum(
+            timeframe=timeframe,
+            emit_events=emit_events,
+        )
+        if result.status == "ok":
+            await uow.commit()
+    if apply_side_effects and effect is not None:
+        publish_event(
+            "sector_rotation_detected",
+            {
+                "coin_id": 0,
+                "timeframe": effect.timeframe,
+                "timestamp": effect.timestamp,
+                "source_sector": effect.source_sector,
+                "target_sector": effect.target_sector,
+                "source_strength": effect.source_strength,
+                "target_strength": effect.target_strength,
+            },
+        )
+    return result.to_summary()
+
+
+async def run_cross_market_leader_detection(
+    async_db_session,
+    *,
+    coin_id: int,
+    timeframe: int,
+    payload: dict[str, object],
+    emit_events: bool = True,
+    apply_side_effects: bool = True,
+) -> dict[str, object]:
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = CrossMarketService(uow)
+        result, effect, requires_commit = await service._detect_market_leader(
+            coin_id=coin_id,
+            timeframe=timeframe,
+            payload=payload,
+            emit_events=emit_events,
+        )
+        if requires_commit:
+            await uow.commit()
+    if apply_side_effects and effect is not None:
+        await PredictionSideEffectDispatcher().apply_creation(effect.prediction_batch)
+        if effect.emit_event:
+            publish_event(
+                "market_leader_detected",
+                {
+                    "coin_id": effect.leader_coin_id,
+                    "timeframe": effect.timeframe,
+                    "timestamp": utc_now(),
+                    "leader_coin_id": effect.leader_coin_id,
+                    "leader_symbol": effect.leader_symbol,
+                    "direction": effect.direction,
+                    "confidence": effect.confidence,
+                    "market_regime": effect.market_regime,
+                },
+            )
+    return result.to_summary()
+
+
+async def run_cross_market_process_event(
+    async_db_session,
+    *,
+    coin_id: int,
+    timeframe: int,
+    event_type: str,
+    payload: dict[str, object],
+    emit_events: bool = True,
+) -> dict[str, object]:
+    async with SessionUnitOfWork(async_db_session) as uow:
+        return await CrossMarketService(uow).process_event(
+            coin_id=coin_id,
+            timeframe=timeframe,
+            event_type=event_type,
+            payload=payload,
+            emit_events=emit_events,
+        )
