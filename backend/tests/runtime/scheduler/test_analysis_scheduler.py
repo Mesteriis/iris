@@ -7,6 +7,7 @@ import pytest
 from redis import Redis
 
 from src.core.settings import get_settings
+from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
 from src.apps.patterns.domain.scheduler import (
@@ -15,6 +16,14 @@ from src.apps.patterns.domain.scheduler import (
     calculate_activity_score,
     should_request_analysis,
 )
+
+
+def _run_topology_dispatcher() -> None:
+    worker = create_topology_dispatcher_consumer()
+    try:
+        worker.run()
+    finally:
+        worker.close()
 
 
 def test_activity_score_and_bucket_assignment() -> None:
@@ -92,11 +101,16 @@ async def test_scheduler_worker_emits_analysis_requested(seeded_market, wait_unt
     settings = get_settings()
     sample = seeded_market["BTCUSD_EVT"]
     ctx = multiprocessing.get_context("spawn")
+    dispatcher = ctx.Process(
+        target=_run_topology_dispatcher,
+        daemon=True,
+    )
     scheduler = ctx.Process(
         target=run_worker_loop,
         args=("analysis_scheduler_workers",),
         daemon=True,
     )
+    dispatcher.start()
     scheduler.start()
     try:
         publish_event(
@@ -127,5 +141,7 @@ async def test_scheduler_worker_emits_analysis_requested(seeded_market, wait_unt
         finally:
             redis.close()
     finally:
+        dispatcher.terminate()
         scheduler.terminate()
+        dispatcher.join(timeout=2.0)
         scheduler.join(timeout=2.0)

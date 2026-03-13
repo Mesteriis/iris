@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
+from weakref import WeakKeyDictionary
 
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
@@ -13,6 +15,7 @@ from src.apps.market_data.domain import ensure_utc
 
 CORRELATION_CACHE_PREFIX = "iris:correlation"
 CORRELATION_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
+_ASYNC_CORRELATION_CACHE_CLIENTS: "WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedis]" = WeakKeyDictionary()
 
 
 # NOTE:
@@ -34,10 +37,24 @@ def get_correlation_cache_client() -> Redis:
     return Redis.from_url(settings.redis_url, decode_responses=True)
 
 
-@lru_cache(maxsize=1)
 def get_async_correlation_cache_client() -> AsyncRedis:
     settings = get_settings()
-    return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+    client = _ASYNC_CORRELATION_CACHE_CLIENTS.get(loop)
+    if client is None:
+        client = AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+        _ASYNC_CORRELATION_CACHE_CLIENTS[loop] = client
+    return client
+
+
+def _clear_async_correlation_cache_clients() -> None:
+    _ASYNC_CORRELATION_CACHE_CLIENTS.clear()
+
+
+setattr(get_async_correlation_cache_client, "cache_clear", _clear_async_correlation_cache_clients)
 
 
 def correlation_cache_key(leader_coin_id: int, follower_coin_id: int) -> str:

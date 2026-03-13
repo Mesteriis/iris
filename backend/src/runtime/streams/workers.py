@@ -3,28 +3,15 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 
-from sqlalchemy import select
-
 from src.apps.anomalies.consumers import CandleAnomalyConsumer, SectorAnomalyConsumer
 from src.apps.control_plane.metrics import ControlPlaneMetricsStore
 from src.apps.cross_market.services import CrossMarketService
 from src.apps.hypothesis_engine.consumers import HypothesisConsumer
-from src.apps.indicators.models import CoinMetrics
-from src.apps.indicators.services import FeatureSnapshotService, IndicatorAnalyticsService
-from src.apps.market_data.models import Coin
+from src.apps.indicators.services import AnalysisSchedulerService, FeatureSnapshotService, IndicatorAnalyticsService
 from src.apps.news.consumers import NewsCorrelationConsumer, NewsNormalizationConsumer
 from src.apps.patterns.cache import cache_regime_snapshot_async, read_cached_regime_async
-from src.apps.patterns.domain.clusters import build_pattern_clusters
-from src.apps.patterns.domain.cycle import update_market_cycle
-from src.apps.patterns.domain.engine import PatternEngine
-from src.apps.patterns.domain.hierarchy import build_hierarchy_signals
-from src.apps.patterns.domain.narrative import refresh_sector_metrics
-from src.apps.patterns.domain.scheduler import should_request_analysis
-from src.apps.patterns.models import MarketCycle
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
-from src.apps.signals.models import Signal
 from src.apps.signals.services import SignalFusionService, SignalFusionSideEffectDispatcher, SignalHistoryService
-from src.core.db.session import AsyncSessionLocal
 from src.core.db.uow import AsyncUnitOfWork
 from src.core.settings import get_settings
 from src.runtime.control_plane.worker import build_delivery_stream_name
@@ -49,23 +36,19 @@ from src.runtime.streams.types import (
 )
 
 LOGGER = logging.getLogger(__name__)
-_PATTERN_ENGINE = PatternEngine()
 _ANOMALY_CONSUMER = CandleAnomalyConsumer()
 _ANOMALY_SECTOR_CONSUMER = SectorAnomalyConsumer()
 _NEWS_NORMALIZATION_CONSUMER = NewsNormalizationConsumer()
 _NEWS_CORRELATION_CONSUMER = NewsCorrelationConsumer()
 _HYPOTHESIS_CONSUMER = HypothesisConsumer()
 _CONTROL_PLANE_METRICS = ControlPlaneMetricsStore()
+_PATTERN_INTERESTED_EVENT_TYPES = frozenset({"analysis_requested", "indicator_updated", "candle_closed"})
+_REGIME_INTERESTED_EVENT_TYPES = frozenset({"indicator_updated"})
 
 # NOTE:
 # These stream workers now use async Redis/consumer orchestration.
-# Indicator, cross-market, decision-context, signal-fusion and signal-history persistence now run through async repositories/UoW.
-# Remaining pattern-detection and regime-refresh orchestration still relies on legacy sync cores behind AsyncSession.run_sync.
-
-
-async def _run_worker_db(fn):
-    async with AsyncSessionLocal() as db:
-        return await db.run_sync(fn)
+# Indicator, cross-market, pattern, regime, decision-context, signal-fusion and signal-history
+# persistence now run through async services/repositories under a shared UoW.
 
 
 async def _process_indicator_event(event: IrisEvent):
@@ -107,16 +90,36 @@ def _pattern_signal_context_service_factory(uow):
     return PatternSignalContextService(uow)
 
 
-def _signal_types_at_timestamp(db, *, coin_id: int, timeframe: int, timestamp: object) -> set[str]:
-    return set(
-        db.scalars(
-            select(Signal.signal_type).where(
-                Signal.coin_id == coin_id,
-                Signal.timeframe == timeframe,
-                Signal.candle_timestamp == timestamp,
-            )
-        ).all()
-    )
+def _pattern_realtime_service_factory(uow):
+    from src.apps.patterns.task_services import PatternRealtimeService
+
+    return PatternRealtimeService(uow)
+
+
+async def _run_pattern_detection(event: IrisEvent) -> list[str]:
+    async with AsyncUnitOfWork() as uow:
+        result = await _pattern_realtime_service_factory(uow).detect_incremental_signals(
+            coin_id=event.coin_id,
+            timeframe=event.timeframe,
+            candle_timestamp=event.timestamp,
+            regime=str(event.payload.get("market_regime")) if event.payload.get("market_regime") is not None else None,
+            lookback=200,
+        )
+        await uow.commit()
+    return [str(item) for item in result.get("new_signal_types", ())]
+
+
+async def _run_regime_refresh(event: IrisEvent) -> dict[str, object] | None:
+    async with AsyncUnitOfWork() as uow:
+        result = await _pattern_realtime_service_factory(uow).refresh_regime_state(
+            coin_id=event.coin_id,
+            timeframe=event.timeframe,
+            regime=str(event.payload.get("market_regime")) if event.payload.get("market_regime") is not None else None,
+            regime_confidence=float(event.payload.get("regime_confidence") or 0.0),
+        )
+        if result is not None:
+            await uow.commit()
+        return result
 
 
 def _emit_signal_created_events(
@@ -169,24 +172,19 @@ async def _handle_indicator_event(event: IrisEvent) -> None:
 
 
 async def _handle_analysis_scheduler_event(event: IrisEvent) -> None:
-    async with AsyncSessionLocal() as db:
-        metrics = await db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == event.coin_id))
-        activity_bucket = (
-            str(event.payload.get("activity_bucket"))
-            if event.payload.get("activity_bucket") is not None
-            else (metrics.activity_bucket if metrics is not None else None)
-        )
-        last_analysis_at = metrics.last_analysis_at if metrics is not None else None
-        if not should_request_analysis(
+    async with AsyncUnitOfWork() as uow:
+        result = await AnalysisSchedulerService(uow).evaluate_indicator_update(
+            coin_id=event.coin_id,
             timeframe=event.timeframe,
             timestamp=event.timestamp,
-            activity_bucket=activity_bucket,
-            last_analysis_at=last_analysis_at,
-        ):
+            activity_bucket_hint=(
+                str(event.payload.get("activity_bucket")) if event.payload.get("activity_bucket") is not None else None
+            ),
+        )
+        if not result.should_publish:
             return
-        if metrics is not None:
-            metrics.last_analysis_at = event.timestamp
-            await db.commit()
+        if result.state_updated:
+            await uow.commit()
     publish_event(
         "analysis_requested",
         {
@@ -194,7 +192,7 @@ async def _handle_analysis_scheduler_event(event: IrisEvent) -> None:
             "timeframe": event.timeframe,
             "timestamp": event.timestamp,
             "activity_score": event.payload.get("activity_score"),
-            "activity_bucket": activity_bucket,
+            "activity_bucket": result.activity_bucket,
             "analysis_priority": event.payload.get("analysis_priority"),
             "market_regime": event.payload.get("market_regime"),
             "regime_confidence": event.payload.get("regime_confidence"),
@@ -203,7 +201,9 @@ async def _handle_analysis_scheduler_event(event: IrisEvent) -> None:
 
 
 async def _handle_pattern_event(event: IrisEvent) -> None:
-    new_signal_types = await _run_worker_db(lambda db: _detect_pattern_signals(db, event))
+    if event.event_type not in _PATTERN_INTERESTED_EVENT_TYPES or event.coin_id <= 0 or event.timeframe <= 0:
+        return
+    new_signal_types = await _run_pattern_detection(event)
     if not new_signal_types:
         return
     for signal_type in new_signal_types:
@@ -236,8 +236,10 @@ async def _handle_pattern_event(event: IrisEvent) -> None:
 
 
 async def _handle_regime_event(event: IrisEvent) -> None:
+    if event.event_type not in _REGIME_INTERESTED_EVENT_TYPES or event.coin_id <= 0 or event.timeframe <= 0:
+        return
     previous_regime = await read_cached_regime_async(coin_id=event.coin_id, timeframe=event.timeframe)
-    cycle_result = await _run_worker_db(lambda db: _refresh_regime_state(db, event))
+    cycle_result = await _run_regime_refresh(event)
     if cycle_result is None:
         return
     regime = cycle_result["regime"]
@@ -373,60 +375,6 @@ async def _handle_hypothesis_event(event: IrisEvent) -> None:
     await _HYPOTHESIS_CONSUMER.handle_event(event)
 
 
-def _detect_pattern_signals(db, event: IrisEvent) -> list[str]:
-    existing_signal_types = _signal_types_at_timestamp(
-        db,
-        coin_id=event.coin_id,
-        timeframe=event.timeframe,
-        timestamp=event.timestamp,
-    )
-    _PATTERN_ENGINE.detect_incremental(
-        db,
-        coin_id=event.coin_id,
-        timeframe=event.timeframe,
-        lookback=200,
-        regime=str(event.payload.get("market_regime")) if event.payload.get("market_regime") is not None else None,
-    )
-    build_pattern_clusters(
-        db,
-        coin_id=event.coin_id,
-        timeframe=event.timeframe,
-        candle_timestamp=event.timestamp,
-    )
-    build_hierarchy_signals(
-        db,
-        coin_id=event.coin_id,
-        timeframe=event.timeframe,
-        candle_timestamp=event.timestamp,
-    )
-    current_signal_types = _signal_types_at_timestamp(
-        db,
-        coin_id=event.coin_id,
-        timeframe=event.timeframe,
-        timestamp=event.timestamp,
-    )
-    return sorted(current_signal_types - existing_signal_types)
-
-
-def _refresh_regime_state(db, event: IrisEvent) -> dict[str, object] | None:
-    coin = db.get(Coin, event.coin_id)
-    if coin is None:
-        return None
-    refresh_sector_metrics(db, timeframe=event.timeframe)
-    cycle_before = db.get(MarketCycle, (event.coin_id, event.timeframe))
-    cycle_result = update_market_cycle(
-        db,
-        coin_id=event.coin_id,
-        timeframe=event.timeframe,
-    )
-    return {
-        "previous_cycle": cycle_before.cycle_phase if cycle_before is not None else None,
-        "next_cycle": cycle_result.get("cycle_phase"),
-        "regime": (str(event.payload.get("market_regime")) if event.payload.get("market_regime") is not None else None),
-        "regime_confidence": float(event.payload.get("regime_confidence") or 0.0),
-    }
-
-
 def create_worker(group_name: str, consumer_name: str | None = None) -> EventConsumer:
     settings = get_settings()
     effective_consumer_name = consumer_name or default_consumer_name(group_name)
@@ -451,11 +399,17 @@ def create_worker(group_name: str, consumer_name: str | None = None) -> EventCon
         )
     if group_name == PATTERN_WORKER_GROUP:
         return EventConsumer(
-            config, handler=_handle_pattern_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS
+            config,
+            handler=_handle_pattern_event,
+            interested_event_types=set(_PATTERN_INTERESTED_EVENT_TYPES),
+            metrics_store=_CONTROL_PLANE_METRICS,
         )
     if group_name == REGIME_WORKER_GROUP:
         return EventConsumer(
-            config, handler=_handle_regime_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS
+            config,
+            handler=_handle_regime_event,
+            interested_event_types=set(_REGIME_INTERESTED_EVENT_TYPES),
+            metrics_store=_CONTROL_PLANE_METRICS,
         )
     if group_name == DECISION_WORKER_GROUP:
         return EventConsumer(

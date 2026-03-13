@@ -8,13 +8,21 @@ from redis import Redis
 from sqlalchemy import func, select
 
 from src.core.db.session import SessionLocal
+from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
 from src.apps.market_data.models import Coin
 from src.apps.patterns.domain.registry import sync_pattern_metadata
 from src.apps.signals.models import Signal
 from src.apps.market_data.service_layer import publish_candle_events
-from src.apps.market_data.domain import ensure_utc
+
+
+def _run_topology_dispatcher() -> None:
+    worker = create_topology_dispatcher_consumer()
+    try:
+        worker.run()
+    finally:
+        worker.close()
 
 
 @pytest.mark.asyncio
@@ -56,6 +64,10 @@ async def test_event_stream_pipeline_creates_pattern_signals(seeded_market, sett
         db.close()
 
     ctx = multiprocessing.get_context("spawn")
+    dispatcher = ctx.Process(
+        target=_run_topology_dispatcher,
+        daemon=True,
+    )
     indicator = ctx.Process(
         target=run_worker_loop,
         args=("indicator_workers",),
@@ -71,6 +83,7 @@ async def test_event_stream_pipeline_creates_pattern_signals(seeded_market, sett
         args=("pattern_workers",),
         daemon=True,
     )
+    dispatcher.start()
     indicator.start()
     scheduler.start()
     pattern.start()
@@ -129,9 +142,11 @@ async def test_event_stream_pipeline_creates_pattern_signals(seeded_market, sett
         finally:
             client.close()
     finally:
+        dispatcher.terminate()
         indicator.terminate()
         scheduler.terminate()
         pattern.terminate()
+        dispatcher.join(timeout=2.0)
         indicator.join(timeout=2.0)
         scheduler.join(timeout=2.0)
         pattern.join(timeout=2.0)

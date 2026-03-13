@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -41,38 +41,57 @@ def _event(
     )
 
 
-class _AsyncContext:
-    def __init__(self, session: object) -> None:
-        self.session = session
-
-    async def __aenter__(self) -> object:
-        return self.session
-
-    async def __aexit__(self, exc_type, exc, tb) -> bool:
-        return False
-
-
 @pytest.mark.asyncio
-async def test_worker_db_and_helper_functions(monkeypatch) -> None:
-    class AsyncSession:
-        async def run_sync(self, fn):
-            return fn("sync-db")
-
-    class ScalarResult:
-        def all(self) -> list[str]:
-            return ["pattern_a", "pattern_b", "pattern_a"]
-
-    class SyncDb:
-        def scalars(self, _stmt):
-            return ScalarResult()
-
+async def test_pattern_runtime_helper_functions(monkeypatch) -> None:
+    calls: list[tuple[str, object]] = []
     published: list[tuple[str, dict[str, object]]] = []
 
-    monkeypatch.setattr(workers, "AsyncSessionLocal", lambda: _AsyncContext(AsyncSession()))
+    class FakeUow:
+        session = "pattern-db"
+
+        async def __aenter__(self):
+            calls.append(("enter", self.session))
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            del exc_type, exc, tb
+            calls.append(("exit", self.session))
+            return False
+
+        async def commit(self):
+            calls.append(("commit", self.session))
+
+    class FakePatternRealtimeService:
+        def __init__(self, uow):
+            calls.append(("service_session", uow.session))
+
+        async def detect_incremental_signals(self, **kwargs):
+            calls.append(("detect", (kwargs["coin_id"], kwargs["timeframe"])))
+            return {"status": "ok", "requires_commit": True, "new_signal_types": ("pattern_breakout",)}
+
+        async def refresh_regime_state(self, **kwargs):
+            calls.append(("regime", (kwargs["coin_id"], kwargs["timeframe"])))
+            return {
+                "status": "ok",
+                "requires_commit": True,
+                "regime": kwargs["regime"],
+                "regime_confidence": kwargs["regime_confidence"],
+                "next_cycle": "distribution",
+                "previous_cycle": "accumulation",
+            }
+
+    monkeypatch.setattr(workers, "AsyncUnitOfWork", FakeUow)
+    monkeypatch.setattr(
+        workers,
+        "_pattern_realtime_service_factory",
+        lambda uow: FakePatternRealtimeService(uow),
+    )
     monkeypatch.setattr(workers, "publish_event", lambda event_type, payload: published.append((event_type, payload)))
 
-    result = await workers._run_worker_db(lambda db: f"used:{db}")
-    signal_types = workers._signal_types_at_timestamp(SyncDb(), coin_id=7, timeframe=15, timestamp=_event().timestamp)
+    result = await workers._run_pattern_detection(_event(event_type="analysis_requested"))
+    regime = await workers._run_regime_refresh(
+        _event(event_type="indicator_updated", payload={"market_regime": "bull_trend", "regime_confidence": 0.77})
+    )
     workers._emit_signal_created_events(
         coin_id=7,
         timeframe=15,
@@ -80,8 +99,12 @@ async def test_worker_db_and_helper_functions(monkeypatch) -> None:
         signal_types=["pattern_a", "pattern_b"],
     )
 
-    assert result == "used:sync-db"
-    assert signal_types == {"pattern_a", "pattern_b"}
+    assert result == ["pattern_breakout"]
+    assert regime is not None
+    assert regime["next_cycle"] == "distribution"
+    assert ("detect", (7, 15)) in calls
+    assert ("regime", (7, 15)) in calls
+    assert ("commit", "pattern-db") in calls
     assert published[0][0] == "signal_created"
 
 
@@ -138,15 +161,15 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
     await workers._handle_indicator_event(_event())
     assert published == []
 
-    async def run_pattern(_fn):
+    async def run_pattern(_event_obj):
         return ["pattern_cluster_breakout", "pattern_head_shoulders"]
 
-    monkeypatch.setattr(workers, "_run_worker_db", run_pattern)
+    monkeypatch.setattr(workers, "_run_pattern_detection", run_pattern)
     await workers._handle_pattern_event(_event(event_type="analysis_requested"))
     assert {event_type for event_type, _ in published} == {"pattern_cluster_detected", "pattern_detected"}
 
     published.clear()
-    monkeypatch.setattr(workers, "_run_worker_db", lambda _fn: __import__("asyncio").sleep(0, result=[]))
+    monkeypatch.setattr(workers, "_run_pattern_detection", lambda _event_obj: __import__("asyncio").sleep(0, result=[]))
     await workers._handle_pattern_event(_event(event_type="analysis_requested"))
     assert published == []
 
@@ -377,51 +400,57 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
 async def test_analysis_scheduler_and_regime_handlers(monkeypatch) -> None:
     published: list[tuple[str, dict[str, object]]] = []
     cached: list[dict[str, object]] = []
+    commits: list[str] = []
 
-    class Metrics:
-        def __init__(self) -> None:
-            self.activity_bucket = "WARM"
-            self.last_analysis_at = None
+    class FakeSchedulerUow:
+        session = "analysis-db"
 
-    class AsyncSession:
-        def __init__(self, metrics):
-            self.metrics = metrics
-            self.commits = 0
+        async def __aenter__(self):
+            return self
 
-        async def scalar(self, _stmt):
-            return self.metrics
+        async def __aexit__(self, exc_type, exc, tb):
+            del exc_type, exc, tb
+            return False
 
         async def commit(self) -> None:
-            self.commits += 1
+            commits.append("commit")
 
-    metrics = Metrics()
-    session = AsyncSession(metrics)
-    monkeypatch.setattr(workers, "AsyncSessionLocal", lambda: _AsyncContext(session))
+    results = iter(
+        [
+            SimpleNamespace(should_publish=False, activity_bucket="WARM", state_updated=False),
+            SimpleNamespace(should_publish=True, activity_bucket="WARM", state_updated=True),
+            SimpleNamespace(should_publish=True, activity_bucket=None, state_updated=False),
+        ]
+    )
+
+    class FakeAnalysisSchedulerService:
+        def __init__(self, _uow):
+            pass
+
+        async def evaluate_indicator_update(self, **_kwargs):
+            return next(results)
+
+    monkeypatch.setattr(workers, "AsyncUnitOfWork", lambda: FakeSchedulerUow())
+    monkeypatch.setattr(workers, "AnalysisSchedulerService", FakeAnalysisSchedulerService)
     monkeypatch.setattr(workers, "publish_event", lambda event_type, payload: published.append((event_type, payload)))
-    monkeypatch.setattr(workers, "should_request_analysis", lambda **kwargs: False)
 
     event = _event(event_type="indicator_updated")
     await workers._handle_analysis_scheduler_event(event)
     assert published == []
-    assert session.commits == 0
+    assert commits == []
 
-    monkeypatch.setattr(workers, "should_request_analysis", lambda **kwargs: True)
     await workers._handle_analysis_scheduler_event(
         _event(event_type="indicator_updated", payload={"activity_score": 88.0})
     )
     assert published[-1][0] == "analysis_requested"
-    assert session.commits == 1
-    assert metrics.last_analysis_at == event.timestamp
+    assert commits == ["commit"]
 
     published.clear()
-
-    empty_session = AsyncSession(None)
-    monkeypatch.setattr(workers, "AsyncSessionLocal", lambda: _AsyncContext(empty_session))
     await workers._handle_analysis_scheduler_event(
         _event(event_type="indicator_updated", payload={"activity_score": 55.0})
     )
     assert published[-1][1]["activity_bucket"] is None
-    assert empty_session.commits == 0
+    assert commits == ["commit"]
 
     published.clear()
     monkeypatch.setattr(
@@ -429,7 +458,7 @@ async def test_analysis_scheduler_and_regime_handlers(monkeypatch) -> None:
         "read_cached_regime_async",
         lambda **kwargs: __import__("asyncio").sleep(0, result=SimpleNamespace(regime="bull_trend")),
     )
-    monkeypatch.setattr(workers, "_run_worker_db", lambda _fn: __import__("asyncio").sleep(0, result=None))
+    monkeypatch.setattr(workers, "_run_regime_refresh", lambda _event_obj: __import__("asyncio").sleep(0, result=None))
     monkeypatch.setattr(
         workers,
         "cache_regime_snapshot_async",
@@ -440,7 +469,7 @@ async def test_analysis_scheduler_and_regime_handlers(monkeypatch) -> None:
     )
     assert published == []
 
-    async def changed_cycle(_fn):
+    async def changed_cycle(_event_obj):
         return {
             "regime": "bear_trend",
             "regime_confidence": 0.66,
@@ -448,7 +477,7 @@ async def test_analysis_scheduler_and_regime_handlers(monkeypatch) -> None:
             "previous_cycle": "accumulation",
         }
 
-    monkeypatch.setattr(workers, "_run_worker_db", changed_cycle)
+    monkeypatch.setattr(workers, "_run_regime_refresh", changed_cycle)
     await workers._handle_regime_event(
         _event(event_type="indicator_updated", payload={"market_regime": "bear_trend", "regime_confidence": 0.66})
     )
@@ -457,7 +486,7 @@ async def test_analysis_scheduler_and_regime_handlers(monkeypatch) -> None:
 
     published.clear()
 
-    async def same_cycle_without_regime(_fn):
+    async def same_cycle_without_regime(_event_obj):
         return {
             "regime": None,
             "regime_confidence": 0.0,
@@ -468,7 +497,7 @@ async def test_analysis_scheduler_and_regime_handlers(monkeypatch) -> None:
     monkeypatch.setattr(
         workers, "read_cached_regime_async", lambda **kwargs: __import__("asyncio").sleep(0, result=None)
     )
-    monkeypatch.setattr(workers, "_run_worker_db", same_cycle_without_regime)
+    monkeypatch.setattr(workers, "_run_regime_refresh", same_cycle_without_regime)
     await workers._handle_regime_event(_event(event_type="indicator_updated"))
     assert published == []
 
@@ -512,58 +541,6 @@ async def test_anomaly_and_news_handlers_delegate_to_domain_consumers(monkeypatc
 
 
 def test_worker_domain_helpers_and_factory(monkeypatch) -> None:
-    detection_calls: list[tuple[str, object]] = []
-    helper_calls: list[tuple[str, object]] = []
-
-    class FakeDb:
-        def __init__(self) -> None:
-            self.signal_sets = iter([{"pattern_a"}, {"pattern_a", "pattern_cluster_breakout", "pattern_b"}])
-
-        def get(self, model, key):
-            if model is workers.Coin:
-                return SimpleNamespace(id=key)
-            if model is workers.MarketCycle:
-                return SimpleNamespace(cycle_phase="accumulation")
-            return None
-
-    event = _event(payload={"market_regime": "bull_trend", "regime_confidence": 0.73})
-    db = FakeDb()
-
-    monkeypatch.setattr(workers, "_signal_types_at_timestamp", lambda *_args, **_kwargs: next(db.signal_sets))
-    monkeypatch.setattr(
-        workers._PATTERN_ENGINE,
-        "detect_incremental",
-        lambda _db, **kwargs: detection_calls.append(("detect", kwargs["regime"])),
-    )
-    monkeypatch.setattr(
-        workers, "build_pattern_clusters", lambda _db, **kwargs: helper_calls.append(("cluster", kwargs["coin_id"]))
-    )
-    monkeypatch.setattr(
-        workers, "build_hierarchy_signals", lambda _db, **kwargs: helper_calls.append(("hierarchy", kwargs["coin_id"]))
-    )
-
-    new_signals = workers._detect_pattern_signals(db, event)
-    assert new_signals == ["pattern_b", "pattern_cluster_breakout"]
-    assert detection_calls == [("detect", "bull_trend")]
-    assert helper_calls == [("cluster", 7), ("hierarchy", 7)]
-
-    monkeypatch.setattr(
-        workers, "refresh_sector_metrics", lambda _db, timeframe: helper_calls.append(("refresh", timeframe))
-    )
-    monkeypatch.setattr(
-        workers,
-        "update_market_cycle",
-        lambda _db, **kwargs: {"cycle_phase": "distribution"},
-    )
-    regime_state = workers._refresh_regime_state(db, event)
-    assert regime_state == {
-        "previous_cycle": "accumulation",
-        "next_cycle": "distribution",
-        "regime": "bull_trend",
-        "regime_confidence": 0.73,
-    }
-    assert workers._refresh_regime_state(SimpleNamespace(get=lambda *_args, **_kwargs: None), event) is None
-
     created: list[tuple[str, object, object]] = []
 
     class FakeConsumer:
@@ -631,7 +608,23 @@ def test_worker_domain_helpers_and_factory(monkeypatch) -> None:
         build_delivery_stream_name(NEWS_CORRELATION_WORKER_GROUP),
         build_delivery_stream_name(HYPOTHESIS_WORKER_GROUP),
     ]
-    assert {interested_event_types for _, _, _, interested_event_types in created} == {None}
+    interested_by_group = {group_name: interested for group_name, _, _, interested in created}
+    assert interested_by_group[PATTERN_WORKER_GROUP] == {"analysis_requested", "indicator_updated", "candle_closed"}
+    assert interested_by_group[REGIME_WORKER_GROUP] == {"indicator_updated"}
+    for group_name in (
+        INDICATOR_WORKER_GROUP,
+        ANALYSIS_SCHEDULER_WORKER_GROUP,
+        DECISION_WORKER_GROUP,
+        FUSION_WORKER_GROUP,
+        CROSS_MARKET_WORKER_GROUP,
+        PORTFOLIO_WORKER_GROUP,
+        ANOMALY_WORKER_GROUP,
+        ANOMALY_SECTOR_WORKER_GROUP,
+        NEWS_NORMALIZATION_WORKER_GROUP,
+        NEWS_CORRELATION_WORKER_GROUP,
+        HYPOTHESIS_WORKER_GROUP,
+    ):
+        assert interested_by_group[group_name] is None
 
     with pytest.raises(ValueError, match="Unsupported event worker group"):
         workers.create_worker("unsupported")
@@ -650,8 +643,8 @@ async def test_pattern_handler_non_pattern_signal_branch(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         workers,
-        "_run_worker_db",
-        lambda _fn: __import__("asyncio").sleep(0, result=["macd_cross"]),
+        "_run_pattern_detection",
+        lambda _event_obj: __import__("asyncio").sleep(0, result=["macd_cross"]),
     )
 
     await workers._handle_pattern_event(_event(event_type="analysis_requested"))

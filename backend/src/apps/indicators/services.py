@@ -53,6 +53,7 @@ from src.apps.patterns.domain.regime import (
     read_regime_details,
     serialize_regime_map,
 )
+from src.apps.patterns.domain.scheduler import should_request_analysis
 from src.apps.patterns.domain.semantics import is_cluster_signal, is_pattern_signal
 from src.core.db.session import async_engine
 from src.core.db.uow import BaseAsyncUnitOfWork
@@ -116,6 +117,13 @@ class FeatureSnapshotCaptureResult:
     cycle_phase: str | None = None
     pattern_density: int = 0
     cluster_score: float = 0.0
+
+
+@dataclass(slots=True, frozen=True)
+class AnalysisScheduleResult:
+    should_publish: bool
+    activity_bucket: str | None
+    state_updated: bool
 
 
 def _regime_for_timeframe(
@@ -518,7 +526,54 @@ class FeatureSnapshotService:
         )
 
 
+class AnalysisSchedulerService:
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        self._metrics = IndicatorMetricsRepository(uow.session)
+
+    async def evaluate_indicator_update(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        timestamp: datetime,
+        activity_bucket_hint: str | None,
+    ) -> AnalysisScheduleResult:
+        normalized_timestamp = ensure_utc(timestamp)
+        metrics = await self._metrics.get_by_coin_id(int(coin_id))
+        activity_bucket = (
+            str(activity_bucket_hint)
+            if activity_bucket_hint is not None
+            else (str(metrics.activity_bucket) if metrics is not None and metrics.activity_bucket is not None else None)
+        )
+        should_publish = should_request_analysis(
+            timeframe=int(timeframe),
+            timestamp=normalized_timestamp,
+            activity_bucket=activity_bucket,
+            last_analysis_at=metrics.last_analysis_at if metrics is not None else None,
+        )
+        if not should_publish:
+            return AnalysisScheduleResult(
+                should_publish=False,
+                activity_bucket=activity_bucket,
+                state_updated=False,
+            )
+        if metrics is None:
+            return AnalysisScheduleResult(
+                should_publish=True,
+                activity_bucket=activity_bucket,
+                state_updated=False,
+            )
+        metrics.last_analysis_at = normalized_timestamp
+        return AnalysisScheduleResult(
+            should_publish=True,
+            activity_bucket=activity_bucket,
+            state_updated=True,
+        )
+
+
 __all__ = [
+    "AnalysisScheduleResult",
+    "AnalysisSchedulerService",
     "FeatureSnapshotCaptureResult",
     "FeatureSnapshotService",
     "IndicatorAnalyticsService",

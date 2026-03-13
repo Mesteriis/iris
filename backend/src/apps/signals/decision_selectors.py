@@ -4,13 +4,12 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.apps.cross_market.models import Sector
 from src.apps.market_data.models import Coin
 from src.apps.market_data.service_layer import get_coin_by_symbol
-from src.apps.signals.models import InvestmentDecision
+from src.apps.signals.query_builders import latest_decisions_subquery
 from src.apps.signals.read_models import (
     CoinDecisionItemReadModel,
     CoinDecisionReadModel,
@@ -22,25 +21,7 @@ from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 
 
 def _latest_decisions_subquery():
-    return (
-        select(
-            InvestmentDecision.id.label("id"),
-            InvestmentDecision.coin_id.label("coin_id"),
-            InvestmentDecision.timeframe.label("timeframe"),
-            InvestmentDecision.decision.label("decision"),
-            InvestmentDecision.confidence.label("confidence"),
-            InvestmentDecision.score.label("score"),
-            InvestmentDecision.reason.label("reason"),
-            InvestmentDecision.created_at.label("created_at"),
-            func.row_number()
-            .over(
-                partition_by=(InvestmentDecision.coin_id, InvestmentDecision.timeframe),
-                order_by=(InvestmentDecision.created_at.desc(), InvestmentDecision.id.desc()),
-            )
-            .label("decision_rank"),
-        )
-        .subquery()
-    )
+    return latest_decisions_subquery()
 
 
 def _decision_payload(item: InvestmentDecisionReadModel) -> dict[str, Any]:
@@ -128,7 +109,7 @@ class SignalDecisionCompatibilityQuery:
                 latest.c.coin_id,
                 Coin.symbol,
                 Coin.name,
-                Sector.name.label("sector"),
+                Coin.sector_code.label("sector"),
                 latest.c.timeframe,
                 latest.c.decision,
                 latest.c.confidence,
@@ -137,7 +118,6 @@ class SignalDecisionCompatibilityQuery:
                 latest.c.created_at,
             )
             .join(Coin, Coin.id == latest.c.coin_id)
-            .outerjoin(Sector, Sector.id == Coin.sector_id)
             .where(latest.c.decision_rank == 1, Coin.deleted_at.is_(None))
             .order_by(latest.c.created_at.desc(), latest.c.id.desc())
             .limit(max(limit, 1))
@@ -163,7 +143,7 @@ class SignalDecisionCompatibilityQuery:
                 latest.c.coin_id,
                 Coin.symbol,
                 Coin.name,
-                Sector.name.label("sector"),
+                Coin.sector_code.label("sector"),
                 latest.c.timeframe,
                 latest.c.decision,
                 latest.c.confidence,
@@ -172,7 +152,6 @@ class SignalDecisionCompatibilityQuery:
                 latest.c.created_at,
             )
             .join(Coin, Coin.id == latest.c.coin_id)
-            .outerjoin(Sector, Sector.id == Coin.sector_id)
             .where(latest.c.decision_rank == 1, Coin.deleted_at.is_(None))
             .order_by(latest.c.score.desc(), latest.c.confidence.desc(), latest.c.created_at.desc())
             .limit(max(limit, 1))

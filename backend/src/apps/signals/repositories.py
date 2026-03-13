@@ -320,4 +320,4 @@ class SignalFusionRepository(AsyncRepository):
         return str(trend) if trend is not None else None
 
 
-__all__ = ["SignalFusionRepository"]
+__all__ = ["SignalFusionRepository", "SignalHistoryRepository"]

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
 from datetime import timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,25 +14,18 @@ from src.apps.market_data.models import Candle, Coin
 from src.apps.market_data.repos import fetch_candle_points_between
 from src.apps.predictions.cache import cache_prediction_snapshot, cache_prediction_snapshot_async
 from src.apps.predictions.models import MarketPrediction, PredictionResult
+from src.apps.predictions.support import (
+    PREDICTION_MAX_FOLLOWERS,
+    PREDICTION_MOVE_THRESHOLD,
+    PredictionOutcome,
+    clamp_prediction_value as _clamp,
+)
+from src.apps.predictions.services import PredictionCreationBatch, PredictionEvaluationBatch
+from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 from src.runtime.streams.publisher import publish_event
 
-PREDICTION_MOVE_THRESHOLD = 0.015
-PREDICTION_MAX_FOLLOWERS = 8
 
-
-@dataclass(slots=True, frozen=True)
-class PredictionOutcome:
-    status: str
-    actual_move: float
-    success: bool
-    profit: float
-
-
-def _clamp(value: float, lower: float, upper: float) -> float:
-    return max(lower, min(value, upper))
-
-
-def create_market_predictions(
+def _create_market_predictions_impl(
     db: Session,
     *,
     leader_coin_id: int,
@@ -313,7 +307,7 @@ async def _apply_relation_feedback_async(
     return relation
 
 
-def evaluate_pending_predictions(
+def _evaluate_pending_predictions_impl(
     db: Session,
     *,
     limit: int = 200,
@@ -396,6 +390,129 @@ def evaluate_pending_predictions(
         "failed": failed,
         "expired": expired,
     }
+
+
+class PredictionCompatibilityService:
+    def __init__(self, db: Session) -> None:
+        self._db = db
+
+    def _log(self, level: int, event: str, /, **fields: Any) -> None:
+        PERSISTENCE_LOGGER.log(
+            level,
+            event,
+            extra={
+                "persistence": {
+                    "event": event,
+                    "component_type": "compatibility_service",
+                    "domain": "predictions",
+                    "component": "PredictionCompatibilityService",
+                    **{key: sanitize_log_value(value) for key, value in fields.items()},
+                }
+            },
+        )
+
+    def create_market_predictions(
+        self,
+        *,
+        leader_coin_id: int,
+        prediction_event: str,
+        expected_move: str,
+        base_confidence: float,
+        emit_events: bool = True,
+    ) -> dict[str, object]:
+        result = _create_market_predictions_impl(
+            self._db,
+            leader_coin_id=leader_coin_id,
+            prediction_event=prediction_event,
+            expected_move=expected_move,
+            base_confidence=base_confidence,
+            emit_events=emit_events,
+        )
+        return PredictionCreationBatch(
+            status=str(result["status"]),
+            leader_coin_id=int(result["leader_coin_id"]),
+            created=int(result.get("created") or 0),
+            reason=str(result["reason"]) if result.get("reason") is not None else None,
+        ).to_summary()
+
+    def evaluate_pending_predictions(
+        self,
+        *,
+        limit: int = 200,
+        emit_events: bool = True,
+    ) -> dict[str, object]:
+        result = _evaluate_pending_predictions_impl(
+            self._db,
+            limit=limit,
+            emit_events=emit_events,
+        )
+        return PredictionEvaluationBatch(
+            status=str(result["status"]),
+            evaluated=int(result.get("evaluated") or 0),
+            confirmed=int(result.get("confirmed") or 0),
+            failed=int(result.get("failed") or 0),
+            expired=int(result.get("expired") or 0),
+        ).to_summary()
+
+
+def create_market_predictions(
+    db: Session,
+    *,
+    leader_coin_id: int,
+    prediction_event: str,
+    expected_move: str,
+    base_confidence: float,
+    emit_events: bool = True,
+) -> dict[str, object]:
+    service = PredictionCompatibilityService(db)
+    service._log(
+        logging.WARNING,
+        "compat.create_market_predictions.deprecated",
+        mode="write",
+        leader_coin_id=leader_coin_id,
+        prediction_event=prediction_event,
+        expected_move=expected_move,
+        emit_events=emit_events,
+    )
+    return service.create_market_predictions(
+        leader_coin_id=leader_coin_id,
+        prediction_event=prediction_event,
+        expected_move=expected_move,
+        base_confidence=base_confidence,
+        emit_events=emit_events,
+    )
+
+
+def evaluate_pending_predictions(
+    db: Session,
+    *,
+    limit: int = 200,
+    emit_events: bool = True,
+) -> dict[str, object]:
+    service = PredictionCompatibilityService(db)
+    service._log(
+        logging.WARNING,
+        "compat.evaluate_pending_predictions.deprecated",
+        mode="write",
+        limit=limit,
+        emit_events=emit_events,
+    )
+    return service.evaluate_pending_predictions(limit=limit, emit_events=emit_events)
+
+
+__all__ = [
+    "PredictionCompatibilityService",
+    "_apply_relation_feedback",
+    "_apply_relation_feedback_async",
+    "_create_market_predictions_impl",
+    "_evaluate_prediction_window",
+    "_evaluate_prediction_window_async",
+    "_evaluate_pending_predictions_impl",
+    "create_market_predictions",
+    "create_market_predictions_async",
+    "evaluate_pending_predictions",
+    "evaluate_pending_predictions_async",
+]
 
 
 async def evaluate_pending_predictions_async(

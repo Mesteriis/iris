@@ -4,16 +4,15 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.apps.cross_market.models import Sector
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.models import Coin
 from src.apps.market_data.service_layer import get_coin_by_symbol
 from src.apps.patterns.domain.regime import read_regime_details
 from src.apps.signals.cache import read_cached_market_decision
-from src.apps.signals.models import MarketDecision
+from src.apps.signals.query_builders import latest_market_decisions_subquery
 from src.apps.signals.read_models import (
     CoinMarketDecisionItemReadModel,
     CoinMarketDecisionReadModel,
@@ -27,24 +26,7 @@ PREFERRED_TIMEFRAMES = (1440, 240, 60, 15)
 
 
 def _latest_market_decisions_subquery():
-    return (
-        select(
-            MarketDecision.id.label("id"),
-            MarketDecision.coin_id.label("coin_id"),
-            MarketDecision.timeframe.label("timeframe"),
-            MarketDecision.decision.label("decision"),
-            MarketDecision.confidence.label("confidence"),
-            MarketDecision.signal_count.label("signal_count"),
-            MarketDecision.created_at.label("created_at"),
-            func.row_number()
-            .over(
-                partition_by=(MarketDecision.coin_id, MarketDecision.timeframe),
-                order_by=(MarketDecision.created_at.desc(), MarketDecision.id.desc()),
-            )
-            .label("market_decision_rank"),
-        )
-        .subquery()
-    )
+    return latest_market_decisions_subquery()
 
 
 def _market_decision_payload(item: MarketDecisionReadModel) -> dict[str, Any]:
@@ -132,7 +114,7 @@ class MarketDecisionCompatibilityQuery:
                 latest.c.coin_id,
                 Coin.symbol,
                 Coin.name,
-                Sector.name.label("sector"),
+                Coin.sector_code.label("sector"),
                 latest.c.timeframe,
                 latest.c.decision,
                 latest.c.confidence,
@@ -141,7 +123,6 @@ class MarketDecisionCompatibilityQuery:
                 latest.c.created_at,
             )
             .join(Coin, Coin.id == latest.c.coin_id)
-            .outerjoin(Sector, Sector.id == Coin.sector_id)
             .outerjoin(CoinMetrics, CoinMetrics.coin_id == latest.c.coin_id)
             .where(latest.c.market_decision_rank == 1, Coin.deleted_at.is_(None))
             .order_by(latest.c.created_at.desc(), latest.c.id.desc())
@@ -168,7 +149,7 @@ class MarketDecisionCompatibilityQuery:
                 latest.c.coin_id,
                 Coin.symbol,
                 Coin.name,
-                Sector.name.label("sector"),
+                Coin.sector_code.label("sector"),
                 latest.c.timeframe,
                 latest.c.decision,
                 latest.c.confidence,
@@ -177,7 +158,6 @@ class MarketDecisionCompatibilityQuery:
                 latest.c.created_at,
             )
             .join(Coin, Coin.id == latest.c.coin_id)
-            .outerjoin(Sector, Sector.id == Coin.sector_id)
             .outerjoin(CoinMetrics, CoinMetrics.coin_id == latest.c.coin_id)
             .where(latest.c.market_decision_rank == 1, Coin.deleted_at.is_(None))
             .order_by(latest.c.confidence.desc(), latest.c.signal_count.desc(), latest.c.created_at.desc())

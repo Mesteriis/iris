@@ -118,6 +118,8 @@ def redis_client(settings) -> Iterator[Redis]:
 @pytest.fixture(autouse=True)
 def isolated_event_stream(redis_client: Redis, settings) -> Iterator[None]:
     redis_client.delete(settings.event_stream_name)
+    for key in redis_client.scan_iter("iris:deliveries:*"):
+        redis_client.delete(key)
     for key in redis_client.scan_iter("iris:events:processed:*"):
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:decision:*"):
@@ -135,6 +137,8 @@ def isolated_event_stream(redis_client: Redis, settings) -> Iterator[None]:
     yield
     flush_publisher(timeout=2.0)
     redis_client.delete(settings.event_stream_name)
+    for key in redis_client.scan_iter("iris:deliveries:*"):
+        redis_client.delete(key)
     for key in redis_client.scan_iter("iris:events:processed:*"):
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:decision:*"):

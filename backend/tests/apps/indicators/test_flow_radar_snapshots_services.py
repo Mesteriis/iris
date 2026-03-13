@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -9,9 +10,10 @@ import src.apps.indicators.query_services as indicator_query_module
 from sqlalchemy import select
 from src.apps.indicators.market_flow import MarketFlowQueryService
 from src.apps.indicators.market_radar import MarketRadarQueryService
-from src.apps.indicators.models import FeatureSnapshot
+from src.apps.indicators.models import CoinMetrics, FeatureSnapshot
 from src.apps.indicators.query_services import IndicatorQueryService
 from src.apps.indicators.services import (
+    AnalysisSchedulerService,
     FeatureSnapshotService,
     IndicatorReadService,
 )
@@ -281,3 +283,59 @@ async def test_indicator_query_services_and_async_wrappers_cover_flow_radar_and_
     assert flow.leaders[0].symbol == "BTCUSD_EVT"
     assert flow.relations[0].follower_symbol == "ETHUSD_EVT"
     assert any(row.sector == "store_of_value" for row in flow.sectors)
+
+
+@pytest.mark.asyncio
+async def test_analysis_scheduler_service_honors_due_window_and_updates_state(async_db_session, seeded_api_state) -> None:
+    btc = seeded_api_state["btc"]
+    base_timestamp = seeded_api_state["signal_timestamp"]
+    metrics = await async_db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(btc.id)).limit(1))
+    assert metrics is not None
+    assert metrics.last_analysis_at == base_timestamp
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        skipped = await AnalysisSchedulerService(uow).evaluate_indicator_update(
+            coin_id=int(btc.id),
+            timeframe=15,
+            timestamp=base_timestamp + timedelta(minutes=10),
+            activity_bucket_hint=None,
+        )
+    assert skipped.should_publish is False
+    assert skipped.state_updated is False
+
+    metrics_after_skip = await async_db_session.scalar(
+        select(CoinMetrics).where(CoinMetrics.coin_id == int(btc.id)).limit(1)
+    )
+    assert metrics_after_skip is not None
+    assert metrics_after_skip.last_analysis_at == base_timestamp
+
+    due_timestamp = base_timestamp + timedelta(minutes=20)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        ready = await AnalysisSchedulerService(uow).evaluate_indicator_update(
+            coin_id=int(btc.id),
+            timeframe=15,
+            timestamp=due_timestamp,
+            activity_bucket_hint=None,
+        )
+        if ready.state_updated:
+            await uow.commit()
+    assert ready.should_publish is True
+    assert ready.state_updated is True
+    assert ready.activity_bucket == "HOT"
+
+    metrics_after_commit = await async_db_session.scalar(
+        select(CoinMetrics).where(CoinMetrics.coin_id == int(btc.id)).limit(1)
+    )
+    assert metrics_after_commit is not None
+    assert metrics_after_commit.last_analysis_at == due_timestamp
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        unknown_coin = await AnalysisSchedulerService(uow).evaluate_indicator_update(
+            coin_id=999999,
+            timeframe=15,
+            timestamp=due_timestamp,
+            activity_bucket_hint="WARM",
+        )
+    assert unknown_coin.should_publish is True
+    assert unknown_coin.state_updated is False
+    assert unknown_coin.activity_bucket == "WARM"

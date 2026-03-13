@@ -34,6 +34,7 @@ from src.apps.signals.fusion_support import (
     _signal_regime,
 )
 from src.apps.signals.models import MarketDecision, Signal
+from src.apps.signals.services import SignalFusionBatchResult, SignalFusionResult
 from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 from src.runtime.streams.publisher import publish_event
 
@@ -269,7 +270,13 @@ class SignalFusionCompatibilityService:
     ) -> dict[str, object]:
         timeframes = _candidate_fusion_timeframes(self._db, coin_id=coin_id)
         if not timeframes:
-            return {"status": "skipped", "reason": "fusion_timeframes_not_found", "coin_id": coin_id}
+            return SignalFusionBatchResult(
+                status="skipped",
+                coin_id=int(coin_id),
+                timeframes=(),
+                items=(),
+                reason="fusion_timeframes_not_found",
+            ).to_summary()
         items = [
             self.evaluate_market_decision(
                 coin_id=coin_id,
@@ -280,12 +287,28 @@ class SignalFusionCompatibilityService:
             )
             for timeframe in timeframes
         ]
-        return {
-            "status": "ok",
-            "coin_id": coin_id,
-            "timeframes": timeframes,
-            "items": items,
-        }
+        return SignalFusionBatchResult(
+            status="ok",
+            coin_id=int(coin_id),
+            timeframes=tuple(int(timeframe) for timeframe in timeframes),
+            items=tuple(
+                SignalFusionResult(
+                    status=str(item["status"]),
+                    coin_id=int(item["coin_id"]),
+                    timeframe=int(item["timeframe"]),
+                    reason=str(item["reason"]) if item.get("reason") is not None else None,
+                    decision_id=int(item["id"]) if item.get("id") is not None else None,
+                    decision=str(item["decision"]) if item.get("decision") is not None else None,
+                    confidence=float(item["confidence"]) if item.get("confidence") is not None else None,
+                    signal_count=int(item.get("signal_count") or 0),
+                    regime=str(item["regime"]) if item.get("regime") is not None else None,
+                    news_item_count=int(item.get("news_item_count") or 0),
+                    news_bullish_score=float(item.get("news_bullish_score") or 0.0),
+                    news_bearish_score=float(item.get("news_bearish_score") or 0.0),
+                )
+                for item in items
+            ),
+        ).to_summary()
 
     def evaluate_market_decision(
         self,
@@ -305,7 +328,12 @@ class SignalFusionCompatibilityService:
         )
         signals = _recent_signals(self._db, coin_id=coin_id, timeframe=timeframe)
         if not signals:
-            return {"status": "skipped", "reason": "signals_not_found", "coin_id": coin_id, "timeframe": timeframe}
+            return SignalFusionResult(
+                status="skipped",
+                coin_id=int(coin_id),
+                timeframe=int(timeframe),
+                reason="signals_not_found",
+            ).to_summary()
 
         metrics = self._db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin_id))
         regime = _signal_regime(metrics, timeframe)
@@ -321,7 +349,12 @@ class SignalFusionCompatibilityService:
         )
         fused = _apply_news_impact(fused_base, news_impact) if fused_base is not None else None
         if fused is None:
-            return {"status": "skipped", "reason": "fusion_window_empty", "coin_id": coin_id, "timeframe": timeframe}
+            return SignalFusionResult(
+                status="skipped",
+                coin_id=int(coin_id),
+                timeframe=int(timeframe),
+                reason="fusion_window_empty",
+            ).to_summary()
 
         latest = _latest_decision(self._db, coin_id, timeframe)
         if (
@@ -339,15 +372,20 @@ class SignalFusionCompatibilityService:
                 regime=regime,
                 created_at=latest.created_at,
             )
-            return {
-                "status": "skipped",
-                "reason": "decision_unchanged",
-                "coin_id": coin_id,
-                "timeframe": timeframe,
-                "decision": latest.decision,
-                "confidence": float(latest.confidence),
-                "news_item_count": fused.news_item_count,
-            }
+            return SignalFusionResult(
+                status="skipped",
+                coin_id=int(coin_id),
+                timeframe=int(timeframe),
+                reason="decision_unchanged",
+                decision_id=int(latest.id),
+                decision=str(latest.decision),
+                confidence=float(latest.confidence),
+                signal_count=int(latest.signal_count),
+                regime=regime,
+                news_item_count=int(fused.news_item_count),
+                news_bullish_score=float(fused.news_bullish_score),
+                news_bearish_score=float(fused.news_bearish_score),
+            ).to_summary()
 
         row = MarketDecision(
             coin_id=coin_id,
@@ -385,19 +423,19 @@ class SignalFusionCompatibilityService:
                     "source": "signal_fusion",
                 },
             )
-        return {
-            "status": "ok",
-            "id": row.id,
-            "coin_id": coin_id,
-            "timeframe": timeframe,
-            "decision": row.decision,
-            "confidence": float(row.confidence),
-            "signal_count": int(row.signal_count),
-            "regime": regime,
-            "news_item_count": int(fused.news_item_count),
-            "news_bullish_score": round(float(fused.news_bullish_score), 4),
-            "news_bearish_score": round(float(fused.news_bearish_score), 4),
-        }
+        return SignalFusionResult(
+            status="ok",
+            coin_id=int(coin_id),
+            timeframe=int(timeframe),
+            decision_id=int(row.id),
+            decision=str(row.decision),
+            confidence=float(row.confidence),
+            signal_count=int(row.signal_count),
+            regime=regime,
+            news_item_count=int(fused.news_item_count),
+            news_bullish_score=float(fused.news_bullish_score),
+            news_bearish_score=float(fused.news_bearish_score),
+        ).to_summary()
 
 
 def evaluate_news_fusion_event(

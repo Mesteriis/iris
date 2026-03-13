@@ -4,13 +4,13 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-from src.apps.cross_market.models import Sector
 from src.apps.market_data.models import Coin
 from src.apps.market_data.service_layer import get_coin_by_symbol
-from src.apps.signals.models import FinalSignal, RiskMetric
+from src.apps.signals.models import RiskMetric
+from src.apps.signals.query_builders import latest_final_signals_subquery
 from src.apps.signals.read_models import (
     CoinFinalSignalItemReadModel,
     CoinFinalSignalReadModel,
@@ -22,25 +22,7 @@ from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 
 
 def _latest_final_signals_subquery():
-    return (
-        select(
-            FinalSignal.id.label("id"),
-            FinalSignal.coin_id.label("coin_id"),
-            FinalSignal.timeframe.label("timeframe"),
-            FinalSignal.decision.label("decision"),
-            FinalSignal.confidence.label("confidence"),
-            FinalSignal.risk_adjusted_score.label("risk_adjusted_score"),
-            FinalSignal.reason.label("reason"),
-            FinalSignal.created_at.label("created_at"),
-            func.row_number()
-            .over(
-                partition_by=(FinalSignal.coin_id, FinalSignal.timeframe),
-                order_by=(FinalSignal.created_at.desc(), FinalSignal.id.desc()),
-            )
-            .label("final_signal_rank"),
-        )
-        .subquery()
-    )
+    return latest_final_signals_subquery()
 
 
 def _final_signal_payload(item: FinalSignalReadModel) -> dict[str, Any]:
@@ -134,7 +116,7 @@ class FinalSignalCompatibilityQuery:
                 latest.c.coin_id,
                 Coin.symbol,
                 Coin.name,
-                Sector.name.label("sector"),
+                Coin.sector_code.label("sector"),
                 latest.c.timeframe,
                 latest.c.decision,
                 latest.c.confidence,
@@ -146,7 +128,6 @@ class FinalSignalCompatibilityQuery:
                 latest.c.created_at,
             )
             .join(Coin, Coin.id == latest.c.coin_id)
-            .outerjoin(Sector, Sector.id == Coin.sector_id)
             .outerjoin(
                 RiskMetric,
                 and_(
@@ -179,7 +160,7 @@ class FinalSignalCompatibilityQuery:
                 latest.c.coin_id,
                 Coin.symbol,
                 Coin.name,
-                Sector.name.label("sector"),
+                Coin.sector_code.label("sector"),
                 latest.c.timeframe,
                 latest.c.decision,
                 latest.c.confidence,
@@ -191,7 +172,6 @@ class FinalSignalCompatibilityQuery:
                 latest.c.created_at,
             )
             .join(Coin, Coin.id == latest.c.coin_id)
-            .outerjoin(Sector, Sector.id == Coin.sector_id)
             .outerjoin(
                 RiskMetric,
                 and_(

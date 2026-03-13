@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import math
 from collections import defaultdict
+import logging
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -16,72 +17,42 @@ from src.apps.cross_market.models import Sector
 from src.apps.cross_market.models import SectorMetric
 from src.apps.market_data.repos import fetch_candle_points
 from src.apps.cross_market.cache import cache_correlation_snapshot, read_cached_correlation
+from src.apps.cross_market.services import (
+    CrossMarketLeaderDetectionResult,
+    CrossMarketRelationUpdateResult,
+    CrossMarketSectorMomentumResult,
+)
+from src.apps.cross_market.support import (
+    LEADER_SYMBOLS,
+    MATERIAL_RELATION_DELTA,
+    RELATION_LOOKBACK,
+    RELATION_MIN_CORRELATION,
+    RELATION_MIN_POINTS,
+    best_lagged_correlation as _best_lagged_correlation,
+    clamp_relation_value as _clamp,
+    close_returns as _close_returns,
+    pearson as _pearson,
+    relation_timeframe as _relation_timeframe,
+)
 from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.predictions.engine import create_market_predictions
-
-RELATION_LOOKBACK = 200
-RELATION_MIN_POINTS = 48
-RELATION_MAX_LAG_HOURS = 8
-RELATION_MIN_CORRELATION = 0.25
-MATERIAL_RELATION_DELTA = 0.04
-LEADER_SYMBOLS = ("BTCUSD", "ETHUSD", "SOLUSD")
+from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 
 
-def _clamp(value: float, lower: float, upper: float) -> float:
-    return max(lower, min(value, upper))
-
-
-def _close_returns(points: list[object]) -> list[float]:
-    returns: list[float] = []
-    for previous, current in zip(points, points[1:], strict=False):
-        previous_close = float(previous.close)
-        current_close = float(current.close)
-        returns.append((current_close - previous_close) / previous_close if previous_close else 0.0)
-    return returns
-
-
-def _pearson(values_a: list[float], values_b: list[float]) -> float:
-    if len(values_a) != len(values_b) or len(values_a) < 3:
-        return 0.0
-    mean_a = sum(values_a) / len(values_a)
-    mean_b = sum(values_b) / len(values_b)
-    numerator = sum((left - mean_a) * (right - mean_b) for left, right in zip(values_a, values_b, strict=False))
-    denominator_left = math.sqrt(sum((value - mean_a) ** 2 for value in values_a))
-    denominator_right = math.sqrt(sum((value - mean_b) ** 2 for value in values_b))
-    if denominator_left == 0 or denominator_right == 0:
-        return 0.0
-    return numerator / (denominator_left * denominator_right)
-
-
-def _best_lagged_correlation(leader_points: list[object], follower_points: list[object], *, timeframe: int) -> tuple[float, int, int]:
-    leader_returns = _close_returns(leader_points)
-    follower_returns = _close_returns(follower_points)
-    size = min(len(leader_returns), len(follower_returns))
-    if size < RELATION_MIN_POINTS:
-        return 0.0, 0, size
-    leader_returns = leader_returns[-size:]
-    follower_returns = follower_returns[-size:]
-    max_lag_bars = max(min(int((RELATION_MAX_LAG_HOURS * 60) / max(timeframe, 1)), 24), 0)
-    best = (0.0, 0, size)
-    for lag in range(0, max_lag_bars + 1):
-        if lag == 0:
-            current_leader = leader_returns
-            current_follower = follower_returns
-        else:
-            current_leader = leader_returns[:-lag]
-            current_follower = follower_returns[lag:]
-        usable = min(len(current_leader), len(current_follower))
-        if usable < RELATION_MIN_POINTS:
-            continue
-        correlation = _pearson(current_leader[-usable:], current_follower[-usable:])
-        if correlation > best[0]:
-            lag_hours = max(int(round((lag * timeframe) / 60)), 1 if lag > 0 else 0)
-            best = (correlation, lag_hours, usable)
-    return best
-
-
-def _relation_timeframe(timeframe: int) -> int:
-    return 60 if timeframe < 60 else timeframe
+def _log_compat(level: int, event: str, /, *, component_type: str, component: str, **fields: Any) -> None:
+    PERSISTENCE_LOGGER.log(
+        level,
+        event,
+        extra={
+            "persistence": {
+                "event": event,
+                "component_type": component_type,
+                "domain": "cross_market",
+                "component": component,
+                **{key: sanitize_log_value(value) for key, value in fields.items()},
+            }
+        },
+    )
 
 
 def _candidate_leaders(db: Session, *, follower: Coin, limit: int = 8) -> list[Coin]:
@@ -135,13 +106,31 @@ def update_coin_relations(
     timeframe: int,
     emit_events: bool = True,
 ) -> dict[str, object]:
+    _log_compat(
+        logging.WARNING,
+        "compat.update_coin_relations.deprecated",
+        component_type="compatibility_service",
+        component="update_coin_relations",
+        mode="write",
+        follower_coin_id=follower_coin_id,
+        timeframe=timeframe,
+        emit_events=emit_events,
+    )
     follower = db.get(Coin, follower_coin_id)
     if follower is None or follower.deleted_at is not None or not follower.enabled:
-        return {"status": "skipped", "reason": "follower_not_found", "follower_coin_id": follower_coin_id}
+        return CrossMarketRelationUpdateResult(
+            status="skipped",
+            reason="follower_not_found",
+            follower_coin_id=int(follower_coin_id),
+        ).to_summary()
     relation_timeframe = _relation_timeframe(timeframe)
     follower_points = fetch_candle_points(db, follower_coin_id, relation_timeframe, RELATION_LOOKBACK)
     if len(follower_points) < RELATION_MIN_POINTS:
-        return {"status": "skipped", "reason": "insufficient_follower_candles", "follower_coin_id": follower_coin_id}
+        return CrossMarketRelationUpdateResult(
+            status="skipped",
+            reason="insufficient_follower_candles",
+            follower_coin_id=int(follower_coin_id),
+        ).to_summary()
     updated_rows: list[dict[str, object]] = []
     for leader in _candidate_leaders(db, follower=follower):
         leader_points = fetch_candle_points(db, int(leader.id), relation_timeframe, RELATION_LOOKBACK)
@@ -168,7 +157,11 @@ def update_coin_relations(
             }
         )
     if not updated_rows:
-        return {"status": "skipped", "reason": "relations_not_found", "follower_coin_id": follower_coin_id}
+        return CrossMarketRelationUpdateResult(
+            status="skipped",
+            reason="relations_not_found",
+            follower_coin_id=int(follower_coin_id),
+        ).to_summary()
     stmt = insert(CoinRelation).values(
         [
             {
@@ -224,14 +217,14 @@ def update_coin_relations(
             )
             published += 1
     best = max(updated_rows, key=lambda item: float(item["confidence"]))
-    return {
-        "status": "ok",
-        "updated": len(updated_rows),
-        "published": published,
-        "follower_coin_id": follower_coin_id,
-        "leader_coin_id": int(best["leader_coin_id"]),
-        "confidence": float(best["confidence"]),
-    }
+    return CrossMarketRelationUpdateResult(
+        status="ok",
+        updated=len(updated_rows),
+        published=published,
+        follower_coin_id=int(follower_coin_id),
+        leader_coin_id=int(best["leader_coin_id"]),
+        confidence=float(best["confidence"]),
+    ).to_summary()
 
 
 def refresh_sector_momentum(
@@ -240,6 +233,15 @@ def refresh_sector_momentum(
     timeframe: int,
     emit_events: bool = True,
 ) -> dict[str, object]:
+    _log_compat(
+        logging.WARNING,
+        "compat.refresh_sector_momentum.deprecated",
+        component_type="compatibility_service",
+        component="refresh_sector_momentum",
+        mode="write",
+        timeframe=timeframe,
+        emit_events=emit_events,
+    )
     previous_top = db.execute(
         select(SectorMetric.sector_id, Sector.name, SectorMetric.relative_strength)
         .join(Sector, Sector.id == SectorMetric.sector_id)
@@ -264,7 +266,7 @@ def refresh_sector_momentum(
         .order_by(Sector.id.asc())
     ).all()
     if not rows:
-        return {"status": "skipped", "reason": "sector_rows_not_found"}
+        return CrossMarketSectorMomentumResult(status="skipped", reason="sector_rows_not_found").to_summary()
     sector_strengths = [float(row.sector_strength or 0.0) for row in rows]
     market_average = sum(sector_strengths) / len(sector_strengths) if sector_strengths else 0.0
     values: list[dict[str, object]] = []
@@ -331,7 +333,7 @@ def refresh_sector_momentum(
                 "target_strength": float(current_top.relative_strength or 0.0),
             },
         )
-    return {"status": "ok", "updated": len(values), "timeframe": timeframe}
+    return CrossMarketSectorMomentumResult(status="ok", updated=len(values), timeframe=int(timeframe)).to_summary()
 
 
 def _latest_leader_decision(db: Session, *, leader_coin_id: int, timeframe: int) -> tuple[str | None, float]:
@@ -365,10 +367,24 @@ def detect_market_leader(
     payload: dict[str, object],
     emit_events: bool = True,
 ) -> dict[str, object]:
+    _log_compat(
+        logging.WARNING,
+        "compat.detect_market_leader.deprecated",
+        component_type="compatibility_service",
+        component="detect_market_leader",
+        mode="write",
+        coin_id=coin_id,
+        timeframe=timeframe,
+        emit_events=emit_events,
+    )
     coin = db.get(Coin, coin_id)
     metrics = db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin_id))
     if coin is None or metrics is None:
-        return {"status": "skipped", "reason": "coin_metrics_not_found", "coin_id": coin_id}
+        return CrossMarketLeaderDetectionResult(
+            status="skipped",
+            reason="coin_metrics_not_found",
+            coin_id=int(coin_id),
+        ).to_summary()
     activity_bucket = str(payload.get("activity_bucket") or metrics.activity_bucket or "")
     price_change_24h = float(payload.get("price_change_24h") or metrics.price_change_24h or 0.0)
     volume_change_24h = float(metrics.volume_change_24h or 0.0)
@@ -376,7 +392,11 @@ def detect_market_leader(
     bullish = price_change_24h > 0
     directional_ok = (bullish and regime in {"bull_trend", "high_volatility"}) or ((not bullish) and regime == "bear_trend")
     if activity_bucket != "HOT" or abs(price_change_24h) < 2 or volume_change_24h < 12 or not directional_ok:
-        return {"status": "skipped", "reason": "leader_threshold_not_met", "coin_id": coin_id}
+        return CrossMarketLeaderDetectionResult(
+            status="skipped",
+            reason="leader_threshold_not_met",
+            coin_id=int(coin_id),
+        ).to_summary()
     confidence = _clamp(
         0.45 + min(abs(price_change_24h) / 12, 0.2) + min(volume_change_24h / 100, 0.2) + (0.1 if activity_bucket == "HOT" else 0.0),
         0.45,
@@ -405,13 +425,13 @@ def detect_market_leader(
                 "market_regime": regime,
             },
         )
-    return {
-        "status": "ok",
-        "leader_coin_id": coin_id,
-        "direction": direction,
-        "confidence": confidence,
-        "predictions": prediction_result,
-    }
+    return CrossMarketLeaderDetectionResult(
+        status="ok",
+        leader_coin_id=int(coin_id),
+        direction=direction,
+        confidence=float(confidence),
+        predictions=prediction_result,
+    ).to_summary()
 
 
 def process_cross_market_event(
@@ -423,6 +443,17 @@ def process_cross_market_event(
     payload: dict[str, object],
     emit_events: bool = True,
 ) -> dict[str, object]:
+    _log_compat(
+        logging.WARNING,
+        "compat.process_cross_market_event.deprecated",
+        component_type="compatibility_service",
+        component="process_cross_market_event",
+        mode="write",
+        coin_id=coin_id,
+        timeframe=timeframe,
+        event_type=event_type,
+        emit_events=emit_events,
+    )
     relation_result = update_coin_relations(
         db,
         follower_coin_id=coin_id,
@@ -450,6 +481,16 @@ def cross_market_alignment_weight(
     timeframe: int,
     directional_bias: float,
 ) -> float:
+    _log_compat(
+        logging.WARNING,
+        "compat.cross_market_alignment_weight.deprecated",
+        component_type="compatibility_query",
+        component="cross_market_alignment_weight",
+        mode="read",
+        coin_id=coin_id,
+        timeframe=timeframe,
+        directional_bias=directional_bias,
+    )
     if directional_bias == 0:
         return 1.0
     relations = db.scalars(

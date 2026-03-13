@@ -7,13 +7,8 @@ from datetime import timedelta
 from src.apps.cross_market.cache import read_cached_correlation_async
 from src.apps.market_data.domain import ensure_utc
 from src.apps.market_data.repositories import CandleRepository
-from src.apps.patterns.domain.context import enrich_signal_context
 from src.apps.patterns.domain.semantics import is_cluster_signal, is_hierarchy_signal, pattern_bias, slug_from_signal_type
-from src.apps.signals.backtests import get_coin_backtests, list_backtests, list_top_backtests
 from src.apps.signals.cache import cache_market_decision_snapshot_async
-from src.apps.signals.decision_selectors import get_coin_decision, list_decisions, list_top_decisions
-from src.apps.signals.final_signal_selectors import get_coin_final_signal, list_final_signals, list_top_final_signals
-from src.apps.signals.fusion import evaluate_market_decision, evaluate_news_fusion_event
 from src.apps.signals.fusion_support import (
     FUSION_CANDLE_GROUPS,
     FUSION_NEWS_TIMEFRAMES,
@@ -29,7 +24,6 @@ from src.apps.signals.fusion_support import (
     _regime_weight,
     _signal_regime,
 )
-from src.apps.signals.history import refresh_recent_signal_history, refresh_signal_history
 from src.apps.signals.history_support import (
     SIGNAL_HISTORY_LOOKBACK_DAYS,
     SIGNAL_HISTORY_RECENT_LIMIT,
@@ -37,14 +31,8 @@ from src.apps.signals.history_support import (
     _evaluate_signal,
     _open_timestamp_from_signal,
 )
-from src.apps.signals.market_decision_selectors import (
-    get_coin_market_decision,
-    list_market_decisions,
-    list_top_market_decisions,
-)
 from src.apps.signals.models import MarketDecision, Signal
 from src.apps.signals.repositories import SignalFusionRepository, SignalHistoryRepository
-from src.apps.signals.strategies import list_strategies, list_strategy_performance
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
@@ -423,21 +411,19 @@ class SignalFusionService(PersistenceComponent):
         timeframe: int,
         candle_timestamp: object | None,
     ) -> None:
+        from src.apps.patterns.task_services import PatternSignalContextService
+
         self._log_debug(
             "service.evaluate_market_decision.context_adapter",
             mode="write",
             coin_id=coin_id,
             timeframe=timeframe,
-            compatibility_path="patterns.domain.context.enrich_signal_context",
+            compatibility_path="patterns.task_services.PatternSignalContextService.enrich_context_only",
         )
-        await self.session.run_sync(
-            lambda db: enrich_signal_context(
-                db,
-                coin_id=int(coin_id),
-                timeframe=int(timeframe),
-                candle_timestamp=candle_timestamp,
-                commit=False,
-            )
+        await PatternSignalContextService(self._uow).enrich_context_only(
+            coin_id=int(coin_id),
+            timeframe=int(timeframe),
+            candle_timestamp=candle_timestamp,
         )
 
     async def _recent_signals(self, *, coin_id: int, timeframe: int) -> list[Signal]:
@@ -827,22 +813,4 @@ __all__ = [
     "SignalFusionSideEffectDispatcher",
     "SignalHistoryRefreshResult",
     "SignalHistoryService",
-    "evaluate_market_decision",
-    "evaluate_news_fusion_event",
-    "get_coin_backtests",
-    "get_coin_decision",
-    "get_coin_final_signal",
-    "get_coin_market_decision",
-    "list_backtests",
-    "list_decisions",
-    "list_final_signals",
-    "list_market_decisions",
-    "list_strategies",
-    "list_strategy_performance",
-    "list_top_backtests",
-    "list_top_decisions",
-    "list_top_final_signals",
-    "list_top_market_decisions",
-    "refresh_recent_signal_history",
-    "refresh_signal_history",
 ]

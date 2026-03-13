@@ -116,4 +116,5 @@ def test_cross_market_cache_round_trip_and_service_exports(monkeypatch, settings
     assert cross_market_services_module.cache_correlation_snapshot_async is cache_correlation_snapshot_async
     assert cross_market_services_module.read_cached_correlation is read_cached_correlation
     assert cross_market_services_module.read_cached_correlation_async is read_cached_correlation_async
-    assert "process_cross_market_event" in cross_market_services_module.__all__
+    assert "CrossMarketService" in cross_market_services_module.__all__
+    assert "process_cross_market_event" not in cross_market_services_module.__all__

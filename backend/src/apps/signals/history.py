@@ -26,6 +26,7 @@ from src.apps.signals.history_support import (
     _signal_direction,
 )
 from src.apps.signals.models import Signal, SignalHistory
+from src.apps.signals.services import SignalHistoryRefreshResult
 from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 
 
@@ -96,13 +97,13 @@ class SignalHistoryCompatibilityService:
             limit_per_scope=limit_per_scope,
         )
         if not signals:
-            return {
-                "status": "ok",
-                "rows": 0,
-                "evaluated": 0,
-                "coin_id": coin_id,
-                "timeframe": timeframe,
-            }
+            return SignalHistoryRefreshResult(
+                status="ok",
+                rows=0,
+                evaluated=0,
+                coin_id=coin_id,
+                timeframe=timeframe,
+            ).to_summary()
 
         groups: dict[tuple[int, int], list[Signal]] = defaultdict(list)
         for signal in signals:
@@ -177,13 +178,13 @@ class SignalHistoryCompatibilityService:
             self._db.execute(stmt)
         if commit:
             self._db.commit()
-        return {
-            "status": "ok",
-            "rows": len(rows),
-            "evaluated": evaluated,
-            "coin_id": coin_id,
-            "timeframe": timeframe,
-        }
+        return SignalHistoryRefreshResult(
+            status="ok",
+            rows=len(rows),
+            evaluated=evaluated,
+            coin_id=coin_id,
+            timeframe=timeframe,
+        ).to_summary()
 
     def refresh_recent_signal_history(
         self,

@@ -2,36 +2,32 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Mapping
 
-from src.apps.cross_market import cache as _cache
-from src.apps.cross_market import engine as _legacy_engine
+from src.apps.cross_market.cache import (
+    cache_correlation_snapshot,
+    cache_correlation_snapshot_async,
+    read_cached_correlation,
+    read_cached_correlation_async,
+)
 from src.apps.cross_market.query_services import CrossMarketQueryService
 from src.apps.cross_market.repositories import CoinRelationRepository, SectorMetricRepository
+from src.apps.cross_market.support import (
+    LEADER_SYMBOLS,
+    MATERIAL_RELATION_DELTA,
+    RELATION_LOOKBACK,
+    RELATION_MIN_CORRELATION,
+    RELATION_MIN_POINTS,
+    best_lagged_correlation as _best_lagged_correlation,
+    clamp_relation_value as _clamp,
+    relation_timeframe as _relation_timeframe,
+)
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.repositories import CandleRepository
 from src.apps.predictions.services import PredictionCreationBatch, PredictionService, PredictionSideEffectDispatcher
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
-
-cache_correlation_snapshot = _cache.cache_correlation_snapshot
-cache_correlation_snapshot_async = _cache.cache_correlation_snapshot_async
-read_cached_correlation = _cache.read_cached_correlation
-read_cached_correlation_async = _cache.read_cached_correlation_async
-
-LEADER_SYMBOLS = _legacy_engine.LEADER_SYMBOLS
-MATERIAL_RELATION_DELTA = _legacy_engine.MATERIAL_RELATION_DELTA
-RELATION_LOOKBACK = _legacy_engine.RELATION_LOOKBACK
-RELATION_MIN_CORRELATION = _legacy_engine.RELATION_MIN_CORRELATION
-RELATION_MIN_POINTS = _legacy_engine.RELATION_MIN_POINTS
-_best_lagged_correlation = _legacy_engine._best_lagged_correlation
-_clamp = _legacy_engine._clamp
-_relation_timeframe = _legacy_engine._relation_timeframe
-cross_market_alignment_weight = _legacy_engine.cross_market_alignment_weight
-detect_market_leader = _legacy_engine.detect_market_leader
-process_cross_market_event = _legacy_engine.process_cross_market_event
-refresh_sector_momentum = _legacy_engine.refresh_sector_momentum
-update_coin_relations = _legacy_engine.update_coin_relations
 
 
 @dataclass(slots=True, frozen=True)
@@ -65,6 +61,88 @@ class _LeaderDetectionSideEffect:
     market_regime: str
     emit_event: bool
     prediction_batch: PredictionCreationBatch
+
+
+@dataclass(slots=True, frozen=True)
+class CrossMarketRelationUpdateResult:
+    status: str
+    follower_coin_id: int | None = None
+    updated: int = 0
+    published: int = 0
+    leader_coin_id: int | None = None
+    confidence: float | None = None
+    reason: str | None = None
+
+    def to_summary(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "status": self.status,
+        }
+        if self.follower_coin_id is not None:
+            payload["follower_coin_id"] = int(self.follower_coin_id)
+        if self.status == "ok" or self.updated:
+            payload["updated"] = int(self.updated)
+        if self.status == "ok" or self.published:
+            payload["published"] = int(self.published)
+        if self.leader_coin_id is not None:
+            payload["leader_coin_id"] = int(self.leader_coin_id)
+        if self.confidence is not None:
+            payload["confidence"] = float(self.confidence)
+        if self.reason is not None:
+            payload["reason"] = self.reason
+        return payload
+
+
+@dataclass(slots=True, frozen=True)
+class CrossMarketSectorMomentumResult:
+    status: str
+    updated: int = 0
+    timeframe: int | None = None
+    reason: str | None = None
+
+    def to_summary(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "status": self.status,
+        }
+        if self.status == "ok" or self.updated:
+            payload["updated"] = int(self.updated)
+        if self.timeframe is not None:
+            payload["timeframe"] = int(self.timeframe)
+        if self.reason is not None:
+            payload["reason"] = self.reason
+        return payload
+
+
+@dataclass(slots=True, frozen=True)
+class CrossMarketLeaderDetectionResult:
+    status: str
+    coin_id: int | None = None
+    leader_coin_id: int | None = None
+    direction: str | None = None
+    confidence: float | None = None
+    predictions: PredictionCreationBatch | Mapping[str, object] | None = None
+    reason: str | None = None
+
+    def to_summary(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "status": self.status,
+        }
+        if self.coin_id is not None:
+            payload["coin_id"] = int(self.coin_id)
+        if self.leader_coin_id is not None:
+            payload["leader_coin_id"] = int(self.leader_coin_id)
+        if self.direction is not None:
+            payload["direction"] = self.direction
+        if self.confidence is not None:
+            payload["confidence"] = float(self.confidence)
+        if self.predictions is not None:
+            payload["predictions"] = (
+                self.predictions.to_summary()
+                if isinstance(self.predictions, PredictionCreationBatch)
+                else dict(self.predictions)
+            )
+        if self.reason is not None:
+            payload["reason"] = self.reason
+        return payload
 
 
 class CrossMarketService(PersistenceComponent):
@@ -128,7 +206,7 @@ class CrossMarketService(PersistenceComponent):
                 leader_effect = None
                 leader_requires_commit = False
 
-            requires_commit = bool(relation_effects) or sector_result["status"] == "ok" or leader_requires_commit
+            requires_commit = bool(relation_effects) or sector_result.status == "ok" or leader_requires_commit
             if requires_commit:
                 await self._uow.commit()
 
@@ -189,18 +267,18 @@ class CrossMarketService(PersistenceComponent):
 
             result = {
                 "status": "ok",
-                "relations": relation_result,
-                "sectors": sector_result,
-                "leader": leader_result,
+                "relations": relation_result.to_summary(),
+                "sectors": sector_result.to_summary(),
+                "leader": leader_result if isinstance(leader_result, dict) else leader_result.to_summary(),
             }
             self._log_debug(
                 "service.process_cross_market_event.result",
                 mode="write",
                 coin_id=coin_id,
                 timeframe=timeframe,
-                relation_status=relation_result["status"],
-                sector_status=sector_result["status"],
-                leader_status=leader_result["status"],
+                relation_status=relation_result.status,
+                sector_status=sector_result.status,
+                leader_status=leader_result["status"] if isinstance(leader_result, dict) else leader_result.status,
                 committed=requires_commit,
             )
             return result
@@ -220,7 +298,7 @@ class CrossMarketService(PersistenceComponent):
         follower_coin_id: int,
         timeframe: int,
         emit_events: bool,
-    ) -> tuple[dict[str, object], tuple[_RelationSideEffect, ...]]:
+    ) -> tuple[CrossMarketRelationUpdateResult, tuple[_RelationSideEffect, ...]]:
         relation_timeframe = _relation_timeframe(timeframe)
         self._log_debug(
             "service.update_coin_relations",
@@ -236,7 +314,11 @@ class CrossMarketService(PersistenceComponent):
         )
         if context is None:
             return (
-                {"status": "skipped", "reason": "follower_not_found", "follower_coin_id": follower_coin_id},
+                CrossMarketRelationUpdateResult(
+                    status="skipped",
+                    reason="follower_not_found",
+                    follower_coin_id=int(follower_coin_id),
+                ),
                 (),
             )
 
@@ -247,11 +329,11 @@ class CrossMarketService(PersistenceComponent):
         )
         if len(follower_points) < RELATION_MIN_POINTS:
             return (
-                {
-                    "status": "skipped",
-                    "reason": "insufficient_follower_candles",
-                    "follower_coin_id": follower_coin_id,
-                },
+                CrossMarketRelationUpdateResult(
+                    status="skipped",
+                    reason="insufficient_follower_candles",
+                    follower_coin_id=int(follower_coin_id),
+                ),
                 (),
             )
 
@@ -314,26 +396,30 @@ class CrossMarketService(PersistenceComponent):
 
         if not rows:
             return (
-                {"status": "skipped", "reason": "relations_not_found", "follower_coin_id": follower_coin_id},
+                CrossMarketRelationUpdateResult(
+                    status="skipped",
+                    reason="relations_not_found",
+                    follower_coin_id=int(follower_coin_id),
+                ),
                 (),
             )
 
         await self._relations.upsert_many(rows)
         best = max(rows, key=lambda item: float(item["confidence"]))
-        result = {
-            "status": "ok",
-            "updated": len(rows),
-            "published": sum(1 for effect in side_effects if effect.publish_event),
-            "follower_coin_id": follower_coin_id,
-            "leader_coin_id": int(best["leader_coin_id"]),
-            "confidence": float(best["confidence"]),
-        }
+        result = CrossMarketRelationUpdateResult(
+            status="ok",
+            updated=len(rows),
+            published=sum(1 for effect in side_effects if effect.publish_event),
+            follower_coin_id=int(follower_coin_id),
+            leader_coin_id=int(best["leader_coin_id"]),
+            confidence=float(best["confidence"]),
+        )
         self._log_info(
             "service.update_coin_relations.result",
             mode="write",
             follower_coin_id=follower_coin_id,
             updated=len(rows),
-            published=result["published"],
+            published=result.published,
         )
         return result, tuple(side_effects)
 
@@ -342,7 +428,7 @@ class CrossMarketService(PersistenceComponent):
         *,
         timeframe: int,
         emit_events: bool,
-    ) -> tuple[dict[str, object], _SectorRotationSideEffect | None]:
+    ) -> tuple[CrossMarketSectorMomentumResult, _SectorRotationSideEffect | None]:
         self._log_debug(
             "service.refresh_sector_momentum",
             mode="write",
@@ -352,7 +438,7 @@ class CrossMarketService(PersistenceComponent):
         previous_top = await self._queries.get_top_sector(timeframe=timeframe)
         aggregates = await self._queries.list_sector_momentum_aggregates()
         if not aggregates:
-            return {"status": "skipped", "reason": "sector_rows_not_found"}, None
+            return CrossMarketSectorMomentumResult(status="skipped", reason="sector_rows_not_found"), None
 
         market_average = sum(item.sector_strength for item in aggregates) / len(aggregates)
         updated_at = utc_now()
@@ -399,7 +485,7 @@ class CrossMarketService(PersistenceComponent):
                     timestamp=utc_now(),
                 )
 
-        result = {"status": "ok", "updated": len(rows), "timeframe": timeframe}
+        result = CrossMarketSectorMomentumResult(status="ok", updated=len(rows), timeframe=int(timeframe))
         self._log_info("service.refresh_sector_momentum.result", mode="write", timeframe=timeframe, updated=len(rows))
         return result, sector_effect
 
@@ -410,12 +496,16 @@ class CrossMarketService(PersistenceComponent):
         timeframe: int,
         payload: dict[str, object],
         emit_events: bool,
-    ) -> tuple[dict[str, object], _LeaderDetectionSideEffect | None, bool]:
+    ) -> tuple[CrossMarketLeaderDetectionResult, _LeaderDetectionSideEffect | None, bool]:
         self._log_debug("service.detect_market_leader", mode="write", coin_id=coin_id, timeframe=timeframe)
         context = await self._queries.get_leader_detection_context(coin_id=coin_id)
         if context is None:
             return (
-                {"status": "skipped", "reason": "coin_metrics_not_found", "coin_id": coin_id},
+                CrossMarketLeaderDetectionResult(
+                    status="skipped",
+                    reason="coin_metrics_not_found",
+                    coin_id=int(coin_id),
+                ),
                 None,
                 False,
             )
@@ -430,7 +520,11 @@ class CrossMarketService(PersistenceComponent):
         )
         if activity_bucket != "HOT" or abs(price_change_24h) < 2 or volume_change_24h < 12 or not directional_ok:
             return (
-                {"status": "skipped", "reason": "leader_threshold_not_met", "coin_id": coin_id},
+                CrossMarketLeaderDetectionResult(
+                    status="skipped",
+                    reason="leader_threshold_not_met",
+                    coin_id=int(coin_id),
+                ),
                 None,
                 False,
             )
@@ -460,33 +554,30 @@ class CrossMarketService(PersistenceComponent):
             emit_event=emit_events,
             prediction_batch=predictions,
         )
-        prediction_result = predictions.to_summary()
-        result = {
-            "status": "ok",
-            "leader_coin_id": coin_id,
-            "direction": direction,
-            "confidence": confidence,
-            "predictions": prediction_result,
-        }
+        result = CrossMarketLeaderDetectionResult(
+            status="ok",
+            leader_coin_id=int(coin_id),
+            direction=direction,
+            confidence=float(confidence),
+            predictions=predictions,
+        )
         self._log_info(
             "service.detect_market_leader.result",
             mode="write",
             coin_id=coin_id,
             direction=direction,
-            created_predictions=int(prediction_result.get("created") or 0),
+            created_predictions=int(predictions.created),
         )
-        return result, effect, bool(prediction_result.get("created") or 0)
+        return result, effect, bool(predictions.created)
 
 
 __all__ = [
     "CrossMarketService",
+    "CrossMarketLeaderDetectionResult",
+    "CrossMarketRelationUpdateResult",
+    "CrossMarketSectorMomentumResult",
     "cache_correlation_snapshot",
     "cache_correlation_snapshot_async",
-    "cross_market_alignment_weight",
-    "detect_market_leader",
-    "process_cross_market_event",
     "read_cached_correlation_async",
     "read_cached_correlation",
-    "refresh_sector_momentum",
-    "update_coin_relations",
 ]

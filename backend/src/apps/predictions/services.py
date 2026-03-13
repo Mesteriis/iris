@@ -14,15 +14,13 @@ from src.apps.predictions.cache import (
     read_cached_prediction,
     read_cached_prediction_async,
 )
-from src.apps.predictions.engine import (
-    PREDICTION_MAX_FOLLOWERS,
-    PredictionOutcome,
-    _clamp,
-    create_market_predictions,
-    evaluate_pending_predictions,
-)
 from src.apps.predictions.models import MarketPrediction, PredictionResult
 from src.apps.predictions.repositories import PredictionRelationRepository, PredictionRepository
+from src.apps.predictions.support import (
+    PREDICTION_MAX_FOLLOWERS,
+    PredictionOutcome,
+    clamp_prediction_value as _clamp,
+)
 from src.core.db.persistence import PERSISTENCE_LOGGER, PersistenceComponent, freeze_json_value
 from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
@@ -435,8 +433,6 @@ __all__ = [
     "PredictionSideEffectDispatcher",
     "cache_prediction_snapshot",
     "cache_prediction_snapshot_async",
-    "create_market_predictions",
-    "evaluate_pending_predictions",
     "read_cached_prediction",
     "read_cached_prediction_async",
 ]
