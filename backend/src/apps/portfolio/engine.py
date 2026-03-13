@@ -574,7 +574,6 @@ def _sync_exchange_balances_impl(db: Session, *, emit_events: bool = True) -> di
                 commit=False,
                 emit_event=False,
             )
-            db.commit()
             cached_rows.append(
                 {
                     "exchange_account_id": account.id,
@@ -623,7 +622,11 @@ def _sync_exchange_balances_impl(db: Session, *, emit_events: bool = True) -> di
                 }
             )
     cache_portfolio_balances(cached_rows)
-    state = _refresh_portfolio_state_impl(db)
+    state = _refresh_portfolio_state_impl(db, commit=False, cache=False)
+    db.commit()
+    db.refresh(state)
+    state_payload = _portfolio_state_snapshot(db, state=state)
+    cache_portfolio_state(state_payload)
     if emit_events:
         for event_type, payload in pending_events:
             publish_event(event_type, payload)
@@ -632,7 +635,7 @@ def _sync_exchange_balances_impl(db: Session, *, emit_events: bool = True) -> di
         "accounts": len(accounts),
         "balances": len(items),
         "items": items,
-        "portfolio_state": _portfolio_state_snapshot(db, state=state),
+        "portfolio_state": state_payload,
     }
 
 
