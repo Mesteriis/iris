@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import importlib.util
 from datetime import datetime, timezone
 
 import pytest
 from tests.apps.conftest import api_path
+
+from src.apps.market_structure.api.router import build_router as build_market_structure_router
+from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 
 @pytest.mark.asyncio
@@ -391,3 +395,19 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
     assert (await client.get("/market-structure/sources/999999/health")).status_code == 404
     assert (await client.delete(f"/market-structure/sources/{source_id}")).status_code == 204
     assert (await client.delete(f"/market-structure/sources/{source_id}")).status_code == 404
+
+
+def test_market_structure_api_router_is_mode_aware_and_legacy_views_removed() -> None:
+    full_router = build_market_structure_router(mode=LaunchMode.FULL, profile=DeploymentProfile.PLATFORM_FULL)
+    full_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in full_router.routes}
+    assert any(path == "/market-structure/onboarding/wizard" and "GET" in methods for path, methods in full_paths)
+    assert any(path == "/market-structure/health/jobs/run" and "POST" in methods for path, methods in full_paths)
+
+    ha_router = build_market_structure_router(mode=LaunchMode.HA_ADDON, profile=DeploymentProfile.HA_EMBEDDED)
+    ha_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in ha_router.routes}
+    assert not any(path == "/market-structure/onboarding/wizard" and "GET" in methods for path, methods in ha_paths)
+    assert not any(path == "/market-structure/health/jobs/run" and "POST" in methods for path, methods in ha_paths)
+    assert any(path == "/market-structure/sources" and "GET" in methods for path, methods in ha_paths)
+    assert any(path == "/market-structure/sources/{source_id}/snapshots" and "POST" in methods for path, methods in ha_paths)
+
+    assert importlib.util.find_spec("src.apps.market_structure.views") is None

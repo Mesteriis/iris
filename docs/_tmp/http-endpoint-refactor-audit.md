@@ -14,6 +14,20 @@
 - не сохранять старые внутренние endpoint-helper patterns, если они мешают целевой структуре;
 - не держать giant `views.py` как второй application layer.
 
+## Прогресс cutover
+
+Уже переведено на новый HTTP standard:
+
+- корневой router tree: `backend/src/api/router.py` -> `backend/src/api/v1/router.py`
+- shared transport foundation: `backend/src/core/http/*`
+- `backend/src/apps/control_plane/api/*`
+- `backend/src/apps/market_structure/api/*`
+
+Удалено:
+
+- `backend/src/apps/control_plane/views.py`
+- `backend/src/apps/market_structure/views.py`
+
 ## Текущая HTTP поверхность
 
 Endpoint modules:
@@ -27,18 +41,19 @@ Endpoint modules:
 - `backend/src/apps/indicators/views.py`: 4 endpoints
 - `backend/src/apps/portfolio/views.py`: 3 endpoints
 - `backend/src/apps/predictions/views.py`: 1 endpoint
-- `backend/src/apps/market_structure/views.py`: 23 endpoints
-- `backend/src/apps/control_plane/views.py`: 17 endpoints
+- `backend/src/apps/market_structure/api/router.py` + split endpoint modules
+- `backend/src/apps/control_plane/api/router.py` + split endpoint modules
 
 Bootstrap wiring:
 
-- `backend/src/core/bootstrap/app.py` подключает все router-ы напрямую через `app.include_router(...)`
-- только `control_plane` использует router-level `prefix`
-- остальные домены вшивают path прямо в decorator path string
+- `backend/src/core/bootstrap/app.py` подключает только корневой `api` router
+- `backend/src/api/v1/router.py` централизованно монтирует versioned surface `/api/v1`
+- `control_plane` и `market_structure` уже подключаются через mode-aware `build_router(mode, profile)`
+- остальные домены все еще частично живут в старом `views.py` стиле
 
-Отсюда следует первый structural gap:
+Первый structural gap уже закрыт:
 
-- в проекте пока нет явного корневого API router-а `/api`, под которым живет `/v1`, и уже под `/v1` подключаются доменные routers
+- в проекте есть явный корневой API router `/api`, под которым живет `/v1`, и уже под `/v1` подключаются доменные routers
 
 ## Главные проблемы
 
@@ -877,7 +892,7 @@ HTTP/API governance должен учитывать эволюцию surface, а
 
 ## Что делать по модулям
 
-### P0: `market_structure`
+### P0: `market_structure` [done]
 
 Файл:
 
@@ -899,7 +914,7 @@ HTTP/API governance должен учитывать эволюцию surface, а
 - вынести snapshot presenter из view layer
 - отдельно зафиксировать availability matrix для `webhooks`, `jobs`, `onboarding` в `full/local/ha_addon`
 
-### P0: `control_plane`
+### P0: `control_plane` [done]
 
 Файл:
 
