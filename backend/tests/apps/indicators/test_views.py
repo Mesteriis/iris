@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
+from src.apps.indicators.api.router import build_router as build_indicators_router
+from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 from tests.factories.base import json_utc
 
@@ -53,3 +57,17 @@ async def test_indicator_endpoints(api_app_client, seeded_api_state) -> None:
         "timeframe": 60,
         "timestamp": json_utc(seeded_api_state["signal_timestamp"]),
     }
+
+
+def test_indicators_api_router_is_mode_agnostic_and_legacy_views_removed() -> None:
+    full_router = build_indicators_router(mode=LaunchMode.FULL, profile=DeploymentProfile.PLATFORM_FULL)
+    ha_router = build_indicators_router(mode=LaunchMode.HA_ADDON, profile=DeploymentProfile.HA_EMBEDDED)
+
+    full_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in full_router.routes}
+    ha_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in ha_router.routes}
+
+    assert full_paths == ha_paths
+    assert any(path == "/coins/metrics" and "GET" in methods for path, methods in full_paths)
+    assert any(path == "/market/cycle" and "GET" in methods for path, methods in full_paths)
+    assert any(path == "/market/flow" and "GET" in methods for path, methods in full_paths)
+    assert importlib.util.find_spec("src.apps.indicators.views") is None

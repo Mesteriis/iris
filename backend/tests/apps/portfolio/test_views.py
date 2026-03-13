@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
+from src.apps.portfolio.api.router import build_router as build_portfolio_router
+from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 from src.core.settings import get_settings
 
@@ -30,3 +34,17 @@ async def test_portfolio_endpoints(api_app_client, seeded_api_state) -> None:
         "open_positions": 1,
         "max_positions": get_settings().portfolio_max_positions,
     }
+
+
+def test_portfolio_api_router_is_mode_agnostic_and_legacy_views_removed() -> None:
+    full_router = build_portfolio_router(mode=LaunchMode.FULL, profile=DeploymentProfile.PLATFORM_FULL)
+    ha_router = build_portfolio_router(mode=LaunchMode.HA_ADDON, profile=DeploymentProfile.HA_EMBEDDED)
+
+    full_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in full_router.routes}
+    ha_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in ha_router.routes}
+
+    assert full_paths == ha_paths
+    assert any(path == "/portfolio/positions" and "GET" in methods for path, methods in full_paths)
+    assert any(path == "/portfolio/actions" and "GET" in methods for path, methods in full_paths)
+    assert any(path == "/portfolio/state" and "GET" in methods for path, methods in full_paths)
+    assert importlib.util.find_spec("src.apps.portfolio.views") is None

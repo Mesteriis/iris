@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import importlib.util
 from types import SimpleNamespace
 
 import pytest
-
-from src.apps.system.views import _source_status_rows
+from src.apps.system.api.deps import SystemStatusFacade
+from src.apps.system.api.router import build_router as build_system_router
 from tests.apps.conftest import AliveProcess, SourceStatusRead
+from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 
 @pytest.mark.asyncio
@@ -14,7 +16,8 @@ async def test_status_and_health_endpoints(api_app_client, monkeypatch) -> None:
     app, client = api_app_client
     app.state.taskiq_worker_processes = [AliveProcess(alive=True)]
 
-    async def fake_source_status_rows():
+    async def fake_source_status_rows(self):
+        del self
         return [
             SourceStatusRead(
                 name="fixture",
@@ -35,8 +38,8 @@ async def test_status_and_health_endpoints(api_app_client, monkeypatch) -> None:
     async def fake_ping_database() -> None:
         return None
 
-    monkeypatch.setattr("src.apps.system.views._source_status_rows", fake_source_status_rows)
-    monkeypatch.setattr("src.apps.system.views.ping_database", fake_ping_database)
+    monkeypatch.setattr("src.apps.system.api.deps.SystemStatusFacade.list_source_status_rows", fake_source_status_rows)
+    monkeypatch.setattr("src.apps.system.api.deps.ping_database", fake_ping_database)
 
     status_response = await client.get("/status")
     assert status_response.status_code == 200
@@ -65,7 +68,7 @@ async def test_source_status_rows_uses_carousel_and_rate_limits(monkeypatch) -> 
         )
 
     monkeypatch.setattr(
-        "src.apps.system.views.get_market_source_carousel",
+        "src.apps.system.api.deps.get_market_source_carousel",
         lambda: SimpleNamespace(
             sources={
                 "fixture": SimpleNamespace(
@@ -76,11 +79,11 @@ async def test_source_status_rows_uses_carousel_and_rate_limits(monkeypatch) -> 
         ),
     )
     monkeypatch.setattr(
-        "src.apps.system.views.get_rate_limit_manager",
+        "src.apps.system.api.deps.get_rate_limit_manager",
         lambda: SimpleNamespace(snapshot=fake_snapshot),
     )
 
-    assert await _source_status_rows() == [
+    assert await SystemStatusFacade().list_source_status_rows() == [
         SourceStatusRead(
             name="fixture",
             asset_types=["crypto", "equity"],
@@ -96,3 +99,16 @@ async def test_source_status_rows_uses_carousel_and_rate_limits(monkeypatch) -> 
             fallback_retry_after_seconds=45,
         )
     ]
+
+
+def test_system_api_router_is_mode_agnostic_and_legacy_views_removed() -> None:
+    full_router = build_system_router(mode=LaunchMode.FULL, profile=DeploymentProfile.PLATFORM_FULL)
+    ha_router = build_system_router(mode=LaunchMode.HA_ADDON, profile=DeploymentProfile.HA_EMBEDDED)
+
+    full_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in full_router.routes}
+    ha_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in ha_router.routes}
+
+    assert full_paths == ha_paths
+    assert any(path == "/system/status" and "GET" in methods for path, methods in full_paths)
+    assert any(path == "/system/health" and "GET" in methods for path, methods in full_paths)
+    assert importlib.util.find_spec("src.apps.system.views") is None
