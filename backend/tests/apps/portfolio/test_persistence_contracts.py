@@ -6,12 +6,6 @@ import pytest
 from sqlalchemy import select
 
 import src.apps.portfolio.services as portfolio_services_module
-from src.apps.portfolio.engine import (
-    ensure_portfolio_state,
-    evaluate_portfolio_action,
-    refresh_portfolio_state,
-    sync_exchange_balances,
-)
 from src.apps.portfolio.models import PortfolioAction, PortfolioBalance, PortfolioPosition, PortfolioState
 from src.apps.portfolio.query_services import PortfolioQueryService
 from src.apps.portfolio.selectors import get_portfolio_state, list_portfolio_actions, list_portfolio_positions
@@ -247,67 +241,3 @@ def test_portfolio_legacy_compatibility_queries_emit_execution_logs(db_session, 
     assert "compat.list_portfolio_actions.result" in events
     assert "compat.get_portfolio_state.execute" in events
     assert "compat.get_portfolio_state.result" in events
-
-
-def test_portfolio_legacy_compatibility_services_emit_deprecation_logs(db_session, monkeypatch) -> None:
-    events: list[str] = []
-
-    def _log(level: int, message: str, *args, **kwargs) -> None:
-        del level, args, kwargs
-        events.append(message)
-
-    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
-    monkeypatch.setattr(
-        "src.apps.portfolio.engine.PortfolioCompatibilityService.evaluate_portfolio_action",
-        lambda self, **_kwargs: {
-            "status": "ok",
-            "coin_id": 1,
-            "timeframe": 15,
-            "decision": "BUY",
-            "action": "HOLD_POSITION",
-            "size": 0.0,
-            "portfolio_state": None,
-        },
-    )
-    monkeypatch.setattr(
-        "src.apps.portfolio.engine.PortfolioCompatibilityService.sync_exchange_balances",
-        lambda self, **_kwargs: {"status": "ok", "accounts": 0, "balances": 0, "items": []},
-    )
-
-    assert ensure_portfolio_state(db_session).id == 1
-    assert refresh_portfolio_state(db_session).id == 1
-    assert evaluate_portfolio_action(db_session, coin_id=1, timeframe=15, emit_events=False)["status"] == "ok"
-    assert sync_exchange_balances(db_session, emit_events=False)["status"] == "ok"
-
-    assert "compat.ensure_portfolio_state.deprecated" in events
-    assert "compat.refresh_portfolio_state.deprecated" in events
-    assert "compat.evaluate_portfolio_action.deprecated" in events
-    assert "compat.sync_exchange_balances.deprecated" in events
-
-
-def test_portfolio_legacy_compatibility_services_emit_execution_logs(db_session, monkeypatch) -> None:
-    coin, _decision = _seed_portfolio_projection_state(db_session)
-    create_exchange_account(db_session, exchange_name="binance", account_name="compat-log-path")
-    events: list[str] = []
-
-    def _log(level: int, message: str, *args, **kwargs) -> None:
-        del level, args, kwargs
-        events.append(message)
-
-    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
-    monkeypatch.setattr(portfolio_services_module, "create_exchange_plugin", lambda account: _SingleBalancePlugin())
-    monkeypatch.setattr("src.apps.portfolio.engine.create_exchange_plugin", lambda account: _SingleBalancePlugin())
-
-    assert ensure_portfolio_state(db_session).id == 1
-    assert refresh_portfolio_state(db_session).id == 1
-    assert evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=False)["status"] == "ok"
-    assert sync_exchange_balances(db_session, emit_events=False)["status"] == "ok"
-
-    assert "compat.ensure_portfolio_state.execute" in events
-    assert "compat.ensure_portfolio_state.result" in events
-    assert "compat.refresh_portfolio_state.execute" in events
-    assert "compat.refresh_portfolio_state.result" in events
-    assert "compat.evaluate_portfolio_action.execute" in events
-    assert "compat.evaluate_portfolio_action.result" in events
-    assert "compat.sync_exchange_balances.execute" in events
-    assert "compat.sync_exchange_balances.result" in events

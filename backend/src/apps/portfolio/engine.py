@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
-from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -29,30 +27,8 @@ from src.apps.portfolio.support import (
 from src.apps.market_data.domain import utc_now
 from src.apps.portfolio.cache import cache_portfolio_balances, cache_portfolio_state
 from src.apps.portfolio.read_models import portfolio_state_payload, portfolio_state_read_model_from_mapping
-from src.apps.portfolio.services import (
-    PortfolioActionEvaluationResult,
-    PortfolioSyncItem,
-    PortfolioSyncResult,
-)
-from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 
 PORTFOLIO_POSITION_STATUSES = {"open", "closed", "partial"}
-
-
-def _log_compat(level: int, event: str, /, *, component_type: str, component: str, **fields: Any) -> None:
-    PERSISTENCE_LOGGER.log(
-        level,
-        event,
-        extra={
-            "persistence": {
-                "event": event,
-                "component_type": component_type,
-                "domain": "portfolio",
-                "component": component,
-                **{key: sanitize_log_value(value) for key, value in fields.items()},
-            }
-        },
-    )
 
 
 def _open_positions(db: Session) -> list[PortfolioPosition]:
@@ -639,231 +615,12 @@ def _sync_exchange_balances_impl(db: Session, *, emit_events: bool = True) -> di
     }
 
 
-class PortfolioCompatibilityService:
-    def __init__(self, db: Session) -> None:
-        self._db = db
-
-    def _log(self, level: int, event: str, /, **fields: Any) -> None:
-        _log_compat(
-            level,
-            event,
-            component_type="compatibility_service",
-            component="PortfolioCompatibilityService",
-            **fields,
-        )
-
-    def evaluate_portfolio_action(
-        self,
-        *,
-        coin_id: int,
-        timeframe: int,
-        decision: MarketDecision | None = None,
-        emit_events: bool = True,
-    ) -> dict[str, object]:
-        self._log(
-            logging.DEBUG,
-            "compat.evaluate_portfolio_action.execute",
-            mode="write",
-            coin_id=coin_id,
-            timeframe=timeframe,
-            emit_events=emit_events,
-        )
-        result = _evaluate_portfolio_action_impl(
-            self._db,
-            coin_id=coin_id,
-            timeframe=timeframe,
-            decision=decision,
-            emit_events=emit_events,
-        )
-        state_payload = result.get("portfolio_state")
-        payload = PortfolioActionEvaluationResult(
-            status=str(result["status"]),
-            coin_id=int(result["coin_id"]),
-            timeframe=int(result["timeframe"]),
-            reason=str(result["reason"]) if result.get("reason") is not None else None,
-            decision=str(result["decision"]) if result.get("decision") is not None else None,
-            action=str(result["action"]) if result.get("action") is not None else None,
-            size=float(result.get("size") or 0.0),
-            portfolio_state=(
-                portfolio_state_read_model_from_mapping(
-                    {
-                        "total_capital": float(state_payload.get("total_capital", 0.0)),
-                        "allocated_capital": float(state_payload.get("allocated_capital", 0.0)),
-                        "available_capital": float(state_payload.get("available_capital", 0.0)),
-                        "updated_at": state_payload.get("updated_at"),
-                        "open_positions": int(state_payload.get("open_positions", 0)),
-                        "max_positions": int(state_payload.get("max_positions", 0)),
-                    }
-                )
-                if isinstance(state_payload, dict)
-                else None
-            ),
-        ).to_payload()
-        self._log(
-            logging.INFO,
-            "compat.evaluate_portfolio_action.result",
-            mode="write",
-            coin_id=coin_id,
-            timeframe=timeframe,
-            status=payload["status"],
-            action=payload.get("action"),
-        )
-        return payload
-
-    def sync_exchange_balances(self, *, emit_events: bool = True) -> dict[str, object]:
-        self._log(
-            logging.DEBUG,
-            "compat.sync_exchange_balances.execute",
-            mode="write",
-            emit_events=emit_events,
-        )
-        result = _sync_exchange_balances_impl(
-            self._db,
-            emit_events=emit_events,
-        )
-        state_payload = result.get("portfolio_state") or {
-            "total_capital": 0.0,
-            "allocated_capital": 0.0,
-            "available_capital": 0.0,
-            "updated_at": None,
-            "open_positions": 0,
-            "max_positions": 0,
-        }
-        payload = PortfolioSyncResult(
-            status=str(result["status"]),
-            accounts=int(result.get("accounts") or 0),
-            items=tuple(
-                PortfolioSyncItem(
-                    exchange_account_id=int(item["exchange_account_id"]),
-                    symbol=str(item["symbol"]),
-                    balance=float(item["balance"]),
-                    value_usd=float(item["value_usd"]),
-                )
-                for item in result.get("items", [])
-                if isinstance(item, dict)
-            ),
-            cached_rows=tuple(),
-            state=portfolio_state_read_model_from_mapping(state_payload),
-            pending_events=tuple(),
-        ).to_payload()
-        self._log(
-            logging.INFO,
-            "compat.sync_exchange_balances.result",
-            mode="write",
-            accounts=payload["accounts"],
-            balances=payload["balances"],
-            status=payload["status"],
-        )
-        return payload
-
-
-def ensure_portfolio_state(db: Session) -> PortfolioState:
-    _log_compat(
-        logging.WARNING,
-        "compat.ensure_portfolio_state.deprecated",
-        component_type="compatibility_service",
-        component="ensure_portfolio_state",
-        mode="write",
-    )
-    _log_compat(
-        logging.DEBUG,
-        "compat.ensure_portfolio_state.execute",
-        component_type="compatibility_service",
-        component="ensure_portfolio_state",
-        mode="write",
-    )
-    state = _ensure_portfolio_state_impl(db)
-    state_payload = _portfolio_state_snapshot(db, state=state)
-    _log_compat(
-        logging.INFO,
-        "compat.ensure_portfolio_state.result",
-        component_type="compatibility_service",
-        component="ensure_portfolio_state",
-        mode="write",
-        state_id=int(state.id),
-        total_capital=float(state_payload["total_capital"]),
-        open_positions=int(state_payload["open_positions"]),
-    )
-    return state
-
-
-def refresh_portfolio_state(db: Session) -> PortfolioState:
-    _log_compat(
-        logging.WARNING,
-        "compat.refresh_portfolio_state.deprecated",
-        component_type="compatibility_service",
-        component="refresh_portfolio_state",
-        mode="write",
-    )
-    _log_compat(
-        logging.DEBUG,
-        "compat.refresh_portfolio_state.execute",
-        component_type="compatibility_service",
-        component="refresh_portfolio_state",
-        mode="write",
-    )
-    state = _refresh_portfolio_state_impl(db)
-    state_payload = _portfolio_state_snapshot(db, state=state)
-    _log_compat(
-        logging.INFO,
-        "compat.refresh_portfolio_state.result",
-        component_type="compatibility_service",
-        component="refresh_portfolio_state",
-        mode="write",
-        state_id=int(state.id),
-        total_capital=float(state_payload["total_capital"]),
-        open_positions=int(state_payload["open_positions"]),
-    )
-    return state
-
-
-def evaluate_portfolio_action(
-    db: Session,
-    *,
-    coin_id: int,
-    timeframe: int,
-    decision: MarketDecision | None = None,
-    emit_events: bool = True,
-) -> dict[str, object]:
-    service = PortfolioCompatibilityService(db)
-    service._log(
-        logging.WARNING,
-        "compat.evaluate_portfolio_action.deprecated",
-        mode="write",
-        coin_id=coin_id,
-        timeframe=timeframe,
-        emit_events=emit_events,
-    )
-    return service.evaluate_portfolio_action(
-        coin_id=coin_id,
-        timeframe=timeframe,
-        decision=decision,
-        emit_events=emit_events,
-    )
-
-
-def sync_exchange_balances(db: Session, *, emit_events: bool = True) -> dict[str, object]:
-    service = PortfolioCompatibilityService(db)
-    service._log(
-        logging.WARNING,
-        "compat.sync_exchange_balances.deprecated",
-        mode="write",
-        emit_events=emit_events,
-    )
-    return service.sync_exchange_balances(emit_events=emit_events)
-
-
 __all__ = [
     "PORTFOLIO_POSITION_STATUSES",
-    "PortfolioCompatibilityService",
     "_ensure_coin_for_balance",
     "_maybe_auto_watch_coin",
     "_rebalance_existing_position",
     "_sync_balance_position",
     "calculate_position_size",
     "calculate_stops",
-    "ensure_portfolio_state",
-    "evaluate_portfolio_action",
-    "refresh_portfolio_state",
-    "sync_exchange_balances",
 ]

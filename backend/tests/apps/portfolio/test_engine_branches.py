@@ -11,10 +11,6 @@ from src.apps.portfolio.engine import (
     _sync_balance_position,
     calculate_position_size,
     calculate_stops,
-    ensure_portfolio_state,
-    evaluate_portfolio_action,
-    refresh_portfolio_state,
-    sync_exchange_balances,
 )
 from src.apps.portfolio.models import ExchangeAccount, PortfolioAction, PortfolioBalance, PortfolioPosition
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
@@ -229,83 +225,6 @@ async def test_portfolio_sync_emits_auto_watch_after_commit(async_db_session, db
         "portfolio_balance_updated",
         "portfolio_position_changed",
     ]
-
-
-def test_portfolio_sync_batches_compatibility_writes_under_single_commit(db_session, monkeypatch) -> None:
-    class BatchPlugin:
-        def __init__(self, account: ExchangeAccount) -> None:
-            self.account = account
-
-        async def fetch_balances(self):
-            return [
-                {"symbol": "BATCHA_EVT", "balance": 3.0, "value_usd": 210.0},
-                {"symbol": "BATCHB_EVT", "balance": 4.0, "value_usd": 315.0},
-            ]
-
-        async def fetch_positions(self):
-            return []
-
-        async def fetch_orders(self):
-            return []
-
-        async def fetch_trades(self):
-            return []
-
-    from src.apps.portfolio.clients import register_exchange
-
-    register_exchange("fixture_batch_commit", BatchPlugin)
-    create_exchange_account(db_session, exchange_name="fixture_batch_commit")
-    original_commit = db_session.commit
-    commit_calls: list[str] = []
-
-    def _commit() -> None:
-        commit_calls.append("commit")
-        original_commit()
-
-    monkeypatch.setattr(db_session, "commit", _commit)
-
-    result = sync_exchange_balances(db_session, emit_events=False)
-
-    assert result["status"] == "ok"
-    assert len(commit_calls) == 1
-
-
-def test_portfolio_sync_defers_balance_cache_until_after_commit(db_session, monkeypatch) -> None:
-    class CacheOrderPlugin:
-        def __init__(self, account: ExchangeAccount) -> None:
-            self.account = account
-
-        async def fetch_balances(self):
-            return [{"symbol": "CACHE_EVT", "balance": 2.0, "value_usd": 180.0}]
-
-        async def fetch_positions(self):
-            return []
-
-        async def fetch_orders(self):
-            return []
-
-        async def fetch_trades(self):
-            return []
-
-    from src.apps.portfolio.clients import register_exchange
-
-    register_exchange("fixture_cache_order", CacheOrderPlugin)
-    create_exchange_account(db_session, exchange_name="fixture_cache_order")
-    original_commit = db_session.commit
-    events: list[str] = []
-
-    def _commit() -> None:
-        events.append("commit")
-        original_commit()
-
-    monkeypatch.setattr(db_session, "commit", _commit)
-    monkeypatch.setattr("src.apps.portfolio.engine.cache_portfolio_balances", lambda _payload: events.append("balances_cache"))
-    monkeypatch.setattr("src.apps.portfolio.engine.cache_portfolio_state", lambda _payload: events.append("state_cache"))
-
-    result = sync_exchange_balances(db_session, emit_events=False)
-
-    assert result["status"] == "ok"
-    assert events == ["commit", "balances_cache", "state_cache"]
 
 
 @pytest.mark.asyncio
