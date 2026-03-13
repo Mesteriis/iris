@@ -16,7 +16,7 @@ from src.apps.portfolio.support import (
     calculate_stops,
 )
 from src.apps.portfolio.models import ExchangeAccount, PortfolioAction, PortfolioBalance, PortfolioPosition, PortfolioState
-from src.apps.portfolio.read_models import PortfolioStateReadModel
+from src.apps.portfolio.read_models import PortfolioStateReadModel, portfolio_state_payload
 from src.apps.portfolio.repositories import ExchangeAccountRepository, PortfolioRepository
 from src.apps.signals.models import MarketDecision
 from src.core.db.persistence import PersistenceComponent
@@ -85,12 +85,14 @@ class PortfolioSyncResult:
         return len(self.items)
 
     def to_payload(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "status": self.status,
             "accounts": self.accounts,
             "balances": self.balances,
             "items": [item.to_payload() for item in self.items],
         }
+        payload["portfolio_state"] = portfolio_state_payload(self.state)
+        return payload
 
 
 @dataclass(slots=True, frozen=True)
@@ -119,15 +121,7 @@ class PortfolioActionEvaluationResult:
             payload["action"] = self.action
         if self.status == "ok":
             payload["size"] = float(self.size)
-            payload["portfolio_state"] = (
-                {
-                    "total_capital": float(self.portfolio_state.total_capital),
-                    "allocated_capital": float(self.portfolio_state.allocated_capital),
-                    "available_capital": float(self.portfolio_state.available_capital),
-                }
-                if self.portfolio_state is not None
-                else None
-            )
+            payload["portfolio_state"] = portfolio_state_payload(self.portfolio_state) if self.portfolio_state else None
         return payload
 
 

@@ -28,8 +28,7 @@ from src.apps.portfolio.support import (
 )
 from src.apps.market_data.domain import utc_now
 from src.apps.portfolio.cache import cache_portfolio_balances, cache_portfolio_state
-from src.apps.market_data.schemas import CoinCreate
-from src.apps.portfolio.read_models import portfolio_state_read_model_from_mapping
+from src.apps.portfolio.read_models import portfolio_state_payload, portfolio_state_read_model_from_mapping
 from src.apps.portfolio.services import (
     PortfolioActionEvaluationResult,
     PortfolioSyncItem,
@@ -71,9 +70,7 @@ def _latest_market_decision(db: Session, *, coin_id: int, timeframe: int) -> Mar
         .order_by(MarketDecision.created_at.desc(), MarketDecision.id.desc())
         .limit(1)
     )
-
-
-def _ensure_portfolio_state_impl(db: Session) -> PortfolioState:
+def _ensure_portfolio_state_impl(db: Session, *, commit: bool = True) -> PortfolioState:
     settings = get_settings()
     state = db.get(PortfolioState, 1)
     if state is None:
@@ -84,13 +81,36 @@ def _ensure_portfolio_state_impl(db: Session) -> PortfolioState:
             available_capital=float(settings.portfolio_total_capital),
         )
         db.add(state)
-        db.commit()
-        db.refresh(state)
+        if commit:
+            db.commit()
+            db.refresh(state)
+        else:
+            db.flush()
     return state
 
 
-def _refresh_portfolio_state_impl(db: Session) -> PortfolioState:
-    state = _ensure_portfolio_state_impl(db)
+def _portfolio_state_snapshot(db: Session, *, state: PortfolioState) -> dict[str, object]:
+    return portfolio_state_payload(
+        portfolio_state_read_model_from_mapping(
+            {
+                "total_capital": float(state.total_capital),
+                "allocated_capital": float(state.allocated_capital),
+                "available_capital": float(state.available_capital),
+                "updated_at": state.updated_at.isoformat() if state.updated_at is not None else None,
+                "open_positions": len(_open_positions(db)),
+                "max_positions": int(get_settings().portfolio_max_positions),
+            }
+        )
+    )
+
+
+def _refresh_portfolio_state_impl(
+    db: Session,
+    *,
+    commit: bool = True,
+    cache: bool | None = None,
+) -> PortfolioState:
+    state = _ensure_portfolio_state_impl(db, commit=commit)
     allocated = float(
         db.scalar(
             select(func.coalesce(func.sum(PortfolioPosition.position_value), 0.0)).where(
@@ -102,18 +122,14 @@ def _refresh_portfolio_state_impl(db: Session) -> PortfolioState:
     state.allocated_capital = allocated
     state.available_capital = max(float(state.total_capital) - allocated, 0.0)
     state.updated_at = utc_now()
-    db.commit()
-    db.refresh(state)
-    cache_portfolio_state(
-        {
-            "total_capital": float(state.total_capital),
-            "allocated_capital": float(state.allocated_capital),
-            "available_capital": float(state.available_capital),
-            "updated_at": state.updated_at.isoformat(),
-            "open_positions": len(_open_positions(db)),
-            "max_positions": int(get_settings().portfolio_max_positions),
-        }
-    )
+    if commit:
+        db.commit()
+        db.refresh(state)
+    else:
+        db.flush()
+    should_cache = cache if cache is not None else commit
+    if should_cache:
+        cache_portfolio_state(_portfolio_state_snapshot(db, state=state))
     return state
 
 
@@ -160,6 +176,7 @@ def _record_action(
     size: float,
     confidence: float,
     decision_id: int,
+    commit: bool = True,
 ) -> PortfolioAction:
     row = PortfolioAction(
         coin_id=coin_id,
@@ -169,8 +186,11 @@ def _record_action(
         decision_id=decision_id,
     )
     db.add(row)
-    db.commit()
-    db.refresh(row)
+    if commit:
+        db.commit()
+        db.refresh(row)
+    else:
+        db.flush()
     return row
 
 
@@ -224,14 +244,16 @@ def _evaluate_portfolio_action_impl(
     emit_events: bool = True,
 ) -> dict[str, object]:
     settings = get_settings()
-    state = _refresh_portfolio_state_impl(db)
+    state = _refresh_portfolio_state_impl(db, commit=False, cache=False)
     decision_row = decision or _latest_market_decision(db, coin_id=coin_id, timeframe=timeframe)
     if decision_row is None:
+        db.commit()
         return {"status": "skipped", "reason": "decision_not_found", "coin_id": coin_id, "timeframe": timeframe}
 
     coin = db.get(Coin, coin_id)
     metrics = db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin_id))
     if coin is None or metrics is None or metrics.price_current is None:
+        db.commit()
         return {"status": "skipped", "reason": "coin_metrics_not_found", "coin_id": coin_id, "timeframe": timeframe}
 
     existing = _existing_position(db, coin_id=coin_id, timeframe=timeframe)
@@ -308,7 +330,6 @@ def _evaluate_portfolio_action_impl(
         action = "HOLD_POSITION"
         action_size = 0.0
 
-    db.commit()
     action_row = _record_action(
         db,
         coin_id=coin_id,
@@ -316,8 +337,14 @@ def _evaluate_portfolio_action_impl(
         size=action_size,
         confidence=float(decision_row.confidence),
         decision_id=int(decision_row.id),
+        commit=False,
     )
-    state = _refresh_portfolio_state_impl(db)
+    state = _refresh_portfolio_state_impl(db, commit=False, cache=False)
+    db.commit()
+    db.refresh(action_row)
+    db.refresh(state)
+    state_payload = _portfolio_state_snapshot(db, state=state)
+    cache_portfolio_state(state_payload)
     if emit_events:
         if action == "OPEN_POSITION":
             publish_event(
@@ -365,35 +392,32 @@ def _evaluate_portfolio_action_impl(
         "decision": decision_row.decision,
         "action": action,
         "size": action_size,
-        "portfolio_state": {
-            "total_capital": float(state.total_capital),
-            "allocated_capital": float(state.allocated_capital),
-            "available_capital": float(state.available_capital),
-            "updated_at": state.updated_at.isoformat(),
-            "open_positions": len(_open_positions(db)),
-            "max_positions": int(get_settings().portfolio_max_positions),
-        },
+        "portfolio_state": state_payload,
     }
 
 
 def _ensure_coin_for_balance(db: Session, *, symbol: str, exchange_name: str) -> Coin:
-    from src.apps.market_data.service_layer import create_coin, get_coin_by_symbol
-
     normalized = symbol.upper()
-    coin = get_coin_by_symbol(db, normalized)
+    coin = db.scalar(select(Coin).where(Coin.symbol == normalized, Coin.deleted_at.is_(None)).limit(1))
     if coin is not None:
         return coin
-    return create_coin(
-        db,
-        CoinCreate(
-            symbol=normalized,
-            name=normalized,
-            asset_type="crypto",
-            theme="portfolio",
-            source=exchange_name.lower(),
-            enabled=False,
-        ),
+    coin = Coin(
+        symbol=normalized,
+        name=normalized,
+        asset_type="crypto",
+        theme="portfolio",
+        sector_code="portfolio",
+        source=exchange_name.lower(),
+        enabled=False,
+        sort_order=0,
+        candles_config=[],
     )
+    db.add(coin)
+    db.flush()
+    if db.scalar(select(CoinMetrics.id).where(CoinMetrics.coin_id == int(coin.id)).limit(1)) is None:
+        db.add(CoinMetrics(coin_id=int(coin.id)))
+        db.flush()
+    return coin
 
 
 def _maybe_auto_watch_coin(db: Session, *, coin: Coin, value_usd: float, exchange_name: str) -> bool:

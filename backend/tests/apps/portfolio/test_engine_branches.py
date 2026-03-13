@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
+from src.apps.indicators.models import CoinMetrics
 from src.apps.portfolio.engine import (
     _ensure_coin_for_balance,
     _maybe_auto_watch_coin,
@@ -75,6 +76,9 @@ def test_portfolio_balance_helpers_cover_auto_watch_and_closing(db_session, monk
     created = _ensure_coin_for_balance(db_session, symbol="SOLUSD_EVT", exchange_name="fixture_close")
     assert existing.id == coin.id
     assert created.symbol == "SOLUSD_EVT"
+    assert created.sector_code == "portfolio"
+    created_metrics = db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(created.id)).limit(1))
+    assert created_metrics is not None
 
     published: list[str] = []
     monkeypatch.setattr("src.apps.portfolio.engine.publish_event", lambda event_type, payload: published.append(event_type))
@@ -121,6 +125,7 @@ def test_portfolio_sync_skips_blank_balances(db_session) -> None:
     result = sync_exchange_balances(db_session, emit_events=False)
     assert result["accounts"] == 1
     assert result["balances"] == 0
+    assert result["portfolio_state"]["open_positions"] == 0
     assert db_session.scalar(select(PortfolioAction.id).limit(1)) is None
 
 
@@ -200,6 +205,8 @@ def test_portfolio_helper_and_event_branches(db_session, monkeypatch) -> None:
     held = evaluate_portfolio_action(db_session, coin_id=int(hold_coin.id), timeframe=15, emit_events=True)
 
     assert opened["action"] == "OPEN_POSITION"
+    assert opened["portfolio_state"]["open_positions"] >= 1
+    assert opened["portfolio_state"]["updated_at"] is not None
     assert rebalanced["action"] == "REDUCE_POSITION"
     assert closed["action"] == "CLOSE_POSITION"
     assert sell_without_position["action"] == "HOLD_POSITION"

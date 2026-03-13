@@ -14,73 +14,17 @@ from src.apps.portfolio.query_builders import (
     portfolio_positions_select as _portfolio_positions_select,
 )
 from src.apps.portfolio.read_models import (
-    PortfolioActionReadModel,
-    PortfolioPositionReadModel,
     PortfolioStateReadModel,
+    portfolio_action_payload,
     portfolio_action_read_model_from_mapping,
+    portfolio_position_payload,
     portfolio_position_read_model_from_mapping,
+    portfolio_state_payload,
     portfolio_state_read_model_from_mapping,
 )
 from src.apps.patterns.domain.regime import read_regime_details
 from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 from src.core.settings import get_settings
-
-
-def _portfolio_position_payload(item: PortfolioPositionReadModel) -> dict[str, Any]:
-    return {
-        "id": int(item.id),
-        "coin_id": int(item.coin_id),
-        "symbol": str(item.symbol),
-        "name": str(item.name),
-        "sector": item.sector,
-        "exchange_account_id": int(item.exchange_account_id) if item.exchange_account_id is not None else None,
-        "source_exchange": item.source_exchange,
-        "position_type": str(item.position_type),
-        "timeframe": int(item.timeframe),
-        "entry_price": float(item.entry_price),
-        "position_size": float(item.position_size),
-        "position_value": float(item.position_value),
-        "stop_loss": float(item.stop_loss) if item.stop_loss is not None else None,
-        "take_profit": float(item.take_profit) if item.take_profit is not None else None,
-        "status": str(item.status),
-        "opened_at": item.opened_at,
-        "closed_at": item.closed_at,
-        "current_price": float(item.current_price) if item.current_price is not None else None,
-        "unrealized_pnl": float(item.unrealized_pnl),
-        "latest_decision": item.latest_decision,
-        "latest_decision_confidence": (
-            float(item.latest_decision_confidence) if item.latest_decision_confidence is not None else None
-        ),
-        "regime": item.regime,
-        "risk_to_stop": float(item.risk_to_stop) if item.risk_to_stop is not None else None,
-    }
-
-
-def _portfolio_action_payload(item: PortfolioActionReadModel) -> dict[str, Any]:
-    return {
-        "id": int(item.id),
-        "coin_id": int(item.coin_id),
-        "symbol": str(item.symbol),
-        "name": str(item.name),
-        "action": str(item.action),
-        "size": float(item.size),
-        "confidence": float(item.confidence),
-        "decision_id": int(item.decision_id),
-        "market_decision": str(item.market_decision),
-        "created_at": item.created_at,
-    }
-
-
-def _portfolio_state_payload(item: PortfolioStateReadModel) -> dict[str, Any]:
-    return {
-        "total_capital": float(item.total_capital),
-        "allocated_capital": float(item.allocated_capital),
-        "available_capital": float(item.available_capital),
-        "updated_at": item.updated_at,
-        "open_positions": int(item.open_positions),
-        "max_positions": int(item.max_positions),
-    }
-
 
 class PortfolioCompatibilityQuery:
     def __init__(self, db: Session) -> None:
@@ -141,7 +85,7 @@ class PortfolioCompatibilityQuery:
                     }
                 )
             )
-        return [_portfolio_position_payload(item) for item in items]
+        return [portfolio_position_payload(item) for item in items]
 
     def list_actions(self, *, limit: int = 200) -> Sequence[dict[str, Any]]:
         self._log(
@@ -157,7 +101,7 @@ class PortfolioCompatibilityQuery:
                 .limit(max(limit, 1))
             )
         ).all()
-        return [_portfolio_action_payload(portfolio_action_read_model_from_mapping(row._mapping)) for row in rows]
+        return [portfolio_action_payload(portfolio_action_read_model_from_mapping(row._mapping)) for row in rows]
 
     def get_state(self) -> dict[str, Any]:
         self._log(
@@ -170,7 +114,7 @@ class PortfolioCompatibilityQuery:
             return cached
         state = self._db.get(PortfolioState, 1)
         if state is None:
-            return _portfolio_state_payload(
+            return portfolio_state_payload(
                 PortfolioStateReadModel(
                     total_capital=0.0,
                     allocated_capital=0.0,
@@ -186,7 +130,7 @@ class PortfolioCompatibilityQuery:
             )
             or 0
         )
-        return _portfolio_state_payload(
+        return portfolio_state_payload(
             portfolio_state_read_model_from_mapping(
                 {
                     "total_capital": float(state.total_capital),
