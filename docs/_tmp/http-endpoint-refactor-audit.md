@@ -26,6 +26,7 @@
 - `backend/src/apps/signals/api/*`
 - `backend/src/apps/market_data/api/*`
 - `backend/src/apps/hypothesis_engine/api/*`
+- `backend/src/apps/patterns/api/*`
 
 Удалено:
 
@@ -35,6 +36,7 @@
 - `backend/src/apps/signals/views.py`
 - `backend/src/apps/market_data/views.py`
 - `backend/src/apps/hypothesis_engine/views.py`
+- `backend/src/apps/patterns/views.py`
 
 ## Текущая HTTP поверхность
 
@@ -44,7 +46,7 @@ Endpoint modules:
 - `backend/src/apps/market_data/api/router.py` + split endpoint modules
 - `backend/src/apps/news/api/router.py` + split endpoint modules
 - `backend/src/apps/hypothesis_engine/api/router.py` + split endpoint modules
-- `backend/src/apps/patterns/views.py`: 9 endpoints
+- `backend/src/apps/patterns/api/router.py` + split endpoint modules
 - `backend/src/apps/signals/api/router.py` + split endpoint modules
 - `backend/src/apps/indicators/views.py`: 4 endpoints
 - `backend/src/apps/portfolio/views.py`: 3 endpoints
@@ -56,7 +58,7 @@ Bootstrap wiring:
 
 - `backend/src/core/bootstrap/app.py` подключает только корневой `api` router
 - `backend/src/api/v1/router.py` централизованно монтирует versioned surface `/api/v1`
-- `control_plane`, `market_structure`, `news`, `signals`, `market_data` и `hypothesis_engine` уже подключаются через mode-aware `build_router(mode, profile)`
+- `control_plane`, `market_structure`, `news`, `signals`, `market_data`, `hypothesis_engine` и `patterns` уже подключаются через mode-aware `build_router(mode, profile)`
 - остальные домены все еще частично живут в старом `views.py` стиле
 
 Первый structural gap уже закрыт:
@@ -83,9 +85,9 @@ Bootstrap wiring:
 
 Самые тяжелые примеры:
 
-- `backend/src/apps/patterns/views.py`
 - `backend/src/apps/indicators/views.py`
 - `backend/src/apps/portfolio/views.py`
+- `backend/src/apps/system/views.py`
 
 Типичные симптомы:
 
@@ -103,7 +105,7 @@ Bootstrap wiring:
 - `backend/src/apps/control_plane/views.py`: много `_..._read(...)` helper-ов для преобразования query/read models в response DTO
 - `backend/src/apps/market_structure/views.py`: `_snapshot_schema_from_read_model`
 - `backend/src/apps/system/views.py`: `_source_status_rows()` строит operational payload прямо в endpoint module
-- `backend/src/apps/patterns/views.py`: transport response shaping смешан с analytics/resource grouping
+- `backend/src/apps/indicators/views.py`: transport composition смешана с cross-domain read orchestration
 
 Это означает:
 
@@ -124,9 +126,9 @@ Bootstrap wiring:
 
 Это видно в:
 
-- `backend/src/apps/patterns/views.py`
 - `backend/src/apps/indicators/views.py`
 - `backend/src/apps/portfolio/views.py`
+- `backend/src/apps/system/views.py`
 
 Нужен единый command-endpoint standard, иначе у нас десятки почти одинаковых endpoint handlers.
 
@@ -143,9 +145,9 @@ Bootstrap wiring:
 
 Самые проблемные домены:
 
-- `patterns`
 - `indicators`
 - `portfolio`
+- `system`
 
 Это надо разделить. Иначе у нас нет нормальной границы между:
 
@@ -167,9 +169,9 @@ Bootstrap wiring:
 
 Это особенно видно в:
 
-- `backend/src/apps/patterns/views.py`
 - `backend/src/apps/indicators/views.py`
 - `backend/src/apps/portfolio/views.py`
+- `backend/src/apps/system/views.py`
 
 ### 7. Error handling policy не централизована
 
@@ -180,9 +182,9 @@ Bootstrap wiring:
 - `news`
 - `market_structure`
 - `control_plane`
-- `patterns`
 - `indicators`
 - `portfolio`
+- `system`
 
 Нужен единый способ:
 
@@ -196,7 +198,7 @@ Bootstrap wiring:
 
 - `backend/src/apps/system/views.py`: source/rate-limit operational state assembly
 - `backend/src/apps/market_structure/views.py`: ingest token extraction и native webhook orchestration
-- `backend/src/apps/patterns/views.py`: mixed operational/admin and analytics transport decisions
+- `backend/src/apps/indicators/views.py`: cross-domain composition and analytics projection ownership
 
 Это нужно выносить в отдельные transport helpers или dedicated API submodules.
 
@@ -1023,20 +1025,23 @@ HTTP/API governance должен учитывать эволюцию surface, а
 - `ha_embedded` не монтирует jobs и stream surface
 - evaluate job теперь возвращает typed accepted response, а contract tests фиксируют отсутствие legacy `hypothesis_engine.views` import path
 
-### P1: `patterns`
+### P1: `patterns` [done]
 
-Файл:
+Было:
 
 - `backend/src/apps/patterns/views.py`
 
-Что не так:
+Что было не так:
 
 - admin mutation endpoints и public analytics reads смешаны
 
-Что делать:
+Что сделано:
 
-- split на `pattern_read_endpoints`, `pattern_admin_endpoints`, `sector_read_endpoints`
-- зафиксировать, какие endpoints считаются operator/admin surface
+- HTTP surface переведен в `backend/src/apps/patterns/api/*`
+- `views.py` удален; домен экспортирует только `build_router(mode, profile)`
+- admin mutation handlers и public analytics reads разведены по `command_endpoints.py` и `read_endpoints.py`
+- error mapping стандартизован через typed `ApiError` contracts
+- contract tests фиксируют mode-agnostic router и отсутствие legacy `patterns.views` import path
 
 ### P2: `indicators`
 
@@ -1102,9 +1107,8 @@ HTTP/API governance должен учитывать эволюцию surface, а
 8. Перевести `market_structure`, отдельно разрезав read / commands / onboarding / webhooks / jobs.
 9. Перевести `news`, отдельно разведя source API, item reads, jobs и onboarding.
 10. Разбить `signals` на несколько bounded read routers и проверить URL semantics.
-11. Перевести `patterns`.
-12. На новом стандарте быстро дочистить `indicators`, `portfolio`, `predictions`, `system`.
-13. После миграции удалить старые `views.py` entrypoints, а не оставлять их пустыми фасадами.
+11. На новом стандарте быстро дочистить `indicators`, `portfolio`, `predictions`, `system`.
+12. После миграции удалить старые `views.py` entrypoints, а не оставлять их пустыми фасадами.
 
 ## Правила миграции
 
