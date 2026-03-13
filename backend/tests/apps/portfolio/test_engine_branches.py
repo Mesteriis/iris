@@ -308,7 +308,8 @@ def test_portfolio_sync_defers_balance_cache_until_after_commit(db_session, monk
     assert events == ["commit", "balances_cache", "state_cache"]
 
 
-def test_portfolio_helper_and_event_branches(db_session, monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_portfolio_helper_and_event_branches(async_db_session, db_session, monkeypatch) -> None:
     sideways = calculate_position_size(
         total_capital=100_000.0,
         available_capital=100_000.0,
@@ -360,42 +361,78 @@ def test_portfolio_helper_and_event_branches(db_session, monkeypatch) -> None:
     assert position.status == "open"
 
     published: list[str] = []
-    monkeypatch.setattr("src.apps.portfolio.engine.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr("src.apps.portfolio.services.publish_event", lambda event_type, payload: published.append(event_type))
 
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     metrics = upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bear_trend", timeframe=15)
     create_market_decision(db_session, coin_id=int(coin.id), timeframe=15, decision="BUY", confidence=0.45)
-    opened = evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=True)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        opened = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(coin.id),
+            timeframe=15,
+            emit_events=True,
+        )
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_action_result(opened)
     metrics.market_regime = "bull_trend"
     db_session.commit()
     create_market_decision(db_session, coin_id=int(coin.id), timeframe=15, decision="SELL", confidence=0.4)
-    rebalanced = evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=True)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        rebalanced = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(coin.id),
+            timeframe=15,
+            emit_events=True,
+        )
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_action_result(rebalanced)
     create_market_decision(db_session, coin_id=int(coin.id), timeframe=15, decision="SELL", confidence=0.8)
-    closed = evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=True)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        closed = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(coin.id),
+            timeframe=15,
+            emit_events=True,
+        )
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_action_result(closed)
 
     sell_coin = create_test_coin(db_session, symbol="ETHUSD_EVT", name="Ethereum Event Test")
     upsert_coin_metrics(db_session, coin_id=int(sell_coin.id), regime="bull_trend", timeframe=15)
     create_market_decision(db_session, coin_id=int(sell_coin.id), timeframe=15, decision="SELL", confidence=0.7)
-    sell_without_position = evaluate_portfolio_action(db_session, coin_id=int(sell_coin.id), timeframe=15, emit_events=True)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        sell_without_position = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(sell_coin.id),
+            timeframe=15,
+            emit_events=True,
+        )
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_action_result(sell_without_position)
 
     hold_coin = create_test_coin(db_session, symbol="SOLUSD_EVT", name="Solana Event Test")
     upsert_coin_metrics(db_session, coin_id=int(hold_coin.id), regime="sideways_range", timeframe=15)
     create_market_decision(db_session, coin_id=int(hold_coin.id), timeframe=15, decision="HOLD", confidence=0.55)
-    held = evaluate_portfolio_action(db_session, coin_id=int(hold_coin.id), timeframe=15, emit_events=True)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        held = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(hold_coin.id),
+            timeframe=15,
+            emit_events=True,
+        )
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_action_result(held)
 
-    assert opened["action"] == "OPEN_POSITION"
-    assert opened["portfolio_state"]["open_positions"] >= 1
-    assert opened["portfolio_state"]["updated_at"] is not None
-    assert rebalanced["action"] == "REDUCE_POSITION"
-    assert closed["action"] == "CLOSE_POSITION"
-    assert sell_without_position["action"] == "HOLD_POSITION"
-    assert held["action"] == "HOLD_POSITION"
+    assert opened.action == "OPEN_POSITION"
+    assert opened.portfolio_state is not None and opened.portfolio_state.open_positions >= 1
+    assert opened.portfolio_state is not None and opened.portfolio_state.updated_at is not None
+    assert rebalanced.action == "REDUCE_POSITION"
+    assert closed.action == "CLOSE_POSITION"
+    assert sell_without_position.action == "HOLD_POSITION"
+    assert held.action == "HOLD_POSITION"
     assert "portfolio_position_opened" in published
     assert "portfolio_rebalanced" in published
     assert "portfolio_position_closed" in published
 
 
-def test_portfolio_balance_rows_update_and_reopen_positions(db_session) -> None:
+@pytest.mark.asyncio
+async def test_portfolio_balance_rows_update_and_reopen_positions(async_db_session, db_session) -> None:
     class MutablePlugin:
         value_usd = 100.0
         balance = 2.0
@@ -455,7 +492,10 @@ def test_portfolio_balance_rows_update_and_reopen_positions(db_session) -> None:
     assert position.status == "open"
     assert position.closed_at is None
 
-    first_sync = sync_exchange_balances(db_session, emit_events=False)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        first_sync = await PortfolioService(uow).sync_exchange_balances(emit_events=False)
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_sync_result(first_sync)
     balance_row = db_session.scalar(
         select(PortfolioBalance)
         .where(
@@ -465,12 +505,15 @@ def test_portfolio_balance_rows_update_and_reopen_positions(db_session) -> None:
         .limit(1)
     )
     assert balance_row is not None
-    assert first_sync["balances"] == 1
+    assert first_sync.balances == 1
 
     MutablePlugin.value_usd = 150.0
     MutablePlugin.balance = 3.0
-    second_sync = sync_exchange_balances(db_session, emit_events=False)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        second_sync = await PortfolioService(uow).sync_exchange_balances(emit_events=False)
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_sync_result(second_sync)
     db_session.refresh(balance_row)
-    assert second_sync["balances"] == 1
+    assert second_sync.balances == 1
     assert float(balance_row.value_usd) == 150.0
     assert float(balance_row.balance) == 3.0
