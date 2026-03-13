@@ -11,8 +11,17 @@ from src.apps.hypothesis_engine.tasks.hypothesis_tasks import evaluate_hypothese
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Candle
 from src.core.db.session import SessionLocal
+from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
+
+
+def _run_dispatcher_loop() -> None:
+    consumer = create_topology_dispatcher_consumer()
+    try:
+        consumer.run()
+    finally:
+        consumer.close()
 
 
 @pytest.mark.asyncio
@@ -21,11 +30,16 @@ async def test_signal_created_pipeline_persists_and_publishes_hypothesis(seeded_
     event_timestamp = seeded_market["ETHUSD_EVT"]["latest_timestamp"]
 
     ctx = multiprocessing.get_context("spawn")
+    dispatcher = ctx.Process(
+        target=_run_dispatcher_loop,
+        daemon=True,
+    )
     worker = ctx.Process(
         target=run_worker_loop,
         args=("hypothesis_workers",),
         daemon=True,
     )
+    dispatcher.start()
     worker.start()
     try:
         publish_event(
@@ -68,7 +82,9 @@ async def test_signal_created_pipeline_persists_and_publishes_hypothesis(seeded_
         finally:
             redis_client.close()
     finally:
+        dispatcher.terminate()
         worker.terminate()
+        dispatcher.join(timeout=2.0)
         worker.join(timeout=2.0)
 
 

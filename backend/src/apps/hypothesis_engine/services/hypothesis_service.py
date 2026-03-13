@@ -42,7 +42,7 @@ class HypothesisService:
             "sector": coin.sector_code,
         }
         reasoning = await self._reasoning.generate(context)
-        hypothesis = await self._repo.create_hypothesis(
+        hypothesis = await self._repo.add_hypothesis(
             AIHypothesis(
                 coin_id=int(event.coin_id),
                 timeframe=effective_timeframe,
