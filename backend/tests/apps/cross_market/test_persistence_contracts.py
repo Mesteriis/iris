@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+import importlib.util
 
 import pytest
 from sqlalchemy import select
-import src.apps.cross_market.engine as cross_market_engine_module
 from src.apps.cross_market.models import CoinRelation
 from src.apps.cross_market.query_services import CrossMarketQueryService
-from src.apps.cross_market.read_models import RelationComputationContextReadModel
+from src.apps.cross_market.read_models import LeaderDecisionReadModel, RelationComputationContextReadModel
 from src.apps.cross_market.services import CrossMarketService
 from src.core.db.persistence import PERSISTENCE_LOGGER
 from src.core.db.uow import SessionUnitOfWork
@@ -71,6 +71,7 @@ async def test_cross_market_query_returns_immutable_read_models(async_db_session
         limit=4,
     )
     leader_context = await query_service.get_leader_detection_context(coin_id=int(leader.id))
+    leader_decision = await query_service.get_latest_leader_decision(leader_coin_id=int(leader.id), timeframe=60)
     aggregates = await query_service.list_sector_momentum_aggregates()
 
     assert context is not None
@@ -79,6 +80,9 @@ async def test_cross_market_query_returns_immutable_read_models(async_db_session
     assert "BTCUSD_EVT" in {item.symbol for item in context.candidates}
     assert leader_context is not None
     assert leader_context.symbol == "BTCUSD_EVT"
+    assert leader_decision is not None
+    assert isinstance(leader_decision, LeaderDecisionReadModel)
+    assert leader_decision.decision == "BUY"
     assert any(item.sector_id == int(leader.sector_id) for item in aggregates)
     with pytest.raises(FrozenInstanceError):
         context.follower_symbol = "changed"
@@ -86,6 +90,8 @@ async def test_cross_market_query_returns_immutable_read_models(async_db_session
         context.candidates[0].symbol = "changed"
     with pytest.raises(FrozenInstanceError):
         leader_context.symbol = "changed"
+    with pytest.raises(FrozenInstanceError):
+        leader_decision.confidence = 0.5
 
 
 @pytest.mark.asyncio
@@ -277,12 +283,4 @@ async def test_cross_market_persistence_logs_cover_query_repo_service_and_uow(as
 
 
 def test_cross_market_modules_export_no_public_sync_wrappers() -> None:
-    forbidden_exports = (
-        "update_coin_relations",
-        "refresh_sector_momentum",
-        "detect_market_leader",
-        "process_cross_market_event",
-    )
-
-    for export_name in forbidden_exports:
-        assert not hasattr(cross_market_engine_module, export_name), export_name
+    assert importlib.util.find_spec("src.apps.cross_market.engine") is None

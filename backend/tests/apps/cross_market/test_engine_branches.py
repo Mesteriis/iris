@@ -5,23 +5,20 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 
-from src.apps.cross_market.engine import (
-    _best_lagged_correlation,
-    _candidate_leaders,
-    _latest_leader_decision,
-    _pearson,
-    cross_market_alignment_weight,
-)
 from src.apps.cross_market.models import CoinRelation, SectorMetric
+from src.apps.cross_market.query_services import CrossMarketQueryService
 from src.apps.cross_market.services import CrossMarketRelationUpdateResult, CrossMarketSectorMomentumResult, CrossMarketService
+from src.apps.cross_market.support import best_lagged_correlation, pearson
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.repos import CandlePoint
 from src.apps.signals.models import MarketDecision
 from tests.cross_market_support import (
     DEFAULT_START,
+    compute_cross_market_alignment_weight,
     correlated_close_series,
     create_cross_market_coin,
     generate_close_series,
+    get_cross_market_leader_decision,
     run_cross_market_leader_detection,
     run_cross_market_process_event,
     run_cross_market_relation_update,
@@ -49,14 +46,15 @@ def _points_from_closes(closes: list[float]) -> list[CandlePoint]:
     return points
 
 
-def test_cross_market_helper_math_and_alignment_branches(db_session, monkeypatch) -> None:
-    assert _pearson([1.0, 1.0, 1.0], [2.0, 2.0, 2.0]) == 0.0
-    assert _pearson([1.0, 2.0], [1.0, 2.0, 3.0]) == 0.0
+@pytest.mark.asyncio
+async def test_cross_market_helper_math_and_alignment_branches(async_db_session, db_session, monkeypatch) -> None:
+    assert pearson([1.0, 1.0, 1.0], [2.0, 2.0, 2.0]) == 0.0
+    assert pearson([1.0, 2.0], [1.0, 2.0, 3.0]) == 0.0
 
     leader_returns = [0.009 if index % 5 else -0.002 for index in range(80)]
     leader_closes = generate_close_series(start_price=100.0, returns=leader_returns)
     follower_closes = correlated_close_series(leader_returns=leader_returns, lag_bars=2, start_price=60.0)
-    correlation, lag_hours, sample_size = _best_lagged_correlation(
+    correlation, lag_hours, sample_size = best_lagged_correlation(
         _points_from_closes(leader_closes),
         _points_from_closes(follower_closes),
         timeframe=60,
@@ -109,14 +107,37 @@ def test_cross_market_helper_math_and_alignment_branches(db_session, monkeypatch
         volume_change_24h=18.0,
     )
 
-    monkeypatch.setattr("src.apps.cross_market.engine.read_cached_correlation", lambda **_: None)
-    assert cross_market_alignment_weight(db_session, coin_id=int(follower.id), timeframe=60, directional_bias=0) == 1.0
-    assert cross_market_alignment_weight(db_session, coin_id=int(follower.id), timeframe=60, directional_bias=1) > 1.0
-    assert cross_market_alignment_weight(db_session, coin_id=int(follower.id), timeframe=60, directional_bias=-1) < 1.0
+    async def _no_cached_correlation(**_kwargs):
+        return None
 
-    decision, confidence = _latest_leader_decision(db_session, leader_coin_id=int(leader.id), timeframe=60)
-    assert decision == "BUY"
-    assert confidence >= 0.25
+    monkeypatch.setattr("src.apps.signals.services.read_cached_correlation_async", _no_cached_correlation)
+    assert await compute_cross_market_alignment_weight(
+        async_db_session,
+        coin_id=int(follower.id),
+        timeframe=60,
+        directional_bias=0,
+    ) == 1.0
+    assert await compute_cross_market_alignment_weight(
+        async_db_session,
+        coin_id=int(follower.id),
+        timeframe=60,
+        directional_bias=1,
+    ) > 1.0
+    assert await compute_cross_market_alignment_weight(
+        async_db_session,
+        coin_id=int(follower.id),
+        timeframe=60,
+        directional_bias=-1,
+    ) < 1.0
+
+    decision = await get_cross_market_leader_decision(
+        async_db_session,
+        leader_coin_id=int(leader.id),
+        timeframe=60,
+    )
+    assert decision is not None
+    assert decision.decision == "BUY"
+    assert decision.confidence >= 0.25
 
 
 @pytest.mark.asyncio
@@ -334,9 +355,9 @@ async def test_sector_rotation_and_process_dispatch(async_db_session, db_session
 @pytest.mark.asyncio
 async def test_cross_market_candidate_publish_and_fallback_branches(async_db_session, db_session, monkeypatch) -> None:
     short_points = _points_from_closes(generate_close_series(start_price=100.0, returns=[0.01] * 10))
-    assert _best_lagged_correlation(short_points, short_points, timeframe=60) == (0.0, 0, 10)
+    assert best_lagged_correlation(short_points, short_points, timeframe=60) == (0.0, 0, 10)
     exact_points = _points_from_closes(generate_close_series(start_price=100.0, returns=[0.01] * 48))
-    exact_correlation, _, exact_size = _best_lagged_correlation(exact_points, exact_points, timeframe=60)
+    exact_correlation, _, exact_size = best_lagged_correlation(exact_points, exact_points, timeframe=60)
     assert exact_correlation > 0.99
     assert exact_size == 48
 
@@ -348,7 +369,7 @@ async def test_cross_market_candidate_publish_and_fallback_branches(async_db_ses
     )
     preferred = create_cross_market_coin(
         db_session,
-        symbol="BTCUSD_EVT",
+        symbol="BTCUSD",
         name="Bitcoin Event Test",
         sector_name="store_of_value",
     )
@@ -358,7 +379,6 @@ async def test_cross_market_candidate_publish_and_fallback_branches(async_db_ses
         name="Alt Event Test",
         sector_name="smart_contract",
     )
-    monkeypatch.setattr("src.apps.cross_market.engine.LEADER_SYMBOLS", ("BTCUSD_EVT",))
     set_market_metrics(
         db_session,
         coin_id=int(preferred.id),
@@ -383,8 +403,13 @@ async def test_cross_market_candidate_publish_and_fallback_branches(async_db_ses
         volume_change_24h=15.0,
         market_cap=3_000_000_000.0,
     )
-    leader_returns = [0.008 if index % 6 else -0.002 for index in range(90)]
-    follower_closes = correlated_close_series(leader_returns=leader_returns, lag_bars=3, start_price=60.0)
+    leader_returns = [
+        0.009 if index % 11 in {1, 2, 3}
+        else -0.006 if index % 11 in {7, 8}
+        else 0.0015
+        for index in range(220)
+    ]
+    follower_closes = correlated_close_series(leader_returns=leader_returns, lag_bars=4, start_price=60.0)
     seed_candles(
         db_session,
         coin=preferred,
@@ -400,11 +425,17 @@ async def test_cross_market_candidate_publish_and_fallback_branches(async_db_ses
         closes=generate_close_series(start_price=20.0, returns=[0.01] * 10),
         start=DEFAULT_START,
     )
+    db_session.commit()
 
-    leaders = _candidate_leaders(db_session, follower=follower, limit=200)
-    assert leaders[0].symbol == "BTCUSD_EVT"
-    assert any(int(coin.sector_id or 0) == int(follower.sector_id or 0) for coin in leaders[1:])
-    assert any(int(coin.id) == int(same_sector_short.id) for coin in leaders)
+    query_service = CrossMarketQueryService(async_db_session)
+    context = await query_service.get_relation_computation_context(
+        follower_coin_id=int(follower.id),
+        preferred_symbols=("BTCUSD",),
+        limit=200,
+    )
+    assert context is not None
+    assert context.candidates[0].symbol == "BTCUSD"
+    assert any(candidate.coin_id == int(same_sector_short.id) for candidate in context.candidates)
 
     published: list[str] = []
     monkeypatch.setattr("tests.cross_market_support.publish_event", lambda event_type, payload: published.append(event_type))
@@ -439,10 +470,14 @@ async def test_cross_market_candidate_publish_and_fallback_branches(async_db_ses
         name="No Metrics Event Test",
         sector_name="payments",
     )
-    monkeypatch.setattr("src.apps.cross_market.engine.LEADER_SYMBOLS", ("BTCUSD_EVT", "NOMETRICS_EVT"))
-    no_sector_leaders = _candidate_leaders(db_session, follower=follower_without_sector)
-    assert orphan_preferred not in no_sector_leaders
-    assert no_sector_leaders[0].symbol == "BTCUSD_EVT"
+    no_sector_context = await query_service.get_relation_computation_context(
+        follower_coin_id=int(follower_without_sector.id),
+        preferred_symbols=("BTCUSD", "NOMETRICS_EVT"),
+        limit=8,
+    )
+    assert no_sector_context is not None
+    assert all(candidate.coin_id != int(orphan_preferred.id) for candidate in no_sector_context.candidates)
+    assert no_sector_context.candidates[0].symbol == "BTCUSD"
 
 
 @pytest.mark.asyncio
@@ -512,9 +547,27 @@ async def test_cross_market_decision_and_alignment_fallback_branches(async_db_se
     )
     db_session.commit()
 
-    assert _latest_leader_decision(db_session, leader_coin_id=int(bearish_leader.id), timeframe=240) == ("BUY", 0.91)
-    assert _latest_leader_decision(db_session, leader_coin_id=int(bearish_metrics_leader.id), timeframe=60)[0] == "SELL"
-    assert _latest_leader_decision(db_session, leader_coin_id=int(missing_leader.id), timeframe=60) == (None, 0.0)
+    explicit_decision = await get_cross_market_leader_decision(
+        async_db_session,
+        leader_coin_id=int(bearish_leader.id),
+        timeframe=240,
+    )
+    metrics_decision = await get_cross_market_leader_decision(
+        async_db_session,
+        leader_coin_id=int(bearish_metrics_leader.id),
+        timeframe=60,
+    )
+    missing_decision = await get_cross_market_leader_decision(
+        async_db_session,
+        leader_coin_id=int(missing_leader.id),
+        timeframe=60,
+    )
+    assert explicit_decision is not None
+    assert explicit_decision.decision == "BUY"
+    assert explicit_decision.confidence == pytest.approx(0.91)
+    assert metrics_decision is not None
+    assert metrics_decision.decision == "SELL"
+    assert missing_decision is None
     success_without_event = await run_cross_market_leader_detection(
         async_db_session,
         coin_id=int(bearish_metrics_leader.id),
@@ -537,7 +590,14 @@ async def test_cross_market_decision_and_alignment_fallback_branches(async_db_se
         price_change_24h=0.0,
         volume_change_24h=14.0,
     )
-    assert _latest_leader_decision(db_session, leader_coin_id=int(neutral.id), timeframe=60) == ("HOLD", 0.3)
+    neutral_decision = await get_cross_market_leader_decision(
+        async_db_session,
+        leader_coin_id=int(neutral.id),
+        timeframe=60,
+    )
+    assert neutral_decision is not None
+    assert neutral_decision.decision == "HOLD"
+    assert neutral_decision.confidence == pytest.approx(0.3)
 
     db_session.add_all(
         [
@@ -573,9 +633,22 @@ async def test_cross_market_decision_and_alignment_fallback_branches(async_db_se
     )
     db_session.commit()
 
-    monkeypatch.setattr("src.apps.cross_market.engine.read_cached_correlation", lambda **_: None)
-    bearish_weight = cross_market_alignment_weight(db_session, coin_id=int(follower.id), timeframe=240, directional_bias=-1)
-    bullish_weight = cross_market_alignment_weight(db_session, coin_id=int(follower.id), timeframe=240, directional_bias=1)
+    async def _no_cached_correlation(**_kwargs):
+        return None
+
+    monkeypatch.setattr("src.apps.signals.services.read_cached_correlation_async", _no_cached_correlation)
+    bearish_weight = await compute_cross_market_alignment_weight(
+        async_db_session,
+        coin_id=int(follower.id),
+        timeframe=240,
+        directional_bias=-1,
+    )
+    bullish_weight = await compute_cross_market_alignment_weight(
+        async_db_session,
+        coin_id=int(follower.id),
+        timeframe=240,
+        directional_bias=1,
+    )
     assert bearish_weight > 1.0
     assert bullish_weight < 1.0
 
@@ -597,7 +670,12 @@ async def test_cross_market_decision_and_alignment_fallback_branches(async_db_se
         )
     )
     db_session.commit()
-    assert 0.75 <= cross_market_alignment_weight(db_session, coin_id=int(follower_without_sector.id), timeframe=240, directional_bias=1) <= 1.35
+    assert 0.75 <= await compute_cross_market_alignment_weight(
+        async_db_session,
+        coin_id=int(follower_without_sector.id),
+        timeframe=240,
+        directional_bias=1,
+    ) <= 1.35
 
     follower_with_sideways_sector = create_cross_market_coin(
         db_session,
@@ -630,7 +708,12 @@ async def test_cross_market_decision_and_alignment_fallback_branches(async_db_se
         ]
     )
     db_session.commit()
-    assert 0.75 <= cross_market_alignment_weight(db_session, coin_id=int(follower_with_sideways_sector.id), timeframe=240, directional_bias=1) <= 1.35
+    assert 0.75 <= await compute_cross_market_alignment_weight(
+        async_db_session,
+        coin_id=int(follower_with_sideways_sector.id),
+        timeframe=240,
+        directional_bias=1,
+    ) <= 1.35
 
     follower_without_sector_metric = create_cross_market_coin(
         db_session,
@@ -649,8 +732,8 @@ async def test_cross_market_decision_and_alignment_fallback_branches(async_db_se
         )
     )
     db_session.commit()
-    assert 0.75 <= cross_market_alignment_weight(
-        db_session,
+    assert 0.75 <= await compute_cross_market_alignment_weight(
+        async_db_session,
         coin_id=int(follower_without_sector_metric.id),
         timeframe=240,
         directional_bias=1,

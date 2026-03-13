@@ -47,6 +47,13 @@ class SectorLeaderReadModel:
 
 
 @dataclass(slots=True, frozen=True)
+class LeaderDecisionReadModel:
+    leader_coin_id: int
+    decision: str
+    confidence: float
+
+
+@dataclass(slots=True, frozen=True)
 class LeaderDetectionContextReadModel:
     coin_id: int
     symbol: str
@@ -60,6 +67,7 @@ class LeaderDetectionContextReadModel:
 __all__ = [
     "ExistingRelationSnapshotReadModel",
     "LeaderDetectionContextReadModel",
+    "LeaderDecisionReadModel",
     "RelationCandidateReadModel",
     "RelationComputationContextReadModel",
     "SectorLeaderReadModel",

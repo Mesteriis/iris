@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 from src.apps.cross_market.cache import cache_correlation_snapshot_async
+from src.apps.cross_market.query_services import CrossMarketQueryService
 from src.apps.cross_market.services import CrossMarketService
 from src.apps.cross_market.support import relation_timeframe
 from src.apps.indicators.models import CoinMetrics
@@ -18,6 +19,7 @@ from src.apps.predictions.services import (
     PredictionService,
     PredictionSideEffectDispatcher,
 )
+from src.apps.signals.services import SignalFusionService
 from src.core.db.uow import SessionUnitOfWork
 from src.runtime.streams.publisher import publish_event
 
@@ -138,6 +140,33 @@ def create_pending_prediction(
 
 
 DEFAULT_START = datetime(2026, 3, 1, 0, 0, tzinfo=UTC)
+
+
+async def get_cross_market_leader_decision(
+    async_db_session,
+    *,
+    leader_coin_id: int,
+    timeframe: int,
+):
+    return await CrossMarketQueryService(async_db_session).get_latest_leader_decision(
+        leader_coin_id=leader_coin_id,
+        timeframe=timeframe,
+    )
+
+
+async def compute_cross_market_alignment_weight(
+    async_db_session,
+    *,
+    coin_id: int,
+    timeframe: int,
+    directional_bias: float,
+) -> float:
+    async with SessionUnitOfWork(async_db_session) as uow:
+        return await SignalFusionService(uow)._cross_market_alignment_weight(
+            coin_id=coin_id,
+            timeframe=timeframe,
+            directional_bias=directional_bias,
+        )
 
 
 async def run_cross_market_relation_update(

@@ -7,13 +7,16 @@ from src.apps.cross_market.models import CoinRelation, Sector, SectorMetric
 from src.apps.cross_market.read_models import (
     ExistingRelationSnapshotReadModel,
     LeaderDetectionContextReadModel,
+    LeaderDecisionReadModel,
     RelationCandidateReadModel,
     RelationComputationContextReadModel,
     SectorLeaderReadModel,
     SectorMomentumAggregateReadModel,
 )
+from src.apps.cross_market.support import clamp_relation_value
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.models import Coin
+from src.apps.signals.models import MarketDecision
 from src.core.db.persistence import AsyncQueryService
 
 
@@ -241,6 +244,53 @@ class CrossMarketQueryService(AsyncQueryService):
             sector_id=int(row.sector_id) if row.sector_id is not None else None,
         )
         self._log_debug("query.get_cross_market_leader_detection_context.result", mode="read", found=True)
+        return item
+
+    async def get_latest_leader_decision(self, *, leader_coin_id: int, timeframe: int) -> LeaderDecisionReadModel | None:
+        self._log_debug("query.get_cross_market_leader_decision", mode="read", leader_coin_id=leader_coin_id, timeframe=timeframe)
+        supported_timeframes = tuple(dict.fromkeys((int(timeframe), 60, 240, 1440)))
+        row = (
+            await self.session.execute(
+                select(MarketDecision.decision, MarketDecision.confidence)
+                .where(
+                    MarketDecision.coin_id == int(leader_coin_id),
+                    MarketDecision.timeframe.in_(supported_timeframes),
+                )
+                .order_by(MarketDecision.created_at.desc(), MarketDecision.id.desc())
+                .limit(1)
+            )
+        ).first()
+        if row is not None:
+            item = LeaderDecisionReadModel(
+                leader_coin_id=int(leader_coin_id),
+                decision=str(row.decision),
+                confidence=float(row.confidence),
+            )
+            self._log_debug("query.get_cross_market_leader_decision.result", mode="read", found=True, source="market_decision")
+            return item
+
+        price_change = await self.session.scalar(
+            select(CoinMetrics.price_change_24h).where(CoinMetrics.coin_id == int(leader_coin_id)).limit(1)
+        )
+        if price_change is None:
+            self._log_debug("query.get_cross_market_leader_decision.result", mode="read", found=False)
+            return None
+
+        price_change_value = float(price_change or 0.0)
+        decision = "HOLD"
+        confidence = 0.3
+        if price_change_value > 0:
+            decision = "BUY"
+            confidence = clamp_relation_value(abs(price_change_value) / 10, 0.25, 0.75)
+        elif price_change_value < 0:
+            decision = "SELL"
+            confidence = clamp_relation_value(abs(price_change_value) / 10, 0.25, 0.75)
+        item = LeaderDecisionReadModel(
+            leader_coin_id=int(leader_coin_id),
+            decision=decision,
+            confidence=float(confidence),
+        )
+        self._log_debug("query.get_cross_market_leader_decision.result", mode="read", found=True, source="coin_metrics")
         return item
 
 

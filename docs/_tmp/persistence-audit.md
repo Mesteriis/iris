@@ -195,7 +195,7 @@ Classification:
 
 #### `apps/cross_market`
 
-Status: migrated on the async runtime/worker and test-facing surfaces; public sync wrappers removed
+Status: migrated on the async runtime/worker and test-facing surfaces; legacy sync engine removed
 
 - repositories now isolate Core upserts for `coin_relations` and `sector_metrics` in [backend/src/apps/cross_market/repositories.py](backend/src/apps/cross_market/repositories.py)
 - read-only computation contexts now go through [backend/src/apps/cross_market/query_services.py](backend/src/apps/cross_market/query_services.py)
@@ -203,16 +203,13 @@ Status: migrated on the async runtime/worker and test-facing surfaces; public sy
 - active worker writes now run through [backend/src/apps/cross_market/services.py](backend/src/apps/cross_market/services.py) under the shared async UoW instead of `AsyncSession.run_sync`
 - leader/follower candle loading now batches candidate leader history through [backend/src/apps/market_data/repositories.py](backend/src/apps/market_data/repositories.py), removing the old loop-driven N+1 path from relation updates
 - correlation cache writes, prediction cache writes and emitted leader/rotation/correlation events now happen only after the persistence transaction commits on the active runtime path
-- the public sync `update_coin_relations(...)`, `refresh_sector_momentum(...)`, `detect_market_leader(...)` and `process_cross_market_event(...)` wrappers have now been removed from [backend/src/apps/cross_market/engine.py](backend/src/apps/cross_market/engine.py); active callers and tests use async [backend/src/apps/cross_market/services.py](backend/src/apps/cross_market/services.py) plus `SessionUnitOfWork`-backed helper harnesses
-- [backend/src/apps/cross_market/engine.py](backend/src/apps/cross_market/engine.py) is now narrowed to helper-only math/alignment logic used by `signals` and focused branch tests, instead of owning sync persistence writes
+- [backend/src/apps/cross_market/engine.py](backend/src/apps/cross_market/engine.py) has now been deleted entirely; active callers and tests use async [backend/src/apps/cross_market/services.py](backend/src/apps/cross_market/services.py), [backend/src/apps/cross_market/query_services.py](backend/src/apps/cross_market/query_services.py) and `SessionUnitOfWork`-backed helper harnesses instead
+- `cross_market` leader-decision reads now flow through a typed immutable query contract in [backend/src/apps/cross_market/query_services.py](backend/src/apps/cross_market/query_services.py) and [backend/src/apps/cross_market/read_models.py](backend/src/apps/cross_market/read_models.py) instead of a sync `Session` helper
 - async correlation cache clients in [backend/src/apps/cross_market/cache.py](backend/src/apps/cross_market/cache.py) are now loop-scoped like `signals`/`predictions`, removing another shared-client edge from tests and worker runtimes
-- remaining follow-up:
-  - helper-only sync alignment logic under [backend/src/apps/cross_market/engine.py](backend/src/apps/cross_market/engine.py) should eventually move behind async query/read contracts so `signals` no longer depends on a `Session`-backed helper module at all
 
 Classification:
 
 - `OK` on the async/background runtime and test-facing surfaces
-- `later migration` for residual sync helper-only alignment logic kept behind the engine module
 
 #### `apps/predictions`
 
