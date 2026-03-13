@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import importlib.util
 from datetime import datetime, timezone
 
 import pytest
 from tests.apps.conftest import api_path
 
+from src.apps.news.api.router import build_router as build_news_router
 from src.apps.news.models import NewsItem, NewsSource
+from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 
 @pytest.mark.asyncio
@@ -33,7 +36,7 @@ async def test_news_endpoints(api_app_client, db_session, monkeypatch) -> None:
 
     duplicate_response = await client.post("/news/sources", json=create_payload)
     assert duplicate_response.status_code == 400
-    assert "already exists" in duplicate_response.json()["detail"]
+    assert "already exists" in duplicate_response.json()["detail"]["message"]
 
     unsupported_response = await client.post(
         "/news/sources",
@@ -45,7 +48,7 @@ async def test_news_endpoints(api_app_client, db_session, monkeypatch) -> None:
         },
     )
     assert unsupported_response.status_code == 400
-    assert "developer API" in unsupported_response.json()["detail"]
+    assert "developer API" in unsupported_response.json()["detail"]["message"]
 
     sources_response = await client.get("/news/sources")
     assert sources_response.status_code == 200
@@ -172,9 +175,9 @@ async def test_telegram_onboarding_endpoints(api_app_client, monkeypatch) -> Non
             }
         ]
 
-    monkeypatch.setattr("src.apps.news.views.TelegramSessionOnboardingService.request_code", fake_request)
-    monkeypatch.setattr("src.apps.news.views.TelegramSessionOnboardingService.confirm_code", fake_confirm)
-    monkeypatch.setattr("src.apps.news.views.TelegramSessionOnboardingService.list_dialogs", fake_dialogs)
+    monkeypatch.setattr("src.apps.news.api.deps.TelegramSessionOnboardingService.request_code", fake_request)
+    monkeypatch.setattr("src.apps.news.api.deps.TelegramSessionOnboardingService.confirm_code", fake_confirm)
+    monkeypatch.setattr("src.apps.news.api.deps.TelegramSessionOnboardingService.list_dialogs", fake_dialogs)
 
     request_response = await client.post(
         "/news/onboarding/telegram/session/request",
@@ -274,3 +277,21 @@ async def test_telegram_source_provisioning_endpoints(api_app_client) -> None:
     assert payload["created"][0]["display_name"] == "Private Group Feed"
     assert payload["results"][0]["status"] == "skipped"
     assert payload["results"][1]["status"] == "created"
+
+
+def test_news_api_router_is_mode_aware_and_legacy_views_removed() -> None:
+    full_router = build_news_router(mode=LaunchMode.FULL, profile=DeploymentProfile.PLATFORM_FULL)
+    full_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in full_router.routes}
+    assert any(path == "/news/sources" and "POST" in methods for path, methods in full_paths)
+    assert any(path == "/news/onboarding/telegram/wizard" and "GET" in methods for path, methods in full_paths)
+    assert any(path == "/news/sources/{source_id}/jobs/run" and "POST" in methods for path, methods in full_paths)
+
+    ha_router = build_news_router(mode=LaunchMode.HA_ADDON, profile=DeploymentProfile.HA_EMBEDDED)
+    ha_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in ha_router.routes}
+    assert not any(path == "/news/sources" and "POST" in methods for path, methods in ha_paths)
+    assert not any(path == "/news/onboarding/telegram/wizard" and "GET" in methods for path, methods in ha_paths)
+    assert not any(path == "/news/sources/{source_id}/jobs/run" and "POST" in methods for path, methods in ha_paths)
+    assert any(path == "/news/plugins" and "GET" in methods for path, methods in ha_paths)
+    assert any(path == "/news/items" and "GET" in methods for path, methods in ha_paths)
+
+    assert importlib.util.find_spec("src.apps.news.views") is None

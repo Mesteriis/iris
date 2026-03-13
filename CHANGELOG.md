@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Root `/api/v1` HTTP tree under `backend/src/api`, shared transport primitives in `backend/src/core/http`, and mode/profile-aware domain router assembly as the new bootstrap standard for API cutovers.
 - `control_plane` and `market_structure` now expose HTTP only through split `api/` packages with dedicated `deps/errors/presenters` modules, async-func-first endpoint files, structured API errors and mode-aware router builders; the legacy giant `views.py` modules are removed.
+- `news` now exposes HTTP only through a split `api/` package with dedicated deps/errors/presenters modules, category routers for read/commands/jobs/onboarding, structured API errors and a mode-aware builder; the legacy `news/views.py` module is removed.
 - Shared persistence foundation in `backend/src/core/db` with structured persistence logging helpers, explicit async unit-of-work boundaries and session-backed UoW support for tests and externally managed sessions.
 - `hypothesis_engine` repository/query split with immutable read models, UoW-owned transactions and persistence contract tests covering read-model immutability, logging hooks and explicit commit/rollback behavior.
 - `hypothesis_engine` prompt loading and reasoning helpers now depend on explicit `HypothesisQueryService` / `PromptLoader` contracts instead of optional `AsyncSession` injection.

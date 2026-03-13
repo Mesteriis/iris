@@ -22,11 +22,13 @@
 - shared transport foundation: `backend/src/core/http/*`
 - `backend/src/apps/control_plane/api/*`
 - `backend/src/apps/market_structure/api/*`
+- `backend/src/apps/news/api/*`
 
 Удалено:
 
 - `backend/src/apps/control_plane/views.py`
 - `backend/src/apps/market_structure/views.py`
+- `backend/src/apps/news/views.py`
 
 ## Текущая HTTP поверхность
 
@@ -34,7 +36,7 @@ Endpoint modules:
 
 - `backend/src/apps/system/views.py`: 2 endpoints
 - `backend/src/apps/market_data/views.py`: 6 endpoints
-- `backend/src/apps/news/views.py`: 13 endpoints
+- `backend/src/apps/news/api/router.py` + split endpoint modules
 - `backend/src/apps/hypothesis_engine/views.py`: 8 endpoints
 - `backend/src/apps/patterns/views.py`: 9 endpoints
 - `backend/src/apps/signals/views.py`: 16 endpoints
@@ -48,7 +50,7 @@ Bootstrap wiring:
 
 - `backend/src/core/bootstrap/app.py` подключает только корневой `api` router
 - `backend/src/api/v1/router.py` централизованно монтирует versioned surface `/api/v1`
-- `control_plane` и `market_structure` уже подключаются через mode-aware `build_router(mode, profile)`
+- `control_plane`, `market_structure` и `news` уже подключаются через mode-aware `build_router(mode, profile)`
 - остальные домены все еще частично живут в старом `views.py` стиле
 
 Первый structural gap уже закрыт:
@@ -75,10 +77,9 @@ Bootstrap wiring:
 
 Самые тяжелые примеры:
 
-- `backend/src/apps/market_structure/views.py`
-- `backend/src/apps/control_plane/views.py`
 - `backend/src/apps/signals/views.py`
-- `backend/src/apps/news/views.py`
+- `backend/src/apps/market_data/views.py`
+- `backend/src/apps/hypothesis_engine/views.py`
 
 Типичные симптомы:
 
@@ -117,12 +118,10 @@ Bootstrap wiring:
 
 Это видно в:
 
-- `backend/src/apps/news/views.py`
 - `backend/src/apps/market_data/views.py`
 - `backend/src/apps/patterns/views.py`
 - `backend/src/apps/hypothesis_engine/views.py`
-- `backend/src/apps/control_plane/views.py`
-- `backend/src/apps/market_structure/views.py`
+- `backend/src/apps/signals/views.py`
 
 Нужен единый command-endpoint standard, иначе у нас десятки почти одинаковых endpoint handlers.
 
@@ -960,7 +959,7 @@ HTTP/API governance должен учитывать эволюцию surface, а
 - определить, какие endpoints остаются под `/signals/*`, а какие должны стать отдельными top-level resources
 - явно зафиксировать canonical ownership для signal surface и derived decision surface
 
-### P0: `news`
+### P0: `news` [done]
 
 Файл:
 
