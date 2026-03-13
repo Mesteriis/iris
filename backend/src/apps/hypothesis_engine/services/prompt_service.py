@@ -14,7 +14,7 @@ class PromptService:
         self._uow = uow
         self._repo = HypothesisRepository(uow.session)
         self._queries = HypothesisQueryService(uow.session)
-        self._loader = PromptLoader(uow.session)
+        self._loader = PromptLoader(self._queries)
 
     async def list_prompts(self, *, name: str | None = None) -> list[AIPromptRead]:
         return [AIPromptRead.model_validate(prompt) for prompt in await self._queries.list_prompts(name=name)]

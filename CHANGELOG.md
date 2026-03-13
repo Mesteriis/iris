@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Shared persistence foundation in `backend/src/core/db` with structured persistence logging helpers, explicit async unit-of-work boundaries and session-backed UoW support for tests and externally managed sessions.
 - `hypothesis_engine` repository/query split with immutable read models, UoW-owned transactions and persistence contract tests covering read-model immutability, logging hooks and explicit commit/rollback behavior.
+- `hypothesis_engine` prompt loading and reasoning helpers now depend on explicit `HypothesisQueryService` / `PromptLoader` contracts instead of optional `AsyncSession` injection.
 - `news` repository/query split with immutable read models, UoW-owned source CRUD/polling and pipeline writes, plus persistence contract coverage for read-model immutability and logging hooks.
 - `market_structure` repository/query split with immutable read models, UoW-owned source CRUD/polling/manual-ingest/webhook flows, SQLAlchemy Core snapshot upserts behind repositories and persistence contract coverage for read-model immutability and logging hooks.
 - `market_data` repository/query split with immutable coin/history read models, UoW-owned async CRUD/task entrypoints, anti-N+1 backfill candidate selection and persistence contract coverage for read-model immutability and logging hooks.

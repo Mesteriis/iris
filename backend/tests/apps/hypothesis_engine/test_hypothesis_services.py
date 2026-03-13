@@ -8,6 +8,7 @@ from sqlalchemy import select
 from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AIPrompt, AIWeight
 from src.apps.hypothesis_engine.prompts import PromptLoader
 from src.apps.hypothesis_engine.providers import LocalHTTPProvider, OpenAILikeProvider
+from src.apps.hypothesis_engine.query_services import HypothesisQueryService
 from src.apps.hypothesis_engine.services.weight_update_service import WeightUpdateService, posterior_mean
 from src.apps.market_data.domain import utc_now
 from src.core.db.uow import SessionUnitOfWork
@@ -26,7 +27,7 @@ async def test_prompt_loader_uses_db_cache_and_invalidation(async_db_session, re
     async_db_session.add(prompt)
     await async_db_session.commit()
 
-    loader = PromptLoader(async_db_session)
+    loader = PromptLoader(HypothesisQueryService(async_db_session))
     loaded = await loader.load("hypothesis.signal_created")
     assert loaded.template == "signal prompt v3"
     assert redis_client.get("iris:ai:prompt:hypothesis.signal_created:active") is not None

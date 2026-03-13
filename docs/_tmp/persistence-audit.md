@@ -85,6 +85,7 @@ Status: migrated on the API/application surface and background entrypoints
 - read flows now go through [backend/src/apps/hypothesis_engine/query_services.py](backend/src/apps/hypothesis_engine/query_services.py)
 - views, tasks and consumers now coordinate persistence through the shared async UoW
 - read paths default to immutable dataclass models from [backend/src/apps/hypothesis_engine/read_models.py](backend/src/apps/hypothesis_engine/read_models.py)
+- prompt loading and reasoning helpers now depend on explicit query/loader contracts instead of optional `AsyncSession` plumbing
 - persistence logging covers repository, query and transaction events
 
 Classification:

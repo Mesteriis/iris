@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.apps.hypothesis_engine.constants import (
     DEFAULT_HYPOTHESIS_HORIZON_MIN,
     DEFAULT_PROMPT_NAME,
@@ -16,9 +14,8 @@ from src.apps.hypothesis_engine.providers import create_provider
 
 
 class ReasoningService:
-    def __init__(self, db: AsyncSession | None = None) -> None:
-        self._db = db
-        self._loader = PromptLoader(db)
+    def __init__(self, prompt_loader: PromptLoader) -> None:
+        self._loader = prompt_loader
 
     async def generate(self, ctx: dict[str, Any]) -> dict[str, Any]:
         event_type = str(ctx.get("event_type") or "")

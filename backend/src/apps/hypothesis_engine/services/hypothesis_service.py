@@ -10,6 +10,7 @@ from src.apps.hypothesis_engine.constants import (
     SUPPORTED_HYPOTHESIS_SOURCE_EVENTS,
 )
 from src.apps.hypothesis_engine.models import AIHypothesis
+from src.apps.hypothesis_engine.prompts import PromptLoader
 from src.apps.hypothesis_engine.query_services import HypothesisQueryService
 from src.apps.hypothesis_engine.repositories import HypothesisRepository
 from src.apps.market_data.domain import ensure_utc
@@ -23,7 +24,7 @@ class HypothesisService:
         self._uow = uow
         self._repo = HypothesisRepository(uow.session)
         self._queries = HypothesisQueryService(uow.session)
-        self._reasoning = ReasoningService(uow.session)
+        self._reasoning = ReasoningService(PromptLoader(self._queries))
 
     async def create_from_event(self, event: IrisEvent) -> int:
         if event.event_type not in SUPPORTED_HYPOTHESIS_SOURCE_EVENTS or event.coin_id <= 0:

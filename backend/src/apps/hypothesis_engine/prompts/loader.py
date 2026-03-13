@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.apps.hypothesis_engine.memory.cache import (
     cache_active_prompt_async,
     invalidate_prompt_cache_async,
@@ -36,9 +34,8 @@ def _normalize_prompt_payload(payload: dict[str, Any], *, source: str) -> Loaded
 
 
 class PromptLoader:
-    def __init__(self, db: AsyncSession | None = None) -> None:
-        self._db = db
-        self._queries = HypothesisQueryService(db) if db is not None else None
+    def __init__(self, queries: HypothesisQueryService | None = None) -> None:
+        self._queries = queries
 
     async def get(self, name: str) -> str:
         return (await self.load(name)).template
