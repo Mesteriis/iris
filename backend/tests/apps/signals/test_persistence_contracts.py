@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+import importlib.util
 from datetime import timedelta
 
 import pytest
-import src.apps.signals.fusion as signal_fusion_module
-import src.apps.signals.history as signal_history_module
 import src.apps.signals.services as signal_services_module
 from sqlalchemy import select
 from src.apps.signals.models import MarketDecision, Signal, SignalHistory
@@ -257,14 +256,5 @@ def test_signal_services_exports_no_public_async_query_wrappers() -> None:
 
 
 def test_signal_modules_export_no_public_sync_wrappers() -> None:
-    forbidden_exports = (
-        (signal_fusion_module, "SignalFusionCompatibilityService"),
-        (signal_fusion_module, "evaluate_market_decision"),
-        (signal_fusion_module, "evaluate_news_fusion_event"),
-        (signal_history_module, "SignalHistoryCompatibilityService"),
-        (signal_history_module, "refresh_signal_history"),
-        (signal_history_module, "refresh_recent_signal_history"),
-    )
-
-    for module, export_name in forbidden_exports:
-        assert not hasattr(module, export_name), f"{module.__name__}.{export_name}"
+    assert importlib.util.find_spec("src.apps.signals.fusion") is None
+    assert importlib.util.find_spec("src.apps.signals.history") is None
