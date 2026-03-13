@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import importlib.util
 from contextlib import asynccontextmanager
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from src.apps.hypothesis_engine.api.router import build_router as build_hypothesis_router
+from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 import src.core.bootstrap.app as bootstrap_app_module
 from src.runtime.streams.publisher import flush_publisher, publish_event
@@ -31,8 +34,17 @@ async def hypothesis_api_client(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_hypothesis_prompt_endpoints(hypothesis_api_client) -> None:
+async def test_hypothesis_prompt_endpoints(hypothesis_api_client, monkeypatch) -> None:
     _, client = hypothesis_api_client
+
+    queued: dict[str, bool] = {}
+
+    from src.apps.hypothesis_engine.tasks.hypothesis_tasks import evaluate_hypotheses_job
+
+    async def fake_kiq() -> None:
+        queued["called"] = True
+
+    monkeypatch.setattr(evaluate_hypotheses_job, "kiq", fake_kiq)
 
     assert (await client.get("/hypothesis/prompts")).status_code == 200
 
@@ -68,6 +80,12 @@ async def test_hypothesis_prompt_endpoints(hypothesis_api_client) -> None:
     assert evals_response.status_code == 200
     assert evals_response.json() == []
 
+    job_response = await client.post("/hypothesis/jobs/evaluate")
+    assert job_response.status_code == 202
+    assert job_response.json()["status"] == "accepted"
+    assert job_response.json()["operation_type"] == "hypothesis.evaluate"
+    assert queued == {"called": True}
+
 
 @pytest.mark.asyncio
 async def test_hypothesis_sse_endpoint_emits_ai_events(hypothesis_api_client) -> None:
@@ -100,3 +118,19 @@ async def test_hypothesis_sse_endpoint_emits_ai_events(hypothesis_api_client) ->
     payload = json.loads(data_line.removeprefix("data: "))
     assert payload["event"] == "ai_insight"
     assert payload["payload"]["hypothesis_id"] == 12
+
+
+def test_hypothesis_api_router_is_mode_aware_and_legacy_views_removed() -> None:
+    full_router = build_hypothesis_router(mode=LaunchMode.FULL, profile=DeploymentProfile.PLATFORM_FULL)
+    ha_router = build_hypothesis_router(mode=LaunchMode.HA_ADDON, profile=DeploymentProfile.HA_EMBEDDED)
+
+    full_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in full_router.routes}
+    ha_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in ha_router.routes}
+
+    assert any(path == "/hypothesis/jobs/evaluate" and "POST" in methods for path, methods in full_paths)
+    assert any(path == "/hypothesis/sse/ai" and "GET" in methods for path, methods in full_paths)
+    assert not any(path == "/hypothesis/jobs/evaluate" for path, _ in ha_paths)
+    assert not any(path == "/hypothesis/sse/ai" for path, _ in ha_paths)
+    assert any(path == "/hypothesis/prompts" and "GET" in methods for path, methods in ha_paths)
+    assert any(path == "/hypothesis/prompts/{prompt_id}/activate" and "POST" in methods for path, methods in ha_paths)
+    assert importlib.util.find_spec("src.apps.hypothesis_engine.views") is None
