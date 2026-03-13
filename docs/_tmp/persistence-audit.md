@@ -261,7 +261,7 @@ Classification:
 
 #### `apps/portfolio`
 
-Status: migrated on the async/public API read surface, scheduled balance-sync path and runtime worker action path; legacy sync engine/selectors still remain for compatibility callers/tests
+Status: migrated on the async/public API read surface, scheduled balance-sync path and runtime worker action path; legacy sync engine helpers still remain, but the public sync selector surface is gone
 
 - read-only portfolio projections now go through [backend/src/apps/portfolio/query_services.py](backend/src/apps/portfolio/query_services.py)
 - immutable dataclass read models now live in [backend/src/apps/portfolio/read_models.py](backend/src/apps/portfolio/read_models.py)
@@ -285,20 +285,21 @@ Status: migrated on the async/public API read surface, scheduled balance-sync pa
 - additional branch coverage in [backend/tests/apps/portfolio/test_engine_branches.py](backend/tests/apps/portfolio/test_engine_branches.py) now exercises async `PortfolioService` for action-event flows and repeated balance-sync updates as well, leaving the residual sync engine usage in tests concentrated around helper-level and explicit compatibility-boundary assertions
 - the remaining normal behavioural checks in [backend/tests/apps/portfolio/test_engine_branches.py](backend/tests/apps/portfolio/test_engine_branches.py) now also run through async `PortfolioService`, so `portfolio.engine` sync wrappers are increasingly isolated to explicit compatibility tests rather than routine branch coverage
 - the public sync `portfolio.engine` wrappers for `ensure_portfolio_state`, `refresh_portfolio_state`, `evaluate_portfolio_action` and `sync_exchange_balances` have now been removed entirely; active callers are on async [backend/src/apps/portfolio/services.py](backend/src/apps/portfolio/services.py), while [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) remains only for low-level helper logic still being retired incrementally
+- the public sync selector API formerly living in [backend/src/apps/portfolio/selectors.py](backend/src/apps/portfolio/selectors.py) has now been removed; callers and tests read state/actions/positions only through async [backend/src/apps/portfolio/query_services.py](backend/src/apps/portfolio/query_services.py), and `selectors.py` no longer exports compatibility query functions
 - remaining follow-up:
-  - [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) and [backend/src/apps/portfolio/selectors.py](backend/src/apps/portfolio/selectors.py) still own sync helper/selector logic that should be folded into async services/query layers so the residual engine module can shrink further
+  - [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) still owns sync helper logic that should be folded into async services so the residual engine module can shrink further
 
 Classification:
 
 - `OK` on the async/public API, scheduled sync and runtime worker surfaces
-- `later migration` for residual sync analytical helpers kept behind the compatibility engine/selector modules
+- `later migration` for residual sync analytical helpers kept behind the compatibility engine module
 
 ### Sync-Heavy Analytical Domains
 
 These domains are still dominated by synchronous `Session` access inside selectors/engines and represent the largest remaining migration surface:
 
 - legacy `apps/cross_market/engine.py`
-- legacy `apps/portfolio/engine.py` and `apps/portfolio/selectors.py`
+- legacy `apps/portfolio/engine.py`
 
 Shared issues:
 
@@ -394,7 +395,7 @@ Recommended rollout order:
 11. completed on the async/public API and scheduled runtime surface: `apps/predictions`
 12. completed on the async/public API plus signal-fusion/signal-history runtime and test-facing surfaces: `apps/signals`
 13. completed on the async/public API and scheduled sync surface: `apps/portfolio`
-14. next: compatibility helpers in `cross_market` and legacy sync `portfolio` engine/selectors
+14. next: compatibility helpers in `cross_market` and legacy sync `portfolio` engine
 15. later: helper-only sync analytical modules and leftover compatibility assertions in tests
 
 ## Current Behavior To Preserve

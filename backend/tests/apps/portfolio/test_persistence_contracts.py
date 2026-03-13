@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import FrozenInstanceError
 
 import pytest
+import src.apps.portfolio.selectors as portfolio_selectors_module
 from sqlalchemy import select
 
 import src.apps.portfolio.services as portfolio_services_module
 from src.apps.portfolio.models import PortfolioAction, PortfolioBalance, PortfolioPosition, PortfolioState
 from src.apps.portfolio.query_services import PortfolioQueryService
-from src.apps.portfolio.selectors import get_portfolio_state, list_portfolio_actions, list_portfolio_positions
 from src.apps.portfolio.services import PortfolioService
 from src.core.db.persistence import PERSISTENCE_LOGGER
 from src.core.db.uow import SessionUnitOfWork
@@ -199,45 +199,13 @@ def test_portfolio_services_exports_no_public_async_query_wrappers() -> None:
         assert not hasattr(portfolio_services_module, export_name), export_name
 
 
-def test_portfolio_legacy_compatibility_queries_emit_deprecation_logs(db_session, monkeypatch) -> None:
-    _seed_portfolio_projection_state(db_session)
-    events: list[str] = []
+def test_portfolio_modules_export_no_public_sync_selectors() -> None:
+    forbidden_exports = (
+        "PortfolioCompatibilityQuery",
+        "get_portfolio_state",
+        "list_portfolio_actions",
+        "list_portfolio_positions",
+    )
 
-    def _log(level: int, message: str, *args, **kwargs) -> None:
-        del level, args, kwargs
-        events.append(message)
-
-    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
-
-    positions = list_portfolio_positions(db_session, limit=5)
-    actions = list_portfolio_actions(db_session, limit=5)
-    state_payload = get_portfolio_state(db_session)
-
-    assert positions and positions[0]["symbol"] == "BTCUSD_EVT"
-    assert actions and actions[0]["action"] == "OPEN_POSITION"
-    assert state_payload["open_positions"] == 1
-    assert "compat.list_portfolio_positions.deprecated" in events
-    assert "compat.list_portfolio_actions.deprecated" in events
-    assert "compat.get_portfolio_state.deprecated" in events
-
-
-def test_portfolio_legacy_compatibility_queries_emit_execution_logs(db_session, monkeypatch) -> None:
-    _seed_portfolio_projection_state(db_session)
-    events: list[str] = []
-
-    def _log(level: int, message: str, *args, **kwargs) -> None:
-        del level, args, kwargs
-        events.append(message)
-
-    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
-
-    assert list_portfolio_positions(db_session, limit=5)
-    assert list_portfolio_actions(db_session, limit=5)
-    assert get_portfolio_state(db_session)["open_positions"] == 1
-
-    assert "compat.list_portfolio_positions.execute" in events
-    assert "compat.list_portfolio_positions.result" in events
-    assert "compat.list_portfolio_actions.execute" in events
-    assert "compat.list_portfolio_actions.result" in events
-    assert "compat.get_portfolio_state.execute" in events
-    assert "compat.get_portfolio_state.result" in events
+    for export_name in forbidden_exports:
+        assert not hasattr(portfolio_selectors_module, export_name), export_name

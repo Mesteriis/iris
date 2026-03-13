@@ -21,7 +21,6 @@ from src.apps.portfolio.cache import (
 )
 from src.apps.portfolio.models import ExchangeAccount, PortfolioPosition, PortfolioState
 from src.apps.portfolio.query_services import PortfolioQueryService
-from src.apps.portfolio.selectors import get_portfolio_state, list_portfolio_actions, list_portfolio_positions
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
 from src.core.db.uow import SessionUnitOfWork
 
@@ -74,7 +73,15 @@ async def _async_lock(acquired: bool):
     yield acquired
 
 
-def test_portfolio_cache_and_selectors_cover_cached_and_uncached_paths(db_session, seeded_api_state, monkeypatch, settings) -> None:
+@pytest.mark.asyncio
+async def test_portfolio_cache_and_query_service_cover_cached_and_uncached_paths(
+    async_db_session,
+    db_session,
+    seeded_api_state,
+    monkeypatch,
+    settings,
+) -> None:
+    del seeded_api_state
     sync_client = _SyncCacheClient()
     async_client = _AsyncCacheClient()
 
@@ -105,42 +112,56 @@ def test_portfolio_cache_and_selectors_cover_cached_and_uncached_paths(db_sessio
     assert cache._parse_portfolio_state("{") is None
     assert cache._parse_portfolio_balances("{") is None
 
-    async def _async_checks() -> None:
-        await cache_portfolio_state_async(payload)
-        await cache_portfolio_balances_async(balances)
-        assert await read_cached_portfolio_state_async() == payload
-        assert await read_cached_portfolio_balances_async() == balances
-        async_client.storage.clear()
-        assert await read_cached_portfolio_state_async() is None
-        assert await read_cached_portfolio_balances_async() is None
+    await cache_portfolio_state_async(payload)
+    await cache_portfolio_balances_async(balances)
+    assert await read_cached_portfolio_state_async() == payload
+    assert await read_cached_portfolio_balances_async() == balances
+    async_client.storage.clear()
+    assert await read_cached_portfolio_state_async() is None
+    assert await read_cached_portfolio_balances_async() is None
 
-    import asyncio
+    query_service = PortfolioQueryService(async_db_session)
+    positions = await query_service.list_positions(limit=5)
+    assert positions[0].symbol == "BTCUSD_EVT"
+    assert positions[0].latest_decision == "BUY"
+    assert positions[0].risk_to_stop is not None
 
-    asyncio.run(_async_checks())
+    actions = await query_service.list_actions(limit=5)
+    assert actions[0].action == "OPEN_POSITION"
+    assert actions[0].market_decision == "BUY"
 
-    positions = list_portfolio_positions(db_session, limit=5)
-    assert positions[0]["symbol"] == "BTCUSD_EVT"
-    assert positions[0]["latest_decision"] == "BUY"
-    assert positions[0]["risk_to_stop"] is not None
+    monkeypatch.setattr(
+        "src.apps.portfolio.query_services.read_cached_portfolio_state_async",
+        lambda: __import__("asyncio").sleep(
+            0,
+            result={
+                "total_capital": 1.0,
+                "allocated_capital": 0.2,
+                "available_capital": 0.8,
+                "updated_at": "2026-03-12T10:00:00+00:00",
+                "open_positions": 4,
+                "max_positions": 7,
+            },
+        ),
+    )
+    cached_state = await PortfolioQueryService(async_db_session).get_state()
+    assert cached_state.total_capital == 1.0
+    assert cached_state.max_positions == 7
 
-    actions = list_portfolio_actions(db_session, limit=5)
-    assert actions[0]["action"] == "OPEN_POSITION"
-    assert actions[0]["market_decision"] == "BUY"
+    monkeypatch.setattr(
+        "src.apps.portfolio.query_services.read_cached_portfolio_state_async",
+        lambda: __import__("asyncio").sleep(0, result=None),
+    )
+    state = await PortfolioQueryService(async_db_session).get_state()
+    assert state.open_positions == 1
+    assert state.max_positions == settings.portfolio_max_positions
 
-    monkeypatch.setattr("src.apps.portfolio.selectors.read_cached_portfolio_state", lambda: {"cached": True})
-    assert get_portfolio_state(db_session) == {"cached": True}
-
-    monkeypatch.setattr("src.apps.portfolio.selectors.read_cached_portfolio_state", lambda: None)
-    state = get_portfolio_state(db_session)
-    assert state["open_positions"] == 1
-    assert state["max_positions"] == settings.portfolio_max_positions
-
-    db_session.execute(delete(PortfolioState))
-    db_session.execute(delete(PortfolioPosition))
-    db_session.commit()
-    empty_state = get_portfolio_state(db_session)
-    assert empty_state["total_capital"] == 0.0
-    assert empty_state["open_positions"] == 0
+    await async_db_session.execute(delete(PortfolioState))
+    await async_db_session.execute(delete(PortfolioPosition))
+    await async_db_session.commit()
+    empty_state = await PortfolioQueryService(async_db_session).get_state()
+    assert empty_state.total_capital == 0.0
+    assert empty_state.open_positions == 0
 
 
 @pytest.mark.asyncio
