@@ -11,7 +11,6 @@ from src.apps.market_data.repos import fetch_candle_points, upsert_base_candles
 from src.apps.market_data.service_layer import get_coin_by_symbol
 from src.apps.market_data.sources.base import MarketBar
 from src.apps.portfolio.models import PortfolioPosition
-from src.core.db.session import SessionLocal
 from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
@@ -65,25 +64,27 @@ def _stop_processes(*processes: multiprocessing.Process) -> None:
 
 
 @pytest.mark.asyncio
-async def test_candle_closed_pipeline_persists_and_publishes_anomaly(seeded_market, settings, wait_until) -> None:
-    db = SessionLocal()
-    try:
-        eth_coin_id, event_timestamp = _append_shock_bar(
-            db,
-            symbol="ETHUSD_EVT",
-            close_multiplier=1.14,
-            volume_multiplier=7.0,
-            source="anomaly_test",
-        )
-        _append_shock_bar(
-            db,
-            symbol="BTCUSD_EVT",
-            close_multiplier=1.004,
-            volume_multiplier=1.2,
-            source="anomaly_test",
-        )
-    finally:
-        db.close()
+async def test_candle_closed_pipeline_persists_and_publishes_anomaly(
+    db_session,
+    seeded_market,
+    settings,
+    wait_until,
+) -> None:
+    del seeded_market
+    eth_coin_id, event_timestamp = _append_shock_bar(
+        db_session,
+        symbol="ETHUSD_EVT",
+        close_multiplier=1.14,
+        volume_multiplier=7.0,
+        source="anomaly_test",
+    )
+    _append_shock_bar(
+        db_session,
+        symbol="BTCUSD_EVT",
+        close_multiplier=1.004,
+        volume_multiplier=1.2,
+        source="anomaly_test",
+    )
 
     dispatcher, worker = _start_anomaly_pipeline_processes()
     try:
@@ -107,34 +108,31 @@ async def test_candle_closed_pipeline_persists_and_publishes_anomaly(seeded_mark
         redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
         try:
             await wait_until(_anomaly_published, timeout=20.0, interval=0.2)
-            db = SessionLocal()
-            try:
-                anomaly = (
-                    db.execute(
-                        select(MarketAnomaly)
-                        .where(MarketAnomaly.coin_id == eth_coin_id, MarketAnomaly.timeframe == 15)
-                        .order_by(MarketAnomaly.detected_at.desc())
-                    )
-                ).scalars().first()
-                assert anomaly is not None
-                assert anomaly.status == "new"
-                assert anomaly.anomaly_type in {
-                    "price_spike",
-                    "volume_spike",
-                    "volatility_regime_break",
-                    "relative_divergence",
-                    "failed_breakout",
-                    "compression_expansion",
-                    "price_volume_divergence",
-                    "correlation_breakdown",
-                }
+            db_session.expire_all()
+            anomaly = db_session.scalar(
+                select(MarketAnomaly)
+                .where(MarketAnomaly.coin_id == eth_coin_id, MarketAnomaly.timeframe == 15)
+                .order_by(MarketAnomaly.detected_at.desc())
+                .limit(1)
+            )
+            assert anomaly is not None
+            assert int(anomaly.coin_id) == eth_coin_id
+            assert anomaly.status == "new"
+            assert anomaly.anomaly_type in {
+                "price_spike",
+                "volume_spike",
+                "volatility_regime_break",
+                "relative_divergence",
+                "failed_breakout",
+                "compression_expansion",
+                "price_volume_divergence",
+                "correlation_breakdown",
+            }
 
-                stream_messages = redis_client.xrange(settings.event_stream_name, "-", "+")
-                anomaly_messages = [fields for _, fields in stream_messages if fields["event_type"] == "anomaly_detected"]
-                assert anomaly_messages
-                assert any('"severity"' in item["payload"] for item in anomaly_messages)
-            finally:
-                db.close()
+            stream_messages = redis_client.xrange(settings.event_stream_name, "-", "+")
+            anomaly_messages = [fields for _, fields in stream_messages if fields["event_type"] == "anomaly_detected"]
+            assert anomaly_messages
+            assert any('"severity"' in item["payload"] for item in anomaly_messages)
         finally:
             redis_client.close()
     finally:
@@ -142,36 +140,38 @@ async def test_candle_closed_pipeline_persists_and_publishes_anomaly(seeded_mark
 
 
 @pytest.mark.asyncio
-async def test_anomaly_enrichment_task_updates_status_and_context(seeded_market, wait_until) -> None:
-    db = SessionLocal()
-    try:
-        eth_coin_id, event_timestamp = _append_shock_bar(
-            db,
-            symbol="ETHUSD_EVT",
-            close_multiplier=1.12,
-            volume_multiplier=6.0,
-            source="anomaly_enrichment_test",
+async def test_anomaly_enrichment_task_updates_status_and_context(
+    db_session,
+    seeded_market,
+    settings,
+    wait_until,
+) -> None:
+    del seeded_market
+    eth_coin_id, event_timestamp = _append_shock_bar(
+        db_session,
+        symbol="ETHUSD_EVT",
+        close_multiplier=1.12,
+        volume_multiplier=6.0,
+        source="anomaly_enrichment_test",
+    )
+    _append_shock_bar(
+        db_session,
+        symbol="BTCUSD_EVT",
+        close_multiplier=1.003,
+        volume_multiplier=1.1,
+        source="anomaly_enrichment_test",
+    )
+    db_session.add(
+        PortfolioPosition(
+            coin_id=eth_coin_id,
+            timeframe=15,
+            entry_price=100.0,
+            position_size=1.0,
+            position_value=100.0,
+            status="open",
         )
-        _append_shock_bar(
-            db,
-            symbol="BTCUSD_EVT",
-            close_multiplier=1.003,
-            volume_multiplier=1.1,
-            source="anomaly_enrichment_test",
-        )
-        db.add(
-            PortfolioPosition(
-                coin_id=eth_coin_id,
-                timeframe=15,
-                entry_price=100.0,
-                position_size=1.0,
-                position_value=100.0,
-                status="open",
-            )
-        )
-        db.commit()
-    finally:
-        db.close()
+    )
+    db_session.commit()
 
     dispatcher, worker = _start_anomaly_pipeline_processes()
     try:
@@ -185,48 +185,40 @@ async def test_anomaly_enrichment_task_updates_status_and_context(seeded_market,
             },
         )
         assert flush_publisher(timeout=5.0)
+        from redis import Redis
 
-        def _load_anomaly_id() -> int:
-            db = SessionLocal()
-            try:
-                anomaly = (
-                    db.execute(
-                        select(MarketAnomaly)
-                        .where(MarketAnomaly.coin_id == eth_coin_id, MarketAnomaly.timeframe == 15)
-                        .order_by(MarketAnomaly.detected_at.desc())
-                    )
-                ).scalars().first()
-                return int(anomaly.id) if anomaly is not None else 0
-            finally:
-                db.close()
-
-        await wait_until(lambda: _load_anomaly_id() > 0, timeout=20.0, interval=0.2)
+        redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            await wait_until(
+                lambda: any(
+                    fields["event_type"] == "anomaly_detected"
+                    and int(fields.get("coin_id") or 0) == eth_coin_id
+                    for _, fields in redis_client.xrange(settings.event_stream_name, "-", "+")
+                ),
+                timeout=20.0,
+                interval=0.2,
+            )
+        finally:
+            redis_client.close()
     finally:
         _stop_processes(dispatcher, worker)
 
-    db = SessionLocal()
-    try:
-        anomaly = (
-            db.execute(
-                select(MarketAnomaly)
-                .where(MarketAnomaly.coin_id == eth_coin_id, MarketAnomaly.timeframe == 15)
-                .order_by(MarketAnomaly.detected_at.desc())
-            )
-        ).scalars().first()
-        assert anomaly is not None
-        anomaly_id = int(anomaly.id)
-    finally:
-        db.close()
+    db_session.expire_all()
+    anomaly = db_session.scalar(
+        select(MarketAnomaly)
+        .where(MarketAnomaly.coin_id == eth_coin_id, MarketAnomaly.timeframe == 15)
+        .order_by(MarketAnomaly.detected_at.desc())
+        .limit(1)
+    )
+    assert anomaly is not None
+    anomaly_id = int(anomaly.id)
 
     result = await anomaly_enrichment_job(anomaly_id)
     assert result["status"] == "ok"
 
-    db = SessionLocal()
-    try:
-        anomaly = db.get(MarketAnomaly, anomaly_id)
-        assert anomaly is not None
-        assert anomaly.status == "active"
-        assert anomaly.payload_json["context"]["portfolio_relevant"] is True
-        assert anomaly.payload_json["explainability"]["portfolio_impact"] == "portfolio exposure present"
-    finally:
-        db.close()
+    db_session.expire_all()
+    anomaly = db_session.get(MarketAnomaly, anomaly_id)
+    assert anomaly is not None
+    assert anomaly.status == "active"
+    assert anomaly.payload_json["context"]["portfolio_relevant"] is True
+    assert anomaly.payload_json["explainability"]["portfolio_impact"] == "portfolio exposure present"

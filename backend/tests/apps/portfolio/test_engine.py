@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import multiprocessing
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
-
+from src.apps.portfolio.models import PortfolioPosition
+from src.apps.portfolio.query_services import PortfolioQueryService
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
-from src.core.db.session import SessionLocal
 from src.core.db.uow import SessionUnitOfWork
 from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
-from src.apps.portfolio.models import PortfolioAction
-from src.apps.portfolio.models import PortfolioPosition
+
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_market_decision
 
@@ -84,7 +83,7 @@ async def test_portfolio_engine_opens_position_from_buy_decision(async_db_sessio
 
 
 @pytest.mark.asyncio
-async def test_portfolio_worker_consumes_signal_fusion_decision_event(db_session, wait_until) -> None:
+async def test_portfolio_worker_consumes_signal_fusion_decision_event(async_db_session, db_session, settings, wait_until) -> None:
     coin = create_test_coin(db_session, symbol="ETHUSD_EVT", name="Ethereum Event Test")
     upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=15)
     create_market_decision(
@@ -94,7 +93,7 @@ async def test_portfolio_worker_consumes_signal_fusion_decision_event(db_session
         decision="BUY",
         confidence=0.76,
     )
-    timestamp = datetime(2026, 3, 11, 14, 15, tzinfo=timezone.utc)
+    timestamp = datetime(2026, 3, 11, 14, 15, tzinfo=UTC)
 
     dispatcher, worker = _start_portfolio_pipeline_processes()
     try:
@@ -111,18 +110,25 @@ async def test_portfolio_worker_consumes_signal_fusion_decision_event(db_session
         )
         assert flush_publisher(timeout=5.0)
 
-        def _action_created() -> bool:
-            db = SessionLocal()
-            try:
-                count = db.scalar(
-                    select(PortfolioAction.id)
-                    .where(PortfolioAction.coin_id == int(coin.id))
-                    .limit(1)
-                )
-                return count is not None
-            finally:
-                db.close()
+        from redis import Redis
 
-        await wait_until(_action_created, timeout=10.0, interval=0.2)
+        client = Redis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            await wait_until(
+                lambda: any(
+                    fields.get("event_type") == "portfolio_position_opened"
+                    and int(fields.get("coin_id") or 0) == int(coin.id)
+                    for _, fields in client.xrange(settings.event_stream_name, "-", "+")
+                ),
+                timeout=10.0,
+                interval=0.2,
+            )
+        finally:
+            client.close()
+
+        await async_db_session.rollback()
+        async_db_session.expire_all()
+        actions = await PortfolioQueryService(async_db_session).list_actions(limit=20)
+        assert any(action.coin_id == int(coin.id) for action in actions)
     finally:
         _stop_processes(dispatcher, worker)

@@ -2,20 +2,19 @@ from __future__ import annotations
 
 import json
 import multiprocessing
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from redis import Redis
 from sqlalchemy import func, select
-
 from src.apps.news.models import NewsItem, NewsItemLink, NewsSource
-from src.core.db.session import SessionLocal
+from src.apps.signals.models import MarketDecision
+from src.apps.signals.services import SignalFusionService
 from src.core.db.uow import SessionUnitOfWork
 from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
-from src.apps.signals.models import MarketDecision
-from src.apps.signals.services import SignalFusionService
+
 from tests.fusion_support import create_test_coin, insert_signals, replace_pattern_statistics, upsert_coin_metrics
 
 
@@ -58,7 +57,7 @@ async def _evaluate_market_decision(async_db_session, **kwargs):
 async def test_signal_fusion_aggregates_bullish_stack_into_buy(async_db_session, db_session) -> None:
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     coin_id = int(coin.id)
-    timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=timezone.utc)
+    timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=UTC)
     upsert_coin_metrics(db_session, coin_id=coin_id, regime="bull_trend")
     replace_pattern_statistics(
         db_session,
@@ -108,8 +107,8 @@ async def test_signal_fusion_aggregates_bullish_stack_into_buy(async_db_session,
 async def test_signal_fusion_uses_recent_news_context(async_db_session, db_session) -> None:
     coin = create_test_coin(db_session, symbol="ETHUSD_EVT", name="Ethereum Event Test")
     coin_id = int(coin.id)
-    signal_timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=timezone.utc)
-    news_timestamp = datetime(2026, 3, 11, 14, 0, tzinfo=timezone.utc)
+    signal_timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=UTC)
+    news_timestamp = datetime(2026, 3, 11, 14, 0, tzinfo=UTC)
     upsert_coin_metrics(db_session, coin_id=coin_id, regime="bull_trend")
     replace_pattern_statistics(
         db_session,
@@ -183,33 +182,29 @@ async def test_signal_fusion_uses_recent_news_context(async_db_session, db_sessi
 
 
 @pytest.mark.asyncio
-async def test_signal_fusion_worker_publishes_decision_event(db_session, settings, wait_until):
+async def test_signal_fusion_worker_publishes_decision_event(async_db_session, db_session, settings, wait_until):
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     coin_id = int(coin.id)
-    timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=timezone.utc)
-    db = SessionLocal()
-    try:
-        upsert_coin_metrics(db, coin_id=coin_id, regime="bull_trend")
-        replace_pattern_statistics(
-            db,
-            timeframe=15,
-            rows=[
-                ("bull_flag", "all", 0.71, 50),
-                ("breakout_retest", "all", 0.67, 50),
-            ],
-        )
-        insert_signals(
-            db,
-            coin_id=coin_id,
-            timeframe=15,
-            candle_timestamp=timestamp,
-            items=[
-                ("pattern_bull_flag", 0.81),
-                ("pattern_breakout_retest", 0.79),
-            ],
-        )
-    finally:
-        db.close()
+    timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=UTC)
+    upsert_coin_metrics(db_session, coin_id=coin_id, regime="bull_trend")
+    replace_pattern_statistics(
+        db_session,
+        timeframe=15,
+        rows=[
+            ("bull_flag", "all", 0.71, 50),
+            ("breakout_retest", "all", 0.67, 50),
+        ],
+    )
+    insert_signals(
+        db_session,
+        coin_id=coin_id,
+        timeframe=15,
+        candle_timestamp=timestamp,
+        items=[
+            ("pattern_bull_flag", 0.81),
+            ("pattern_breakout_retest", 0.79),
+        ],
+    )
 
     dispatcher, worker = _start_fusion_pipeline_processes()
     try:
@@ -239,29 +234,29 @@ async def test_signal_fusion_worker_publishes_decision_event(db_session, setting
         finally:
             client.close()
 
-        db = SessionLocal()
-        try:
-            count = int(
-                db.scalar(
+        await async_db_session.rollback()
+        async_db_session.expire_all()
+        count = int(
+            (
+                await async_db_session.scalar(
                     select(func.count())
                     .select_from(MarketDecision)
                     .where(MarketDecision.coin_id == coin_id, MarketDecision.timeframe == 15)
                 )
-                or 0
             )
-            assert count > 0
-        finally:
-            db.close()
+            or 0
+        )
+        assert count > 0
     finally:
         _stop_processes(dispatcher, worker)
 
 
 @pytest.mark.asyncio
-async def test_signal_fusion_worker_reacts_to_news_symbol_correlation_event(db_session, settings, wait_until):
+async def test_signal_fusion_worker_reacts_to_news_symbol_correlation_event(async_db_session, db_session, settings, wait_until):
     coin = create_test_coin(db_session, symbol="SOLUSD_EVT", name="Solana Event Test")
     coin_id = int(coin.id)
-    signal_timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=timezone.utc)
-    news_timestamp = datetime(2026, 3, 11, 14, 5, tzinfo=timezone.utc)
+    signal_timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=UTC)
+    news_timestamp = datetime(2026, 3, 11, 14, 5, tzinfo=UTC)
     upsert_coin_metrics(db_session, coin_id=coin_id, regime="bull_trend")
     replace_pattern_statistics(
         db_session,
@@ -355,7 +350,9 @@ async def test_signal_fusion_worker_reacts_to_news_symbol_correlation_event(db_s
         finally:
             client.close()
 
-        latest = db_session.scalar(
+        await async_db_session.rollback()
+        async_db_session.expire_all()
+        latest = await async_db_session.scalar(
             select(MarketDecision)
             .where(MarketDecision.coin_id == coin_id, MarketDecision.timeframe == 15)
             .order_by(MarketDecision.created_at.desc(), MarketDecision.id.desc())

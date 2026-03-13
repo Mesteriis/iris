@@ -10,7 +10,6 @@ from sqlalchemy import select
 from src.apps.cross_market.models import CoinRelation
 from src.apps.indicators.models import CoinMetrics
 from src.apps.predictions.models import MarketPrediction
-from src.core.db.session import SessionLocal
 from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
@@ -54,7 +53,12 @@ def _stop_processes(*processes: multiprocessing.Process) -> None:
 
 
 @pytest.mark.asyncio
-async def test_cross_market_worker_updates_relations_and_detects_market_leader(db_session, settings, wait_until) -> None:
+async def test_cross_market_worker_updates_relations_and_detects_market_leader(
+    async_db_session,
+    db_session,
+    settings,
+    wait_until,
+) -> None:
     leader = create_cross_market_coin(
         db_session,
         symbol="BTCUSD_EVT",
@@ -146,31 +150,29 @@ async def test_cross_market_worker_updates_relations_and_detects_market_leader(d
         finally:
             client.close()
 
-        verification_db = SessionLocal()
-        try:
-            relation = verification_db.scalar(
-                select(CoinRelation)
-                .where(
-                    CoinRelation.leader_coin_id == int(leader.id),
-                    CoinRelation.follower_coin_id == int(follower.id),
-                )
-                .limit(1)
+        await async_db_session.rollback()
+        async_db_session.expire_all()
+        relation = await async_db_session.scalar(
+            select(CoinRelation)
+            .where(
+                CoinRelation.leader_coin_id == int(leader.id),
+                CoinRelation.follower_coin_id == int(follower.id),
             )
-            prediction = verification_db.scalar(
-                select(MarketPrediction)
-                .where(
-                    MarketPrediction.leader_coin_id == int(leader.id),
-                    MarketPrediction.target_coin_id == int(follower.id),
-                    MarketPrediction.status == "pending",
-                )
-                .order_by(MarketPrediction.created_at.desc(), MarketPrediction.id.desc())
-                .limit(1)
+            .limit(1)
+        )
+        prediction = await async_db_session.scalar(
+            select(MarketPrediction)
+            .where(
+                MarketPrediction.leader_coin_id == int(leader.id),
+                MarketPrediction.target_coin_id == int(follower.id),
+                MarketPrediction.status == "pending",
             )
-            assert relation is not None
-            assert float(relation.confidence) >= 0.5
-            assert prediction is not None
-            assert prediction.prediction_event == "leader_breakout"
-        finally:
-            verification_db.close()
+            .order_by(MarketPrediction.created_at.desc(), MarketPrediction.id.desc())
+            .limit(1)
+        )
+        assert relation is not None
+        assert float(relation.confidence) >= 0.5
+        assert prediction is not None
+        assert prediction.prediction_event == "leader_breakout"
     finally:
         _stop_processes(dispatcher, worker)

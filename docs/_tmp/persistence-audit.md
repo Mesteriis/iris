@@ -311,6 +311,13 @@ Runtime note:
 
 - `analysis_scheduler_workers` now use `AnalysisSchedulerService` under shared async UoW ownership instead of direct `AsyncSession` reads/commits in [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py).
 
+### Async Test Persistence Drift
+
+Recent cleanup:
+
+- async worker/pipeline regression tests in `anomalies`, `signals`, `cross_market` and `portfolio` no longer open ad-hoc sync `SessionLocal()` handles inside `pytest.mark.asyncio` flows
+- those tests now verify committed worker results through shared `db_session` / `async_db_session` fixtures plus explicit Redis stream/event waits, keeping test persistence boundaries aligned with the runtime model
+
 ### Transaction Boundary Drift
 
 Representative offenders:
