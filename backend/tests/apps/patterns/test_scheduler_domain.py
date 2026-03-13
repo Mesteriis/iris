@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+import importlib
 from datetime import datetime, timezone
 
+import pytest
+
+from src.apps.indicators.repositories import IndicatorMetricsRepository
+from src.apps.indicators.services import AnalysisSchedulerService
 from src.apps.patterns.domain.scheduler import (
     analysis_interval,
     analysis_priority_for_bucket,
-    get_activity_snapshot,
-    mark_analysis_requested,
     should_request_analysis,
 )
+from src.core.db.uow import SessionUnitOfWork
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 
 
-def test_scheduler_helpers_update_analysis_snapshot(db_session) -> None:
+@pytest.mark.asyncio
+async def test_scheduler_helpers_update_analysis_snapshot(async_db_session, db_session) -> None:
     timestamp = datetime(2026, 3, 12, 10, 15, tzinfo=timezone.utc)
     assert analysis_priority_for_bucket("HOT") == 100
     assert analysis_priority_for_bucket("unknown") == 5
@@ -35,11 +40,30 @@ def test_scheduler_helpers_update_analysis_snapshot(db_session) -> None:
 
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     metrics = upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=15)
+    module = importlib.import_module("src.apps.patterns.domain.scheduler")
+    assert not hasattr(module, "mark_analysis_requested")
+    assert not hasattr(module, "get_activity_snapshot")
 
-    mark_analysis_requested(db_session, coin_id=int(coin.id), analysis_timestamp=timestamp)
-    mark_analysis_requested(db_session, coin_id=999999, analysis_timestamp=timestamp)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await AnalysisSchedulerService(uow).evaluate_indicator_update(
+            coin_id=int(coin.id),
+            timeframe=15,
+            timestamp=timestamp,
+            activity_bucket_hint="HOT",
+        )
+        missing = await AnalysisSchedulerService(uow).evaluate_indicator_update(
+            coin_id=999999,
+            timeframe=15,
+            timestamp=timestamp,
+            activity_bucket_hint="HOT",
+        )
+        await uow.commit()
 
-    snapshot = get_activity_snapshot(db_session, coin_id=int(coin.id))
+    snapshot = await IndicatorMetricsRepository(async_db_session).get_by_coin_id(int(coin.id))
+    assert result.should_publish is True
+    assert result.state_updated is True
+    assert missing.should_publish is True
+    assert missing.state_updated is False
     assert snapshot is not None
     assert snapshot.id == metrics.id
     assert snapshot.last_analysis_at == timestamp

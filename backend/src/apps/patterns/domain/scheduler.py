@@ -2,10 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.repos import timeframe_delta
 from src.apps.market_data.domain import ensure_utc
 
@@ -78,20 +74,3 @@ def should_request_analysis(
         return True
     previous_timestamp = ensure_utc(last_analysis_at)
     return event_timestamp >= previous_timestamp + analysis_interval(activity_bucket, timeframe)
-
-
-def mark_analysis_requested(
-    db: Session,
-    *,
-    coin_id: int,
-    analysis_timestamp: datetime,
-) -> None:
-    metrics = db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin_id))
-    if metrics is None:
-        return
-    metrics.last_analysis_at = ensure_utc(analysis_timestamp)
-    db.commit()
-
-
-def get_activity_snapshot(db: Session, *, coin_id: int) -> CoinMetrics | None:
-    return db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin_id))

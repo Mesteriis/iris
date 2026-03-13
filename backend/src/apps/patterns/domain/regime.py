@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.apps.patterns.domain.utils import current_indicator_map
-from src.apps.market_data.repos import fetch_candle_points
 
 MARKET_REGIMES = [
     "bull_trend",
@@ -127,15 +126,3 @@ def read_regime_details(regime_details: dict[str, Any] | None, timeframe: int) -
         regime=regime,
         confidence=normalized_confidence,
     )
-
-
-def compute_live_regimes(db, coin_id: int) -> list[RegimeRead]:
-    rows: list[RegimeRead] = []
-    for timeframe in (15, 60, 240, 1440):
-        candles = fetch_candle_points(db, coin_id, timeframe, 200)
-        if len(candles) < 20:
-            continue
-        indicators = current_indicator_map(candles)
-        regime, confidence = detect_market_regime(indicators)
-        rows.append(RegimeRead(timeframe=timeframe, regime=regime, confidence=confidence))
-    return rows

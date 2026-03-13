@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+import importlib
 from types import SimpleNamespace
+
+import pytest
 
 from src.apps.patterns.domain.regime import (
     MARKET_REGIMES,
     calculate_regime_map,
-    compute_live_regimes,
     detect_market_regime,
     primary_regime,
     read_regime_details,
     serialize_regime_map,
 )
+from src.apps.patterns.query_services import PatternQueryService
 from tests.cross_market_support import DEFAULT_START, create_cross_market_coin, generate_close_series, seed_candles
 
 
@@ -86,7 +89,8 @@ def test_regime_helpers_cover_maps_and_invalid_payloads() -> None:
     assert invalid_confidence.confidence == 0.0
 
 
-def test_compute_live_regimes_uses_seeded_candles(db_session) -> None:
+@pytest.mark.asyncio
+async def test_compute_live_regimes_uses_seeded_candles(db_session, async_db_session) -> None:
     coin = create_cross_market_coin(
         db_session,
         symbol="BTCUSD_EVT",
@@ -107,8 +111,12 @@ def test_compute_live_regimes_uses_seeded_candles(db_session) -> None:
         closes=generate_close_series(start_price=100.0, returns=[0.003] * 30),
         start=DEFAULT_START,
     )
+    db_session.commit()
 
-    rows = compute_live_regimes(db_session, int(coin.id))
+    module = importlib.import_module("src.apps.patterns.domain.regime")
+    assert not hasattr(module, "compute_live_regimes")
+
+    rows = await PatternQueryService(async_db_session).compute_live_regimes(int(coin.id))
     assert {row.timeframe for row in rows} == {15, 60}
     assert all(row.regime in MARKET_REGIMES for row in rows)
     assert all(row.confidence > 0 for row in rows)
