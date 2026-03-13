@@ -1,10 +1,17 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+import importlib.util
 
 import pytest
 from fastapi import HTTPException
 
+from src.apps.signals.api.backtest_endpoints import read_coin_backtests
+from src.apps.signals.api.decision_endpoints import read_coin_decision
+from src.apps.signals.api.final_signal_endpoints import read_coin_final_signal
+from src.apps.signals.api.market_decision_endpoints import read_coin_market_decision
+from src.apps.signals.api.router import build_router as build_signals_router
+from src.apps.signals.query_services import SignalQueryService
+from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 from tests.factories.base import json_utc
 
 
@@ -74,7 +81,7 @@ async def test_signal_and_strategy_endpoints(api_app_client, seeded_api_state) -
 
     missing_decision_response = await client.get("/coins/MISSING_EVT/decision")
     assert missing_decision_response.status_code == 404
-    assert missing_decision_response.json()["detail"] == "Coin 'MISSING_EVT' was not found."
+    assert missing_decision_response.json()["detail"]["message"] == "Coin 'MISSING_EVT' was not found."
 
     market_decisions_response = await client.get("/market-decisions?symbol=BTCUSD_EVT&limit=10")
     assert market_decisions_response.status_code == 200
@@ -122,7 +129,7 @@ async def test_signal_and_strategy_endpoints(api_app_client, seeded_api_state) -
 
     missing_market_decision_response = await client.get("/coins/MISSING_EVT/market-decision")
     assert missing_market_decision_response.status_code == 404
-    assert missing_market_decision_response.json()["detail"] == "Coin 'MISSING_EVT' was not found."
+    assert missing_market_decision_response.json()["detail"]["message"] == "Coin 'MISSING_EVT' was not found."
 
     final_signals_response = await client.get("/final-signals?symbol=BTCUSD_EVT&limit=10")
     assert final_signals_response.status_code == 200
@@ -160,7 +167,7 @@ async def test_signal_and_strategy_endpoints(api_app_client, seeded_api_state) -
 
     missing_final_signal_response = await client.get("/coins/MISSING_EVT/final-signal")
     assert missing_final_signal_response.status_code == 404
-    assert missing_final_signal_response.json()["detail"] == "Coin 'MISSING_EVT' was not found."
+    assert missing_final_signal_response.json()["detail"]["message"] == "Coin 'MISSING_EVT' was not found."
 
     backtests_response = await client.get("/backtests?symbol=BTCUSD_EVT&timeframe=15&signal_type=pattern_bull_flag")
     assert backtests_response.status_code == 200
@@ -183,7 +190,7 @@ async def test_signal_and_strategy_endpoints(api_app_client, seeded_api_state) -
 
     missing_backtests_response = await client.get("/coins/MISSING_EVT/backtests")
     assert missing_backtests_response.status_code == 404
-    assert missing_backtests_response.json()["detail"] == "Coin 'MISSING_EVT' was not found."
+    assert missing_backtests_response.json()["detail"]["message"] == "Coin 'MISSING_EVT' was not found."
 
     strategies_response = await client.get("/strategies?enabled_only=true")
     assert strategies_response.status_code == 200
@@ -237,32 +244,38 @@ async def test_signal_and_strategy_endpoints(api_app_client, seeded_api_state) -
 
 @pytest.mark.asyncio
 async def test_signal_view_branches(monkeypatch) -> None:
-    from src.apps.signals.views import read_coin_backtests, read_coin_decision, read_coin_final_signal, read_coin_market_decision
-
     async def missing_payload(self, *_args, **_kwargs):
         del self
         return None
 
-    uow = SimpleNamespace(session=object())
+    service = SignalQueryService(object())
 
-    monkeypatch.setattr("src.apps.signals.views.SignalQueryService.get_coin_decision", missing_payload)
+    monkeypatch.setattr(service, "get_coin_decision", missing_payload.__get__(service, SignalQueryService))
     with pytest.raises(HTTPException) as missing_decision:
-        await read_coin_decision("BTCUSD_EVT", uow=uow)
+        await read_coin_decision("BTCUSD_EVT", service=service)
     assert missing_decision.value.status_code == 404
 
-    monkeypatch.setattr("src.apps.signals.views.SignalQueryService.get_coin_market_decision", missing_payload)
+    monkeypatch.setattr(
+        service,
+        "get_coin_market_decision",
+        missing_payload.__get__(service, SignalQueryService),
+    )
     with pytest.raises(HTTPException) as missing_market_decision:
-        await read_coin_market_decision("BTCUSD_EVT", uow=uow)
+        await read_coin_market_decision("BTCUSD_EVT", service=service)
     assert missing_market_decision.value.status_code == 404
 
-    monkeypatch.setattr("src.apps.signals.views.SignalQueryService.get_coin_final_signal", missing_payload)
+    monkeypatch.setattr(
+        service,
+        "get_coin_final_signal",
+        missing_payload.__get__(service, SignalQueryService),
+    )
     with pytest.raises(HTTPException) as missing_final_signal:
-        await read_coin_final_signal("BTCUSD_EVT", uow=uow)
+        await read_coin_final_signal("BTCUSD_EVT", service=service)
     assert missing_final_signal.value.status_code == 404
 
-    monkeypatch.setattr("src.apps.signals.views.SignalQueryService.get_coin_backtests", missing_payload)
+    monkeypatch.setattr(service, "get_coin_backtests", missing_payload.__get__(service, SignalQueryService))
     with pytest.raises(HTTPException) as missing_backtests:
-        await read_coin_backtests("BTCUSD_EVT", uow=uow)
+        await read_coin_backtests("BTCUSD_EVT", service=service)
     assert missing_backtests.value.status_code == 404
 
     async def decision_payload(self, *_args, **_kwargs):
@@ -281,12 +294,34 @@ async def test_signal_view_branches(monkeypatch) -> None:
         del self
         return {"coin_id": 1, "symbol": "BTCUSD_EVT", "items": []}
 
-    monkeypatch.setattr("src.apps.signals.views.SignalQueryService.get_coin_decision", decision_payload)
-    monkeypatch.setattr("src.apps.signals.views.SignalQueryService.get_coin_market_decision", market_decision_payload)
-    monkeypatch.setattr("src.apps.signals.views.SignalQueryService.get_coin_final_signal", final_signal_payload)
-    monkeypatch.setattr("src.apps.signals.views.SignalQueryService.get_coin_backtests", backtests_payload)
+    monkeypatch.setattr(service, "get_coin_decision", decision_payload.__get__(service, SignalQueryService))
+    monkeypatch.setattr(
+        service,
+        "get_coin_market_decision",
+        market_decision_payload.__get__(service, SignalQueryService),
+    )
+    monkeypatch.setattr(
+        service,
+        "get_coin_final_signal",
+        final_signal_payload.__get__(service, SignalQueryService),
+    )
+    monkeypatch.setattr(service, "get_coin_backtests", backtests_payload.__get__(service, SignalQueryService))
 
-    assert (await read_coin_decision("BTCUSD_EVT", uow=uow)).symbol == "BTCUSD_EVT"
-    assert (await read_coin_market_decision("BTCUSD_EVT", uow=uow)).symbol == "BTCUSD_EVT"
-    assert (await read_coin_final_signal("BTCUSD_EVT", uow=uow)).symbol == "BTCUSD_EVT"
-    assert (await read_coin_backtests("BTCUSD_EVT", uow=uow)).symbol == "BTCUSD_EVT"
+    assert (await read_coin_decision("BTCUSD_EVT", service=service)).symbol == "BTCUSD_EVT"
+    assert (await read_coin_market_decision("BTCUSD_EVT", service=service)).symbol == "BTCUSD_EVT"
+    assert (await read_coin_final_signal("BTCUSD_EVT", service=service)).symbol == "BTCUSD_EVT"
+    assert (await read_coin_backtests("BTCUSD_EVT", service=service)).symbol == "BTCUSD_EVT"
+
+
+def test_signals_api_router_is_mode_agnostic_and_legacy_views_removed() -> None:
+    full_router = build_signals_router(mode=LaunchMode.FULL, profile=DeploymentProfile.PLATFORM_FULL)
+    ha_router = build_signals_router(mode=LaunchMode.HA_ADDON, profile=DeploymentProfile.HA_EMBEDDED)
+
+    full_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in full_router.routes}
+    ha_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in ha_router.routes}
+
+    assert full_paths == ha_paths
+    assert any(path == "/signals" and "GET" in methods for path, methods in full_paths)
+    assert any(path == "/coins/{symbol}/decision" and "GET" in methods for path, methods in full_paths)
+    assert any(path == "/strategies/performance" and "GET" in methods for path, methods in full_paths)
+    assert importlib.util.find_spec("src.apps.signals.views") is None

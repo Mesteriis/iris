@@ -5,13 +5,13 @@ from fastapi import APIRouter
 from src.apps.control_plane.api.router import build_router as build_control_plane_router
 from src.apps.market_structure.api.router import build_router as build_market_structure_router
 from src.apps.news.api.router import build_router as build_news_router
+from src.apps.signals.api.router import build_router as build_signals_router
 from src.apps.hypothesis_engine.views import router as hypothesis_router
 from src.apps.indicators.views import router as indicators_router
 from src.apps.market_data.views import router as market_data_router
 from src.apps.patterns.views import router as patterns_router
 from src.apps.portfolio.views import router as portfolio_router
 from src.apps.predictions.views import router as predictions_router
-from src.apps.signals.views import router as signals_router
 from src.apps.system.views import router as system_router
 from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 from src.core.http.router_policy import normalize_path_prefix
@@ -27,7 +27,7 @@ def build_router(*, settings: Settings, mode: LaunchMode, profile: DeploymentPro
     router.include_router(build_news_router(mode=mode, profile=profile))
     router.include_router(indicators_router)
     router.include_router(patterns_router)
-    router.include_router(signals_router)
+    router.include_router(build_signals_router(mode=mode, profile=profile))
     router.include_router(portfolio_router)
     router.include_router(predictions_router)
     if settings.enable_hypothesis_engine:

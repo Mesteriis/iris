@@ -23,12 +23,14 @@
 - `backend/src/apps/control_plane/api/*`
 - `backend/src/apps/market_structure/api/*`
 - `backend/src/apps/news/api/*`
+- `backend/src/apps/signals/api/*`
 
 Удалено:
 
 - `backend/src/apps/control_plane/views.py`
 - `backend/src/apps/market_structure/views.py`
 - `backend/src/apps/news/views.py`
+- `backend/src/apps/signals/views.py`
 
 ## Текущая HTTP поверхность
 
@@ -39,7 +41,7 @@ Endpoint modules:
 - `backend/src/apps/news/api/router.py` + split endpoint modules
 - `backend/src/apps/hypothesis_engine/views.py`: 8 endpoints
 - `backend/src/apps/patterns/views.py`: 9 endpoints
-- `backend/src/apps/signals/views.py`: 16 endpoints
+- `backend/src/apps/signals/api/router.py` + split endpoint modules
 - `backend/src/apps/indicators/views.py`: 4 endpoints
 - `backend/src/apps/portfolio/views.py`: 3 endpoints
 - `backend/src/apps/predictions/views.py`: 1 endpoint
@@ -50,7 +52,7 @@ Bootstrap wiring:
 
 - `backend/src/core/bootstrap/app.py` подключает только корневой `api` router
 - `backend/src/api/v1/router.py` централизованно монтирует versioned surface `/api/v1`
-- `control_plane`, `market_structure` и `news` уже подключаются через mode-aware `build_router(mode, profile)`
+- `control_plane`, `market_structure`, `news` и `signals` уже подключаются через mode-aware `build_router(mode, profile)`
 - остальные домены все еще частично живут в старом `views.py` стиле
 
 Первый structural gap уже закрыт:
@@ -77,9 +79,9 @@ Bootstrap wiring:
 
 Самые тяжелые примеры:
 
-- `backend/src/apps/signals/views.py`
 - `backend/src/apps/market_data/views.py`
 - `backend/src/apps/hypothesis_engine/views.py`
+- `backend/src/apps/patterns/views.py`
 
 Типичные симптомы:
 
@@ -936,7 +938,7 @@ HTTP/API governance должен учитывать эволюцию surface, а
 - первым прогнать модуль через `build_router(mode, profile)` и mode-aware exposure policy, потому что именно тут сильнее всего отличается `full/local/ha_addon`
 - отдельно определить concurrency semantics и operation model для apply/update/status-change flows
 
-### P0: `signals`
+### P0: `signals` [done]
 
 Файл:
 
