@@ -945,7 +945,16 @@ class TimescaleContinuousAggregateRepository:
                         "window_end": aligned_end,
                     },
                 )
-        except Exception:
+        except SQLAlchemyError as error:
+            if CandleRepository._should_fallback_aggregate_error(error):
+                self._log_warning(
+                    "repo.refresh_continuous_aggregate.skipped",
+                    mode="write",
+                    timeframe=timeframe,
+                    error=str(error),
+                    raw_sql_exception=True,
+                )
+                return
             self._log_exception(
                 "repo.refresh_continuous_aggregate.failed",
                 mode="write",

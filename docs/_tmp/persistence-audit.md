@@ -155,6 +155,7 @@ Status: migrated on the async API/application surface and indicator worker path
 - views now depend on the shared async UoW instead of owning `AsyncSession` directly
 - `indicator_workers` now execute indicator persistence through async repositories/UoW instead of `AsyncSession.run_sync`
 - market-radar/flow leader reads batch coin+metrics lookups, removing the old leader-path N+1 follow-up reads
+- aggregate availability checks in [backend/src/apps/indicators/repositories.py](backend/src/apps/indicators/repositories.py) and async refresh calls in [backend/src/apps/market_data/repositories.py](backend/src/apps/market_data/repositories.py) now degrade to structured warning logs plus direct/resampled candle fallback or skipped refreshes when Timescale views/procedures are unavailable, keeping worker pipelines alive on PostgreSQL-only test environments
 - legacy sync analytical helpers were reduced to pure computation only in [backend/src/apps/indicators/analytics.py](backend/src/apps/indicators/analytics.py); DB access no longer lives there
 
 Classification:

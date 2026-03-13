@@ -7,7 +7,8 @@ from typing import Any
 
 from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.analytics import INDICATOR_VERSION, SIGNAL_TYPES, TimeframeSnapshot
@@ -39,6 +40,59 @@ def _rows_to_candle_points(rows: Sequence[object], *, timestamp_field: str = "ti
         )
         for row in rows
     ]
+
+
+def _resample_candle_points(points: Sequence[CandlePoint], *, target_timeframe: int) -> list[CandlePoint]:
+    grouped: dict[datetime, dict[str, float | datetime | None]] = {}
+    for point in sorted(points, key=lambda value: value.timestamp):
+        bucket = align_timeframe_timestamp(point.timestamp, target_timeframe)
+        current = grouped.get(bucket)
+        if current is None:
+            grouped[bucket] = {
+                "timestamp": bucket,
+                "open": point.open,
+                "high": point.high,
+                "low": point.low,
+                "close": point.close,
+                "volume": point.volume,
+            }
+            continue
+        current["high"] = max(float(current["high"]), point.high)
+        current["low"] = min(float(current["low"]), point.low)
+        current["close"] = point.close
+        if point.volume is not None:
+            current["volume"] = (
+                point.volume if current["volume"] is None else float(current["volume"]) + point.volume
+            )
+    return [
+        CandlePoint(
+            timestamp=ensure_utc(bucket),
+            open=float(values["open"]),
+            high=float(values["high"]),
+            low=float(values["low"]),
+            close=float(values["close"]),
+            volume=float(values["volume"]) if values["volume"] is not None else None,
+        )
+        for bucket, values in grouped.items()
+    ]
+
+
+def _should_fallback_aggregate_error(error: SQLAlchemyError) -> bool:
+    message = str(error).lower()
+    return any(
+        marker in message
+        for marker in (
+            "refresh_continuous_aggregate",
+            "materialized view",
+            "has not been populated",
+            "does not exist",
+            "undefinedfunction",
+            "undefinedtable",
+            "candles_1h",
+            "candles_4h",
+            "candles_1d",
+        )
+    )
 
 
 @dataclass(slots=True, frozen=True)
@@ -93,6 +147,20 @@ class IndicatorCoinRepository(AsyncRepository):
 class IndicatorCandleRepository(AsyncRepository):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, domain="indicators", repository_name="IndicatorCandleRepository")
+
+    async def _execute_aggregate_all(self, statement, params: dict[str, object]) -> list[Any]:
+        bind = self.session.bind
+        if isinstance(bind, AsyncEngine):
+            async with bind.connect() as connection:
+                return list((await connection.execute(statement, params)).all())
+        return list((await self.session.execute(statement, params)).all())
+
+    async def _execute_aggregate_first(self, statement, params: dict[str, object]) -> Any | None:
+        bind = self.session.bind
+        if isinstance(bind, AsyncEngine):
+            async with bind.connect() as connection:
+                return (await connection.execute(statement, params)).first()
+        return (await self.session.execute(statement, params)).first()
 
     async def has_direct_candles(self, *, coin_id: int, timeframe: int) -> bool:
         self._log_debug(
@@ -201,12 +269,23 @@ class IndicatorCandleRepository(AsyncRepository):
         )
         if timeframe not in AGGREGATE_VIEW_BY_TIMEFRAME:
             return False
-        row = (
-            await self.session.execute(
+        try:
+            row = await self._execute_aggregate_first(
                 text(f"SELECT 1 FROM {AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]} WHERE coin_id = :coin_id LIMIT 1"),
                 {"coin_id": coin_id},
             )
-        ).first()
+        except SQLAlchemyError as error:
+            if not _should_fallback_aggregate_error(error):
+                raise
+            self._log_warning(
+                "repo.indicator_aggregate_has_rows.fallback",
+                mode="read",
+                coin_id=coin_id,
+                timeframe=timeframe,
+                error=str(error),
+                raw_sql_exception=True,
+            )
+            return False
         found = row is not None
         self._log_debug(
             "repo.indicator_aggregate_has_rows.result",
@@ -244,8 +323,8 @@ class IndicatorCandleRepository(AsyncRepository):
     async def _fetch_view_points(self, *, coin_id: int, timeframe: int, limit: int | None) -> list[CandlePoint]:
         view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
         limit_sql = "LIMIT :limit" if limit is not None else ""
-        rows = (
-            await self.session.execute(
+        try:
+            rows = await self._execute_aggregate_all(
                 text(
                     f"""
                     SELECT bucket, open, high, low, close, volume
@@ -261,7 +340,19 @@ class IndicatorCandleRepository(AsyncRepository):
                 ),
                 {"coin_id": coin_id, **({"limit": limit} if limit is not None else {})},
             )
-        ).all()
+        except SQLAlchemyError as error:
+            if not _should_fallback_aggregate_error(error):
+                raise
+            self._log_warning(
+                "repo.fetch_indicator_candle_points.aggregate_fallback",
+                mode="read",
+                coin_id=coin_id,
+                timeframe=timeframe,
+                limit=limit,
+                error=str(error),
+                raw_sql_exception=True,
+            )
+            return []
         return _rows_to_candle_points(rows, timestamp_field="bucket")
 
     async def _fetch_resampled_points(
@@ -273,8 +364,8 @@ class IndicatorCandleRepository(AsyncRepository):
         limit: int | None,
     ) -> list[CandlePoint]:
         limit_sql = "LIMIT :limit" if limit is not None else ""
-        rows = (
-            await self.session.execute(
+        try:
+            rows = await self._execute_aggregate_all(
                 text(
                     f"""
                     SELECT bucket, open, high, low, close, volume
@@ -303,8 +394,23 @@ class IndicatorCandleRepository(AsyncRepository):
                     **({"limit": limit} if limit is not None else {}),
                 },
             )
-        ).all()
-        return _rows_to_candle_points(rows, timestamp_field="bucket")
+            return _rows_to_candle_points(rows, timestamp_field="bucket")
+        except SQLAlchemyError as error:
+            if not _should_fallback_aggregate_error(error):
+                raise
+            self._log_warning(
+                "repo.fetch_indicator_candle_points.resample_fallback",
+                mode="read",
+                coin_id=coin_id,
+                source_timeframe=source_timeframe,
+                target_timeframe=target_timeframe,
+                limit=limit,
+                error=str(error),
+                raw_sql_exception=True,
+            )
+            source_points = await self._fetch_direct_points(coin_id=coin_id, timeframe=source_timeframe, limit=None)
+            resampled = _resample_candle_points(source_points, target_timeframe=target_timeframe)
+            return resampled[-limit:] if limit is not None else resampled
 
 
 class IndicatorMetricsRepository(AsyncRepository):
