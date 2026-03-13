@@ -36,5 +36,8 @@ jobs:
       - name: Check committed HTTP availability matrix
         run: make api-matrix-check
 
+      - name: Check committed HTTP capability catalog
+        run: make api-capabilities-check
+
       - name: Run API governance tests
-        run: cd backend && uv run pytest tests/core/test_bootstrap_db_main.py tests/core/test_http_matrix.py
+        run: cd backend && uv run pytest tests/core/test_bootstrap_db_main.py tests/core/test_http_matrix.py tests/core/test_http_capabilities.py

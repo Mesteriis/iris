@@ -136,6 +136,8 @@ make openapi-export-ha
 make openapi-check
 make api-matrix-export
 make api-matrix-check
+make api-capabilities-export
+make api-capabilities-check
 ```
 
 This manual pipeline includes:
