@@ -113,6 +113,16 @@ class SignalBacktestCompatibilityQuery:
             lookback_days=lookback_days,
             limit=limit,
         )
+        self._log(
+            logging.DEBUG,
+            "compat.list_backtests.execute",
+            mode="read",
+            symbol=symbol,
+            timeframe=timeframe,
+            signal_type=signal_type,
+            lookback_days=lookback_days,
+            limit=limit,
+        )
         points = self._query_points(
             symbol=symbol,
             timeframe=timeframe,
@@ -143,7 +153,17 @@ class SignalBacktestCompatibilityQuery:
             ),
             reverse=True,
         )
-        return [backtest_summary_payload(row) for row in sorted_items[: max(limit, 1)]]
+        result = [backtest_summary_payload(row) for row in sorted_items[: max(limit, 1)]]
+        self._log(
+            logging.INFO,
+            "compat.list_backtests.result",
+            mode="read",
+            symbol=symbol,
+            timeframe=timeframe,
+            signal_type=signal_type,
+            count=len(result),
+        )
+        return result
 
     def list_top_backtests(
         self,
@@ -155,6 +175,14 @@ class SignalBacktestCompatibilityQuery:
         self._log(
             logging.WARNING,
             "compat.list_top_backtests.deprecated",
+            mode="read",
+            timeframe=timeframe,
+            lookback_days=lookback_days,
+            limit=limit,
+        )
+        self._log(
+            logging.DEBUG,
+            "compat.list_top_backtests.execute",
             mode="read",
             timeframe=timeframe,
             lookback_days=lookback_days,
@@ -178,7 +206,15 @@ class SignalBacktestCompatibilityQuery:
             ),
             reverse=True,
         )
-        return [backtest_summary_payload(row) for row in sorted_items[: max(limit, 1)]]
+        result = [backtest_summary_payload(row) for row in sorted_items[: max(limit, 1)]]
+        self._log(
+            logging.INFO,
+            "compat.list_top_backtests.result",
+            mode="read",
+            timeframe=timeframe,
+            count=len(result),
+        )
+        return result
 
     def get_coin_backtests(
         self,
@@ -200,12 +236,29 @@ class SignalBacktestCompatibilityQuery:
             lookback_days=lookback_days,
             limit=limit,
         )
+        self._log(
+            logging.DEBUG,
+            "compat.get_coin_backtests.execute",
+            mode="read",
+            symbol=normalized_symbol,
+            timeframe=timeframe,
+            signal_type=signal_type,
+            lookback_days=lookback_days,
+            limit=limit,
+        )
         coin = self._db.scalar(
             select(Coin).where(Coin.symbol == normalized_symbol, Coin.deleted_at.is_(None)).limit(1)
         )
         if coin is None:
+            self._log(
+                logging.INFO,
+                "compat.get_coin_backtests.result",
+                mode="read",
+                symbol=normalized_symbol,
+                found=False,
+            )
             return None
-        return coin_backtests_payload(
+        result = coin_backtests_payload(
             coin_backtests_read_model_from_mapping(
                 {
                     "coin_id": coin.id,
@@ -220,6 +273,15 @@ class SignalBacktestCompatibilityQuery:
                 }
             )
         )
+        self._log(
+            logging.INFO,
+            "compat.get_coin_backtests.result",
+            mode="read",
+            symbol=normalized_symbol,
+            found=True,
+            count=len(result["items"]),
+        )
+        return result
 
 
 def list_backtests(

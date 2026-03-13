@@ -44,6 +44,13 @@ class SignalStrategyCompatibilityQuery:
             enabled_only=enabled_only,
             limit=limit,
         )
+        self._log(
+            logging.DEBUG,
+            "compat.list_strategies.execute",
+            mode="read",
+            enabled_only=enabled_only,
+            limit=limit,
+        )
         stmt = (
             select(Strategy)
             .options(selectinload(Strategy.rules), selectinload(Strategy.performance))
@@ -90,10 +97,19 @@ class SignalStrategyCompatibilityQuery:
             )
             for row in rows
         ]
-        return [strategy_payload(item) for item in items]
+        result = [strategy_payload(item) for item in items]
+        self._log(
+            logging.INFO,
+            "compat.list_strategies.result",
+            mode="read",
+            enabled_only=enabled_only,
+            count=len(result),
+        )
+        return result
 
     def list_strategy_performance(self, *, limit: int = 100) -> Sequence[dict[str, Any]]:
         self._log(logging.WARNING, "compat.list_strategy_performance.deprecated", mode="read", limit=limit)
+        self._log(logging.DEBUG, "compat.list_strategy_performance.execute", mode="read", limit=limit)
         rows = self._db.execute(
             select(
                 StrategyPerformance.strategy_id,
@@ -115,7 +131,9 @@ class SignalStrategyCompatibilityQuery:
             )
             .limit(max(limit, 1))
         ).all()
-        return [strategy_performance_payload(strategy_performance_read_model_from_mapping(row._mapping)) for row in rows]
+        result = [strategy_performance_payload(strategy_performance_read_model_from_mapping(row._mapping)) for row in rows]
+        self._log(logging.INFO, "compat.list_strategy_performance.result", mode="read", count=len(result))
+        return result
 
 
 def list_strategies(db: Session, *, enabled_only: bool = False, limit: int = 100) -> Sequence[dict[str, Any]]:
