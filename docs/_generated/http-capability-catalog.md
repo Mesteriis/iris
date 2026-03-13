@@ -1,108 +1,108 @@
 # HTTP Capability Catalog
 
-Generated from the mode-aware OpenAPI contract.
+Generated from the mode-aware OpenAPI contract and the shared capability metadata policy.
 
-| Operation ID | Method | Path | Domain | Category | `full` | `local` | `ha_addon` |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `control_plane_apply_draft` | `POST` | `/api/v1/control-plane/drafts/{draft_id}/apply` | `control-plane` | `commands` | yes | yes | no |
-| `control_plane_create_draft` | `POST` | `/api/v1/control-plane/drafts` | `control-plane` | `commands` | yes | yes | no |
-| `control_plane_create_draft_change` | `POST` | `/api/v1/control-plane/drafts/{draft_id}/changes` | `control-plane` | `commands` | yes | yes | no |
-| `control_plane_create_route` | `POST` | `/api/v1/control-plane/routes` | `control-plane` | `commands` | yes | yes | no |
-| `control_plane_discard_draft` | `POST` | `/api/v1/control-plane/drafts/{draft_id}/discard` | `control-plane` | `commands` | yes | yes | no |
-| `control_plane_read_audit_log` | `GET` | `/api/v1/control-plane/audit` | `control-plane` | `read` | yes | yes | yes |
-| `control_plane_read_compatible_consumers` | `GET` | `/api/v1/control-plane/registry/events/{event_type}/compatible-consumers` | `control-plane` | `read` | yes | yes | yes |
-| `control_plane_read_consumer_registry` | `GET` | `/api/v1/control-plane/registry/consumers` | `control-plane` | `read` | yes | yes | yes |
-| `control_plane_read_draft_diff` | `GET` | `/api/v1/control-plane/drafts/{draft_id}/diff` | `control-plane` | `read` | yes | yes | yes |
-| `control_plane_read_drafts` | `GET` | `/api/v1/control-plane/drafts` | `control-plane` | `read` | yes | yes | yes |
-| `control_plane_read_event_registry` | `GET` | `/api/v1/control-plane/registry/events` | `control-plane` | `read` | yes | yes | yes |
-| `control_plane_read_observability` | `GET` | `/api/v1/control-plane/observability` | `control-plane` | `read` | yes | yes | yes |
-| `control_plane_read_routes` | `GET` | `/api/v1/control-plane/routes` | `control-plane` | `read` | yes | yes | yes |
-| `control_plane_read_topology_graph` | `GET` | `/api/v1/control-plane/topology/graph` | `control-plane` | `read` | yes | yes | yes |
-| `control_plane_read_topology_snapshot` | `GET` | `/api/v1/control-plane/topology/snapshot` | `control-plane` | `read` | yes | yes | yes |
-| `control_plane_update_route` | `PUT` | `/api/v1/control-plane/routes/{route_key}` | `control-plane` | `commands` | yes | yes | no |
-| `control_plane_update_route_status` | `POST` | `/api/v1/control-plane/routes/{route_key}/status` | `control-plane` | `commands` | yes | yes | no |
-| `hypothesis_activate_ai_prompt` | `POST` | `/api/v1/hypothesis/prompts/{prompt_id}/activate` | `hypothesis` | `commands` | yes | yes | yes |
-| `hypothesis_create_ai_prompt` | `POST` | `/api/v1/hypothesis/prompts` | `hypothesis` | `commands` | yes | yes | yes |
-| `hypothesis_patch_ai_prompt` | `PATCH` | `/api/v1/hypothesis/prompts/{prompt_id}` | `hypothesis` | `commands` | yes | yes | yes |
-| `hypothesis_read_ai_prompts` | `GET` | `/api/v1/hypothesis/prompts` | `hypothesis` | `read` | yes | yes | yes |
-| `hypothesis_read_evals` | `GET` | `/api/v1/hypothesis/evals` | `hypothesis` | `read` | yes | yes | yes |
-| `hypothesis_read_hypotheses` | `GET` | `/api/v1/hypothesis/hypotheses` | `hypothesis` | `read` | yes | yes | yes |
-| `hypothesis_run_evaluation_job` | `POST` | `/api/v1/hypothesis/jobs/evaluate` | `hypothesis` | `jobs` | yes | yes | no |
-| `hypothesis_stream_ai_events` | `GET` | `/api/v1/hypothesis/sse/ai` | `hypothesis` | `streams` | yes | yes | no |
-| `indicators_read_coin_metrics` | `GET` | `/api/v1/coins/metrics` | `indicators` | `read` | yes | yes | yes |
-| `indicators_read_market_cycles` | `GET` | `/api/v1/market/cycle` | `indicators` | `read` | yes | yes | yes |
-| `indicators_read_market_flow` | `GET` | `/api/v1/market/flow` | `indicators` | `read` | yes | yes | yes |
-| `indicators_read_market_radar` | `GET` | `/api/v1/market/radar` | `indicators` | `read` | yes | yes | yes |
-| `market_data_create_coin` | `POST` | `/api/v1/coins` | `market-data` | `commands` | yes | yes | yes |
-| `market_data_create_coin_history` | `POST` | `/api/v1/coins/{symbol}/history` | `market-data` | `commands` | yes | yes | yes |
-| `market_data_delete_coin` | `DELETE` | `/api/v1/coins/{symbol}` | `market-data` | `commands` | yes | yes | yes |
-| `market_data_read_coin_history` | `GET` | `/api/v1/coins/{symbol}/history` | `market-data` | `read` | yes | yes | yes |
-| `market_data_read_coins` | `GET` | `/api/v1/coins` | `market-data` | `read` | yes | yes | yes |
-| `market_data_run_coin_job` | `POST` | `/api/v1/coins/{symbol}/jobs/run` | `market-data` | `jobs` | yes | yes | yes |
-| `market_structure_create_binance_market_structure_source` | `POST` | `/api/v1/market-structure/onboarding/sources/binance-usdm` | `market-structure` | `onboarding` | yes | yes | no |
-| `market_structure_create_bybit_market_structure_source` | `POST` | `/api/v1/market-structure/onboarding/sources/bybit-derivatives` | `market-structure` | `onboarding` | yes | yes | no |
-| `market_structure_create_coinalyze_market_structure_webhook_source` | `POST` | `/api/v1/market-structure/onboarding/sources/coinalyze-webhook` | `market-structure` | `onboarding` | yes | yes | no |
-| `market_structure_create_coinglass_market_structure_webhook_source` | `POST` | `/api/v1/market-structure/onboarding/sources/coinglass-webhook` | `market-structure` | `onboarding` | yes | yes | no |
-| `market_structure_create_derivatives_market_structure_webhook_source` | `POST` | `/api/v1/market-structure/onboarding/sources/derivatives-webhook` | `market-structure` | `onboarding` | yes | yes | no |
-| `market_structure_create_hyblock_market_structure_webhook_source` | `POST` | `/api/v1/market-structure/onboarding/sources/hyblock-webhook` | `market-structure` | `onboarding` | yes | yes | no |
-| `market_structure_create_liqscope_market_structure_webhook_source` | `POST` | `/api/v1/market-structure/onboarding/sources/liqscope-webhook` | `market-structure` | `onboarding` | yes | yes | no |
-| `market_structure_create_liquidation_market_structure_webhook_source` | `POST` | `/api/v1/market-structure/onboarding/sources/liquidation-webhook` | `market-structure` | `onboarding` | yes | yes | no |
-| `market_structure_create_manual_market_structure_source` | `POST` | `/api/v1/market-structure/onboarding/sources/manual-push` | `market-structure` | `onboarding` | yes | yes | no |
-| `market_structure_create_source` | `POST` | `/api/v1/market-structure/sources` | `market-structure` | `commands` | yes | yes | yes |
-| `market_structure_delete_source` | `DELETE` | `/api/v1/market-structure/sources/{source_id}` | `market-structure` | `commands` | yes | yes | yes |
-| `market_structure_ingest_native_webhook_payload` | `POST` | `/api/v1/market-structure/sources/{source_id}/webhook/native` | `market-structure` | `webhooks` | yes | yes | yes |
-| `market_structure_ingest_snapshots` | `POST` | `/api/v1/market-structure/sources/{source_id}/snapshots` | `market-structure` | `webhooks` | yes | yes | yes |
-| `market_structure_patch_source` | `PATCH` | `/api/v1/market-structure/sources/{source_id}` | `market-structure` | `commands` | yes | yes | yes |
-| `market_structure_read_plugins` | `GET` | `/api/v1/market-structure/plugins` | `market-structure` | `read` | yes | yes | yes |
-| `market_structure_read_snapshots` | `GET` | `/api/v1/market-structure/snapshots` | `market-structure` | `read` | yes | yes | yes |
-| `market_structure_read_source_health` | `GET` | `/api/v1/market-structure/sources/{source_id}/health` | `market-structure` | `read` | yes | yes | yes |
-| `market_structure_read_source_webhook` | `GET` | `/api/v1/market-structure/sources/{source_id}/webhook` | `market-structure` | `read` | yes | yes | yes |
-| `market_structure_read_sources` | `GET` | `/api/v1/market-structure/sources` | `market-structure` | `read` | yes | yes | yes |
-| `market_structure_read_wizard` | `GET` | `/api/v1/market-structure/onboarding/wizard` | `market-structure` | `onboarding` | yes | yes | no |
-| `market_structure_rotate_source_webhook_token` | `POST` | `/api/v1/market-structure/sources/{source_id}/webhook/rotate-token` | `market-structure` | `commands` | yes | yes | yes |
-| `market_structure_run_health_job` | `POST` | `/api/v1/market-structure/health/jobs/run` | `market-structure` | `jobs` | yes | yes | no |
-| `market_structure_run_source_job` | `POST` | `/api/v1/market-structure/sources/{source_id}/jobs/run` | `market-structure` | `jobs` | yes | yes | no |
-| `news_confirm_telegram_session_code` | `POST` | `/api/v1/news/onboarding/telegram/session/confirm` | `news` | `onboarding` | yes | yes | no |
-| `news_create_source` | `POST` | `/api/v1/news/sources` | `news` | `commands` | yes | yes | no |
-| `news_create_telegram_source_from_dialog` | `POST` | `/api/v1/news/onboarding/telegram/sources` | `news` | `onboarding` | yes | yes | no |
-| `news_delete_source` | `DELETE` | `/api/v1/news/sources/{source_id}` | `news` | `commands` | yes | yes | no |
-| `news_handle_bulk_subscribe_telegram_sources` | `POST` | `/api/v1/news/onboarding/telegram/sources/bulk` | `news` | `onboarding` | yes | yes | no |
-| `news_list_telegram_dialogs` | `POST` | `/api/v1/news/onboarding/telegram/dialogs` | `news` | `onboarding` | yes | yes | no |
-| `news_patch_source` | `PATCH` | `/api/v1/news/sources/{source_id}` | `news` | `commands` | yes | yes | no |
-| `news_read_items` | `GET` | `/api/v1/news/items` | `news` | `read` | yes | yes | yes |
-| `news_read_plugins` | `GET` | `/api/v1/news/plugins` | `news` | `read` | yes | yes | yes |
-| `news_read_sources` | `GET` | `/api/v1/news/sources` | `news` | `read` | yes | yes | yes |
-| `news_read_telegram_wizard` | `GET` | `/api/v1/news/onboarding/telegram/wizard` | `news` | `onboarding` | yes | yes | no |
-| `news_request_telegram_session_code` | `POST` | `/api/v1/news/onboarding/telegram/session/request` | `news` | `onboarding` | yes | yes | no |
-| `news_run_source_job` | `POST` | `/api/v1/news/sources/{source_id}/jobs/run` | `news` | `jobs` | yes | yes | no |
-| `patterns_patch_pattern` | `PATCH` | `/api/v1/patterns/{slug}` | `patterns` | `commands` | yes | yes | yes |
-| `patterns_patch_pattern_feature` | `PATCH` | `/api/v1/patterns/features/{feature_slug}` | `patterns` | `commands` | yes | yes | yes |
-| `patterns_read_coin_patterns` | `GET` | `/api/v1/coins/{symbol}/patterns` | `patterns` | `read` | yes | yes | yes |
-| `patterns_read_coin_regime` | `GET` | `/api/v1/coins/{symbol}/regime` | `patterns` | `read` | yes | yes | yes |
-| `patterns_read_discovered_patterns` | `GET` | `/api/v1/patterns/discovered` | `patterns` | `read` | yes | yes | yes |
-| `patterns_read_pattern_features` | `GET` | `/api/v1/patterns/features` | `patterns` | `read` | yes | yes | yes |
-| `patterns_read_patterns` | `GET` | `/api/v1/patterns` | `patterns` | `read` | yes | yes | yes |
-| `patterns_read_sector_metrics` | `GET` | `/api/v1/sectors/metrics` | `patterns` | `read` | yes | yes | yes |
-| `patterns_read_sectors` | `GET` | `/api/v1/sectors` | `patterns` | `read` | yes | yes | yes |
-| `portfolio_read_actions` | `GET` | `/api/v1/portfolio/actions` | `portfolio` | `read` | yes | yes | yes |
-| `portfolio_read_positions` | `GET` | `/api/v1/portfolio/positions` | `portfolio` | `read` | yes | yes | yes |
-| `portfolio_read_state` | `GET` | `/api/v1/portfolio/state` | `portfolio` | `read` | yes | yes | yes |
-| `predictions_read_predictions` | `GET` | `/api/v1/predictions` | `predictions` | `read` | yes | yes | yes |
-| `signals_read_backtests` | `GET` | `/api/v1/backtests` | `signals` | `backtests` | yes | yes | yes |
-| `signals_read_coin_backtests` | `GET` | `/api/v1/coins/{symbol}/backtests` | `signals` | `backtests` | yes | yes | yes |
-| `signals_read_coin_decision` | `GET` | `/api/v1/coins/{symbol}/decision` | `signals` | `decisions` | yes | yes | yes |
-| `signals_read_coin_final_signal` | `GET` | `/api/v1/coins/{symbol}/final-signal` | `signals` | `final-signals` | yes | yes | yes |
-| `signals_read_coin_market_decision` | `GET` | `/api/v1/coins/{symbol}/market-decision` | `signals` | `market-decisions` | yes | yes | yes |
-| `signals_read_decisions` | `GET` | `/api/v1/decisions` | `signals` | `decisions` | yes | yes | yes |
-| `signals_read_final_signals` | `GET` | `/api/v1/final-signals` | `signals` | `final-signals` | yes | yes | yes |
-| `signals_read_market_decisions` | `GET` | `/api/v1/market-decisions` | `signals` | `market-decisions` | yes | yes | yes |
-| `signals_read_signals` | `GET` | `/api/v1/signals` | `signals` | `read` | yes | yes | yes |
-| `signals_read_strategies` | `GET` | `/api/v1/strategies` | `signals` | `strategies` | yes | yes | yes |
-| `signals_read_strategy_performance` | `GET` | `/api/v1/strategies/performance` | `signals` | `strategies` | yes | yes | yes |
-| `signals_read_top_backtests` | `GET` | `/api/v1/backtests/top` | `signals` | `backtests` | yes | yes | yes |
-| `signals_read_top_decisions` | `GET` | `/api/v1/decisions/top` | `signals` | `decisions` | yes | yes | yes |
-| `signals_read_top_final_signals` | `GET` | `/api/v1/final-signals/top` | `signals` | `final-signals` | yes | yes | yes |
-| `signals_read_top_market_decisions` | `GET` | `/api/v1/market-decisions/top` | `signals` | `market-decisions` | yes | yes | yes |
-| `signals_read_top_signals` | `GET` | `/api/v1/signals/top` | `signals` | `read` | yes | yes | yes |
-| `system_handle_health` | `GET` | `/api/v1/system/health` | `system` | `read` | yes | yes | yes |
-| `system_handle_status` | `GET` | `/api/v1/system/status` | `system` | `read` | yes | yes | yes |
+| Operation ID | Method | Path | Domain | Category | Audience | Execution | Idempotency | Operation Resource | Auth | `full` | `local` | `ha_addon` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `control_plane_apply_draft` | `POST` | `/api/v1/control-plane/drafts/{draft_id}/apply` | `control-plane` | `commands` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `control_plane_create_draft` | `POST` | `/api/v1/control-plane/drafts` | `control-plane` | `commands` | `operator_control` | `sync` | `non_idempotent` | no | `operator` | yes | yes | no |
+| `control_plane_create_draft_change` | `POST` | `/api/v1/control-plane/drafts/{draft_id}/changes` | `control-plane` | `commands` | `operator_control` | `sync` | `non_idempotent` | no | `operator` | yes | yes | no |
+| `control_plane_create_route` | `POST` | `/api/v1/control-plane/routes` | `control-plane` | `commands` | `operator_control` | `sync` | `non_idempotent` | no | `operator` | yes | yes | no |
+| `control_plane_discard_draft` | `POST` | `/api/v1/control-plane/drafts/{draft_id}/discard` | `control-plane` | `commands` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `control_plane_read_audit_log` | `GET` | `/api/v1/control-plane/audit` | `control-plane` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `control_plane_read_compatible_consumers` | `GET` | `/api/v1/control-plane/registry/events/{event_type}/compatible-consumers` | `control-plane` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `control_plane_read_consumer_registry` | `GET` | `/api/v1/control-plane/registry/consumers` | `control-plane` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `control_plane_read_draft_diff` | `GET` | `/api/v1/control-plane/drafts/{draft_id}/diff` | `control-plane` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `control_plane_read_drafts` | `GET` | `/api/v1/control-plane/drafts` | `control-plane` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `control_plane_read_event_registry` | `GET` | `/api/v1/control-plane/registry/events` | `control-plane` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `control_plane_read_observability` | `GET` | `/api/v1/control-plane/observability` | `control-plane` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `control_plane_read_routes` | `GET` | `/api/v1/control-plane/routes` | `control-plane` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `control_plane_read_topology_graph` | `GET` | `/api/v1/control-plane/topology/graph` | `control-plane` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `control_plane_read_topology_snapshot` | `GET` | `/api/v1/control-plane/topology/snapshot` | `control-plane` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `control_plane_update_route` | `PUT` | `/api/v1/control-plane/routes/{route_key}` | `control-plane` | `commands` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | no |
+| `control_plane_update_route_status` | `POST` | `/api/v1/control-plane/routes/{route_key}/status` | `control-plane` | `commands` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `hypothesis_activate_ai_prompt` | `POST` | `/api/v1/hypothesis/prompts/{prompt_id}/activate` | `hypothesis` | `commands` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | yes |
+| `hypothesis_create_ai_prompt` | `POST` | `/api/v1/hypothesis/prompts` | `hypothesis` | `commands` | `operator_control` | `sync` | `non_idempotent` | no | `operator` | yes | yes | yes |
+| `hypothesis_patch_ai_prompt` | `PATCH` | `/api/v1/hypothesis/prompts/{prompt_id}` | `hypothesis` | `commands` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | yes |
+| `hypothesis_read_ai_prompts` | `GET` | `/api/v1/hypothesis/prompts` | `hypothesis` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `hypothesis_read_evals` | `GET` | `/api/v1/hypothesis/evals` | `hypothesis` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `hypothesis_read_hypotheses` | `GET` | `/api/v1/hypothesis/hypotheses` | `hypothesis` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `hypothesis_run_evaluation_job` | `POST` | `/api/v1/hypothesis/jobs/evaluate` | `hypothesis` | `jobs` | `operator_control` | `async` | `conditional` | yes | `operator` | yes | yes | no |
+| `hypothesis_stream_ai_events` | `GET` | `/api/v1/hypothesis/sse/ai` | `hypothesis` | `streams` | `operator_control` | `stream` | `strict` | no | `operator` | yes | yes | no |
+| `indicators_read_coin_metrics` | `GET` | `/api/v1/coins/metrics` | `indicators` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `indicators_read_market_cycles` | `GET` | `/api/v1/market/cycle` | `indicators` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `indicators_read_market_flow` | `GET` | `/api/v1/market/flow` | `indicators` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `indicators_read_market_radar` | `GET` | `/api/v1/market/radar` | `indicators` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `market_data_create_coin` | `POST` | `/api/v1/coins` | `market-data` | `commands` | `operator_control` | `sync` | `non_idempotent` | no | `operator` | yes | yes | yes |
+| `market_data_create_coin_history` | `POST` | `/api/v1/coins/{symbol}/history` | `market-data` | `commands` | `operator_control` | `sync` | `non_idempotent` | no | `operator` | yes | yes | yes |
+| `market_data_delete_coin` | `DELETE` | `/api/v1/coins/{symbol}` | `market-data` | `commands` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `market_data_read_coin_history` | `GET` | `/api/v1/coins/{symbol}/history` | `market-data` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `market_data_read_coins` | `GET` | `/api/v1/coins` | `market-data` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `market_data_run_coin_job` | `POST` | `/api/v1/coins/{symbol}/jobs/run` | `market-data` | `jobs` | `operator_control` | `async` | `conditional` | yes | `operator` | yes | yes | yes |
+| `market_structure_create_binance_market_structure_source` | `POST` | `/api/v1/market-structure/onboarding/sources/binance-usdm` | `market-structure` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `market_structure_create_bybit_market_structure_source` | `POST` | `/api/v1/market-structure/onboarding/sources/bybit-derivatives` | `market-structure` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `market_structure_create_coinalyze_market_structure_webhook_source` | `POST` | `/api/v1/market-structure/onboarding/sources/coinalyze-webhook` | `market-structure` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `market_structure_create_coinglass_market_structure_webhook_source` | `POST` | `/api/v1/market-structure/onboarding/sources/coinglass-webhook` | `market-structure` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `market_structure_create_derivatives_market_structure_webhook_source` | `POST` | `/api/v1/market-structure/onboarding/sources/derivatives-webhook` | `market-structure` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `market_structure_create_hyblock_market_structure_webhook_source` | `POST` | `/api/v1/market-structure/onboarding/sources/hyblock-webhook` | `market-structure` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `market_structure_create_liqscope_market_structure_webhook_source` | `POST` | `/api/v1/market-structure/onboarding/sources/liqscope-webhook` | `market-structure` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `market_structure_create_liquidation_market_structure_webhook_source` | `POST` | `/api/v1/market-structure/onboarding/sources/liquidation-webhook` | `market-structure` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `market_structure_create_manual_market_structure_source` | `POST` | `/api/v1/market-structure/onboarding/sources/manual-push` | `market-structure` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `market_structure_create_source` | `POST` | `/api/v1/market-structure/sources` | `market-structure` | `commands` | `operator_control` | `sync` | `non_idempotent` | no | `operator` | yes | yes | yes |
+| `market_structure_delete_source` | `DELETE` | `/api/v1/market-structure/sources/{source_id}` | `market-structure` | `commands` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `market_structure_ingest_native_webhook_payload` | `POST` | `/api/v1/market-structure/sources/{source_id}/webhook/native` | `market-structure` | `webhooks` | `external_ingest` | `sync` | `conditional` | no | `webhook_token` | yes | yes | yes |
+| `market_structure_ingest_snapshots` | `POST` | `/api/v1/market-structure/sources/{source_id}/snapshots` | `market-structure` | `webhooks` | `external_ingest` | `sync` | `conditional` | no | `webhook_token` | yes | yes | yes |
+| `market_structure_patch_source` | `PATCH` | `/api/v1/market-structure/sources/{source_id}` | `market-structure` | `commands` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | yes |
+| `market_structure_read_plugins` | `GET` | `/api/v1/market-structure/plugins` | `market-structure` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `market_structure_read_snapshots` | `GET` | `/api/v1/market-structure/snapshots` | `market-structure` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `market_structure_read_source_health` | `GET` | `/api/v1/market-structure/sources/{source_id}/health` | `market-structure` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `market_structure_read_source_webhook` | `GET` | `/api/v1/market-structure/sources/{source_id}/webhook` | `market-structure` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `market_structure_read_sources` | `GET` | `/api/v1/market-structure/sources` | `market-structure` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `market_structure_read_wizard` | `GET` | `/api/v1/market-structure/onboarding/wizard` | `market-structure` | `onboarding` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | no |
+| `market_structure_rotate_source_webhook_token` | `POST` | `/api/v1/market-structure/sources/{source_id}/webhook/rotate-token` | `market-structure` | `commands` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | yes |
+| `market_structure_run_health_job` | `POST` | `/api/v1/market-structure/health/jobs/run` | `market-structure` | `jobs` | `operator_control` | `async` | `conditional` | yes | `operator` | yes | yes | no |
+| `market_structure_run_source_job` | `POST` | `/api/v1/market-structure/sources/{source_id}/jobs/run` | `market-structure` | `jobs` | `operator_control` | `async` | `conditional` | yes | `operator` | yes | yes | no |
+| `news_confirm_telegram_session_code` | `POST` | `/api/v1/news/onboarding/telegram/session/confirm` | `news` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `news_create_source` | `POST` | `/api/v1/news/sources` | `news` | `commands` | `operator_control` | `sync` | `non_idempotent` | no | `operator` | yes | yes | no |
+| `news_create_telegram_source_from_dialog` | `POST` | `/api/v1/news/onboarding/telegram/sources` | `news` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `news_delete_source` | `DELETE` | `/api/v1/news/sources/{source_id}` | `news` | `commands` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | no |
+| `news_handle_bulk_subscribe_telegram_sources` | `POST` | `/api/v1/news/onboarding/telegram/sources/bulk` | `news` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `news_list_telegram_dialogs` | `POST` | `/api/v1/news/onboarding/telegram/dialogs` | `news` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `news_patch_source` | `PATCH` | `/api/v1/news/sources/{source_id}` | `news` | `commands` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `news_read_items` | `GET` | `/api/v1/news/items` | `news` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `news_read_plugins` | `GET` | `/api/v1/news/plugins` | `news` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `news_read_sources` | `GET` | `/api/v1/news/sources` | `news` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `news_read_telegram_wizard` | `GET` | `/api/v1/news/onboarding/telegram/wizard` | `news` | `onboarding` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | no |
+| `news_request_telegram_session_code` | `POST` | `/api/v1/news/onboarding/telegram/session/request` | `news` | `onboarding` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | no |
+| `news_run_source_job` | `POST` | `/api/v1/news/sources/{source_id}/jobs/run` | `news` | `jobs` | `operator_control` | `async` | `conditional` | yes | `operator` | yes | yes | no |
+| `patterns_patch_pattern` | `PATCH` | `/api/v1/patterns/{slug}` | `patterns` | `commands` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | yes |
+| `patterns_patch_pattern_feature` | `PATCH` | `/api/v1/patterns/features/{feature_slug}` | `patterns` | `commands` | `operator_control` | `sync` | `conditional` | no | `operator` | yes | yes | yes |
+| `patterns_read_coin_patterns` | `GET` | `/api/v1/coins/{symbol}/patterns` | `patterns` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `patterns_read_coin_regime` | `GET` | `/api/v1/coins/{symbol}/regime` | `patterns` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `patterns_read_discovered_patterns` | `GET` | `/api/v1/patterns/discovered` | `patterns` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `patterns_read_pattern_features` | `GET` | `/api/v1/patterns/features` | `patterns` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `patterns_read_patterns` | `GET` | `/api/v1/patterns` | `patterns` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `patterns_read_sector_metrics` | `GET` | `/api/v1/sectors/metrics` | `patterns` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `patterns_read_sectors` | `GET` | `/api/v1/sectors` | `patterns` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `portfolio_read_actions` | `GET` | `/api/v1/portfolio/actions` | `portfolio` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `portfolio_read_positions` | `GET` | `/api/v1/portfolio/positions` | `portfolio` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `portfolio_read_state` | `GET` | `/api/v1/portfolio/state` | `portfolio` | `read` | `operator_control` | `sync` | `strict` | no | `operator` | yes | yes | yes |
+| `predictions_read_predictions` | `GET` | `/api/v1/predictions` | `predictions` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_backtests` | `GET` | `/api/v1/backtests` | `signals` | `backtests` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_coin_backtests` | `GET` | `/api/v1/coins/{symbol}/backtests` | `signals` | `backtests` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_coin_decision` | `GET` | `/api/v1/coins/{symbol}/decision` | `signals` | `decisions` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_coin_final_signal` | `GET` | `/api/v1/coins/{symbol}/final-signal` | `signals` | `final-signals` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_coin_market_decision` | `GET` | `/api/v1/coins/{symbol}/market-decision` | `signals` | `market-decisions` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_decisions` | `GET` | `/api/v1/decisions` | `signals` | `decisions` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_final_signals` | `GET` | `/api/v1/final-signals` | `signals` | `final-signals` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_market_decisions` | `GET` | `/api/v1/market-decisions` | `signals` | `market-decisions` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_signals` | `GET` | `/api/v1/signals` | `signals` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_strategies` | `GET` | `/api/v1/strategies` | `signals` | `strategies` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_strategy_performance` | `GET` | `/api/v1/strategies/performance` | `signals` | `strategies` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_top_backtests` | `GET` | `/api/v1/backtests/top` | `signals` | `backtests` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_top_decisions` | `GET` | `/api/v1/decisions/top` | `signals` | `decisions` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_top_final_signals` | `GET` | `/api/v1/final-signals/top` | `signals` | `final-signals` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_top_market_decisions` | `GET` | `/api/v1/market-decisions/top` | `signals` | `market-decisions` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `signals_read_top_signals` | `GET` | `/api/v1/signals/top` | `signals` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `system_handle_health` | `GET` | `/api/v1/system/health` | `system` | `read` | `internal_platform` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `system_handle_status` | `GET` | `/api/v1/system/status` | `system` | `read` | `internal_platform` | `sync` | `strict` | no | `public` | yes | yes | yes |

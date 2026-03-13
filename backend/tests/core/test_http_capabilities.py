@@ -16,6 +16,20 @@ def test_http_capability_catalog_tracks_mode_specific_operations() -> None:
     assert by_operation["news_run_source_job"].ha_addon is False
     assert by_operation["hypothesis_stream_ai_events"].full is True
     assert by_operation["hypothesis_stream_ai_events"].ha_addon is False
+    assert by_operation["control_plane_create_route"].audience is capabilities_module.ContractAudience.OPERATOR_CONTROL
+    assert by_operation["control_plane_create_route"].execution_model is capabilities_module.ExecutionModel.SYNC
+    assert by_operation["control_plane_create_route"].idempotency_policy is capabilities_module.IdempotencyPolicy.NON_IDEMPOTENT
+    assert by_operation["control_plane_create_route"].auth_policy is capabilities_module.AuthPolicy.OPERATOR
+    assert by_operation["news_read_sources"].audience is capabilities_module.ContractAudience.PUBLIC_READ
+    assert by_operation["news_read_sources"].idempotency_policy is capabilities_module.IdempotencyPolicy.STRICT
+    assert by_operation["news_read_sources"].auth_policy is capabilities_module.AuthPolicy.PUBLIC
+    assert by_operation["news_run_source_job"].execution_model is capabilities_module.ExecutionModel.ASYNC
+    assert by_operation["news_run_source_job"].operation_resource_required is True
+    assert by_operation["market_structure_ingest_snapshots"].audience is capabilities_module.ContractAudience.EXTERNAL_INGEST
+    assert by_operation["market_structure_ingest_snapshots"].auth_policy is capabilities_module.AuthPolicy.WEBHOOK_TOKEN
+    assert by_operation["hypothesis_stream_ai_events"].execution_model is capabilities_module.ExecutionModel.STREAM
+    assert by_operation["system_handle_status"].audience is capabilities_module.ContractAudience.INTERNAL_PLATFORM
+    assert by_operation["system_handle_status"].auth_policy is capabilities_module.AuthPolicy.PUBLIC
 
 
 def test_http_capability_catalog_render_includes_expected_columns() -> None:
@@ -24,9 +38,14 @@ def test_http_capability_catalog_render_includes_expected_columns() -> None:
     rendered = capabilities_module.render_http_capability_catalog(settings=settings)
 
     assert "# HTTP Capability Catalog" in rendered
-    assert "| Operation ID | Method | Path | Domain | Category | `full` | `local` | `ha_addon` |" in rendered
+    assert (
+        "| Operation ID | Method | Path | Domain | Category | Audience | Execution | Idempotency | Operation Resource | Auth | `full` | `local` | `ha_addon` |"
+        in rendered
+    )
     assert "`control_plane_create_route`" in rendered
     assert "`/api/v1/control-plane/routes`" in rendered
+    assert "`operator_control`" in rendered
+    assert "`non_idempotent`" in rendered
 
 
 def test_http_capability_catalog_check_matches_generated_snapshot(tmp_path) -> None:

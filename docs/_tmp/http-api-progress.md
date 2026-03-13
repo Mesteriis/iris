@@ -8,7 +8,7 @@
 - `mode-aware router assembly`: done
 - `artifact drift control`: done
 - `review governance`: done
-- `capability metadata enrichment`: pending
+- `capability metadata enrichment`: done
 - `operation resource model`: pending
 - `idempotency/concurrency runtime enforcement`: pending
 - `consistency/freshness semantics`: pending
@@ -24,19 +24,19 @@
 - [x] Committed OpenAPI snapshots with repo-root export/check workflow
 - [x] Generated HTTP availability matrix with drift checks
 - [x] Generated HTTP capability catalog with drift checks
+- [x] Capability metadata policy over the generated catalog
 - [x] PR review checklist and API governance CI workflow
 
 ## Current Block
 
-- [ ] Capability metadata enrichment
+- [ ] Unified operation resource model
   Scope:
-  - add typed metadata over the generated capability catalog
-  - cover at least `audience`, `execution_model`, `idempotency_policy`, `operation_resource_required`, `auth_policy`
-  - validate coverage in tests and CI
+  - introduce first-class operation resource contract for async/job/apply/run flows
+  - expose consistent `operation_id` read model and follow-up endpoints
+  - connect capability metadata `operation_resource_required=yes` to real runtime/API behavior
 
 ## Remaining Blocks
 
-- [ ] Unified operation resource model for async/job/apply/run flows
 - [ ] Hard idempotency and concurrency policy at runtime level
 - [ ] Consistency/freshness metadata for analytical reads
 - [ ] Cache/revalidation HTTP policy
