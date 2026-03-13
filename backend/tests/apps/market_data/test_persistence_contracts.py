@@ -4,6 +4,7 @@ from dataclasses import FrozenInstanceError
 from datetime import timedelta
 
 import pytest
+import src.apps.market_data.services as market_data_services_module
 from src.apps.market_data.query_services import MarketDataQueryService
 from src.apps.market_data.schemas import CoinCreate, PriceHistoryCreate
 from src.apps.market_data.services import MarketDataService
@@ -90,3 +91,24 @@ async def test_market_data_persistence_logs_cover_query_repo_and_uow(async_db_se
     assert "repo.add_market_data_coin" in events
     assert "query.list_market_data_coins" in events
     assert "uow.commit" in events
+
+
+def test_market_data_services_export_no_public_async_session_wrappers() -> None:
+    forbidden_exports = (
+        "create_coin_async",
+        "delete_coin_async",
+        "get_coin_by_symbol_async",
+        "list_coins_async",
+        "list_price_history_async",
+        "create_price_history_async",
+        "get_next_pending_backfill_due_at_async",
+        "list_coin_symbols_pending_backfill_async",
+        "list_coin_symbols_ready_for_latest_sync_async",
+        "sync_watched_assets_async",
+        "sync_coin_history_backfill_async",
+        "sync_coin_history_backfill_forced_async",
+        "sync_coin_latest_history_async",
+    )
+
+    for export_name in forbidden_exports:
+        assert not hasattr(market_data_services_module, export_name), export_name

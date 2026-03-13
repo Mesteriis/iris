@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Select, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.market_data.domain import (
@@ -73,7 +73,7 @@ from src.apps.market_data.service_layer import (
     sync_watched_assets,
 )
 from src.apps.market_data.sources import get_market_source_carousel
-from src.core.db.session import AsyncSessionLocal, async_engine
+from src.core.db.session import async_engine
 from src.core.db.uow import BaseAsyncUnitOfWork
 from src.core.watched_assets import WATCHED_ASSETS
 from src.runtime.streams.messages import (
@@ -336,9 +336,7 @@ class MarketDataHistorySyncService:
         coin = await self._coins.get_for_update_by_symbol(symbol)
         if coin is None:
             return {"status": "error", "symbol": symbol.strip().upper(), "reason": "coin_not_found"}
-        if force:
-            return await sync_coin_history_backfill_forced_async(self._uow.session, coin)
-        return await sync_coin_history_backfill_async(self._uow.session, coin)
+        return await _sync_coin_history_async(self._uow.session, coin, history_mode="backfill", force=force)
 
     async def sync_coin_latest_history(
         self,
@@ -349,25 +347,9 @@ class MarketDataHistorySyncService:
         coin = await self._coins.get_for_update_by_symbol(symbol)
         if coin is None:
             return {"status": "error", "symbol": symbol.strip().upper(), "reason": "coin_not_found"}
-        return await sync_coin_latest_history_async(self._uow.session, coin, force=force)
-
-
-async def get_coin_by_symbol_async(
-    db: AsyncSession,
-    symbol: str,
-    *,
-    include_deleted: bool = False,
-) -> Coin | None:
-    return await CoinRepository(db).get_by_symbol(symbol, include_deleted=include_deleted)
-
-
-async def list_coins_async(
-    db: AsyncSession,
-    *,
-    enabled_only: bool = False,
-    include_deleted: bool = False,
-) -> Sequence[Coin]:
-    return await CoinRepository(db).list(enabled_only=enabled_only, include_deleted=include_deleted)
+        if coin.history_backfill_completed_at is None:
+            return {"symbol": coin.symbol, "created": 0, "status": "pending_backfill"}
+        return await _sync_coin_history_async(self._uow.session, coin, history_mode="latest", force=force)
 
 
 async def _get_latest_candle_timestamp_async(
@@ -404,113 +386,6 @@ async def _refresh_continuous_aggregate_range_async(
         window_start=window_start,
         window_end=window_end,
     )
-
-
-async def create_coin_async(db: AsyncSession, payload: CoinCreate) -> Coin:
-    return await _create_or_update_coin_async(db, payload, commit=True)
-
-
-async def delete_coin_async(db: AsyncSession, coin: Coin) -> None:
-    await _delete_coin_async(db, coin, commit=True)
-
-
-async def list_price_history_async(
-    db: AsyncSession,
-    symbol: str,
-    interval: str | None = None,
-) -> Sequence[dict[str, Any]]:
-    items = await MarketDataQueryService(db).list_price_history(symbol, interval)
-    return [
-        {
-            "coin_id": item.coin_id,
-            "interval": item.interval,
-            "timestamp": item.timestamp,
-            "price": item.price,
-            "volume": item.volume,
-        }
-        for item in items
-    ]
-
-
-async def create_price_history_async(
-    db: AsyncSession,
-    coin: Coin,
-    payload,
-) -> dict[str, Any]:
-    item = await _create_price_history_async_internal(db, coin, payload, commit=True)
-    return {
-        "coin_id": item.coin_id,
-        "interval": item.interval,
-        "timestamp": item.timestamp,
-        "price": item.price,
-        "volume": item.volume,
-    }
-
-
-async def get_next_pending_backfill_due_at_async() -> datetime | None:
-    async with AsyncSessionLocal() as db:
-        now = utc_now()
-        coins = (
-            (
-                await db.execute(
-                    select(Coin)
-                    .where(Coin.deleted_at.is_(None), Coin.enabled.is_(True))
-                    .order_by(Coin.sort_order.asc(), Coin.symbol.asc())
-                )
-            )
-            .scalars()
-            .all()
-        )
-        pending_due_at: list[datetime] = []
-        for coin in coins:
-            if coin.history_backfill_completed_at is None or not await _coin_has_base_candles_async(db, coin):
-                if coin.next_history_sync_at is None or coin.next_history_sync_at <= now:
-                    return now
-                pending_due_at.append(coin.next_history_sync_at)
-        return min(pending_due_at) if pending_due_at else None
-
-
-async def list_coin_symbols_pending_backfill_async(
-    db: AsyncSession,
-    *,
-    symbol: str | None = None,
-) -> list[str]:
-    stmt: Select[tuple[Coin]] = (
-        select(Coin)
-        .where(Coin.deleted_at.is_(None), Coin.enabled.is_(True))
-        .order_by(Coin.sort_order.asc(), Coin.symbol.asc())
-    )
-    if symbol is not None:
-        stmt = stmt.where(Coin.symbol == symbol.upper())
-    coins = (await db.execute(stmt)).scalars().all()
-    return [
-        coin.symbol
-        for coin in coins
-        if coin.history_backfill_completed_at is None or not await _coin_has_base_candles_async(db, coin)
-    ]
-
-
-async def list_coin_symbols_ready_for_latest_sync_async(db: AsyncSession) -> list[str]:
-    coins = (
-        (
-            await db.execute(
-                select(Coin)
-                .where(
-                    Coin.deleted_at.is_(None),
-                    Coin.enabled.is_(True),
-                    Coin.history_backfill_completed_at.is_not(None),
-                )
-                .order_by(Coin.sort_order.asc(), Coin.symbol.asc())
-            )
-        )
-        .scalars()
-        .all()
-    )
-    return [coin.symbol for coin in coins if await _coin_has_base_candles_async(db, coin)]
-
-
-async def sync_watched_assets_async(db: AsyncSession) -> list[str]:
-    return await _sync_watched_assets_async_internal(db, commit=True)
 
 
 async def _calculate_backfill_progress_async(
@@ -785,25 +660,6 @@ async def _sync_coin_history_async(
     return {"symbol": coin.symbol, "created": total_created, "status": "ok"}
 
 
-async def sync_coin_history_backfill_async(db: AsyncSession, coin: Coin) -> dict[str, int | str]:
-    return await _sync_coin_history_async(db, coin, history_mode="backfill")
-
-
-async def sync_coin_history_backfill_forced_async(db: AsyncSession, coin: Coin) -> dict[str, int | str]:
-    return await _sync_coin_history_async(db, coin, history_mode="backfill", force=True)
-
-
-async def sync_coin_latest_history_async(
-    db: AsyncSession,
-    coin: Coin,
-    *,
-    force: bool = False,
-) -> dict[str, int | str]:
-    if coin.history_backfill_completed_at is None:
-        return {"symbol": coin.symbol, "created": 0, "status": "pending_backfill"}
-    return await _sync_coin_history_async(db, coin, history_mode="latest", force=force)
-
-
 __all__ = [
     "AGGREGATE_VIEW_BY_TIMEFRAME",
     "BASE_TIMEFRAME_MINUTES",
@@ -817,11 +673,8 @@ __all__ = [
     "count_candle_points",
     "count_price_history_points",
     "create_coin",
-    "create_coin_async",
     "create_price_history",
-    "create_price_history_async",
     "delete_coin",
-    "delete_coin_async",
     "ensure_utc",
     "fetch_candle_points",
     "fetch_candle_points_between",
@@ -829,35 +682,25 @@ __all__ = [
     "get_coin_base_timeframe",
     "get_coin_by_id",
     "get_coin_by_symbol",
-    "get_coin_by_symbol_async",
     "get_interval_retention_bars",
     "get_latest_candle_timestamp",
     "get_latest_history_timestamp",
     "get_latest_price",
     "get_next_pending_backfill_due_at",
-    "get_next_pending_backfill_due_at_async",
     "history_window_start",
     "interval_delta",
     "interval_to_timeframe",
     "latest_completed_timestamp",
-    "list_coin_symbols_pending_backfill_async",
-    "list_coin_symbols_ready_for_latest_sync_async",
-    "list_coins_async",
     "list_coins_pending_backfill",
     "list_coins_ready_for_latest_sync",
     "list_price_history",
-    "list_price_history_async",
     "normalize_interval",
     "prune_future_price_history",
     "prune_price_history",
     "publish_candle_events",
     "resolve_history_interval",
     "serialize_candles",
-    "sync_coin_history_backfill_async",
-    "sync_coin_history_backfill_forced_async",
-    "sync_coin_latest_history_async",
     "sync_watched_assets",
-    "sync_watched_assets_async",
     "timeframe_delta",
     "upsert_base_candles",
     "utc_now",

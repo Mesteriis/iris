@@ -4,6 +4,7 @@ from typing import Any, cast
 
 from sqlalchemy import func, select
 
+from src.apps.market_data.query_services import MarketDataQueryService
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Coin
 from src.apps.patterns.domain.base import PatternDetection
@@ -20,23 +21,18 @@ class PatternBootstrapService(PatternTaskBase):
         super().__init__(uow, service_name="PatternBootstrapService")
 
     async def bootstrap_scan(self, *, symbol: str | None = None, force: bool = False) -> dict[str, object]:
-        from src.apps.market_data.services import (
-            get_coin_by_symbol_async,
-            list_coin_symbols_ready_for_latest_sync_async,
-        )
-
         if symbol is not None:
-            coin = await get_coin_by_symbol_async(self.session, symbol)
+            coin = await self._coins.get_by_symbol(symbol)
             if coin is None:
                 return {"status": "error", "reason": "coin_not_found", "symbol": symbol.upper()}
             result = await self._bootstrap_coin(coin=coin, force=force)
             await self._uow.commit()
             return {"status": "ok", "coins": 1, "items": [result]}
 
-        coin_symbols = await list_coin_symbols_ready_for_latest_sync_async(self.session)
+        coin_symbols = await MarketDataQueryService(self.session).list_coin_symbols_ready_for_latest_sync()
         items = []
         for coin_symbol in coin_symbols:
-            coin = await get_coin_by_symbol_async(self.session, coin_symbol)
+            coin = await self._coins.get_by_symbol(coin_symbol)
             if coin is None:
                 continue
             items.append(await self._bootstrap_coin(coin=coin, force=force))
