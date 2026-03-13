@@ -12,7 +12,7 @@
 - `operation resource model`: done
 - `idempotency/concurrency runtime enforcement`: done
 - `consistency/freshness semantics`: done
-- `cache/revalidation governance`: pending
+- `cache/revalidation governance`: done
 
 ## Completed Blocks
 
@@ -28,15 +28,19 @@
 - [x] Unified operation resource model for async/job endpoints
 - [x] Runtime deduplication for async job triggers and explicit concurrency conflicts for stale control-plane draft apply
 - [x] Consistency/freshness metadata on derived/cached analytical reads
+- [x] Cache-Control, ETag and conditional GET policy for cacheable analytical snapshots
 - [x] PR review checklist and API governance CI workflow
 
 ## Current Block
 
-- [ ] Cache/revalidation HTTP policy
-  Scope:
-  - add explicit `ETag`/`Cache-Control` policy for cacheable analytical reads
-  - make conditional GET semantics deterministic for high-value derived snapshots
-  - keep cache policy out of CRUD/read surfaces where freshness metadata adds no value
+- [x] HTTP/API governance plan complete
+
+## Cache And Revalidation Governance
+
+- [x] shared cache/revalidation helper now lives in `core/http/cache.py`
+- [x] `portfolio/state` now emits private cache headers and supports conditional GET with stable weak `ETag`
+- [x] `market/radar`, `market/flow` and `coins/{symbol}/market-decision` now emit public near-real-time cache headers plus deterministic `304 Not Modified` behavior
+- [x] `ETag` generation ignores volatile analytical metadata such as `generated_at`/`staleness_ms`, so revalidation tracks snapshot content instead of request time
 
 ## Consistency And Freshness Semantics
 

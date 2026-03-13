@@ -45,6 +45,14 @@ async def test_indicator_endpoints(api_app_client, seeded_api_state) -> None:
     assert radar_payload["freshness_class"] == "near_real_time"
     assert isinstance(radar_payload["generated_at"], str) and radar_payload["generated_at"]
     assert isinstance(radar_payload["staleness_ms"], int)
+    assert radar_response.headers["cache-control"] == "public, max-age=15, stale-while-revalidate=30"
+    assert radar_response.headers["etag"].startswith('W/"')
+
+    radar_not_modified_response = await client.get(
+        "/market/radar?limit=24",
+        headers={"If-None-Match": radar_response.headers["etag"]},
+    )
+    assert radar_not_modified_response.status_code == 304
 
     flow_response = await client.get("/market/flow?limit=24&timeframe=60")
     assert flow_response.status_code == 200
@@ -65,6 +73,14 @@ async def test_indicator_endpoints(api_app_client, seeded_api_state) -> None:
     assert flow_payload["freshness_class"] == "near_real_time"
     assert isinstance(flow_payload["generated_at"], str) and flow_payload["generated_at"]
     assert isinstance(flow_payload["staleness_ms"], int)
+    assert flow_response.headers["cache-control"] == "public, max-age=15, stale-while-revalidate=30"
+    assert flow_response.headers["etag"].startswith('W/"')
+
+    flow_not_modified_response = await client.get(
+        "/market/flow?limit=24&timeframe=60",
+        headers={"If-None-Match": flow_response.headers["etag"]},
+    )
+    assert flow_not_modified_response.status_code == 304
 
 
 def test_indicators_api_router_is_mode_agnostic_and_legacy_views_removed() -> None:

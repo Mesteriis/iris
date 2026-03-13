@@ -7404,6 +7404,9 @@
             },
             "description": "Successful Response"
           },
+          "304": {
+            "description": "Cached analytical representation is still valid."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -9397,6 +9400,9 @@
             },
             "description": "Successful Response"
           },
+          "304": {
+            "description": "Cached analytical representation is still valid."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -9441,6 +9447,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "304": {
+            "description": "Cached analytical representation is still valid."
           },
           "422": {
             "content": {
@@ -10095,6 +10104,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "304": {
+            "description": "Cached analytical representation is still valid."
           }
         },
         "summary": "Read portfolio state",

@@ -79,6 +79,7 @@ IRIS now treats the HTTP surface as a transport adapter layer:
 - async/job HTTP triggers now return typed accepted contracts with `operation_id`, and the global `/api/v1/operations/{operation_id}` surface exposes status, result and event history for tracked operations
 - repeated async/job triggers now deduplicate against active operations and return the existing `operation_id` with `deduplicated=true`; stale `control_plane` draft apply requests fail with a typed `409 concurrency_conflict`
 - derived/cached analytical reads now declare `generated_at`, `consistency`, `freshness_class` and `staleness_ms` where the payload is a real snapshot/projection instead of plain CRUD data
+- cacheable analytical snapshots now emit explicit `Cache-Control`, `ETag` and `Last-Modified` headers and support deterministic `304 Not Modified` revalidation without keying off volatile freshness timestamps
 - GitHub Actions validates OpenAPI snapshots, mode-aware availability matrix drift and core API governance tests on every PR/push to `main`
 
 ## Stack

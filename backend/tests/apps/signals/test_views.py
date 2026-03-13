@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 
 from src.apps.signals.api.backtest_endpoints import read_coin_backtests
 from src.apps.signals.api.decision_endpoints import read_coin_decision
@@ -129,6 +130,14 @@ async def test_signal_and_strategy_endpoints(api_app_client, seeded_api_state) -
     assert coin_market_decision_payload["freshness_class"] == "near_real_time"
     assert isinstance(coin_market_decision_payload["generated_at"], str) and coin_market_decision_payload["generated_at"]
     assert isinstance(coin_market_decision_payload["staleness_ms"], int)
+    assert coin_market_decision_response.headers["cache-control"] == "public, max-age=15, stale-while-revalidate=30"
+    assert coin_market_decision_response.headers["etag"].startswith('W/"')
+
+    coin_market_decision_not_modified_response = await client.get(
+        "/coins/BTCUSD_EVT/market-decision",
+        headers={"If-None-Match": coin_market_decision_response.headers["etag"]},
+    )
+    assert coin_market_decision_not_modified_response.status_code == 304
 
     missing_market_decision_response = await client.get("/coins/MISSING_EVT/market-decision")
     assert missing_market_decision_response.status_code == 404
@@ -264,7 +273,12 @@ async def test_signal_view_branches(monkeypatch) -> None:
         missing_payload.__get__(service, SignalQueryService),
     )
     with pytest.raises(HTTPException) as missing_market_decision:
-        await read_coin_market_decision("BTCUSD_EVT", service=service)
+        await read_coin_market_decision(
+            "BTCUSD_EVT",
+            request=SimpleNamespace(headers={}),
+            response=Response(),
+            service=service,
+        )
     assert missing_market_decision.value.status_code == 404
 
     monkeypatch.setattr(
@@ -311,7 +325,13 @@ async def test_signal_view_branches(monkeypatch) -> None:
     monkeypatch.setattr(service, "get_coin_backtests", backtests_payload.__get__(service, SignalQueryService))
 
     assert (await read_coin_decision("BTCUSD_EVT", service=service)).symbol == "BTCUSD_EVT"
-    assert (await read_coin_market_decision("BTCUSD_EVT", service=service)).symbol == "BTCUSD_EVT"
+    market_decision = await read_coin_market_decision(
+        "BTCUSD_EVT",
+        request=SimpleNamespace(headers={}),
+        response=Response(),
+        service=service,
+    )
+    assert market_decision.symbol == "BTCUSD_EVT"
     assert (await read_coin_final_signal("BTCUSD_EVT", service=service)).symbol == "BTCUSD_EVT"
     assert (await read_coin_backtests("BTCUSD_EVT", service=service)).symbol == "BTCUSD_EVT"
 

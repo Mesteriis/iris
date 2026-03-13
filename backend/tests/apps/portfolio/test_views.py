@@ -37,6 +37,16 @@ async def test_portfolio_endpoints(api_app_client, seeded_api_state) -> None:
     assert state_payload["freshness_class"] == "near_real_time"
     assert isinstance(state_payload["generated_at"], str) and state_payload["generated_at"]
     assert isinstance(state_payload["staleness_ms"], int) and state_payload["staleness_ms"] >= 0
+    assert state_response.headers["cache-control"] == "private, max-age=5, stale-while-revalidate=10"
+    assert state_response.headers["etag"].startswith('W/"')
+    assert "last-modified" in state_response.headers
+
+    not_modified_response = await client.get(
+        "/portfolio/state",
+        headers={"If-None-Match": state_response.headers["etag"]},
+    )
+    assert not_modified_response.status_code == 304
+    assert not_modified_response.text == ""
 
 
 def test_portfolio_api_router_is_mode_agnostic_and_legacy_views_removed() -> None:

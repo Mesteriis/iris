@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request, Response
 
 from src.apps.portfolio.api.contracts import PortfolioActionRead, PortfolioPositionRead, PortfolioStateRead
 from src.apps.portfolio.api.deps import PortfolioQueryDep
@@ -9,6 +9,7 @@ from src.apps.portfolio.api.presenters import (
     portfolio_position_read,
     portfolio_state_read,
 )
+from src.core.http.cache import PRIVATE_NEAR_REALTIME_CACHE, apply_conditional_cache, cache_not_modified_responses
 
 router = APIRouter(tags=["portfolio:read"])
 
@@ -29,6 +30,25 @@ async def read_portfolio_actions(
     return [portfolio_action_read(item) for item in await service.list_actions(limit=limit)]
 
 
-@router.get("/portfolio/state", response_model=PortfolioStateRead, summary="Read portfolio state")
-async def read_portfolio_state(service: PortfolioQueryDep) -> PortfolioStateRead:
-    return portfolio_state_read(await service.get_state())
+@router.get(
+    "/portfolio/state",
+    response_model=PortfolioStateRead,
+    summary="Read portfolio state",
+    responses=cache_not_modified_responses(),
+)
+async def read_portfolio_state(
+    request: Request,
+    response: Response,
+    service: PortfolioQueryDep,
+) -> PortfolioStateRead | Response:
+    payload = portfolio_state_read(await service.get_state())
+    if not_modified := apply_conditional_cache(
+        request=request,
+        response=response,
+        payload=payload,
+        policy=PRIVATE_NEAR_REALTIME_CACHE,
+        generated_at=payload.generated_at,
+        staleness_ms=payload.staleness_ms,
+    ):
+        return not_modified
+    return payload

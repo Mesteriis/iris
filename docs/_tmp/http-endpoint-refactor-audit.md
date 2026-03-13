@@ -28,6 +28,7 @@
 - runtime operation resource model for async/job flows: `core/http/operation_store.py`, typed accepted job responses with `operation_id`, and global operation reads on `/api/v1/operations/{operation_id}`, `/result`, `/events`
 - runtime idempotency/concurrency enforcement on active mutation paths: Redis-backed deduplicated job triggers in `news`, `market_data`, `market_structure` and `hypothesis_engine`, plus explicit `409 concurrency_conflict` for stale `control_plane` draft apply
 - body-level data semantics on analytical reads: `portfolio/state`, `market/radar`, `market/flow` and `coins/{symbol}/market-decision` now expose `generated_at`, `consistency`, `freshness_class` and `staleness_ms` through shared analytical HTTP contracts
+- runtime cache/revalidation policy on analytical snapshots: `portfolio/state`, `market/radar`, `market/flow` and `coins/{symbol}/market-decision` now emit explicit `Cache-Control`/`ETag` headers and support `304 Not Modified` via shared `core/http/cache.py`
 - `backend/src/apps/control_plane/api/*`
 - `backend/src/apps/market_structure/api/*`
 - `backend/src/apps/news/api/*`
@@ -1135,7 +1136,7 @@ HTTP/API governance должен учитывать эволюцию surface, а
 9. Перевести `news`, отдельно разведя source API, item reads, jobs и onboarding.
 10. Разбить `signals` на несколько bounded read routers и проверить URL semantics.
 11. Active domain HTTP cutover закрыт; `operationId`/tag governance уже enforced кодом и bootstrap tests.
-12. Snapshot/check workflow, matrix drift control и capability catalog drift control уже привязаны к GitHub Actions; capability metadata enrichment, runtime operation resource model, runtime-level idempotency/concurrency enforcement и body-level consistency/freshness semantics уже добавлены, а следующим слоем остаются cache/revalidation policy и более глубокая policy automation.
+12. Snapshot/check workflow, matrix drift control и capability catalog drift control уже привязаны к GitHub Actions; capability metadata enrichment, runtime operation resource model, runtime-level idempotency/concurrency enforcement, body-level consistency/freshness semantics и runtime cache/revalidation policy уже добавлены.
 
 ## Правила миграции
 
