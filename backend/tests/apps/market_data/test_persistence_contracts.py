@@ -7,7 +7,6 @@ from datetime import timedelta
 import pytest
 import src.apps.market_data.services as market_data_services_module
 import src.apps.market_data.tasks as market_data_tasks_module
-import src.apps.market_data.views as market_data_views_module
 from src.apps.market_data.query_services import MarketDataQueryService
 from src.apps.market_data.schemas import CoinCreate, PriceHistoryCreate
 from src.apps.market_data.services import MarketDataService
@@ -174,18 +173,8 @@ def test_market_data_tasks_export_no_wrapper_helpers() -> None:
         assert not hasattr(market_data_tasks_module, export_name), export_name
 
 
-def test_market_data_views_export_no_wrapper_helpers() -> None:
-    forbidden_exports = (
-        "get_coin_by_symbol_async",
-        "list_coins_async",
-        "create_coin_async",
-        "delete_coin_async",
-        "list_price_history_async",
-        "create_price_history_async",
-    )
-
-    for export_name in forbidden_exports:
-        assert not hasattr(market_data_views_module, export_name), export_name
+def test_market_data_legacy_views_module_is_absent() -> None:
+    assert importlib.util.find_spec("src.apps.market_data.views") is None
 
 
 def test_market_data_legacy_sync_repos_module_is_absent() -> None:

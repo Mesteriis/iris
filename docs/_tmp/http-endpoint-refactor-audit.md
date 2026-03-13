@@ -24,6 +24,7 @@
 - `backend/src/apps/market_structure/api/*`
 - `backend/src/apps/news/api/*`
 - `backend/src/apps/signals/api/*`
+- `backend/src/apps/market_data/api/*`
 
 Удалено:
 
@@ -31,13 +32,14 @@
 - `backend/src/apps/market_structure/views.py`
 - `backend/src/apps/news/views.py`
 - `backend/src/apps/signals/views.py`
+- `backend/src/apps/market_data/views.py`
 
 ## Текущая HTTP поверхность
 
 Endpoint modules:
 
 - `backend/src/apps/system/views.py`: 2 endpoints
-- `backend/src/apps/market_data/views.py`: 6 endpoints
+- `backend/src/apps/market_data/api/router.py` + split endpoint modules
 - `backend/src/apps/news/api/router.py` + split endpoint modules
 - `backend/src/apps/hypothesis_engine/views.py`: 8 endpoints
 - `backend/src/apps/patterns/views.py`: 9 endpoints
@@ -52,7 +54,7 @@ Bootstrap wiring:
 
 - `backend/src/core/bootstrap/app.py` подключает только корневой `api` router
 - `backend/src/api/v1/router.py` централизованно монтирует versioned surface `/api/v1`
-- `control_plane`, `market_structure`, `news` и `signals` уже подключаются через mode-aware `build_router(mode, profile)`
+- `control_plane`, `market_structure`, `news`, `signals` и `market_data` уже подключаются через mode-aware `build_router(mode, profile)`
 - остальные домены все еще частично живут в старом `views.py` стиле
 
 Первый structural gap уже закрыт:
@@ -79,9 +81,9 @@ Bootstrap wiring:
 
 Самые тяжелые примеры:
 
-- `backend/src/apps/market_data/views.py`
 - `backend/src/apps/hypothesis_engine/views.py`
 - `backend/src/apps/patterns/views.py`
+- `backend/src/apps/indicators/views.py`
 
 Типичные симптомы:
 
@@ -97,9 +99,9 @@ Bootstrap wiring:
 Самые явные примеры:
 
 - `backend/src/apps/control_plane/views.py`: много `_..._read(...)` helper-ов для преобразования query/read models в response DTO
-- `backend/src/apps/market_data/views.py`: `_coin_payload`, `_coin_response`, `_price_history_response`, fallback через `ValidationError`
 - `backend/src/apps/market_structure/views.py`: `_snapshot_schema_from_read_model`
 - `backend/src/apps/system/views.py`: `_source_status_rows()` строит operational payload прямо в endpoint module
+- `backend/src/apps/hypothesis_engine/views.py`: stream/prompt responses смешаны с transport-level shaping
 
 Это означает:
 
@@ -120,10 +122,9 @@ Bootstrap wiring:
 
 Это видно в:
 
-- `backend/src/apps/market_data/views.py`
 - `backend/src/apps/patterns/views.py`
 - `backend/src/apps/hypothesis_engine/views.py`
-- `backend/src/apps/signals/views.py`
+- `backend/src/apps/indicators/views.py`
 
 Нужен единый command-endpoint standard, иначе у нас десятки почти одинаковых endpoint handlers.
 
@@ -140,11 +141,9 @@ Bootstrap wiring:
 
 Самые проблемные домены:
 
-- `market_structure`
-- `news`
-- `control_plane`
 - `hypothesis_engine`
-- `market_data`
+- `patterns`
+- `indicators`
 
 Это надо разделить. Иначе у нас нет нормальной границы между:
 
@@ -166,10 +165,10 @@ Bootstrap wiring:
 
 Это особенно видно в:
 
-- `backend/src/apps/market_data/views.py`
-- `backend/src/apps/news/views.py`
-- `backend/src/apps/market_structure/views.py`
 - `backend/src/apps/hypothesis_engine/views.py`
+- `backend/src/apps/patterns/views.py`
+- `backend/src/apps/indicators/views.py`
+- `backend/src/apps/portfolio/views.py`
 
 ### 7. Error handling policy не централизована
 
@@ -182,7 +181,7 @@ Bootstrap wiring:
 - `control_plane`
 - `hypothesis_engine`
 - `patterns`
-- `market_data`
+- `indicators`
 
 Нужен единый способ:
 
@@ -981,24 +980,27 @@ HTTP/API governance должен учитывать эволюцию surface, а
 - отдельно определить, какие onboarding/job surfaces доступны в `ha_addon`, а какие только в `full/local`
 - ввести idempotent job-trigger policy и operation resource model для backfill/refresh flows
 
-### P1: `market_data`
+### P1: `market_data` [done]
 
-Файл:
+Было:
 
 - `backend/src/apps/market_data/views.py`
 
-Что не так:
+Что было не так:
 
 - fallback serialization через `ValidationError`
 - manual payload conversion в `_coin_response` / `_price_history_response`
 - reads, commands и jobs пока еще лежат вместе
 - task trigger behavior (`taskiq_backfill_event`) виден прямо из endpoint
 
-Что делать:
+Что сделано:
 
-- убрать fallback-style serialization, оставить только strict typed presenter contract
-- split на `coin_read_endpoints`, `coin_command_endpoints`, `history_endpoints`, `job_endpoints`
-- вынести trigger side effect из endpoint body в dedicated command adapter/helper
+- HTTP surface переведен в `backend/src/apps/market_data/api/*`
+- `views.py` удален; домен экспортирует только `build_router(mode, profile)`
+- read, command и job handlers разведены по отдельным endpoint modules
+- strict typed presenters заменили fallback-style serialization
+- task trigger side effect вынесен в dedicated dependency/command adapter
+- contract tests фиксируют отсутствие legacy `market_data.views` import path
 
 ### P1: `hypothesis_engine`
 
@@ -1098,7 +1100,7 @@ HTTP/API governance должен учитывать эволюцию surface, а
 8. Перевести `market_structure`, отдельно разрезав read / commands / onboarding / webhooks / jobs.
 9. Перевести `news`, отдельно разведя source API, item reads, jobs и onboarding.
 10. Разбить `signals` на несколько bounded read routers и проверить URL semantics.
-11. Добить `market_data` и `hypothesis_engine`, отдельно стандартизовав stream/job responses.
+11. Перевести `hypothesis_engine`, отдельно стандартизовав stream/job responses и вынеся stream runtime mechanics из router layer.
 12. Перевести `patterns`.
 13. На новом стандарте быстро дочистить `indicators`, `portfolio`, `predictions`, `system`.
 14. После миграции удалить старые `views.py` entrypoints, а не оставлять их пустыми фасадами.
