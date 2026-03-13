@@ -1,4 +1,5 @@
-.PHONY: lint start backend frontend all backend-start frontend-start _lint-all _lint-backend _lint-frontend
+.PHONY: lint start backend frontend all backend-start frontend-start _lint-all _lint-backend _lint-frontend \
+	openapi-export-full openapi-export-ha openapi-check-full openapi-check-ha openapi-check
 
 BACKEND_HOOKS := \
 	ruff \
@@ -17,6 +18,10 @@ BACKEND_HOOKS := \
 FRONTEND_HOOKS := \
 	frontend-vue-tsc \
 	frontend-npm-audit
+
+OPENAPI_DIR := openapi
+OPENAPI_EXPORT := cd backend && uv run python scripts/export_openapi.py
+OPENAPI_CHECK := cd backend && uv run python scripts/check_openapi.py
 
 LINT_SCOPE := $(firstword $(filter backend frontend all,$(filter-out lint start,$(MAKECMDGOALS))))
 LINT_SCOPE := $(if $(LINT_SCOPE),$(LINT_SCOPE),all)
@@ -59,6 +64,36 @@ backend-start:
 
 frontend-start:
 	npm --prefix frontend run dev
+
+openapi-export-full:
+	@$(OPENAPI_EXPORT) \
+		--output $(OPENAPI_DIR)/openapi-full.json \
+		--mode full \
+		--profile platform_full \
+		--enable-hypothesis-engine
+
+openapi-export-ha:
+	@$(OPENAPI_EXPORT) \
+		--output $(OPENAPI_DIR)/openapi-ha-addon.json \
+		--mode ha_addon \
+		--profile ha_embedded \
+		--enable-hypothesis-engine
+
+openapi-check-full:
+	@$(OPENAPI_CHECK) \
+		--snapshot $(OPENAPI_DIR)/openapi-full.json \
+		--mode full \
+		--profile platform_full \
+		--enable-hypothesis-engine
+
+openapi-check-ha:
+	@$(OPENAPI_CHECK) \
+		--snapshot $(OPENAPI_DIR)/openapi-ha-addon.json \
+		--mode ha_addon \
+		--profile ha_embedded \
+		--enable-hypothesis-engine
+
+openapi-check: openapi-check-full openapi-check-ha
 
 backend frontend all:
 	@:

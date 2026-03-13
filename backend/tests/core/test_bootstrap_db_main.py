@@ -129,6 +129,28 @@ def test_openapi_snapshot_helper_writes_mode_aware_schema(tmp_path) -> None:
     assert '"openapi"' in dumped
     assert '"/api/v1/hypothesis/prompts"' in dumped
 
+    matches, diff = openapi_module.check_openapi_schema(settings=settings, snapshot=output_path)
+    assert matches is True
+    assert diff == ""
+
+
+def test_openapi_snapshot_helper_reports_diff(tmp_path) -> None:
+    settings = bootstrap_app_module.settings.model_copy(
+        update={
+            "enable_hypothesis_engine": True,
+            "api_launch_mode": "full",
+            "api_deployment_profile": "platform_full",
+        }
+    )
+    snapshot_path = tmp_path / "openapi-full.json"
+    snapshot_path.write_text('{"openapi": "broken"}\n', encoding="utf-8")
+
+    matches, diff = openapi_module.check_openapi_schema(settings=settings, snapshot=snapshot_path)
+
+    assert matches is False
+    assert str(snapshot_path) in diff
+    assert f"{snapshot_path}.generated" in diff
+
 
 @pytest.mark.asyncio
 async def test_lifespan_orchestrates_startup_and_shutdown(monkeypatch) -> None:

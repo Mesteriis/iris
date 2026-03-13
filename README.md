@@ -35,9 +35,9 @@ backend/src/
 Guidelines:
 
 - `core/` holds shared settings, DB primitives and FastAPI bootstrap.
-- `apps/` is the domain axis. Each app exposes django-like entrypoints such as `views.py`, `services.py`, `tasks.py`, `models.py`, `schemas.py`.
+- `apps/` is the domain axis. Each app owns its runtime contracts through `api/`, `services.py`, `query_services.py`, `repositories.py`, `tasks.py`, `models.py` and `schemas.py`.
 - `runtime/` owns execution wiring: Redis Streams, TaskIQ orchestration, worker-process runners and scheduler loops.
-- legacy horizontal modules under `app/api`, `app/events`, `app/taskiq`, `app/db`, `app/core/config.py` remain as compatibility shims while the codebase migrates to the new axis.
+- legacy horizontal modules under the old `backend/app/*` layout are removed; new runtime code should live only under `apps/`, `core/` and `runtime/`.
 
 ### Persistence Rules
 
@@ -59,17 +59,22 @@ Reference docs:
 Current rollout:
 
 - shared UoW and structured persistence logging in `backend/src/core/db`
-- migrated repository/query boundaries in `hypothesis_engine`, `control_plane`, `news`, `anomalies`, `market_structure`, `market_data`, `indicators`, `predictions`, `signals`, `portfolio` and the `patterns` API plus TaskIQ orchestration surface
-- `anomalies` now uses immutable read models, query-service compatibility adapters, UoW-owned worker/task writes and batched peer-candle loading on the sector scan path
-- `cross_market` now uses immutable read models, query services, repository-backed async worker writes and batched leader-candle loading on the active runtime path; legacy sync engine helpers remain only for compatibility callers
-- `predictions` now uses immutable read models, query services, UoW-owned evaluation jobs and batched pending-window lookups on the active async API/background path; legacy sync engine helpers remain only for compatibility callers
-- `signals` public read APIs now use `SignalQueryService`, immutable dataclass read models and UoW-owned route boundaries, while `signal_fusion_workers` and signal-history refresh paths now execute through class-based `SignalFusionService` / `SignalHistoryService`
-- active `signals` query/service code now depends on dedicated `backtest_support.py`, `fusion_support.py` and `history_support.py` helpers instead of importing pure logic from legacy sync compatibility modules directly
-- legacy `signals` sync entrypoints in `backtests.py`, `strategies.py`, `decision_selectors.py`, `market_decision_selectors.py`, `final_signal_selectors.py`, `fusion.py` and `history.py` now run through class-based compatibility adapters/services with structured deprecation logging, keeping old sync contracts while marking migration boundaries explicitly
-- `portfolio` public APIs, `portfolio_sync_job` and `portfolio_workers` now use `PortfolioQueryService` / `PortfolioService`, immutable dataclass read models and UoW-owned transaction boundaries; cache writes and published events are deferred until after commit
-- `market_data` keeps documented Timescale-specific raw SQL only inside legacy infrastructure adapters while async callers use UoW-backed repositories/query services
-- `indicator_workers`, `decision_workers`, `signal_fusion_workers`, signal-history refresh paths and `patterns` TaskIQ entrypoints now execute persistence through async repositories/UoW; the remaining sync analytical backlog is confined to legacy `apps/signals/backtests.py`, `apps/signals/strategies.py`, legacy helper modules under `apps/patterns/domain`, plus `apps/portfolio/engine.py` and `apps/portfolio/selectors.py`
-- remaining domains tracked in the persistence audit backlog
+- active runtime domains use repository/query-service boundaries with caller-owned async UoW transactions
+- direct DB access is removed from API/tasks/workers outside the persistence layer; documented raw SQL exceptions remain isolated in infrastructure repositories
+- read paths default to typed immutable contracts; write paths load mutable state only through explicit write services/repositories
+- active HTTP surface now exposes only domain `api/` packages mounted under `/api/v1`
+
+### HTTP/API Rules
+
+IRIS now treats the HTTP surface as a transport adapter layer:
+
+- `backend/src/api/router.py` mounts the root `/api` tree and `backend/src/api/v1/router.py` mounts the active `/api/v1` contract
+- each domain exports exactly one HTTP entrypoint through `backend/src/apps/<domain>/api/router.py`
+- endpoint modules are `async-func-first` and contain only real handlers plus router declarations
+- handlers receive only ready runtime services/facades or standardized access dependencies via `Depends(...)`
+- request and response contracts are expressed through `Pydantic` schemas; error mapping is centralized through `core/http` plus domain-local `api/errors.py`
+- command endpoints use the shared `core/http/command_executor.py` flow; mode/profile-aware router assembly controls what is exposed in `full`, `local` and `ha_addon`
+- OpenAPI contract governance is enforced through centralized `operationId` generation, category tags and committed schema snapshots
 
 ## Stack
 
@@ -120,6 +125,14 @@ uv run pytest
 
 ```bash
 uv run --project backend --group dev pre-commit run --all-files --hook-stage manual
+```
+
+5. Export or verify the committed OpenAPI snapshots from the repository root:
+
+```bash
+make openapi-export-full
+make openapi-export-ha
+make openapi-check
 ```
 
 This manual pipeline includes:

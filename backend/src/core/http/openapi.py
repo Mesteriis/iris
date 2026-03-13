@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from difflib import unified_diff
 import json
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,31 @@ def dump_openapi_schema(settings: Settings) -> str:
     return json.dumps(build_openapi_schema(settings), indent=2, sort_keys=True)
 
 
+def read_openapi_schema(path: str | Path) -> str:
+    return Path(path).read_text(encoding="utf-8")
+
+
+def diff_openapi_schema(*, settings: Settings, snapshot: str | Path) -> str:
+    snapshot_path = Path(snapshot)
+    expected = read_openapi_schema(snapshot_path)
+    actual = f"{dump_openapi_schema(settings)}\n"
+    if actual == expected:
+        return ""
+    return "".join(
+        unified_diff(
+            expected.splitlines(keepends=True),
+            actual.splitlines(keepends=True),
+            fromfile=str(snapshot_path),
+            tofile=f"{snapshot_path}.generated",
+        )
+    )
+
+
+def check_openapi_schema(*, settings: Settings, snapshot: str | Path) -> tuple[bool, str]:
+    diff = diff_openapi_schema(settings=settings, snapshot=snapshot)
+    return diff == "", diff
+
+
 def write_openapi_schema(*, settings: Settings, output: str | Path) -> Path:
     output_path = Path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -40,6 +66,9 @@ def write_openapi_schema(*, settings: Settings, output: str | Path) -> Path:
 __all__ = [
     "build_openapi_app",
     "build_openapi_schema",
+    "check_openapi_schema",
+    "diff_openapi_schema",
     "dump_openapi_schema",
+    "read_openapi_schema",
     "write_openapi_schema",
 ]

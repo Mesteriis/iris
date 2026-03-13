@@ -1,1 +1,1 @@
-__all__ = ["router", "services", "views"]
+__all__ = ["router", "services"]
