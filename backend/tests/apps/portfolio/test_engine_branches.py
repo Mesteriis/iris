@@ -202,6 +202,44 @@ def test_portfolio_sync_batches_compatibility_writes_under_single_commit(db_sess
     assert len(commit_calls) == 1
 
 
+def test_portfolio_sync_defers_balance_cache_until_after_commit(db_session, monkeypatch) -> None:
+    class CacheOrderPlugin:
+        def __init__(self, account: ExchangeAccount) -> None:
+            self.account = account
+
+        async def fetch_balances(self):
+            return [{"symbol": "CACHE_EVT", "balance": 2.0, "value_usd": 180.0}]
+
+        async def fetch_positions(self):
+            return []
+
+        async def fetch_orders(self):
+            return []
+
+        async def fetch_trades(self):
+            return []
+
+    from src.apps.portfolio.clients import register_exchange
+
+    register_exchange("fixture_cache_order", CacheOrderPlugin)
+    create_exchange_account(db_session, exchange_name="fixture_cache_order")
+    original_commit = db_session.commit
+    events: list[str] = []
+
+    def _commit() -> None:
+        events.append("commit")
+        original_commit()
+
+    monkeypatch.setattr(db_session, "commit", _commit)
+    monkeypatch.setattr("src.apps.portfolio.engine.cache_portfolio_balances", lambda _payload: events.append("balances_cache"))
+    monkeypatch.setattr("src.apps.portfolio.engine.cache_portfolio_state", lambda _payload: events.append("state_cache"))
+
+    result = sync_exchange_balances(db_session, emit_events=False)
+
+    assert result["status"] == "ok"
+    assert events == ["commit", "balances_cache", "state_cache"]
+
+
 def test_portfolio_helper_and_event_branches(db_session, monkeypatch) -> None:
     sideways = calculate_position_size(
         total_capital=100_000.0,

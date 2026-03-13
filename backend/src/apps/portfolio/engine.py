@@ -621,9 +621,9 @@ def _sync_exchange_balances_impl(db: Session, *, emit_events: bool = True) -> di
                     "value_usd": value_usd,
                 }
             )
-    cache_portfolio_balances(cached_rows)
     state = _refresh_portfolio_state_impl(db, commit=False, cache=False)
     db.commit()
+    cache_portfolio_balances(cached_rows)
     db.refresh(state)
     state_payload = _portfolio_state_snapshot(db, state=state)
     cache_portfolio_state(state_payload)
