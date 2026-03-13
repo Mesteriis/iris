@@ -71,6 +71,14 @@ class MarketDecisionCompatibilityQuery:
             timeframe=timeframe,
             limit=limit,
         )
+        self._log(
+            logging.DEBUG,
+            "compat.list_market_decisions.execute",
+            mode="read",
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+        )
         latest = _latest_market_decisions_subquery()
         stmt = (
             select(
@@ -97,12 +105,20 @@ class MarketDecisionCompatibilityQuery:
         if timeframe is not None:
             stmt = stmt.where(latest.c.timeframe == timeframe)
         rows = self._db.execute(stmt).all()
-        return [market_decision_payload(market_decision_read_model_from_mapping(row._mapping)) for row in rows]
+        result = [market_decision_payload(market_decision_read_model_from_mapping(row._mapping)) for row in rows]
+        self._log(logging.INFO, "compat.list_market_decisions.result", mode="read", count=len(result))
+        return result
 
     def list_top_market_decisions(self, *, limit: int = 20) -> Sequence[dict[str, Any]]:
         self._log(
             logging.WARNING,
             "compat.list_top_market_decisions.deprecated",
+            mode="read",
+            limit=limit,
+        )
+        self._log(
+            logging.DEBUG,
+            "compat.list_top_market_decisions.execute",
             mode="read",
             limit=limit,
         )
@@ -127,7 +143,9 @@ class MarketDecisionCompatibilityQuery:
             .order_by(latest.c.confidence.desc(), latest.c.signal_count.desc(), latest.c.created_at.desc())
             .limit(max(limit, 1))
         ).all()
-        return [market_decision_payload(market_decision_read_model_from_mapping(row._mapping)) for row in rows]
+        result = [market_decision_payload(market_decision_read_model_from_mapping(row._mapping)) for row in rows]
+        self._log(logging.INFO, "compat.list_top_market_decisions.result", mode="read", count=len(result))
+        return result
 
     def get_coin_market_decision(self, symbol: str) -> dict[str, Any] | None:
         normalized_symbol = symbol.strip().upper()
@@ -137,8 +155,21 @@ class MarketDecisionCompatibilityQuery:
             mode="read",
             symbol=normalized_symbol,
         )
+        self._log(
+            logging.DEBUG,
+            "compat.get_coin_market_decision.execute",
+            mode="read",
+            symbol=normalized_symbol,
+        )
         coin = self._db.scalar(select(Coin).where(Coin.symbol == normalized_symbol, Coin.deleted_at.is_(None)).limit(1))
         if coin is None:
+            self._log(
+                logging.INFO,
+                "compat.get_coin_market_decision.result",
+                mode="read",
+                symbol=normalized_symbol,
+                found=False,
+            )
             return None
         metrics = self._db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin.id))
         cached_items: list[CoinMarketDecisionItemReadModel] = []
@@ -211,7 +242,16 @@ class MarketDecisionCompatibilityQuery:
             canonical_decision=_canonical_decision(items),
             items=items,
         )
-        return coin_market_decision_payload(item)
+        result = coin_market_decision_payload(item)
+        self._log(
+            logging.INFO,
+            "compat.get_coin_market_decision.result",
+            mode="read",
+            symbol=normalized_symbol,
+            found=True,
+            count=len(result["items"]),
+        )
+        return result
 
 
 def list_market_decisions(

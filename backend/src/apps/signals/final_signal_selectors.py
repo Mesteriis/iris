@@ -67,6 +67,14 @@ class FinalSignalCompatibilityQuery:
             timeframe=timeframe,
             limit=limit,
         )
+        self._log(
+            logging.DEBUG,
+            "compat.list_final_signals.execute",
+            mode="read",
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+        )
         latest = _latest_final_signals_subquery()
         stmt = (
             select(
@@ -102,12 +110,20 @@ class FinalSignalCompatibilityQuery:
         if timeframe is not None:
             stmt = stmt.where(latest.c.timeframe == timeframe)
         rows = self._db.execute(stmt).all()
-        return [final_signal_payload(final_signal_read_model_from_mapping(row._mapping)) for row in rows]
+        result = [final_signal_payload(final_signal_read_model_from_mapping(row._mapping)) for row in rows]
+        self._log(logging.INFO, "compat.list_final_signals.result", mode="read", count=len(result))
+        return result
 
     def list_top_final_signals(self, *, limit: int = 20) -> Sequence[dict[str, Any]]:
         self._log(
             logging.WARNING,
             "compat.list_top_final_signals.deprecated",
+            mode="read",
+            limit=limit,
+        )
+        self._log(
+            logging.DEBUG,
+            "compat.list_top_final_signals.execute",
             mode="read",
             limit=limit,
         )
@@ -141,7 +157,9 @@ class FinalSignalCompatibilityQuery:
             .order_by(latest.c.risk_adjusted_score.desc(), latest.c.confidence.desc(), latest.c.created_at.desc())
             .limit(max(limit, 1))
         ).all()
-        return [final_signal_payload(final_signal_read_model_from_mapping(row._mapping)) for row in rows]
+        result = [final_signal_payload(final_signal_read_model_from_mapping(row._mapping)) for row in rows]
+        self._log(logging.INFO, "compat.list_top_final_signals.result", mode="read", count=len(result))
+        return result
 
     def get_coin_final_signal(self, symbol: str) -> dict[str, Any] | None:
         normalized_symbol = symbol.strip().upper()
@@ -151,8 +169,15 @@ class FinalSignalCompatibilityQuery:
             mode="read",
             symbol=normalized_symbol,
         )
+        self._log(
+            logging.DEBUG,
+            "compat.get_coin_final_signal.execute",
+            mode="read",
+            symbol=normalized_symbol,
+        )
         coin = self._db.scalar(select(Coin).where(Coin.symbol == normalized_symbol, Coin.deleted_at.is_(None)).limit(1))
         if coin is None:
+            self._log(logging.INFO, "compat.get_coin_final_signal.result", mode="read", symbol=normalized_symbol, found=False)
             return None
         latest = _latest_final_signals_subquery()
         rows = self._db.execute(
@@ -184,7 +209,16 @@ class FinalSignalCompatibilityQuery:
             canonical_decision=_canonical_decision(items),
             items=items,
         )
-        return coin_final_signal_payload(item)
+        result = coin_final_signal_payload(item)
+        self._log(
+            logging.INFO,
+            "compat.get_coin_final_signal.result",
+            mode="read",
+            symbol=normalized_symbol,
+            found=True,
+            count=len(result["items"]),
+        )
+        return result
 
 
 def list_final_signals(
