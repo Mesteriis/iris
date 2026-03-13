@@ -134,6 +134,7 @@ Status: migrated on the async API/application surface and scheduled entrypoints
 - views and TaskIQ jobs now depend on the shared async UoW instead of owning `AsyncSession` / `AsyncSessionLocal` directly
 - query-service backfill/latest-sync selection batches latest-candle lookups, removing caller-side N+1 checks from the public async path
 - legacy Timescale adapters in [backend/src/apps/market_data/repos.py](backend/src/apps/market_data/repos.py) now degrade to structured warning logs plus direct/resampled candle fallback when continuous aggregate procedures or materialized views are unavailable, which keeps sync analytical callers/tests from failing hard on partial DB environments
+- async candle bulk reads in [backend/src/apps/market_data/repositories.py](backend/src/apps/market_data/repositories.py) now keep partial aggregate-view failures on a batched path and return structured partial results instead of silently degrading into per-coin fallback reads, preserving the anti-N+1 contract consumed by `cross_market`
 - legacy sync adapters in [backend/src/apps/market_data/service_layer.py](backend/src/apps/market_data/service_layer.py) and [backend/src/apps/market_data/repos.py](backend/src/apps/market_data/repos.py) remain temporarily for sync-heavy analytical callers and Timescale-specific aggregate/resampling paths
 
 Classification:

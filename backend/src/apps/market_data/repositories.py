@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy import column, delete, func, select, table, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from src.apps.indicators.models import CoinMetrics, IndicatorCache
@@ -127,6 +128,28 @@ class CandleRepository(AsyncRepository):
             for row in rows
         ]
 
+    @staticmethod
+    def _should_fallback_aggregate_error(error: SQLAlchemyError) -> bool:
+        message = str(error).lower()
+        return any(
+            marker in message
+            for marker in (
+                "materialized view",
+                "has not been populated",
+                "does not exist",
+                "candles_1h",
+                "candles_4h",
+                "candles_1d",
+            )
+        )
+
+    async def _execute_aggregate_all(self, statement, params: dict[str, object]) -> list[Any]:
+        bind = self.session.bind
+        if isinstance(bind, AsyncEngine):
+            async with bind.connect() as connection:
+                return list((await connection.execute(statement, params)).all())
+        return list((await self.session.execute(statement, params)).all())
+
     async def get_latest_timestamp(self, *, coin_id: int, timeframe: int) -> datetime | None:
         self._log_debug(
             "repo.get_latest_market_data_candle_timestamp",
@@ -208,8 +231,8 @@ class CandleRepository(AsyncRepository):
 
         if timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
             view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
-            view_rows = (
-                await self.session.execute(
+            try:
+                view_rows = await self._execute_aggregate_all(
                     text(
                         f"""
                         SELECT bucket, open, high, low, close, volume
@@ -225,7 +248,18 @@ class CandleRepository(AsyncRepository):
                     ),
                     {"coin_id": coin_id, "limit": limit},
                 )
-            ).all()
+            except SQLAlchemyError as error:
+                if not self._should_fallback_aggregate_error(error):
+                    raise
+                self._log_warning(
+                    "repo.fetch_market_data_candle_points.aggregate_fallback",
+                    mode="read",
+                    coin_id=coin_id,
+                    timeframe=timeframe,
+                    limit=limit,
+                    error=str(error),
+                )
+                view_rows = []
             view_points = self._rows_to_candle_points(view_rows, timestamp_field="bucket")
             if view_points:
                 self._log_debug("repo.fetch_market_data_candle_points.result", mode="read", count=len(view_points))
@@ -361,8 +395,8 @@ class CandleRepository(AsyncRepository):
                 .where(aggregate_view.c.coin_id.in_(missing_ids))
                 .subquery()
             )
-            view_rows = (
-                await self.session.execute(
+            try:
+                view_rows = await self._execute_aggregate_all(
                     select(
                         ranked_view.c.coin_id,
                         ranked_view.c.bucket,
@@ -373,9 +407,20 @@ class CandleRepository(AsyncRepository):
                         ranked_view.c.volume,
                     )
                     .where(ranked_view.c.row_number <= limit)
-                    .order_by(ranked_view.c.coin_id.asc(), ranked_view.c.bucket.asc())
+                    .order_by(ranked_view.c.coin_id.asc(), ranked_view.c.bucket.asc()),
+                    {},
                 )
-            ).all()
+            except SQLAlchemyError as error:
+                if not self._should_fallback_aggregate_error(error):
+                    raise
+                self._log_warning(
+                    "repo.fetch_market_data_candle_points_for_coin_ids.aggregate_fallback",
+                    mode="read",
+                    timeframe=timeframe,
+                    fallback_coin_count=len(missing_ids),
+                    error=str(error),
+                )
+                view_rows = []
             if view_rows:
                 view_points = self._rows_to_candle_points(view_rows, timestamp_field="bucket")
                 for row, point in zip(view_rows, view_points, strict=False):
@@ -384,15 +429,12 @@ class CandleRepository(AsyncRepository):
 
         if missing_ids:
             self._log_warning(
-                "repo.fetch_market_data_candle_points_for_coin_ids.fallback",
+                "repo.fetch_market_data_candle_points_for_coin_ids.partial_result",
                 mode="read",
                 timeframe=timeframe,
-                fallback_coin_count=len(missing_ids),
+                missing_coin_count=len(missing_ids),
+                anti_n_plus_one=True,
             )
-            for coin_id in missing_ids:
-                points = await self.fetch_points(coin_id=coin_id, timeframe=timeframe, limit=limit)
-                if points:
-                    grouped[coin_id] = points
 
         result = {coin_id: grouped[coin_id] for coin_id in requested_ids if coin_id in grouped}
         self._log_debug(
@@ -440,8 +482,8 @@ class CandleRepository(AsyncRepository):
 
         if timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
             view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
-            view_rows = (
-                await self.session.execute(
+            try:
+                view_rows = await self._execute_aggregate_all(
                     text(
                         f"""
                         SELECT bucket, open, high, low, close, volume
@@ -458,7 +500,19 @@ class CandleRepository(AsyncRepository):
                         "window_end": ensure_utc(window_end),
                     },
                 )
-            ).all()
+            except SQLAlchemyError as error:
+                if not self._should_fallback_aggregate_error(error):
+                    raise
+                self._log_warning(
+                    "repo.fetch_market_data_candle_points_between.aggregate_fallback",
+                    mode="read",
+                    coin_id=coin_id,
+                    timeframe=timeframe,
+                    window_start=window_start.isoformat(),
+                    window_end=window_end.isoformat(),
+                    error=str(error),
+                )
+                view_rows = []
             view_points = self._rows_to_candle_points(view_rows, timestamp_field="bucket")
             if view_points:
                 self._log_debug(
