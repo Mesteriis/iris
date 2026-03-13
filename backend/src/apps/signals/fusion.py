@@ -268,15 +268,32 @@ class SignalFusionCompatibilityService:
         reference_timestamp: object | None = None,
         emit_event: bool = True,
     ) -> dict[str, object]:
+        self._log(
+            logging.DEBUG,
+            "compat.evaluate_news_fusion_event.execute",
+            mode="write",
+            coin_id=coin_id,
+            emit_event=emit_event,
+        )
         timeframes = _candidate_fusion_timeframes(self._db, coin_id=coin_id)
         if not timeframes:
-            return SignalFusionBatchResult(
+            result = SignalFusionBatchResult(
                 status="skipped",
                 coin_id=int(coin_id),
                 timeframes=(),
                 items=(),
                 reason="fusion_timeframes_not_found",
             ).to_summary()
+            self._log(
+                logging.INFO,
+                "compat.evaluate_news_fusion_event.result",
+                mode="write",
+                coin_id=coin_id,
+                status="skipped",
+                reason="fusion_timeframes_not_found",
+                timeframes=0,
+            )
+            return result
         items = [
             self.evaluate_market_decision(
                 coin_id=coin_id,
@@ -309,6 +326,15 @@ class SignalFusionCompatibilityService:
                 for item in items
             ),
         ).to_summary()
+        self._log(
+            logging.INFO,
+            "compat.evaluate_news_fusion_event.result",
+            mode="write",
+            coin_id=coin_id,
+            status="ok",
+            timeframes=len(timeframes),
+        )
+        return result
 
     def evaluate_market_decision(
         self,
@@ -319,6 +345,14 @@ class SignalFusionCompatibilityService:
         news_reference_timestamp: object | None = None,
         emit_event: bool = True,
     ) -> dict[str, object]:
+        self._log(
+            logging.DEBUG,
+            "compat.evaluate_market_decision.execute",
+            mode="write",
+            coin_id=coin_id,
+            timeframe=timeframe,
+            emit_event=emit_event,
+        )
         enrich_signal_context(
             self._db,
             coin_id=coin_id,
@@ -328,12 +362,22 @@ class SignalFusionCompatibilityService:
         )
         signals = _recent_signals(self._db, coin_id=coin_id, timeframe=timeframe)
         if not signals:
-            return SignalFusionResult(
+            result = SignalFusionResult(
                 status="skipped",
                 coin_id=int(coin_id),
                 timeframe=int(timeframe),
                 reason="signals_not_found",
             ).to_summary()
+            self._log(
+                logging.INFO,
+                "compat.evaluate_market_decision.result",
+                mode="write",
+                coin_id=coin_id,
+                timeframe=timeframe,
+                status="skipped",
+                reason="signals_not_found",
+            )
+            return result
 
         metrics = self._db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin_id))
         regime = _signal_regime(metrics, timeframe)
@@ -350,12 +394,22 @@ class SignalFusionCompatibilityService:
         fused = _apply_news_impact(fused_base, news_impact) if fused_base is not None else None
         if fused is None:
             self._db.commit()
-            return SignalFusionResult(
+            result = SignalFusionResult(
                 status="skipped",
                 coin_id=int(coin_id),
                 timeframe=int(timeframe),
                 reason="fusion_window_empty",
             ).to_summary()
+            self._log(
+                logging.INFO,
+                "compat.evaluate_market_decision.result",
+                mode="write",
+                coin_id=coin_id,
+                timeframe=timeframe,
+                status="skipped",
+                reason="fusion_window_empty",
+            )
+            return result
 
         latest = _latest_decision(self._db, coin_id, timeframe)
         if (
@@ -374,7 +428,7 @@ class SignalFusionCompatibilityService:
                 regime=regime,
                 created_at=latest.created_at,
             )
-            return SignalFusionResult(
+            result = SignalFusionResult(
                 status="skipped",
                 coin_id=int(coin_id),
                 timeframe=int(timeframe),
@@ -388,6 +442,16 @@ class SignalFusionCompatibilityService:
                 news_bullish_score=float(fused.news_bullish_score),
                 news_bearish_score=float(fused.news_bearish_score),
             ).to_summary()
+            self._log(
+                logging.INFO,
+                "compat.evaluate_market_decision.result",
+                mode="write",
+                coin_id=coin_id,
+                timeframe=timeframe,
+                status="skipped",
+                reason="decision_unchanged",
+            )
+            return result
 
         row = MarketDecision(
             coin_id=coin_id,
@@ -425,7 +489,7 @@ class SignalFusionCompatibilityService:
                     "source": "signal_fusion",
                 },
             )
-        return SignalFusionResult(
+        result = SignalFusionResult(
             status="ok",
             coin_id=int(coin_id),
             timeframe=int(timeframe),
@@ -438,6 +502,16 @@ class SignalFusionCompatibilityService:
             news_bullish_score=float(fused.news_bullish_score),
             news_bearish_score=float(fused.news_bearish_score),
         ).to_summary()
+        self._log(
+            logging.INFO,
+            "compat.evaluate_market_decision.result",
+            mode="write",
+            coin_id=coin_id,
+            timeframe=timeframe,
+            status="ok",
+            signal_count=int(fused.signal_count),
+        )
+        return result
 
 
 def evaluate_news_fusion_event(

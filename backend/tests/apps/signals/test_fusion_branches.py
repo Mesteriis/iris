@@ -18,6 +18,7 @@ from src.apps.signals.fusion import (
     evaluate_market_decision,
 )
 from src.apps.signals.models import MarketDecision, Signal
+from src.core.db.persistence import PERSISTENCE_LOGGER
 from tests.cross_market_support import DEFAULT_START
 from tests.fusion_support import create_test_coin, replace_pattern_statistics, upsert_coin_metrics
 from tests.portfolio_support import create_market_decision
@@ -120,6 +121,26 @@ def test_evaluate_market_decision_disables_nested_context_commit(db_session, mon
     assert captured["commit"] is False
     assert int(captured["coin_id"]) == int(coin.id)
     assert int(captured["timeframe"]) == 15
+
+
+def test_evaluate_market_decision_emits_compatibility_execution_logs(db_session, monkeypatch) -> None:
+    coin = create_test_coin(db_session, symbol="ATOMUSD_EVT", name="Cosmos Event Test")
+    upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=15)
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+    monkeypatch.setattr("src.apps.signals.fusion.enrich_signal_context", lambda *args, **kwargs: {"status": "ok"})
+
+    result = evaluate_market_decision(db_session, coin_id=int(coin.id), timeframe=15, emit_event=False)
+
+    assert result["reason"] == "signals_not_found"
+    assert "compat.evaluate_market_decision.deprecated" in events
+    assert "compat.evaluate_market_decision.execute" in events
+    assert "compat.evaluate_market_decision.result" in events
 
 
 def test_evaluate_market_decision_handles_null_fusion_window(db_session, monkeypatch) -> None:
