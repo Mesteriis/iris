@@ -20,6 +20,7 @@
 
 - корневой router tree: `backend/src/api/router.py` -> `backend/src/api/v1/router.py`
 - shared transport foundation: `backend/src/core/http/*`
+- app-level OpenAPI governance: centralized `operationId` generation and schema tests for unique operation ids, category tags and mode-aware route exposure
 - `backend/src/apps/control_plane/api/*`
 - `backend/src/apps/market_structure/api/*`
 - `backend/src/apps/news/api/*`
@@ -68,6 +69,7 @@ Bootstrap wiring:
 - `backend/src/api/v1/router.py` централизованно монтирует versioned surface `/api/v1`
 - все активные домены уже подключаются через domain-local `build_router(mode, profile)`
 - active runtime HTTP surface больше не использует legacy `views.py` modules
+- `FastAPI` schema generation теперь использует единый `operationId` policy из `core/http/router_policy.py`, а bootstrap tests проверяют OpenAPI на uniqueness/tag discipline и `ha_addon` exposure
 
 Первый structural gap уже закрыт:
 
@@ -1125,7 +1127,8 @@ HTTP/API governance должен учитывать эволюцию surface, а
 8. Перевести `market_structure`, отдельно разрезав read / commands / onboarding / webhooks / jobs.
 9. Перевести `news`, отдельно разведя source API, item reads, jobs и onboarding.
 10. Разбить `signals` на несколько bounded read routers и проверить URL semantics.
-11. Active domain HTTP cutover закрыт; дальше остаются только governance hardening tasks вроде OpenAPI diff control, capability matrix automation и review checklist enforcement.
+11. Active domain HTTP cutover закрыт; `operationId`/tag governance уже enforced кодом и bootstrap tests.
+12. Дальше остаются meta-governance tasks: OpenAPI diff control в CI, capability matrix automation и review checklist enforcement.
 
 ## Правила миграции
 

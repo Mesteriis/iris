@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.router import build_router as build_api_router
 from src.core.http.launch_modes import resolve_deployment_profile, resolve_launch_mode
+from src.core.http.router_policy import generate_operation_id
 from src.core.settings import get_settings
 
 settings = get_settings()
@@ -45,7 +46,11 @@ def create_app() -> FastAPI:
         async with lifespan(app):
             yield
 
-    app = FastAPI(title=settings.app_name, lifespan=deferred_lifespan)
+    app = FastAPI(
+        title=settings.app_name,
+        lifespan=deferred_lifespan,
+        generate_unique_id_function=generate_operation_id,
+    )
     app.state.run_migrations = run_migrations
     app.state.api_launch_mode = resolve_launch_mode(settings.api_launch_mode)
     app.state.api_deployment_profile = resolve_deployment_profile(

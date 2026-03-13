@@ -56,6 +56,54 @@ def test_bootstrap_app_builds_config_runs_migrations_and_enters_deferred_lifespa
     assert entered[1:] == ["inside", "closed"]
 
 
+def test_openapi_operation_ids_and_tags_follow_http_governance(monkeypatch) -> None:
+    monkeypatch.setattr(bootstrap_app_module.settings, "enable_hypothesis_engine", True, raising=False)
+    app = bootstrap_app_module.create_app()
+    schema = app.openapi()
+    operations: list[dict[str, object]] = []
+    operation_ids: set[str] = set()
+
+    for path, path_item in schema["paths"].items():
+        assert path.startswith("/api/v1/")
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            operations.append(operation)
+            operation_id = operation.get("operationId")
+            assert isinstance(operation_id, str) and operation_id
+            assert operation_id not in operation_ids
+            operation_ids.add(operation_id)
+            tags = operation.get("tags")
+            assert isinstance(tags, list) and tags
+            assert all(isinstance(tag, str) and ":" in tag for tag in tags)
+            summary = operation.get("summary")
+            assert isinstance(summary, str) and summary
+
+    assert operations
+    assert "control_plane_read_event_registry" in operation_ids
+    assert "market_data_create_coin" in operation_ids
+    assert "hypothesis_run_evaluation_job" in operation_ids
+
+
+def test_ha_addon_openapi_excludes_mode_limited_routes(monkeypatch) -> None:
+    monkeypatch.setattr(bootstrap_app_module.settings, "enable_hypothesis_engine", True, raising=False)
+    monkeypatch.setattr(bootstrap_app_module.settings, "api_launch_mode", "ha_addon", raising=False)
+    monkeypatch.setattr(bootstrap_app_module.settings, "api_deployment_profile", "", raising=False)
+    app = bootstrap_app_module.create_app()
+    schema = app.openapi()
+    paths = schema["paths"]
+
+    assert "/api/v1/hypothesis/jobs/evaluate" not in paths
+    assert "/api/v1/hypothesis/sse/ai" not in paths
+    assert "/api/v1/news/sources/{source_id}/jobs/run" not in paths
+    assert "/api/v1/market-structure/health/jobs/run" not in paths
+    assert "post" not in paths["/api/v1/control-plane/routes"]
+    assert "get" in paths["/api/v1/control-plane/routes"]
+    assert "/api/v1/hypothesis/prompts" in paths
+    assert "/api/v1/market-structure/sources" in paths
+    assert "/api/v1/system/status" in paths
+
+
 @pytest.mark.asyncio
 async def test_lifespan_orchestrates_startup_and_shutdown(monkeypatch) -> None:
     events: list[object] = []

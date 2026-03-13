@@ -36,7 +36,7 @@ from src.apps.control_plane.api.presenters import (
     topology_snapshot_read,
 )
 
-router = APIRouter()
+router = APIRouter(tags=["control-plane:read"])
 
 
 @router.get("/registry/events", response_model=list[EventDefinitionRead])

@@ -26,7 +26,7 @@ from src.apps.control_plane.api.presenters import (
 from src.apps.control_plane.contracts import RouteStatusChangeCommand
 from src.core.http.command_executor import execute_command
 
-router = APIRouter()
+router = APIRouter(tags=["control-plane:commands"])
 
 
 @router.post("/routes", response_model=EventRouteRead, status_code=status.HTTP_201_CREATED)
