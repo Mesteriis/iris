@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
-from src.apps.patterns.domain.registry import sync_pattern_metadata
 from src.apps.patterns.domain.semantics import slug_from_signal_type
 from src.apps.patterns.models import PatternStatistic
 from src.apps.signals.fusion_support import (
@@ -20,6 +19,7 @@ from src.core.db.uow import SessionUnitOfWork
 
 from tests.cross_market_support import DEFAULT_START
 from tests.fusion_support import create_test_coin, replace_pattern_statistics, upsert_coin_metrics
+from tests.patterns_support import seed_pattern_catalog_metadata
 
 
 async def _noop_enrich_context(self, *, coin_id: int, timeframe: int, candle_timestamp: object | None) -> None:
@@ -44,7 +44,7 @@ async def _evaluate_market_decision(
 
 @pytest.mark.asyncio
 async def test_fusion_helper_branches(async_db_session, db_session) -> None:
-    sync_pattern_metadata(db_session)
+    seed_pattern_catalog_metadata(db_session)
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     timestamp = DEFAULT_START
     db_session.add_all(

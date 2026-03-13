@@ -1,11 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-from src.apps.patterns.models import PatternStatistic
 from src.apps.patterns.domain.base import PatternDetection
 from src.apps.patterns.domain.utils import clamp
 
@@ -45,88 +42,33 @@ def normalize_market_regime(market_regime: str | None) -> str:
     return value if value else GLOBAL_MARKET_REGIME
 
 
+def build_pattern_success_cache(
+    snapshots: Iterable[PatternSuccessSnapshot],
+) -> dict[tuple[str, str], PatternSuccessSnapshot]:
+    return {
+        (snapshot.pattern_slug, snapshot.market_regime): snapshot
+        for snapshot in snapshots
+    }
+
+
 def load_pattern_success_snapshot(
-    db: Session,
     *,
     slug: str,
     timeframe: int,
     market_regime: str | None = None,
     snapshot_cache: dict[tuple[str, str], PatternSuccessSnapshot] | None = None,
 ) -> PatternSuccessSnapshot | None:
-    normalized_regime = normalize_market_regime(market_regime)
-    if snapshot_cache is not None:
-        cached = snapshot_cache.get((slug, normalized_regime))
-        if cached is not None:
-            return cached
-        return snapshot_cache.get((slug, GLOBAL_MARKET_REGIME))
-    row = db.scalar(
-        select(PatternStatistic).where(
-            PatternStatistic.pattern_slug == slug,
-            PatternStatistic.timeframe == timeframe,
-            PatternStatistic.market_regime == normalized_regime,
-        )
-    )
-    if row is None and normalized_regime != GLOBAL_MARKET_REGIME:
-        row = db.scalar(
-            select(PatternStatistic).where(
-                PatternStatistic.pattern_slug == slug,
-                PatternStatistic.timeframe == timeframe,
-                PatternStatistic.market_regime == GLOBAL_MARKET_REGIME,
-            )
-        )
-    if row is None:
+    del timeframe
+    if snapshot_cache is None:
         return None
-    return PatternSuccessSnapshot(
-        pattern_slug=str(row.pattern_slug),
-        timeframe=int(row.timeframe),
-        market_regime=str(row.market_regime),
-        total_signals=int(row.total_signals or row.sample_size or 0),
-        successful_signals=int(row.successful_signals or 0),
-        success_rate=float(row.success_rate or 0.0),
-        avg_return=float(row.avg_return or 0.0),
-        avg_drawdown=float(row.avg_drawdown or 0.0),
-        temperature=float(row.temperature or 0.0),
-        enabled=bool(row.enabled),
-    )
-
-
-def load_pattern_success_cache(
-    db: Session,
-    *,
-    timeframe: int,
-    slugs: set[str],
-    market_regime: str | None = None,
-) -> dict[tuple[str, str], PatternSuccessSnapshot]:
-    if not slugs:
-        return {}
-    regimes = {GLOBAL_MARKET_REGIME, normalize_market_regime(market_regime)}
-    rows = db.scalars(
-        select(PatternStatistic).where(
-            PatternStatistic.pattern_slug.in_(sorted(slugs)),
-            PatternStatistic.timeframe == timeframe,
-            PatternStatistic.market_regime.in_(sorted(regimes)),
-        )
-    ).all()
-    cache: dict[tuple[str, str], PatternSuccessSnapshot] = {}
-    for row in rows:
-        snapshot = PatternSuccessSnapshot(
-            pattern_slug=str(row.pattern_slug),
-            timeframe=int(row.timeframe),
-            market_regime=str(row.market_regime),
-            total_signals=int(row.total_signals or row.sample_size or 0),
-            successful_signals=int(row.successful_signals or 0),
-            success_rate=float(row.success_rate or 0.0),
-            avg_return=float(row.avg_return or 0.0),
-            avg_drawdown=float(row.avg_drawdown or 0.0),
-            temperature=float(row.temperature or 0.0),
-            enabled=bool(row.enabled),
-        )
-        cache[(snapshot.pattern_slug, snapshot.market_regime)] = snapshot
-    return cache
+    normalized_regime = normalize_market_regime(market_regime)
+    cached = snapshot_cache.get((slug, normalized_regime))
+    if cached is not None:
+        return cached
+    return snapshot_cache.get((slug, GLOBAL_MARKET_REGIME))
 
 
 def assess_pattern_success(
-    db: Session,
     *,
     slug: str,
     timeframe: int,
@@ -134,7 +76,6 @@ def assess_pattern_success(
     snapshot_cache: dict[tuple[str, str], PatternSuccessSnapshot] | None = None,
 ) -> PatternSuccessDecision:
     snapshot = load_pattern_success_snapshot(
-        db,
         slug=slug,
         timeframe=timeframe,
         market_regime=market_regime,
@@ -189,7 +130,6 @@ def publish_pattern_state_event(
 
 
 def apply_pattern_success_validation(
-    db: Session,
     *,
     detection: PatternDetection,
     timeframe: int,
@@ -199,7 +139,6 @@ def apply_pattern_success_validation(
     snapshot_cache: dict[tuple[str, str], PatternSuccessSnapshot] | None = None,
 ) -> PatternDetection | None:
     decision = assess_pattern_success(
-        db,
         slug=detection.slug,
         timeframe=timeframe,
         market_regime=market_regime,
@@ -274,3 +213,22 @@ def apply_pattern_success_validation(
         category=detection.category,
         attributes=attributes,
     )
+
+
+__all__ = [
+    "BOOST_SUCCESS_RATE",
+    "DEGRADE_SUCCESS_RATE",
+    "DISABLE_SUCCESS_RATE",
+    "GLOBAL_MARKET_REGIME",
+    "MIN_SAMPLE_FOR_DEGRADE",
+    "MIN_SAMPLE_FOR_DISABLE",
+    "PATTERN_SUCCESS_ROLLING_WINDOW",
+    "PatternSuccessDecision",
+    "PatternSuccessSnapshot",
+    "apply_pattern_success_validation",
+    "assess_pattern_success",
+    "build_pattern_success_cache",
+    "load_pattern_success_snapshot",
+    "normalize_market_regime",
+    "publish_pattern_state_event",
+]

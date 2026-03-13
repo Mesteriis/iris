@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -173,7 +172,6 @@ class PatternRealtimeService(PatternMarketDiscoveryMixin, PatternTaskBase):
                     str(adjusted.attributes.get("regime")) if adjusted.attributes.get("regime") is not None else regime
                 )
                 validated = apply_pattern_success_validation(
-                    cast(Any, None),
                     detection=adjusted,
                     timeframe=int(timeframe),
                     market_regime=detection_regime,

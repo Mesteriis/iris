@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload
 
@@ -415,25 +415,30 @@ class PatternMarketDiscoveryMixin:
             else:
                 row.description = _strategy_description(candidate)
                 row.enabled = enabled
-            row.rules = [
-                StrategyRule(
-                    strategy_id=int(row.id),
-                    pattern_slug=token,
-                    regime=candidate.regime,
-                    sector=candidate.sector,
-                    cycle=candidate.cycle,
-                    min_confidence=candidate.min_confidence,
-                )
-                for token in candidate.tokens
-            ]
-            if row.performance is None:
-                row.performance = StrategyPerformance(strategy_id=int(row.id))
-            row.performance.sample_size = sample_size
-            row.performance.win_rate = win_rate
-            row.performance.avg_return = avg_return
-            row.performance.sharpe_ratio = sharpe_ratio
-            row.performance.max_drawdown = max_drawdown
-            row.performance.updated_at = utc_now()
+            await self.session.execute(delete(StrategyRule).where(StrategyRule.strategy_id == int(row.id)))
+            self.session.add_all(
+                [
+                    StrategyRule(
+                        strategy_id=int(row.id),
+                        pattern_slug=token,
+                        regime=candidate.regime,
+                        sector=candidate.sector,
+                        cycle=candidate.cycle,
+                        min_confidence=candidate.min_confidence,
+                    )
+                    for token in candidate.tokens
+                ]
+            )
+            performance = await self.session.get(StrategyPerformance, int(row.id))
+            if performance is None:
+                performance = StrategyPerformance(strategy_id=int(row.id))
+                self.session.add(performance)
+            performance.sample_size = sample_size
+            performance.win_rate = win_rate
+            performance.avg_return = avg_return
+            performance.sharpe_ratio = sharpe_ratio
+            performance.max_drawdown = max_drawdown
+            performance.updated_at = utc_now()
             seen_ids.add(int(row.id))
         for row in existing_by_name.values():
             if int(row.id) not in seen_ids:

@@ -7,13 +7,13 @@ from redis import Redis
 from sqlalchemy import delete
 
 from src.apps.market_data.domain import utc_now
-from src.apps.patterns.domain.registry import sync_pattern_metadata
 from src.apps.patterns.models import PatternRegistry
 from src.apps.patterns.models import PatternStatistic
 from src.apps.patterns.task_services import PatternEvaluationService
 from src.apps.signals.models import SignalHistory
 from src.core.db.uow import SessionUnitOfWork
 from src.runtime.streams.publisher import flush_publisher
+from tests.patterns_support import seed_pattern_catalog_metadata
 
 
 @pytest.mark.asyncio
@@ -23,7 +23,7 @@ async def test_pattern_evaluation_job_disables_weak_patterns_and_emits_events(
     seeded_market,
     settings,
 ) -> None:
-    sync_pattern_metadata(db_session)
+    seed_pattern_catalog_metadata(db_session)
     db_session.execute(delete(SignalHistory))
     db_session.execute(delete(PatternStatistic))
     db_session.commit()

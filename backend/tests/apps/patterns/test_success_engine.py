@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from redis import Redis
-from sqlalchemy import delete
 
-from src.runtime.streams.publisher import flush_publisher
-from src.apps.patterns.models import PatternStatistic
 from src.apps.patterns.domain.base import PatternDetection
-from src.apps.patterns.domain.success import GLOBAL_MARKET_REGIME, apply_pattern_success_validation
-from src.apps.patterns.domain.registry import sync_pattern_metadata
+from src.apps.patterns.domain.success import (
+    GLOBAL_MARKET_REGIME,
+    PatternSuccessSnapshot,
+    apply_pattern_success_validation,
+    build_pattern_success_cache,
+)
+from src.runtime.streams.publisher import flush_publisher
 
 
-def _pattern_stat(
+def _snapshot(
     *,
     slug: str,
     timeframe: int,
@@ -20,13 +22,12 @@ def _pattern_stat(
     success_rate: float,
     total_signals: int,
     enabled: bool = True,
-) -> PatternStatistic:
+) -> PatternSuccessSnapshot:
     successful_signals = int(round(success_rate * total_signals))
-    return PatternStatistic(
+    return PatternSuccessSnapshot(
         pattern_slug=slug,
         timeframe=timeframe,
         market_regime=market_regime,
-        sample_size=total_signals,
         total_signals=total_signals,
         successful_signals=successful_signals,
         success_rate=success_rate,
@@ -34,16 +35,13 @@ def _pattern_stat(
         avg_drawdown=-0.02,
         temperature=0.8 if success_rate >= 0.5 else -0.6,
         enabled=enabled,
-        last_evaluated_at=datetime.now(timezone.utc),
     )
 
 
-def test_pattern_success_engine_prefers_regime_specific_statistics(db_session) -> None:
-    sync_pattern_metadata(db_session)
-    db_session.execute(delete(PatternStatistic).where(PatternStatistic.pattern_slug == "bull_flag"))
-    db_session.add_all(
+def test_pattern_success_engine_prefers_regime_specific_statistics() -> None:
+    cache = build_pattern_success_cache(
         [
-            _pattern_stat(
+            _snapshot(
                 slug="bull_flag",
                 timeframe=15,
                 market_regime=GLOBAL_MARKET_REGIME,
@@ -51,7 +49,7 @@ def test_pattern_success_engine_prefers_regime_specific_statistics(db_session) -
                 total_signals=40,
                 enabled=False,
             ),
-            _pattern_stat(
+            _snapshot(
                 slug="bull_flag",
                 timeframe=15,
                 market_regime="bull_trend",
@@ -61,8 +59,6 @@ def test_pattern_success_engine_prefers_regime_specific_statistics(db_session) -
             ),
         ]
     )
-    db_session.commit()
-
     detection = PatternDetection(
         slug="bull_flag",
         signal_type="pattern_bull_flag",
@@ -73,24 +69,22 @@ def test_pattern_success_engine_prefers_regime_specific_statistics(db_session) -
     )
 
     adjusted = apply_pattern_success_validation(
-        db_session,
         detection=detection,
         timeframe=15,
         market_regime="bull_trend",
         coin_id=1,
         emit_events=False,
+        snapshot_cache=cache,
     )
     assert adjusted is not None
     assert adjusted.confidence > detection.confidence
     assert adjusted.attributes["pattern_success_regime"] == "bull_trend"
 
 
-def test_pattern_success_engine_degrades_and_suppresses(db_session, settings) -> None:
-    sync_pattern_metadata(db_session)
-    db_session.execute(delete(PatternStatistic).where(PatternStatistic.pattern_slug == "head_shoulders"))
-    db_session.add_all(
+def test_pattern_success_engine_degrades_and_suppresses(settings) -> None:
+    cache = build_pattern_success_cache(
         [
-            _pattern_stat(
+            _snapshot(
                 slug="head_shoulders",
                 timeframe=60,
                 market_regime="bull_trend",
@@ -98,7 +92,7 @@ def test_pattern_success_engine_degrades_and_suppresses(db_session, settings) ->
                 total_signals=20,
                 enabled=True,
             ),
-            _pattern_stat(
+            _snapshot(
                 slug="head_shoulders",
                 timeframe=60,
                 market_regime="bear_trend",
@@ -108,10 +102,8 @@ def test_pattern_success_engine_degrades_and_suppresses(db_session, settings) ->
             ),
         ]
     )
-    db_session.commit()
 
     degraded = apply_pattern_success_validation(
-        db_session,
         detection=PatternDetection(
             slug="head_shoulders",
             signal_type="pattern_head_shoulders",
@@ -124,12 +116,12 @@ def test_pattern_success_engine_degrades_and_suppresses(db_session, settings) ->
         market_regime="bull_trend",
         coin_id=1,
         emit_events=True,
+        snapshot_cache=cache,
     )
     assert degraded is not None
     assert degraded.confidence < 0.8
 
     suppressed = apply_pattern_success_validation(
-        db_session,
         detection=PatternDetection(
             slug="head_shoulders",
             signal_type="pattern_head_shoulders",
@@ -142,6 +134,7 @@ def test_pattern_success_engine_degrades_and_suppresses(db_session, settings) ->
         market_regime="bear_trend",
         coin_id=1,
         emit_events=True,
+        snapshot_cache=cache,
     )
     assert suppressed is None
     assert flush_publisher(timeout=5.0)

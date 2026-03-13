@@ -13,8 +13,8 @@ from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
 from src.apps.market_data.models import Coin
 from src.apps.market_data.support import publish_candle_events
-from src.apps.patterns.domain.registry import sync_pattern_metadata
 from src.apps.signals.models import Signal
+from tests.patterns_support import seed_pattern_catalog_metadata
 
 
 def _run_topology_dispatcher() -> None:
@@ -59,7 +59,7 @@ async def test_polling_insert_publishes_candle_closed(seeded_market, settings, w
 async def test_event_stream_pipeline_creates_pattern_signals(seeded_market, settings, wait_until):
     db = SessionLocal()
     try:
-        sync_pattern_metadata(db)
+        seed_pattern_catalog_metadata(db)
     finally:
         db.close()
 

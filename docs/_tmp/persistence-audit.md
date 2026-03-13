@@ -168,7 +168,7 @@ Classification:
 
 #### `apps/patterns`
 
-Status: migrated on the async API/application, TaskIQ orchestration and runtime worker surfaces; public sync selector surface removed, with only legacy sync helper modules under `domain/` remaining
+Status: migrated on the async API/application, TaskIQ orchestration and runtime worker surfaces; public sync selector surface removed and `domain/` reduced to pure helper/cache modules
 
 - repositories now isolate pattern feature and pattern registry write paths in [backend/src/apps/patterns/repositories.py](backend/src/apps/patterns/repositories.py)
 - read-only pattern catalog, discovered pattern, coin regime, coin pattern, sector metrics and market-cycle projections now go through [backend/src/apps/patterns/query_services.py](backend/src/apps/patterns/query_services.py)
@@ -185,13 +185,13 @@ Status: migrated on the async API/application, TaskIQ orchestration and runtime 
 - async and sync `list_coin_patterns` read paths now share the same explicit ordering profile from [backend/src/apps/patterns/query_builders.py](backend/src/apps/patterns/query_builders.py), preventing timestamp-tie instability between base pattern rows and derived cluster/hierarchy rows
 - async regime cache clients in [backend/src/apps/patterns/cache.py](backend/src/apps/patterns/cache.py) are now loop-scoped instead of process-global cached clients
 - async market-data candle repositories now expose range/series fetchers used by the pattern task services without pushing raw session access back into the task layer
-- remaining follow-up:
-  - legacy sync modules under [backend/src/apps/patterns/domain](backend/src/apps/patterns/domain) still exist for compatibility/tests and should be retired incrementally as their async service equivalents absorb more helper logic
+- [backend/src/apps/patterns/domain/registry.py](backend/src/apps/patterns/domain/registry.py), [backend/src/apps/patterns/domain/discovery.py](backend/src/apps/patterns/domain/discovery.py), [backend/src/apps/patterns/domain/narrative.py](backend/src/apps/patterns/domain/narrative.py), [backend/src/apps/patterns/domain/context.py](backend/src/apps/patterns/domain/context.py), [backend/src/apps/patterns/domain/decision.py](backend/src/apps/patterns/domain/decision.py), [backend/src/apps/patterns/domain/risk.py](backend/src/apps/patterns/domain/risk.py), [backend/src/apps/patterns/domain/strategy.py](backend/src/apps/patterns/domain/strategy.py), [backend/src/apps/patterns/domain/statistics.py](backend/src/apps/patterns/domain/statistics.py) and [backend/src/apps/patterns/domain/success.py](backend/src/apps/patterns/domain/success.py) no longer expose sync DB entrypoints; they are now pure helper/cache modules and contract tests assert the legacy persistence API stays absent
+- pattern-success validation is now cache-only on the runtime/bootstrap path, so active callers do not pass sync session handles through `patterns.domain.success`
+- `PatternStrategyService` now updates `StrategyRule` / `StrategyPerformance` through explicit async persistence operations instead of relationship assignment that could trigger hidden lazy loads
 
 Classification:
 
-- `OK` on async/public callers, TaskIQ entrypoints and runtime workers
-- `later migration` for residual sync helper modules kept under `patterns/domain`
+- `OK`
 
 #### `apps/cross_market`
 
@@ -315,6 +315,7 @@ Recent cleanup:
 - `patterns.domain.engine` has been deleted; active detection/bootstrap coverage now goes through `PatternRealtimeService` and `PatternBootstrapService`, and contract tests assert the sync engine module is absent
 - `patterns.domain.clusters` and `patterns.domain.hierarchy` have been deleted; meta-signal coverage now runs only through `PatternRealtimeService`, and contract tests assert both sync modules are absent
 - `patterns.domain.cycle` no longer exposes sync DB mutation entrypoints; cycle updates now run only through `PatternRealtimeService._update_market_cycle(...)` and `PatternMarketStructureService.refresh()`
+- remaining `patterns.domain` modules no longer expose sync DB entrypoints either; tests now seed catalog metadata through `tests.patterns_support.seed_pattern_catalog_metadata(...)` and exercise async task/query services instead of the removed sync domain API
 
 ### Transaction Boundary Drift
 
@@ -378,9 +379,9 @@ Recommended rollout order:
 11. completed on the async/public API and scheduled runtime surface: `apps/predictions`
 12. completed on the async/public API plus signal-fusion/signal-history runtime and test-facing surfaces: `apps/signals`
 13. completed on the async/public API and scheduled sync surface: `apps/portfolio`
-14. in progress: remove residual sync DB helpers from `apps/patterns/domain/*`
+14. completed: remove residual sync DB helpers from `apps/patterns/domain/*`
 15. next: residual direct-session service internals in `market_structure` and `market_data`
-16. later: remaining helper-only sync analytical modules and leftover compatibility assertions in tests
+16. later: remaining helper-only sync analytical modules outside `patterns` and leftover compatibility assertions in tests
 
 ## Current Behavior To Preserve
 

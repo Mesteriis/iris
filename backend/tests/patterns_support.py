@@ -9,6 +9,7 @@ from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.models import Candle
 from src.apps.patterns.models import DiscoveredPattern, MarketCycle, PatternFeature, PatternRegistry, PatternStatistic
+from src.apps.patterns.domain.registry import PATTERN_CATALOG, SUPPORTED_PATTERN_FEATURES
 from src.apps.signals.models import Signal
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_sector
@@ -143,6 +144,23 @@ def _merge_candles(
                 volume=1_000.0 + index * 5.0,
             )
         )
+
+
+def seed_pattern_catalog_metadata(db: Session, *, include_context_engine: bool = False) -> None:
+    for feature_slug in SUPPORTED_PATTERN_FEATURES:
+        _ensure_pattern_feature(db, feature_slug, enabled=True)
+    if include_context_engine:
+        _ensure_pattern_feature(db, "pattern_context_engine", enabled=True)
+    for entry in PATTERN_CATALOG:
+        _ensure_pattern_registry(
+            db,
+            entry.slug,
+            category=entry.category,
+            enabled=True,
+            cpu_cost=entry.cpu_cost,
+            lifecycle_state="ACTIVE",
+        )
+    db.commit()
 
 
 def seed_pattern_api_state(db: Session) -> dict[str, object]:
@@ -342,4 +360,4 @@ def seed_pattern_api_state(db: Session) -> dict[str, object]:
     }
 
 
-__all__ = ["seed_pattern_api_state"]
+__all__ = ["seed_pattern_api_state", "seed_pattern_catalog_metadata"]

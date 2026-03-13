@@ -114,3 +114,73 @@ def test_patterns_cycle_module_has_no_sync_db_entrypoints() -> None:
     module = importlib.import_module("src.apps.patterns.domain.cycle")
     assert not hasattr(module, "update_market_cycle")
     assert not hasattr(module, "refresh_market_cycles")
+
+
+@pytest.mark.parametrize(
+    ("module_name", "attributes"),
+    [
+        (
+            "src.apps.patterns.domain.registry",
+            (
+                "sync_pattern_metadata",
+                "feature_enabled",
+                "active_detector_slugs",
+                "load_active_detectors",
+            ),
+        ),
+        (
+            "src.apps.patterns.domain.discovery",
+            ("refresh_discovered_patterns",),
+        ),
+        (
+            "src.apps.patterns.domain.narrative",
+            ("_coin_bar_return", "refresh_sector_metrics", "build_sector_narratives"),
+        ),
+        (
+            "src.apps.patterns.domain.context",
+            ("_pattern_temperature", "enrich_signal_context", "refresh_recent_signal_contexts"),
+        ),
+        (
+            "src.apps.patterns.domain.decision",
+            (
+                "_latest_pattern_timestamp",
+                "_latest_signal_stack",
+                "_historical_pattern_success",
+                "_latest_decision",
+                "evaluate_investment_decision",
+                "_decision_candidates",
+                "refresh_investment_decisions",
+            ),
+        ),
+        (
+            "src.apps.patterns.domain.risk",
+            (
+                "_latest_decision",
+                "_latest_final_signal",
+                "_latest_close",
+                "_latest_indicator_value",
+                "_upsert_risk_metric",
+                "update_risk_metrics",
+                "evaluate_final_signal",
+                "_final_signal_candidates",
+                "refresh_final_signals",
+            ),
+        ),
+        (
+            "src.apps.patterns.domain.strategy",
+            ("_signal_groups", "_upsert_strategy", "refresh_strategies", "strategy_alignment"),
+        ),
+        (
+            "src.apps.patterns.domain.statistics",
+            ("_history_rows", "refresh_pattern_statistics"),
+        ),
+        (
+            "src.apps.patterns.domain.success",
+            ("load_pattern_success_cache",),
+        ),
+    ],
+)
+def test_patterns_domain_modules_expose_no_legacy_sync_persistence_api(module_name: str, attributes: tuple[str, ...]) -> None:
+    module = importlib.import_module(module_name)
+    for attribute in attributes:
+        assert not hasattr(module, attribute)

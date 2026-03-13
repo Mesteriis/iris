@@ -5,9 +5,8 @@ from types import SimpleNamespace
 from sqlalchemy import select
 
 from src.apps.patterns import cache
-from src.apps.patterns.domain.context import _regime_alignment, _volatility_alignment
+from src.apps.patterns.domain.context import _regime_alignment, _signal_regime, _volatility_alignment
 from src.apps.patterns.domain.lifecycle import PatternLifecycleState, lifecycle_allows_detection, resolve_lifecycle_state
-from src.apps.patterns.domain.registry import active_detector_slugs, feature_enabled, load_active_detectors, sync_pattern_metadata
 from src.apps.patterns.domain.utils import (
     average,
     clamp,
@@ -27,6 +26,7 @@ from src.apps.patterns.domain.utils import (
 )
 from src.apps.patterns.models import PatternFeature, PatternRegistry
 from tests.factories.market_data import build_candle_points
+from tests.patterns_support import seed_pattern_catalog_metadata
 
 
 def test_cache_client_builders_use_configured_redis_url(monkeypatch, settings) -> None:
@@ -117,14 +117,23 @@ def test_lifecycle_registry_and_context_helpers_with_real_rows(db_session) -> No
     assert _volatility_alignment("pattern_bollinger_expansion", SimpleNamespace(bb_width=0.1, volatility=0.04)) == 1.15
     assert _volatility_alignment("pattern_random", SimpleNamespace(bb_width=0.09, volatility=0.02)) == 1.08
     assert _volatility_alignment("pattern_random", None) == 1.0
+    assert _signal_regime(None, 15) is None
+    metrics = SimpleNamespace(
+        coin_id=1,
+        market_regime_details={"15": {"regime": "high_volatility", "confidence": 0.8}},
+        market_regime="bull_trend",
+    )
+    assert _signal_regime(metrics, 15) == "high_volatility"
+    metrics.market_regime_details = None
+    assert _signal_regime(metrics, 15) == "bull_trend"
 
-    sync_pattern_metadata(db_session)
+    seed_pattern_catalog_metadata(db_session)
     features = db_session.scalars(select(PatternFeature)).all()
     registry_rows = db_session.scalars(select(PatternRegistry)).all()
     assert len(features) >= 5
     assert len(registry_rows) >= 50
-    assert feature_enabled(db_session, "pattern_detection")
-    assert not feature_enabled(db_session, "missing_feature")
+    assert any(row.feature_slug == "pattern_detection" and row.enabled is True for row in features)
+    assert not any(row.feature_slug == "missing_feature" for row in features)
 
     bull_flag = db_session.get(PatternRegistry, "bull_flag")
     assert bull_flag is not None
@@ -135,12 +144,10 @@ def test_lifecycle_registry_and_context_helpers_with_real_rows(db_session) -> No
     cooldown_row.lifecycle_state = PatternLifecycleState.COOLDOWN.value
     db_session.commit()
 
-    enabled_slugs = active_detector_slugs(db_session)
+    enabled_slugs = {
+        row.slug
+        for row in db_session.scalars(select(PatternRegistry)).all()
+        if lifecycle_allows_detection(str(row.lifecycle_state), bool(row.enabled))
+    }
     assert "bull_flag" not in enabled_slugs
     assert cooldown_slug not in enabled_slugs
-
-    detectors = load_active_detectors(db_session, timeframe=15)
-    detector_slugs = {detector.slug for detector in detectors}
-    assert "bull_flag" not in detector_slugs
-    assert cooldown_slug not in detector_slugs
-    assert detectors

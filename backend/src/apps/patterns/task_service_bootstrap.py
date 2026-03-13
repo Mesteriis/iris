@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any, cast
-
 from sqlalchemy import func, select
 
 from src.apps.market_data.query_services import MarketDataQueryService
@@ -109,7 +107,6 @@ class PatternBootstrapService(PatternTaskBase):
                         if adjusted is None:
                             continue
                         validated = apply_pattern_success_validation(
-                            cast(Any, None),
                             detection=adjusted,
                             timeframe=timeframe,
                             market_regime=None,

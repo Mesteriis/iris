@@ -1,22 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
-from datetime import timedelta
-
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-from src.apps.market_data.models import Coin
 from src.apps.indicators.models import CoinMetrics
 from src.apps.patterns.models import MarketCycle
-from src.apps.patterns.models import PatternStatistic
 from src.apps.cross_market.models import SectorMetric
-from src.apps.signals.models import Signal
-from src.apps.patterns.domain.regime import read_regime_details
-from src.apps.patterns.domain.semantics import is_cluster_signal, is_pattern_signal, pattern_bias, slug_from_signal_type
-from src.apps.patterns.domain.success import load_pattern_success_snapshot
-from src.apps.market_data.domain import ensure_utc, utc_now
+from src.apps.market_data.domain import ensure_utc
 from src.apps.patterns.cache import read_cached_regime
+from src.apps.patterns.domain.regime import read_regime_details
 
 
 def calculate_priority_score(
@@ -99,20 +88,6 @@ def _cycle_alignment(cycle: MarketCycle | None, bias: int) -> float:
     return 1.0
 
 
-def _pattern_temperature(db: Session, slug: str | None, timeframe: int, regime: str | None = None) -> float:
-    if slug is None:
-        return 1.0
-    snapshot = load_pattern_success_snapshot(
-        db,
-        slug=slug,
-        timeframe=timeframe,
-        market_regime=regime,
-    )
-    if snapshot is None:
-        return 1.0
-    return float(snapshot.temperature) if snapshot.temperature != 0 else 1.0
-
-
 def _signal_regime(metrics: CoinMetrics | None, timeframe: int) -> str | None:
     if metrics is not None:
         cached = read_cached_regime(coin_id=metrics.coin_id, timeframe=timeframe)
@@ -124,90 +99,12 @@ def _signal_regime(metrics: CoinMetrics | None, timeframe: int) -> str | None:
     return detailed.regime if detailed is not None else metrics.market_regime
 
 
-def enrich_signal_context(
-    db: Session,
-    *,
-    coin_id: int,
-    timeframe: int,
-    candle_timestamp: object | None = None,
-    commit: bool = True,
-) -> dict[str, object]:
-    stmt = select(Signal).where(Signal.coin_id == coin_id, Signal.timeframe == timeframe)
-    if candle_timestamp is not None:
-        normalized_timestamp = (
-            ensure_utc(datetime.fromisoformat(candle_timestamp))
-            if isinstance(candle_timestamp, str)
-            else candle_timestamp
-        )
-        stmt = stmt.where(Signal.candle_timestamp == normalized_timestamp)
-    signals = db.scalars(stmt).all()
-    if not signals:
-        return {"status": "skipped", "reason": "signals_not_found", "coin_id": coin_id, "timeframe": timeframe}
-
-    metrics = db.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == coin_id))
-    coin = db.get(Coin, coin_id)
-    sector_metric = db.get(SectorMetric, (coin.sector_id, timeframe)) if coin is not None and coin.sector_id is not None else None
-    cycle = db.get(MarketCycle, (coin_id, timeframe))
-    cluster_timestamps = {
-        signal.candle_timestamp
-        for signal in signals
-        if is_cluster_signal(signal.signal_type)
-    }
-    for signal in signals:
-        slug = slug_from_signal_type(signal.signal_type)
-        bias = pattern_bias(slug or signal.signal_type, fallback_price_delta=signal.confidence - 0.5)
-        regime_alignment = _regime_alignment(_signal_regime(metrics, signal.timeframe), bias)
-        signal_regime = signal.market_regime or _signal_regime(metrics, signal.timeframe)
-        volatility_alignment = _volatility_alignment(signal.signal_type, metrics)
-        liquidity_score = _liquidity_score(metrics)
-        sector_alignment = _sector_alignment(sector_metric, bias)
-        cycle_alignment = _cycle_alignment(cycle, bias)
-        temperature = _pattern_temperature(db, slug, signal.timeframe, signal_regime)
-        cluster_bonus = 1.15 if signal.candle_timestamp in cluster_timestamps and is_pattern_signal(signal.signal_type) else 1.0
-        context_score = max(
-            temperature * volatility_alignment * liquidity_score * cluster_bonus * sector_alignment * cycle_alignment,
-            0.0,
-        )
-        signal.regime_alignment = regime_alignment
-        signal.context_score = context_score
-        signal.priority_score = calculate_priority_score(
-            confidence=signal.confidence,
-            pattern_temperature=temperature,
-            regime_alignment=regime_alignment,
-            volatility_alignment=volatility_alignment * cluster_bonus * sector_alignment * cycle_alignment,
-            liquidity_score=liquidity_score,
-        )
-    if commit:
-        db.commit()
-    return {
-        "status": "ok",
-        "coin_id": coin_id,
-        "timeframe": timeframe,
-        "signals": len(signals),
-    }
-
-
-def refresh_recent_signal_contexts(
-    db: Session,
-    *,
-    lookback_days: int = 30,
-) -> dict[str, object]:
-    recent_cutoff = utc_now() - timedelta(days=max(lookback_days, 1))
-    rows = db.execute(
-        select(Signal.coin_id, Signal.timeframe, Signal.candle_timestamp)
-        .where(Signal.candle_timestamp >= recent_cutoff)
-        .distinct()
-        .order_by(Signal.coin_id.asc(), Signal.timeframe.asc(), Signal.candle_timestamp.asc())
-    ).all()
-    updated = 0
-    for row in rows:
-        result = enrich_signal_context(
-            db,
-            coin_id=int(row.coin_id),
-            timeframe=int(row.timeframe),
-            candle_timestamp=row.candle_timestamp,
-            commit=False,
-        )
-        updated += int(result.get("signals", 0))
-    db.commit()
-    return {"status": "ok", "signals": updated, "groups": len(rows)}
+__all__ = [
+    "_cycle_alignment",
+    "_liquidity_score",
+    "_regime_alignment",
+    "_sector_alignment",
+    "_signal_regime",
+    "_volatility_alignment",
+    "calculate_priority_score",
+]
