@@ -370,25 +370,41 @@ class PatternCompatibilityQuery:
 
     def list_patterns(self) -> Sequence[dict[str, Any]]:
         self._log(logging.WARNING, "compat.list_patterns.deprecated", mode="read")
+        self._log(logging.DEBUG, "compat.list_patterns.execute", mode="read")
         rows = self._db.scalars(select(PatternRegistry).order_by(PatternRegistry.category.asc(), PatternRegistry.slug.asc())).all()
         stats_by_slug = _pattern_statistics_by_slug(self._db)
-        return [_pattern_payload(pattern_read_model_from_orm(row, stats_by_slug.get(str(row.slug), ()))) for row in rows]
+        result = [_pattern_payload(pattern_read_model_from_orm(row, stats_by_slug.get(str(row.slug), ()))) for row in rows]
+        self._log(logging.INFO, "compat.list_patterns.result", mode="read", count=len(result))
+        return result
 
     def get_pattern(self, slug: str) -> dict[str, Any] | None:
         normalized_slug = slug.strip()
         self._log(logging.WARNING, "compat.get_pattern.deprecated", mode="read", slug=normalized_slug)
+        self._log(logging.DEBUG, "compat.get_pattern.execute", mode="read", slug=normalized_slug)
         item = _get_pattern_read_model(self._db, normalized_slug)
-        return _pattern_payload(item) if item is not None else None
+        result = _pattern_payload(item) if item is not None else None
+        self._log(logging.INFO, "compat.get_pattern.result", mode="read", slug=normalized_slug, found=result is not None)
+        return result
 
     def list_pattern_features(self) -> Sequence[dict[str, Any]]:
         self._log(logging.WARNING, "compat.list_pattern_features.deprecated", mode="read")
+        self._log(logging.DEBUG, "compat.list_pattern_features.execute", mode="read")
         rows = self._db.scalars(select(PatternFeature).order_by(PatternFeature.feature_slug.asc())).all()
-        return [_pattern_feature_payload(pattern_feature_read_model_from_orm(row)) for row in rows]
+        result = [_pattern_feature_payload(pattern_feature_read_model_from_orm(row)) for row in rows]
+        self._log(logging.INFO, "compat.list_pattern_features.result", mode="read", count=len(result))
+        return result
 
     def list_discovered_patterns(self, *, timeframe: int | None = None, limit: int = 200) -> Sequence[dict[str, Any]]:
         self._log(
             logging.WARNING,
             "compat.list_discovered_patterns.deprecated",
+            mode="read",
+            timeframe=timeframe,
+            limit=limit,
+        )
+        self._log(
+            logging.DEBUG,
+            "compat.list_discovered_patterns.execute",
             mode="read",
             timeframe=timeframe,
             limit=limit,
@@ -401,7 +417,15 @@ class PatternCompatibilityQuery:
         if timeframe is not None:
             stmt = stmt.where(DiscoveredPattern.timeframe == timeframe)
         rows = self._db.scalars(stmt).all()
-        return [_discovered_pattern_payload(discovered_pattern_read_model_from_orm(row)) for row in rows]
+        result = [_discovered_pattern_payload(discovered_pattern_read_model_from_orm(row)) for row in rows]
+        self._log(
+            logging.INFO,
+            "compat.list_discovered_patterns.result",
+            mode="read",
+            timeframe=timeframe,
+            count=len(result),
+        )
+        return result
 
     def list_enriched_signals(
         self,
@@ -419,22 +443,42 @@ class PatternCompatibilityQuery:
             timeframe=timeframe,
             limit=limit,
         )
+        self._log(
+            logging.DEBUG,
+            "compat.list_enriched_signals.execute",
+            mode="read",
+            symbol=normalized_symbol,
+            timeframe=timeframe,
+            limit=limit,
+        )
         stmt = _signal_select().order_by(Signal.candle_timestamp.desc(), Signal.created_at.desc()).limit(max(limit, 1))
         if normalized_symbol is not None:
             stmt = stmt.where(Coin.symbol == normalized_symbol)
         if timeframe is not None:
             stmt = stmt.where(Signal.timeframe == timeframe)
         rows = self._db.execute(stmt).all()
-        return [_pattern_signal_payload(item) for item in _serialize_signal_rows(self._db, rows)]
+        result = [_pattern_signal_payload(item) for item in _serialize_signal_rows(self._db, rows)]
+        self._log(
+            logging.INFO,
+            "compat.list_enriched_signals.result",
+            mode="read",
+            symbol=normalized_symbol,
+            timeframe=timeframe,
+            count=len(result),
+        )
+        return result
 
     def list_top_signals(self, *, limit: int = 20) -> Sequence[dict[str, Any]]:
         self._log(logging.WARNING, "compat.list_top_signals.deprecated", mode="read", limit=limit)
+        self._log(logging.DEBUG, "compat.list_top_signals.execute", mode="read", limit=limit)
         rows = self._db.execute(
             _signal_select()
             .order_by(Signal.priority_score.desc(), Signal.candle_timestamp.desc(), Signal.created_at.desc())
             .limit(max(limit, 1))
         ).all()
-        return [_pattern_signal_payload(item) for item in _serialize_signal_rows(self._db, rows)]
+        result = [_pattern_signal_payload(item) for item in _serialize_signal_rows(self._db, rows)]
+        self._log(logging.INFO, "compat.list_top_signals.result", mode="read", count=len(result))
+        return result
 
     def list_coin_patterns(self, symbol: str, *, limit: int = 200) -> Sequence[dict[str, Any]]:
         normalized_symbol = symbol.strip().upper()
@@ -445,13 +489,28 @@ class PatternCompatibilityQuery:
             symbol=normalized_symbol,
             limit=limit,
         )
+        self._log(
+            logging.DEBUG,
+            "compat.list_coin_patterns.execute",
+            mode="read",
+            symbol=normalized_symbol,
+            limit=limit,
+        )
         rows = self._db.execute(
             _signal_select()
             .where(Coin.symbol == normalized_symbol, Signal.signal_type.like("pattern_%"))
             .order_by(*pattern_signal_ordering())
             .limit(max(limit, 1))
         ).all()
-        return [_pattern_signal_payload(item) for item in _serialize_signal_rows(self._db, rows)]
+        result = [_pattern_signal_payload(item) for item in _serialize_signal_rows(self._db, rows)]
+        self._log(
+            logging.INFO,
+            "compat.list_coin_patterns.result",
+            mode="read",
+            symbol=normalized_symbol,
+            count=len(result),
+        )
+        return result
 
     def get_coin_regimes(self, symbol: str) -> dict[str, Any] | None:
         normalized_symbol = symbol.strip().upper()
@@ -461,11 +520,27 @@ class PatternCompatibilityQuery:
             mode="read",
             symbol=normalized_symbol,
         )
+        self._log(
+            logging.DEBUG,
+            "compat.get_coin_regimes.execute",
+            mode="read",
+            symbol=normalized_symbol,
+        )
         item = _coin_regime_read_model_for_symbol(self._db, normalized_symbol)
-        return _coin_regime_payload(item) if item is not None else None
+        result = _coin_regime_payload(item) if item is not None else None
+        self._log(
+            logging.INFO,
+            "compat.get_coin_regimes.result",
+            mode="read",
+            symbol=normalized_symbol,
+            found=result is not None,
+            regime_count=len(result["items"]) if isinstance(result, dict) else 0,
+        )
+        return result
 
     def list_sectors(self) -> Sequence[dict[str, Any]]:
         self._log(logging.WARNING, "compat.list_sectors.deprecated", mode="read")
+        self._log(logging.DEBUG, "compat.list_sectors.execute", mode="read")
         rows = self._db.execute(
             select(
                 Sector.id,
@@ -478,7 +553,9 @@ class PatternCompatibilityQuery:
             .group_by(Sector.id)
             .order_by(Sector.name.asc())
         ).all()
-        return [_sector_payload(sector_read_model_from_mapping(row._mapping)) for row in rows]
+        result = [_sector_payload(sector_read_model_from_mapping(row._mapping)) for row in rows]
+        self._log(logging.INFO, "compat.list_sectors.result", mode="read", count=len(result))
+        return result
 
     def list_sector_metrics(self, *, timeframe: int | None = None) -> dict[str, Any]:
         self._log(
@@ -488,7 +565,23 @@ class PatternCompatibilityQuery:
             timeframe=timeframe,
             loading_profile="full",
         )
-        return _sector_metrics_payload(_sector_metrics_read_model(self._db, timeframe=timeframe))
+        self._log(
+            logging.DEBUG,
+            "compat.list_sector_metrics.execute",
+            mode="read",
+            timeframe=timeframe,
+            loading_profile="full",
+        )
+        result = _sector_metrics_payload(_sector_metrics_read_model(self._db, timeframe=timeframe))
+        self._log(
+            logging.INFO,
+            "compat.list_sector_metrics.result",
+            mode="read",
+            timeframe=timeframe,
+            item_count=len(result["items"]),
+            narrative_count=len(result["narratives"]),
+        )
+        return result
 
     def list_market_cycles(
         self,
@@ -500,6 +593,13 @@ class PatternCompatibilityQuery:
         self._log(
             logging.WARNING,
             "compat.list_market_cycles.deprecated",
+            mode="read",
+            symbol=normalized_symbol,
+            timeframe=timeframe,
+        )
+        self._log(
+            logging.DEBUG,
+            "compat.list_market_cycles.execute",
             mode="read",
             symbol=normalized_symbol,
             timeframe=timeframe,
@@ -523,7 +623,16 @@ class PatternCompatibilityQuery:
         if timeframe is not None:
             stmt = stmt.where(MarketCycle.timeframe == timeframe)
         rows = self._db.execute(stmt).all()
-        return [_market_cycle_payload(market_cycle_read_model_from_mapping(row._mapping)) for row in rows]
+        result = [_market_cycle_payload(market_cycle_read_model_from_mapping(row._mapping)) for row in rows]
+        self._log(
+            logging.INFO,
+            "compat.list_market_cycles.result",
+            mode="read",
+            symbol=normalized_symbol,
+            timeframe=timeframe,
+            count=len(result),
+        )
+        return result
 
 
 class PatternCompatibilityService:

@@ -157,6 +157,63 @@ def test_patterns_legacy_compatibility_queries_emit_deprecation_logs(db_session,
     assert "compat.list_market_cycles.deprecated" in events
 
 
+def test_patterns_legacy_compatibility_queries_emit_execution_logs(db_session, monkeypatch) -> None:
+    seed_pattern_api_state(db_session)
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+    monkeypatch.setattr(
+        "src.apps.patterns.selectors.build_sector_narratives",
+        lambda _db: [
+            SimpleNamespace(
+                timeframe=60,
+                top_sector="store_of_value",
+                rotation_state="sector_leadership_change",
+                btc_dominance=None,
+                capital_wave="large_caps",
+            )
+        ],
+    )
+
+    patterns = list_patterns(db_session)
+    pattern = get_pattern(db_session, "bull_flag")
+    features = list_pattern_features(db_session)
+    coin_patterns = list_coin_patterns(db_session, "BTCUSD_EVT", limit=5)
+    regimes = get_coin_regimes(db_session, "BTCUSD_EVT")
+    sectors = list_sectors(db_session)
+    sector_metrics = list_sector_metrics(db_session, timeframe=60)
+    cycles = list_market_cycles(db_session, symbol="BTCUSD_EVT", timeframe=15)
+
+    assert patterns
+    assert pattern is not None
+    assert features
+    assert coin_patterns
+    assert regimes is not None
+    assert sectors
+    assert sector_metrics["items"]
+    assert cycles
+    assert "compat.list_patterns.execute" in events
+    assert "compat.list_patterns.result" in events
+    assert "compat.get_pattern.execute" in events
+    assert "compat.get_pattern.result" in events
+    assert "compat.list_pattern_features.execute" in events
+    assert "compat.list_pattern_features.result" in events
+    assert "compat.list_coin_patterns.execute" in events
+    assert "compat.list_coin_patterns.result" in events
+    assert "compat.get_coin_regimes.execute" in events
+    assert "compat.get_coin_regimes.result" in events
+    assert "compat.list_sectors.execute" in events
+    assert "compat.list_sectors.result" in events
+    assert "compat.list_sector_metrics.execute" in events
+    assert "compat.list_sector_metrics.result" in events
+    assert "compat.list_market_cycles.execute" in events
+    assert "compat.list_market_cycles.result" in events
+
+
 def test_patterns_legacy_compatibility_services_emit_deprecation_logs(db_session, monkeypatch) -> None:
     seed_pattern_api_state(db_session)
     events: list[str] = []
