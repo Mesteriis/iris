@@ -5,7 +5,7 @@ from datetime import timedelta
 from statistics import mean
 from typing import Sequence
 
-from src.apps.market_data.repos import CandlePoint, candle_close_timestamp
+from src.apps.market_data.candles import CandlePoint, candle_close_timestamp
 from src.apps.indicators.domain import adx_series, atr_series, bollinger_bands, ema_series, macd_series, rsi_series, sma_series
 
 

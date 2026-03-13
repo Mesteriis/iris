@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from src.apps.market_data.repos import CandlePoint
+from src.apps.market_data.candles import CandlePoint
 from src.apps.patterns import cache, tasks
 from src.apps.patterns.domain.base import PatternDetector
 from src.apps.patterns.domain.scheduler import assign_activity_bucket, calculate_activity_score

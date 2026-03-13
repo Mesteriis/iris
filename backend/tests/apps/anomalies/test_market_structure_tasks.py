@@ -8,9 +8,10 @@ from sqlalchemy import select
 from src.apps.anomalies.consumers.sector_anomaly_consumer import SectorAnomalyConsumer
 from src.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
 from src.apps.anomalies.tasks.anomaly_enrichment_tasks import market_structure_anomaly_scan
-from src.apps.market_data.repos import fetch_candle_points
 from src.runtime.streams.publisher import flush_publisher
 from src.runtime.streams.types import IrisEvent
+
+from tests.market_data_support import fetch_candle_points
 
 
 def _insert_snapshot_series(db, *, coin_id: int, symbol: str, timeframe: int, venue: str, rows: list[dict[str, float | datetime]]) -> None:

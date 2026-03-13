@@ -10,7 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics
-from src.apps.market_data.repositories import CandlePoint, CandleRepository, CoinRepository
+from src.apps.market_data.candles import CandlePoint
+from src.apps.market_data.repositories import CandleRepository, CoinRepository
 from src.apps.patterns.cache import read_cached_regime_async
 from src.apps.patterns.domain.base import PatternDetector
 from src.apps.patterns.domain.detectors import build_pattern_detectors

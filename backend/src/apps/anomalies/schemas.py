@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from src.apps.anomalies.constants import ANOMALY_SCOPE_ASSET
-from src.apps.market_data.repos import CandlePoint
+from src.apps.market_data.candles import CandlePoint
 
 
 @dataclass(slots=True, frozen=True)

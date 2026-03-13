@@ -43,7 +43,6 @@ from src.apps.cross_market.models import CoinRelation, SectorMetric
 from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AIPrompt, AIWeight
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Coin
-from src.apps.market_data.repos import upsert_base_candles
 from src.apps.market_data.schemas import CoinCreate
 from src.apps.market_data.sources.base import MarketBar
 from src.apps.market_structure.models import MarketStructureSource
@@ -61,6 +60,7 @@ from src.core.db.session import AsyncSessionLocal, SessionLocal
 from src.runtime.streams.publisher import flush_publisher, reset_event_publisher
 
 from tests.factories.market_data import CoinCreateFactory, persist_coin
+from tests.market_data_support import upsert_base_candles
 
 TEST_SYMBOLS = {
     "BTCUSD_EVT": ("BTCUSD", "Bitcoin Event Test"),

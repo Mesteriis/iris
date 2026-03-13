@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import importlib
 
-from src.apps.market_data.repos import CandlePoint
+from src.apps.market_data.candles import CandlePoint
 
 momentum = importlib.import_module("src.apps.patterns.domain.detectors.momentum")
 

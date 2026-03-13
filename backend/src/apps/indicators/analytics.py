@@ -18,7 +18,7 @@ from src.apps.indicators.domain import (
 )
 from src.apps.market_data.domain import ensure_utc
 from src.apps.market_data.models import Coin
-from src.apps.market_data.repos import (
+from src.apps.market_data.candles import (
     BASE_TIMEFRAME_MINUTES,
     CandlePoint,
     candle_close_timestamp,

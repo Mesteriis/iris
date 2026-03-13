@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from math import floor, sqrt
 
 from src.apps.cross_market.models import SectorMetric
-from src.apps.market_data.repos import CandlePoint, timeframe_delta
+from src.apps.market_data.candles import CandlePoint, timeframe_delta
 from src.apps.patterns.domain.cycle import _detect_cycle_phase
 from src.apps.patterns.domain.regime import detect_market_regime
 from src.apps.patterns.domain.semantics import pattern_bias, slug_from_signal_type

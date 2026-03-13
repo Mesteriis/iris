@@ -5,7 +5,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 from src.apps.market_data.domain import ensure_utc
-from src.apps.market_data.repos import CandlePoint
+from src.apps.market_data.candles import CandlePoint
 from src.apps.signals.history_support import (
     _candle_index_map,
     _close_timestamps,

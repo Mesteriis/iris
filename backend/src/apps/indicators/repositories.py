@@ -15,7 +15,7 @@ from src.apps.indicators.analytics import INDICATOR_VERSION, SIGNAL_TYPES, Timef
 from src.apps.indicators.models import CoinMetrics, FeatureSnapshot, IndicatorCache
 from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.market_data.models import Candle, Coin
-from src.apps.market_data.repos import (
+from src.apps.market_data.candles import (
     AGGREGATE_VIEW_BY_TIMEFRAME,
     BASE_TIMEFRAME_MINUTES,
     CandlePoint,

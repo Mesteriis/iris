@@ -10,7 +10,7 @@ from src.apps.cross_market.query_services import CrossMarketQueryService
 from src.apps.cross_market.services import CrossMarketRelationUpdateResult, CrossMarketSectorMomentumResult, CrossMarketService
 from src.apps.cross_market.support import best_lagged_correlation, pearson
 from src.apps.indicators.models import CoinMetrics
-from src.apps.market_data.repos import CandlePoint
+from src.apps.market_data.candles import CandlePoint
 from src.apps.signals.models import MarketDecision
 from tests.cross_market_support import (
     DEFAULT_START,

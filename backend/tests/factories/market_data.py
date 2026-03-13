@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Coin
-from src.apps.market_data.repos import CandlePoint
+from src.apps.market_data.candles import CandlePoint
 from src.apps.market_data.schemas import CoinCreate, PriceHistoryCreate
 from src.apps.market_data.support import serialize_candles
 from tests.factories.base import fake

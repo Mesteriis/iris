@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Sequence
 
-from src.apps.market_data.repos import CandlePoint
+from src.apps.market_data.candles import CandlePoint
 
 
 @dataclass(slots=True, frozen=True)

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from src.apps.indicators.models import CoinMetrics, IndicatorCache
 from src.apps.market_data.domain import ensure_utc, normalize_interval
 from src.apps.market_data.models import Candle, Coin
-from src.apps.market_data.repos import (
+from src.apps.market_data.candles import (
     AGGREGATE_VIEW_BY_TIMEFRAME,
     CandlePoint,
     align_timeframe_timestamp,

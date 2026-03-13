@@ -108,6 +108,21 @@ async def _sync_coin_latest_history(async_db_session, coin: Coin, *, force: bool
         return await MarketDataHistorySyncService(uow).sync_coin_latest_history(symbol=managed_coin.symbol, force=force)
 
 
+async def _prune_future_price_history(async_db_session, **kwargs) -> int:
+    async with SessionUnitOfWork(async_db_session) as uow:
+        return await _prune_future_price_history_async(uow, **kwargs)
+
+
+async def _prune_price_history(async_db_session, **kwargs) -> int:
+    async with SessionUnitOfWork(async_db_session) as uow:
+        return await _prune_price_history_async(uow, **kwargs)
+
+
+async def _upsert_base_candles(async_db_session, **kwargs) -> datetime | None:
+    async with SessionUnitOfWork(async_db_session) as uow:
+        return await _upsert_base_candles_async(uow, **kwargs)
+
+
 @pytest.mark.asyncio
 async def test_market_data_async_services_create_query_delete_and_refresh(async_db_session, monkeypatch) -> None:
     executed: list[dict[str, object]] = []
@@ -229,19 +244,19 @@ async def test_market_data_async_services_history_helpers(async_db_session, seed
         volume=1.0,
     )
     await _create_price_history(async_db_session, btc, future_payload)
-    assert await _prune_future_price_history_async(
+    assert await _prune_future_price_history(
         async_db_session,
         coin_id=btc_id,
         interval="15m",
         latest_allowed=latest,
     ) >= 1
-    assert await _prune_price_history_async(
+    assert await _prune_price_history(
         async_db_session,
         coin_id=btc_id,
         interval="15m",
         retention_bars=10,
     ) >= 0
-    assert await _prune_price_history_async(
+    assert await _prune_price_history(
         async_db_session,
         coin_id=999999,
         interval="15m",
@@ -258,9 +273,9 @@ async def test_market_data_async_services_history_helpers(async_db_session, seed
         volume=50.0,
         source="fixture",
     )
-    assert await _upsert_base_candles_async(async_db_session, coin_id=999999, interval="15m", bars=[bar]) is None
-    assert await _upsert_base_candles_async(async_db_session, coin_id=btc_id, interval="15m", bars=[]) is None
-    assert await _upsert_base_candles_async(async_db_session, coin_id=btc_id, interval="15m", bars=[bar]) == bar.timestamp
+    assert await _upsert_base_candles(async_db_session, coin_id=999999, interval="15m", bars=[bar]) is None
+    assert await _upsert_base_candles(async_db_session, coin_id=btc_id, interval="15m", bars=[]) is None
+    assert await _upsert_base_candles(async_db_session, coin_id=btc_id, interval="15m", bars=[bar]) == bar.timestamp
 
 
 @pytest.mark.asyncio
@@ -555,7 +570,7 @@ async def test_market_data_async_services_additional_edge_branches(async_db_sess
         source="fixture",
     )
     monkeypatch.setattr("src.apps.market_data.services._refresh_continuous_aggregate_range_async", lambda **kwargs: __import__("asyncio").sleep(0))
-    assert await _upsert_base_candles_async(async_db_session, coin_id=int(watch_coin.id), interval="15m", bars=[older_bar]) is None
+    assert await _upsert_base_candles(async_db_session, coin_id=int(watch_coin.id), interval="15m", bars=[older_bar]) is None
     one_hour_bar = MarketBar(
         timestamp=latest,
         open=120.0,
@@ -565,7 +580,7 @@ async def test_market_data_async_services_additional_edge_branches(async_db_sess
         volume=6.0,
         source="fixture",
     )
-    assert await _upsert_base_candles_async(async_db_session, coin_id=int(watch_coin.id), interval="1h", bars=[one_hour_bar]) == latest
+    assert await _upsert_base_candles(async_db_session, coin_id=int(watch_coin.id), interval="1h", bars=[one_hour_bar]) == latest
 
 @pytest.mark.asyncio
 async def test_market_data_async_services_sync_history_progress_update_and_latest_none(monkeypatch) -> None:
@@ -595,11 +610,15 @@ async def test_market_data_async_services_sync_history_progress_update_and_lates
     events: list[tuple[str, object]] = []
     fetch_calls: list[tuple[str, datetime]] = []
 
-    class FakeDb:
-        async def commit(self) -> None:
+    class FakeSession:
+        async def refresh(self, _coin) -> None:
             return None
 
-        async def refresh(self, _coin) -> None:
+    class FakeUow:
+        def __init__(self) -> None:
+            self.session = FakeSession()
+
+        async def commit(self) -> None:
             return None
 
     class Carousel:
@@ -627,13 +646,13 @@ async def test_market_data_async_services_sync_history_progress_update_and_lates
     monkeypatch.setattr("src.apps.market_data.services.publish_coin_analysis_messages", lambda coin: events.append(("analysis", coin.symbol)))
     monkeypatch.setattr("src.apps.market_data.support.publish_candle_events", lambda **kwargs: events.append(("candle", kwargs["created_count"])))
 
-    result = await _sync_coin_history_async(FakeDb(), coin, history_mode="backfill")
+    result = await _sync_coin_history_async(FakeUow(), coin, history_mode="backfill")
     assert result == {"symbol": "ASYNC_SYNC_EVT", "created": 1, "status": "ok"}
     assert events == [("progress", 10.0), ("progress", 50.0), ("progress", 100.0), ("loaded", 10), ("analysis", "ASYNC_SYNC_EVT")]
 
     coin.history_backfill_completed_at = now
     events.clear()
-    latest_result = await _sync_coin_history_async(FakeDb(), coin, history_mode="latest", force=True)
+    latest_result = await _sync_coin_history_async(FakeUow(), coin, history_mode="latest", force=True)
     assert latest_result["status"] == "ok"
     assert fetch_calls[-1] == ("15m", latest_available)
     assert events == []

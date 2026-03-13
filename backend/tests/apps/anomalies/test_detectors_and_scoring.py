@@ -17,7 +17,7 @@ from src.apps.anomalies.detectors import (
 )
 from src.apps.anomalies.scoring import AnomalyScorer
 from src.apps.anomalies.schemas import AnomalyDetectionContext, BenchmarkSeries, DetectorFinding, MarketStructurePoint
-from src.apps.market_data.repos import CandlePoint
+from src.apps.market_data.candles import CandlePoint
 
 
 def _build_candles(

@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from src.apps.cross_market.models import SectorMetric
 from src.apps.market_data.models import Candle
-from src.apps.market_data.repos import candle_close_timestamp
+from src.apps.market_data.candles import candle_close_timestamp
 from src.apps.patterns.models import DiscoveredPattern, PatternFeature
 from src.apps.patterns.domain.strategy import StrategyCandidate
 from src.apps.patterns.task_services import (

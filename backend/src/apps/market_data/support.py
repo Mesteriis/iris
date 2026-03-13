@@ -6,7 +6,7 @@ from typing import Any
 
 from src.apps.market_data.domain import normalize_interval
 from src.apps.market_data.models import Coin
-from src.apps.market_data.repos import interval_to_timeframe
+from src.apps.market_data.candles import interval_to_timeframe
 from src.apps.market_data.schemas import CandleConfig
 from src.runtime.streams.publisher import publish_event
 

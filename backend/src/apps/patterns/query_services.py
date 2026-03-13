@@ -11,7 +11,7 @@ from src.apps.cross_market.models import Sector, SectorMetric
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.domain import ensure_utc
 from src.apps.market_data.models import Candle, Coin
-from src.apps.market_data.repos import CandlePoint
+from src.apps.market_data.candles import CandlePoint
 from src.apps.patterns.domain.regime import detect_market_regime, read_regime_details
 from src.apps.patterns.domain.utils import current_indicator_map
 from src.apps.patterns.models import DiscoveredPattern, MarketCycle, PatternFeature, PatternRegistry, PatternStatistic

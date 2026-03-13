@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Sequence
 
 from src.apps.market_data.domain import ensure_utc, utc_now
-from src.apps.market_data.repos import CandlePoint, candle_close_timestamp, timeframe_delta
+from src.apps.market_data.candles import CandlePoint, candle_close_timestamp, timeframe_delta
 from src.apps.patterns.domain.semantics import pattern_bias, slug_from_signal_type
 from src.apps.signals.models import Signal
 

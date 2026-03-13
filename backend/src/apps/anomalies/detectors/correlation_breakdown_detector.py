@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 from src.apps.anomalies.constants import ANOMALY_TYPE_CORRELATION_BREAKDOWN
 from src.apps.anomalies.schemas import AnomalyDetectionContext, DetectorFinding
-from src.apps.market_data.repos import CandlePoint
+from src.apps.market_data.candles import CandlePoint
 
 
 def _clamp01(value: float) -> float:

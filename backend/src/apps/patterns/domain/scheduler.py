@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from src.apps.market_data.repos import timeframe_delta
+from src.apps.market_data.candles import timeframe_delta
 from src.apps.market_data.domain import ensure_utc
 
 ACTIVITY_BUCKETS = ("HOT", "WARM", "COLD", "DEAD")

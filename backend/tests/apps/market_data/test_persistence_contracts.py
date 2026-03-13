@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import FrozenInstanceError
 from datetime import timedelta
 
@@ -184,3 +185,7 @@ def test_market_data_views_export_no_wrapper_helpers() -> None:
 
     for export_name in forbidden_exports:
         assert not hasattr(market_data_views_module, export_name), export_name
+
+
+def test_market_data_legacy_sync_repos_module_is_absent() -> None:
+    assert importlib.util.find_spec("src.apps.market_data.repos") is None

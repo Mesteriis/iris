@@ -6,8 +6,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.apps.market_data import candles as market_data_candles
 from src.apps.market_data import domain as market_data_domain
-from src.apps.market_data import repos as market_data_repos
 from src.apps.market_data.models import Coin
 from src.apps.market_data.query_services import MarketDataQueryService
 from src.apps.market_data.read_models import (
@@ -35,16 +35,6 @@ from src.runtime.streams.messages import (
     publish_coin_history_loaded_message,
     publish_coin_history_progress_message,
 )
-
-PersistenceBoundary = AsyncSession | BaseAsyncUnitOfWork
-
-
-def _session_from_boundary(boundary: PersistenceBoundary):
-    return boundary.session if hasattr(boundary, "session") else boundary
-
-
-async def _commit_boundary(boundary: PersistenceBoundary) -> None:
-    await boundary.commit()
 
 
 def _normalized_coin_values(payload: CoinCreate) -> dict[str, Any]:
@@ -152,8 +142,8 @@ async def _create_price_history_async_internal(
     if resolved_interval != base_interval:
         raise ValueError(f"Manual history writes are only supported for the {base_interval} base timeframe.")
 
-    timeframe = market_data_repos.interval_to_timeframe(resolved_interval)
-    timestamp = market_data_repos.align_timeframe_timestamp(payload.timestamp, timeframe)
+    timeframe = market_data_candles.interval_to_timeframe(resolved_interval)
+    timestamp = market_data_candles.align_timeframe_timestamp(payload.timestamp, timeframe)
     close = float(payload.price)
     volume = float(payload.volume) if payload.volume is not None else None
     await CandleRepository(db).upsert_row(
@@ -351,7 +341,7 @@ async def _calculate_backfill_progress_async(
     loaded_points = min(
         await CandleRepository(db).count_rows_between(
             coin_id=int(coin.id),
-            timeframe=market_data_repos.interval_to_timeframe(interval),
+            timeframe=market_data_candles.interval_to_timeframe(interval),
             window_start=window_start,
             window_end=latest_available,
         ),
@@ -362,32 +352,32 @@ async def _calculate_backfill_progress_async(
 
 
 async def _prune_future_price_history_async(
-    boundary: PersistenceBoundary,
+    uow: BaseAsyncUnitOfWork,
     *,
     coin_id: int,
     interval: str,
     latest_allowed: datetime,
 ) -> int:
-    db = _session_from_boundary(boundary)
+    db = uow.session
     resolved_interval = market_data_domain.normalize_interval(interval)
-    timeframe = market_data_repos.interval_to_timeframe(resolved_interval)
+    timeframe = market_data_candles.interval_to_timeframe(resolved_interval)
     count = await CandleRepository(db).delete_future_rows(
         coin_id=coin_id,
         timeframe=timeframe,
         latest_allowed=latest_allowed,
     )
-    await _commit_boundary(boundary)
+    await uow.commit()
     return count
 
 
 async def _prune_price_history_async(
-    boundary: PersistenceBoundary,
+    uow: BaseAsyncUnitOfWork,
     *,
     coin_id: int,
     interval: str,
     retention_bars: int,
 ) -> int:
-    db = _session_from_boundary(boundary)
+    db = uow.session
     latest_timestamp = await _get_latest_history_timestamp_async(db, coin_id=coin_id, interval=interval)
     if latest_timestamp is None:
         return 0
@@ -396,13 +386,13 @@ async def _prune_price_history_async(
         market_data_domain.normalize_interval(interval),
         retention_bars,
     )
-    timeframe = market_data_repos.interval_to_timeframe(market_data_domain.normalize_interval(interval))
+    timeframe = market_data_candles.interval_to_timeframe(market_data_domain.normalize_interval(interval))
     count = await CandleRepository(db).delete_rows_before(
         coin_id=coin_id,
         timeframe=timeframe,
         cutoff=cutoff,
     )
-    await _commit_boundary(boundary)
+    await uow.commit()
     return count
 
 
@@ -414,22 +404,22 @@ async def _get_latest_history_timestamp_async(
 ) -> datetime | None:
     return await CandleRepository(db).get_latest_timestamp(
         coin_id=coin_id,
-        timeframe=market_data_repos.interval_to_timeframe(market_data_domain.normalize_interval(interval)),
+        timeframe=market_data_candles.interval_to_timeframe(market_data_domain.normalize_interval(interval)),
     )
 
 
 async def _upsert_base_candles_async(
-    boundary: PersistenceBoundary,
+    uow: BaseAsyncUnitOfWork,
     *,
     coin_id: int,
     interval: str,
     bars,
 ) -> datetime | None:
-    db = _session_from_boundary(boundary)
+    db = uow.session
     coin = await CoinRepository(db).get_by_id(int(coin_id))
     if coin is None or not bars:
         return None
-    timeframe = market_data_repos.interval_to_timeframe(interval)
+    timeframe = market_data_candles.interval_to_timeframe(interval)
     latest_existing = await _get_latest_candle_timestamp_async(db, coin_id=int(coin.id), timeframe=timeframe)
     rows = [
         {
@@ -447,12 +437,12 @@ async def _upsert_base_candles_async(
     candles = CandleRepository(db)
     for offset in range(0, len(rows), 2000):
         await candles.upsert_rows(rows[offset : offset + 2000])
-    await _commit_boundary(boundary)
+    await uow.commit()
 
     earliest_incoming = min(market_data_domain.ensure_utc(bar.timestamp) for bar in bars)
     latest_incoming = max(market_data_domain.ensure_utc(bar.timestamp) for bar in bars)
-    if timeframe == market_data_repos.BASE_TIMEFRAME_MINUTES:
-        for aggregate_timeframe in market_data_repos.AGGREGATE_VIEW_BY_TIMEFRAME:
+    if timeframe == market_data_candles.BASE_TIMEFRAME_MINUTES:
+        for aggregate_timeframe in market_data_candles.AGGREGATE_VIEW_BY_TIMEFRAME:
             await _refresh_continuous_aggregate_range_async(
                 timeframe=aggregate_timeframe,
                 window_start=earliest_incoming,
@@ -464,13 +454,13 @@ async def _upsert_base_candles_async(
 
 
 async def _sync_coin_history_async(
-    boundary: PersistenceBoundary,
+    uow: BaseAsyncUnitOfWork,
     coin: Coin,
     *,
     history_mode: str,
     force: bool = False,
 ) -> dict[str, int | str]:
-    db = _session_from_boundary(boundary)
+    db = uow.session
     if coin.deleted_at is not None or not coin.enabled:
         return {"symbol": coin.symbol, "created": 0, "status": "skipped"}
 
@@ -508,7 +498,7 @@ async def _sync_coin_history_async(
 
     latest_available = market_data_domain.latest_completed_timestamp(interval, now)
     await _prune_future_price_history_async(
-        boundary,
+        uow,
         coin_id=int(coin.id),
         interval=interval,
         latest_allowed=latest_available,
@@ -525,7 +515,7 @@ async def _sync_coin_history_async(
     if start <= latest_available:
         fetch_result = await carousel.fetch_history_window(coin, interval, start, latest_available)
         latest_candle_timestamp = await _upsert_base_candles_async(
-            boundary,
+            uow,
             coin_id=int(coin.id),
             interval=interval,
             bars=fetch_result.bars,
@@ -534,13 +524,13 @@ async def _sync_coin_history_async(
         if latest_candle_timestamp is not None:
             market_data_support.publish_candle_events(
                 coin_id=int(coin.id),
-                timeframe=market_data_repos.interval_to_timeframe(interval),
+                timeframe=market_data_candles.interval_to_timeframe(interval),
                 timestamp=latest_candle_timestamp,
                 created_count=len(fetch_result.bars),
                 source=history_mode,
             )
         await _prune_price_history_async(
-            boundary,
+            uow,
             coin_id=int(coin.id),
             interval=interval,
             retention_bars=retention_bars,
@@ -566,7 +556,7 @@ async def _sync_coin_history_async(
             coin.last_history_sync_at = now
             coin.next_history_sync_at = now + timedelta(hours=1)
             coin.last_history_sync_error = (fetch_result.error or "Market source carousel exhausted.")[:255]
-            await _commit_boundary(boundary)
+            await uow.commit()
             await CoinRepository(db).refresh(coin)
             return {
                 "symbol": coin.symbol,
@@ -577,7 +567,7 @@ async def _sync_coin_history_async(
             }
     else:
         await _prune_price_history_async(
-            boundary,
+            uow,
             coin_id=int(coin.id),
             interval=interval,
             retention_bars=retention_bars,
@@ -588,7 +578,7 @@ async def _sync_coin_history_async(
     coin.last_history_sync_at = now
     coin.next_history_sync_at = None
     coin.last_history_sync_error = None
-    await _commit_boundary(boundary)
+    await uow.commit()
     await CoinRepository(db).refresh(coin)
 
     if history_mode == "backfill":

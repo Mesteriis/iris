@@ -4,7 +4,7 @@ from typing import Sequence
 
 from src.apps.patterns.domain.base import PatternDetection, PatternDetector
 from src.apps.patterns.domain.utils import average, clamp, closes, signal_timestamp, volume_ratio
-from src.apps.market_data.repos import CandlePoint
+from src.apps.market_data.candles import CandlePoint
 from src.apps.indicators.domain import atr_series, bollinger_bands
 
 

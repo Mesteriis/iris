@@ -136,10 +136,10 @@ Status: migrated on the async API/application surface and scheduled entrypoints
 - views and TaskIQ jobs now depend on the shared async UoW instead of owning `AsyncSession` / `AsyncSessionLocal` directly
 - thin wrapper helpers formerly sitting in [backend/src/apps/market_data/views.py](backend/src/apps/market_data/views.py) and [backend/src/apps/market_data/tasks.py](backend/src/apps/market_data/tasks.py) have been removed; those entrypoints now instantiate [backend/src/apps/market_data/query_services.py](backend/src/apps/market_data/query_services.py) plus the class-based services in [backend/src/apps/market_data/services.py](backend/src/apps/market_data/services.py) directly, and persistence contract tests now forbid those wrappers from reappearing
 - query-service backfill/latest-sync selection batches latest-candle lookups, removing caller-side N+1 checks from the public async path
-- legacy Timescale adapters in [backend/src/apps/market_data/repos.py](backend/src/apps/market_data/repos.py) now degrade to structured warning logs plus direct/resampled candle fallback when continuous aggregate procedures or materialized views are unavailable, which keeps sync analytical callers/tests from failing hard on partial DB environments
+- pure candle/timeframe contracts now live in [backend/src/apps/market_data/candles.py](backend/src/apps/market_data/candles.py), separating immutable value helpers from the async repository layer
 - async candle bulk reads in [backend/src/apps/market_data/repositories.py](backend/src/apps/market_data/repositories.py) now keep partial aggregate-view failures on a batched path and return structured partial results instead of silently degrading into per-coin fallback reads, preserving the anti-N+1 contract consumed by `cross_market`
 - sync and async candle resampling paths now fall back to in-process aggregation of base candle rows when Timescale `time_bucket`/`first`/`last` functions are unavailable, keeping read contracts stable on PostgreSQL-only test environments without reintroducing caller-side DB access
-- the old sync [backend/src/apps/market_data/service_layer.py](backend/src/apps/market_data/service_layer.py) DB facade has been removed; the only remaining sync/exception surface in this domain is the documented Timescale/raw-SQL adapter in [backend/src/apps/market_data/repos.py](backend/src/apps/market_data/repos.py)
+- the old sync [backend/src/apps/market_data/service_layer.py](backend/src/apps/market_data/service_layer.py) DB facade and [backend/src/apps/market_data/repos.py](backend/src/apps/market_data/repos.py) module have been removed; the only remaining exception surface in this domain is the documented Timescale/raw-SQL path inside [backend/src/apps/market_data/repositories.py](backend/src/apps/market_data/repositories.py)
 
 Classification:
 
@@ -316,17 +316,18 @@ Recent cleanup:
 - `patterns.domain.clusters` and `patterns.domain.hierarchy` have been deleted; meta-signal coverage now runs only through `PatternRealtimeService`, and contract tests assert both sync modules are absent
 - `patterns.domain.cycle` no longer exposes sync DB mutation entrypoints; cycle updates now run only through `PatternRealtimeService._update_market_cycle(...)` and `PatternMarketStructureService.refresh()`
 - remaining `patterns.domain` modules no longer expose sync DB entrypoints either; tests now seed catalog metadata through `tests.patterns_support.seed_pattern_catalog_metadata(...)` and exercise async task/query services instead of the removed sync domain API
+- `market_data.repos` has been deleted; candle/timeframe value contracts now live in `src.apps.market_data.candles`, sync test seeding moved under `backend/tests/market_data_support.py`, and contract tests assert the legacy sync module stays absent
 
 ### Transaction Boundary Drift
 
 Representative offenders:
 
 - [backend/src/apps/market_structure/services.py](backend/src/apps/market_structure/services.py)
-- [backend/src/apps/market_data/services.py](backend/src/apps/market_data/services.py)
 
 Recently fixed:
 
 - analysis scheduler stream handling in [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py) no longer commits through direct session ownership.
+- write-side helper functions in [backend/src/apps/market_data/services.py](backend/src/apps/market_data/services.py) now require a shared async UoW boundary instead of accepting bare `AsyncSession` / mixed write contracts.
 
 Required action:
 
@@ -350,8 +351,7 @@ Required action:
 
 Current raw SQL outside migrations is concentrated in:
 
-- [backend/src/apps/market_data/repos.py](backend/src/apps/market_data/repos.py)
-- [backend/src/apps/market_data/services.py](backend/src/apps/market_data/services.py)
+- [backend/src/apps/market_data/repositories.py](backend/src/apps/market_data/repositories.py)
 
 Assessment:
 
@@ -380,7 +380,7 @@ Recommended rollout order:
 12. completed on the async/public API plus signal-fusion/signal-history runtime and test-facing surfaces: `apps/signals`
 13. completed on the async/public API and scheduled sync surface: `apps/portfolio`
 14. completed: remove residual sync DB helpers from `apps/patterns/domain/*`
-15. next: residual direct-session service internals in `market_structure` and `market_data`
+15. next: residual direct-session service internals in `market_structure`
 16. later: remaining helper-only sync analytical modules outside `patterns` and leftover compatibility assertions in tests
 
 ## Current Behavior To Preserve

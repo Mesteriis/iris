@@ -10,7 +10,6 @@ from src.apps.cross_market.support import relation_timeframe
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Coin
-from src.apps.market_data.repos import upsert_base_candles
 from src.apps.market_data.sources.base import MarketBar
 from src.apps.predictions.models import MarketPrediction
 from src.apps.predictions.services import (
@@ -24,6 +23,7 @@ from src.core.db.uow import SessionUnitOfWork
 from src.runtime.streams.publisher import publish_event
 
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
+from tests.market_data_support import upsert_base_candles
 from tests.portfolio_support import create_sector
 
 

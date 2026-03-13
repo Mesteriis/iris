@@ -13,7 +13,7 @@ from src.apps.market_data.read_models import (
     coin_read_model_from_orm,
     price_history_read_model,
 )
-from src.apps.market_data.repos import interval_to_timeframe
+from src.apps.market_data.candles import interval_to_timeframe
 from src.apps.market_data.repositories import CandleRepository, latest_candle_pair_map
 from src.apps.market_data.support import (
     get_base_candle_config,

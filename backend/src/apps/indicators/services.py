@@ -36,7 +36,7 @@ from src.apps.indicators.repositories import (
 )
 from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.market_data.models import Coin
-from src.apps.market_data.repos import AGGREGATE_VIEW_BY_TIMEFRAME, BASE_TIMEFRAME_MINUTES, TIMEFRAME_INTERVALS
+from src.apps.market_data.candles import AGGREGATE_VIEW_BY_TIMEFRAME, BASE_TIMEFRAME_MINUTES, TIMEFRAME_INTERVALS
 from src.apps.market_data.repositories import TimescaleContinuousAggregateRepository
 from src.apps.patterns.domain.regime import (
     calculate_regime_map,
