@@ -227,6 +227,28 @@ def test_portfolio_legacy_compatibility_queries_emit_deprecation_logs(db_session
     assert "compat.get_portfolio_state.deprecated" in events
 
 
+def test_portfolio_legacy_compatibility_queries_emit_execution_logs(db_session, monkeypatch) -> None:
+    _seed_portfolio_projection_state(db_session)
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+
+    assert list_portfolio_positions(db_session, limit=5)
+    assert list_portfolio_actions(db_session, limit=5)
+    assert get_portfolio_state(db_session)["open_positions"] == 1
+
+    assert "compat.list_portfolio_positions.execute" in events
+    assert "compat.list_portfolio_positions.result" in events
+    assert "compat.list_portfolio_actions.execute" in events
+    assert "compat.list_portfolio_actions.result" in events
+    assert "compat.get_portfolio_state.execute" in events
+    assert "compat.get_portfolio_state.result" in events
+
+
 def test_portfolio_legacy_compatibility_services_emit_deprecation_logs(db_session, monkeypatch) -> None:
     events: list[str] = []
 
@@ -261,3 +283,25 @@ def test_portfolio_legacy_compatibility_services_emit_deprecation_logs(db_sessio
     assert "compat.refresh_portfolio_state.deprecated" in events
     assert "compat.evaluate_portfolio_action.deprecated" in events
     assert "compat.sync_exchange_balances.deprecated" in events
+
+
+def test_portfolio_legacy_compatibility_services_emit_execution_logs(db_session, monkeypatch) -> None:
+    coin, _decision = _seed_portfolio_projection_state(db_session)
+    create_exchange_account(db_session, exchange_name="binance", account_name="compat-log-path")
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+    monkeypatch.setattr(portfolio_services_module, "create_exchange_plugin", lambda account: _SingleBalancePlugin())
+    monkeypatch.setattr("src.apps.portfolio.engine.create_exchange_plugin", lambda account: _SingleBalancePlugin())
+
+    assert evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=False)["status"] == "ok"
+    assert sync_exchange_balances(db_session, emit_events=False)["status"] == "ok"
+
+    assert "compat.evaluate_portfolio_action.execute" in events
+    assert "compat.evaluate_portfolio_action.result" in events
+    assert "compat.sync_exchange_balances.execute" in events
+    assert "compat.sync_exchange_balances.result" in events

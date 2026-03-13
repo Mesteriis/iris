@@ -660,6 +660,14 @@ class PortfolioCompatibilityService:
         decision: MarketDecision | None = None,
         emit_events: bool = True,
     ) -> dict[str, object]:
+        self._log(
+            logging.DEBUG,
+            "compat.evaluate_portfolio_action.execute",
+            mode="write",
+            coin_id=coin_id,
+            timeframe=timeframe,
+            emit_events=emit_events,
+        )
         result = _evaluate_portfolio_action_impl(
             self._db,
             coin_id=coin_id,
@@ -668,7 +676,7 @@ class PortfolioCompatibilityService:
             emit_events=emit_events,
         )
         state_payload = result.get("portfolio_state")
-        return PortfolioActionEvaluationResult(
+        payload = PortfolioActionEvaluationResult(
             status=str(result["status"]),
             coin_id=int(result["coin_id"]),
             timeframe=int(result["timeframe"]),
@@ -691,8 +699,24 @@ class PortfolioCompatibilityService:
                 else None
             ),
         ).to_payload()
+        self._log(
+            logging.INFO,
+            "compat.evaluate_portfolio_action.result",
+            mode="write",
+            coin_id=coin_id,
+            timeframe=timeframe,
+            status=payload["status"],
+            action=payload.get("action"),
+        )
+        return payload
 
     def sync_exchange_balances(self, *, emit_events: bool = True) -> dict[str, object]:
+        self._log(
+            logging.DEBUG,
+            "compat.sync_exchange_balances.execute",
+            mode="write",
+            emit_events=emit_events,
+        )
         result = _sync_exchange_balances_impl(
             self._db,
             emit_events=emit_events,
@@ -705,7 +729,7 @@ class PortfolioCompatibilityService:
             "open_positions": 0,
             "max_positions": 0,
         }
-        return PortfolioSyncResult(
+        payload = PortfolioSyncResult(
             status=str(result["status"]),
             accounts=int(result.get("accounts") or 0),
             items=tuple(
@@ -722,6 +746,15 @@ class PortfolioCompatibilityService:
             state=portfolio_state_read_model_from_mapping(state_payload),
             pending_events=tuple(),
         ).to_payload()
+        self._log(
+            logging.INFO,
+            "compat.sync_exchange_balances.result",
+            mode="write",
+            accounts=payload["accounts"],
+            balances=payload["balances"],
+            status=payload["status"],
+        )
+        return payload
 
 
 def ensure_portfolio_state(db: Session) -> PortfolioState:

@@ -52,6 +52,7 @@ class PortfolioCompatibilityQuery:
             mode="read",
             limit=limit,
         )
+        self._log(logging.DEBUG, "compat.list_portfolio_positions.execute", mode="read", limit=limit)
         rows = (
             self._db.execute(
                 _portfolio_positions_select()
@@ -85,7 +86,9 @@ class PortfolioCompatibilityQuery:
                     }
                 )
             )
-        return [portfolio_position_payload(item) for item in items]
+        result = [portfolio_position_payload(item) for item in items]
+        self._log(logging.INFO, "compat.list_portfolio_positions.result", mode="read", count=len(result))
+        return result
 
     def list_actions(self, *, limit: int = 200) -> Sequence[dict[str, Any]]:
         self._log(
@@ -94,6 +97,7 @@ class PortfolioCompatibilityQuery:
             mode="read",
             limit=limit,
         )
+        self._log(logging.DEBUG, "compat.list_portfolio_actions.execute", mode="read", limit=limit)
         rows = (
             self._db.execute(
                 _portfolio_actions_select()
@@ -101,7 +105,9 @@ class PortfolioCompatibilityQuery:
                 .limit(max(limit, 1))
             )
         ).all()
-        return [portfolio_action_payload(portfolio_action_read_model_from_mapping(row._mapping)) for row in rows]
+        result = [portfolio_action_payload(portfolio_action_read_model_from_mapping(row._mapping)) for row in rows]
+        self._log(logging.INFO, "compat.list_portfolio_actions.result", mode="read", count=len(result))
+        return result
 
     def get_state(self) -> dict[str, Any]:
         self._log(
@@ -109,12 +115,14 @@ class PortfolioCompatibilityQuery:
             "compat.get_portfolio_state.deprecated",
             mode="read",
         )
+        self._log(logging.DEBUG, "compat.get_portfolio_state.execute", mode="read")
         cached = read_cached_portfolio_state()
         if cached is not None:
+            self._log(logging.DEBUG, "compat.get_portfolio_state.cache_hit", mode="read")
             return cached
         state = self._db.get(PortfolioState, 1)
         if state is None:
-            return portfolio_state_payload(
+            result = portfolio_state_payload(
                 PortfolioStateReadModel(
                     total_capital=0.0,
                     allocated_capital=0.0,
@@ -124,13 +132,15 @@ class PortfolioCompatibilityQuery:
                     max_positions=0,
                 )
             )
+            self._log(logging.INFO, "compat.get_portfolio_state.result", mode="read", found=False)
+            return result
         open_positions = int(
             self._db.scalar(
                 select(func.count()).select_from(PortfolioPosition).where(PortfolioPosition.status.in_(("open", "partial")))
             )
             or 0
         )
-        return portfolio_state_payload(
+        result = portfolio_state_payload(
             portfolio_state_read_model_from_mapping(
                 {
                     "total_capital": float(state.total_capital),
@@ -142,6 +152,8 @@ class PortfolioCompatibilityQuery:
                 }
             )
         )
+        self._log(logging.INFO, "compat.get_portfolio_state.result", mode="read", found=True)
+        return result
 
 
 def list_portfolio_positions(db: Session, *, limit: int = 200) -> Sequence[dict[str, Any]]:
