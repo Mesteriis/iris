@@ -4,16 +4,9 @@ import pytest
 from sqlalchemy import select
 
 from src.apps.indicators.models import CoinMetrics
-from src.apps.portfolio.engine import (
-    _ensure_coin_for_balance,
-    _maybe_auto_watch_coin,
-    _rebalance_existing_position,
-    _sync_balance_position,
-    calculate_position_size,
-    calculate_stops,
-)
 from src.apps.portfolio.models import ExchangeAccount, PortfolioAction, PortfolioBalance, PortfolioPosition
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
+from src.apps.portfolio.support import calculate_position_size, calculate_stops
 from src.core.db.uow import SessionUnitOfWork
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_exchange_account, create_market_decision, create_sector
@@ -119,7 +112,8 @@ async def test_portfolio_engine_rebalances_existing_positions(async_db_session, 
     assert position.status == "closed"
 
 
-def test_portfolio_balance_helpers_cover_auto_watch_and_closing(db_session, monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_portfolio_balance_helpers_cover_auto_watch_and_closing(async_db_session, db_session) -> None:
     sector = create_sector(db_session, name="payments")
     account = create_exchange_account(db_session, exchange_name="fixture_close")
     coin = create_test_coin(db_session, symbol="XRPUSD_EVT", name="Ripple Event Test")
@@ -127,31 +121,54 @@ def test_portfolio_balance_helpers_cover_auto_watch_and_closing(db_session, monk
     db_session.commit()
     upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=1440)
 
-    existing = _ensure_coin_for_balance(db_session, symbol="XRPUSD_EVT", exchange_name="fixture_close")
-    created = _ensure_coin_for_balance(db_session, symbol="SOLUSD_EVT", exchange_name="fixture_close")
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = PortfolioService(uow)
+        async_account = await async_db_session.get(ExchangeAccount, int(account.id))
+        assert async_account is not None
+
+        existing = await service._ensure_coin_for_balance(symbol="XRPUSD_EVT", exchange_name="fixture_close")
+        created = await service._ensure_coin_for_balance(symbol="SOLUSD_EVT", exchange_name="fixture_close")
+        assert service._apply_auto_watch(coin=existing, value_usd=1.0) is False
+        assert service._apply_auto_watch(coin=existing, value_usd=500.0) is True
+        assert service._apply_auto_watch(coin=existing, value_usd=500.0) is False
+        await service._sync_balance_position(
+            account=async_account,
+            coin=existing,
+            value_usd=250.0,
+            balance=5.0,
+        )
+        await uow.commit()
+
     assert existing.id == coin.id
     assert created.symbol == "SOLUSD_EVT"
     assert created.sector_code == "portfolio"
+    db_session.expire_all()
     created_metrics = db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(created.id)).limit(1))
     assert created_metrics is not None
-
-    published: list[str] = []
-    monkeypatch.setattr("src.apps.portfolio.engine.publish_event", lambda event_type, payload: published.append(event_type))
-    assert _maybe_auto_watch_coin(db_session, coin=coin, value_usd=1.0, exchange_name="fixture_close") is False
-    assert _maybe_auto_watch_coin(db_session, coin=coin, value_usd=500.0, exchange_name="fixture_close") is True
-    assert published[-1] == "coin_auto_watch_enabled"
-    assert _maybe_auto_watch_coin(db_session, coin=coin, value_usd=500.0, exchange_name="fixture_close") is False
-
-    _sync_balance_position(db_session, account=account, coin=coin, value_usd=250.0, balance=5.0)
-    db_session.commit()
+    refreshed_coin = db_session.get(type(coin), int(coin.id))
+    assert refreshed_coin is not None
+    assert refreshed_coin.enabled is True
+    assert refreshed_coin.auto_watch_enabled is True
     position = db_session.scalar(
         select(PortfolioPosition)
         .where(PortfolioPosition.exchange_account_id == int(account.id), PortfolioPosition.coin_id == int(coin.id))
         .limit(1)
     )
     assert position is not None and position.status == "open"
-    _sync_balance_position(db_session, account=account, coin=coin, value_usd=0.0, balance=0.0)
-    db_session.commit()
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = PortfolioService(uow)
+        async_account = await async_db_session.get(ExchangeAccount, int(account.id))
+        async_coin = await service._ensure_coin_for_balance(symbol="XRPUSD_EVT", exchange_name="fixture_close")
+        assert async_account is not None
+        await service._sync_balance_position(
+            account=async_account,
+            coin=async_coin,
+            value_usd=0.0,
+            balance=0.0,
+        )
+        await uow.commit()
+
     db_session.refresh(position)
     assert position.status == "closed"
 
@@ -268,11 +285,10 @@ async def test_portfolio_helper_and_event_branches(async_db_session, db_session,
         position_value=0.0,
         status="closed",
     )
-    action, size = _rebalance_existing_position(
+    action, size = PortfolioService._rebalance_position(
         position=position,
         target_value=250.0,
         entry_price=50.0,
-        decision_confidence=0.8,
         atr_14=2.5,
     )
     assert action == "OPEN_POSITION"
@@ -378,8 +394,18 @@ async def test_portfolio_balance_rows_update_and_reopen_positions(async_db_sessi
     coin = create_test_coin(db_session, symbol="XRPUSD_EVT", name="Ripple Event Test")
     upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=1440)
 
-    _sync_balance_position(db_session, account=account, coin=coin, value_usd=0.0, balance=0.0)
-    db_session.commit()
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = PortfolioService(uow)
+        async_account = await async_db_session.get(ExchangeAccount, int(account.id))
+        async_coin = await service._ensure_coin_for_balance(symbol="XRPUSD_EVT", exchange_name="fixture_update")
+        assert async_account is not None
+        await service._sync_balance_position(
+            account=async_account,
+            coin=async_coin,
+            value_usd=0.0,
+            balance=0.0,
+        )
+        await uow.commit()
     assert db_session.scalar(
         select(PortfolioPosition.id).where(
             PortfolioPosition.exchange_account_id == int(account.id),
@@ -387,8 +413,18 @@ async def test_portfolio_balance_rows_update_and_reopen_positions(async_db_sessi
         )
     ) is None
 
-    _sync_balance_position(db_session, account=account, coin=coin, value_usd=250.0, balance=5.0)
-    db_session.commit()
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = PortfolioService(uow)
+        async_account = await async_db_session.get(ExchangeAccount, int(account.id))
+        async_coin = await service._ensure_coin_for_balance(symbol="XRPUSD_EVT", exchange_name="fixture_update")
+        assert async_account is not None
+        await service._sync_balance_position(
+            account=async_account,
+            coin=async_coin,
+            value_usd=250.0,
+            balance=5.0,
+        )
+        await uow.commit()
     position = db_session.scalar(
         select(PortfolioPosition)
         .where(
@@ -400,13 +436,33 @@ async def test_portfolio_balance_rows_update_and_reopen_positions(async_db_sessi
     assert position is not None
     assert position.status == "open"
 
-    _sync_balance_position(db_session, account=account, coin=coin, value_usd=0.0, balance=0.0)
-    db_session.commit()
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = PortfolioService(uow)
+        async_account = await async_db_session.get(ExchangeAccount, int(account.id))
+        async_coin = await service._ensure_coin_for_balance(symbol="XRPUSD_EVT", exchange_name="fixture_update")
+        assert async_account is not None
+        await service._sync_balance_position(
+            account=async_account,
+            coin=async_coin,
+            value_usd=0.0,
+            balance=0.0,
+        )
+        await uow.commit()
     db_session.refresh(position)
     assert position.status == "closed"
 
-    _sync_balance_position(db_session, account=account, coin=coin, value_usd=300.0, balance=6.0)
-    db_session.commit()
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = PortfolioService(uow)
+        async_account = await async_db_session.get(ExchangeAccount, int(account.id))
+        async_coin = await service._ensure_coin_for_balance(symbol="XRPUSD_EVT", exchange_name="fixture_update")
+        assert async_account is not None
+        await service._sync_balance_position(
+            account=async_account,
+            coin=async_coin,
+            value_usd=300.0,
+            balance=6.0,
+        )
+        await uow.commit()
     db_session.refresh(position)
     assert position.status == "open"
     assert position.closed_at is None

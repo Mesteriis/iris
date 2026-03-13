@@ -261,7 +261,7 @@ Classification:
 
 #### `apps/portfolio`
 
-Status: migrated on the async/public API read surface, scheduled balance-sync path and runtime worker action path; legacy sync engine helpers still remain, but the public sync selector surface is gone
+Status: migrated on the async/public API, scheduled balance-sync, runtime worker and test-facing helper surfaces; sync selector and engine modules are now tombstones
 
 - read-only portfolio projections now go through [backend/src/apps/portfolio/query_services.py](backend/src/apps/portfolio/query_services.py)
 - immutable dataclass read models now live in [backend/src/apps/portfolio/read_models.py](backend/src/apps/portfolio/read_models.py)
@@ -269,44 +269,22 @@ Status: migrated on the async/public API read surface, scheduled balance-sync pa
 - `/portfolio/*` views now depend on the shared async UoW instead of injecting `AsyncSession` directly in [backend/src/apps/portfolio/views.py](backend/src/apps/portfolio/views.py)
 - `portfolio_sync_job` now runs through [backend/src/apps/portfolio/services.py](backend/src/apps/portfolio/services.py) under the shared async UoW, with cache writes and published events deferred until after commit
 - `portfolio_workers` now evaluate portfolio actions through the class-based async `PortfolioService` under the shared async UoW, with event/cache side effects applied post-commit
-- async portfolio decision-ranking projection now uses [backend/src/apps/portfolio/query_builders.py](backend/src/apps/portfolio/query_builders.py) from both query and compatibility selector layers, and shared position-sizing/stop helpers now live in [backend/src/apps/portfolio/support.py](backend/src/apps/portfolio/support.py) so async services no longer depend on legacy sync engine modules
-- legacy sync selectors in [backend/src/apps/portfolio/selectors.py](backend/src/apps/portfolio/selectors.py) now emit structured deprecation logs and reuse the same shared projection builders plus immutable read-model mapping logic as [backend/src/apps/portfolio/query_services.py](backend/src/apps/portfolio/query_services.py)
-- legacy sync wrappers in [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) now emit structured deprecation logs, normalize their public payloads through the same `PortfolioActionEvaluationResult` / `PortfolioSyncResult` summary contracts used by the async service layer, and own fewer ad-hoc commit boundaries on the action-evaluation path
-- legacy sync `portfolio` compatibility query/service adapters now also emit structured execute/result logging for read and write flows instead of relying only on wrapper-level deprecation logs
-- legacy sync `portfolio` state wrappers in [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) now also emit structured execute/result logging for `ensure_portfolio_state` and `refresh_portfolio_state`, rounding out visibility across the residual sync engine entrypoints
+- async portfolio decision-ranking projection now uses [backend/src/apps/portfolio/query_builders.py](backend/src/apps/portfolio/query_builders.py), and shared position-sizing/stop helpers now live in [backend/src/apps/portfolio/support.py](backend/src/apps/portfolio/support.py) so neither services nor tests depend on `portfolio.engine`
 - async portfolio cache clients in [backend/src/apps/portfolio/cache.py](backend/src/apps/portfolio/cache.py) are now loop-scoped instead of process-global cached clients
-- the active sync path no longer re-fetches `ExchangeAccount` per balance row, removing an avoidable per-item read on the balance-sync loop
-- sync balance compatibility coin creation in [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) now stays inside the portfolio persistence adapter instead of delegating to legacy [backend/src/apps/market_data/service_layer.py](backend/src/apps/market_data/service_layer.py), and it aligns default `Coin` / `CoinMetrics` initialization with the async service path
-- sync balance compatibility events in [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) are now queued until after the balance-row commit instead of being published from nested helper-owned write paths, reducing another legacy transaction/side-effect interleave
-- sync balance compatibility writes in [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) now batch balance/state persistence under one final top-level commit instead of committing per balance row, reducing another gap versus the async service transaction policy
-- sync balance compatibility cache writes in [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) now also defer `cache_portfolio_balances(...)` until after the top-level commit, keeping the residual sync cache side effects on the same post-commit side of the transaction boundary as state cache and events
-- consumer tests in [backend/tests/apps/portfolio/test_sync_worker.py](backend/tests/apps/portfolio/test_sync_worker.py), [backend/tests/apps/portfolio/test_auto_watch_feature.py](backend/tests/apps/portfolio/test_auto_watch_feature.py) and [backend/tests/apps/portfolio/test_risk_management.py](backend/tests/apps/portfolio/test_risk_management.py) now exercise async [backend/src/apps/portfolio/services.py](backend/src/apps/portfolio/services.py) plus [backend/src/apps/portfolio/services.py](backend/src/apps/portfolio/services.py) `PortfolioSideEffectDispatcher` instead of the legacy sync engine wrappers, reducing the remaining internal dependency on `portfolio.engine`
-- behavioural tests in [backend/tests/apps/portfolio/test_engine.py](backend/tests/apps/portfolio/test_engine.py) and [backend/tests/apps/portfolio/test_engine_branches.py](backend/tests/apps/portfolio/test_engine_branches.py) now also exercise async [backend/src/apps/portfolio/services.py](backend/src/apps/portfolio/services.py) for position opening/rebalancing and balance-sync flows, shrinking the remaining internal callers of the legacy sync engine wrappers to compatibility-specific tests only
-- additional branch coverage in [backend/tests/apps/portfolio/test_engine_branches.py](backend/tests/apps/portfolio/test_engine_branches.py) now exercises async `PortfolioService` for action-event flows and repeated balance-sync updates as well, leaving the residual sync engine usage in tests concentrated around helper-level and explicit compatibility-boundary assertions
-- the remaining normal behavioural checks in [backend/tests/apps/portfolio/test_engine_branches.py](backend/tests/apps/portfolio/test_engine_branches.py) now also run through async `PortfolioService`, so `portfolio.engine` sync wrappers are increasingly isolated to explicit compatibility tests rather than routine branch coverage
-- the public sync `portfolio.engine` wrappers for `ensure_portfolio_state`, `refresh_portfolio_state`, `evaluate_portfolio_action` and `sync_exchange_balances` have now been removed entirely; active callers are on async [backend/src/apps/portfolio/services.py](backend/src/apps/portfolio/services.py), while [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) remains only for low-level helper logic still being retired incrementally
-- the public sync selector API formerly living in [backend/src/apps/portfolio/selectors.py](backend/src/apps/portfolio/selectors.py) has now been removed; callers and tests read state/actions/positions only through async [backend/src/apps/portfolio/query_services.py](backend/src/apps/portfolio/query_services.py), and `selectors.py` no longer exports compatibility query functions
+- the active balance-sync path no longer re-fetches `ExchangeAccount` per balance row, removing an avoidable per-item read on the loop
+- consumer tests in [backend/tests/apps/portfolio/test_sync_worker.py](backend/tests/apps/portfolio/test_sync_worker.py), [backend/tests/apps/portfolio/test_auto_watch_feature.py](backend/tests/apps/portfolio/test_auto_watch_feature.py), [backend/tests/apps/portfolio/test_risk_management.py](backend/tests/apps/portfolio/test_risk_management.py), [backend/tests/apps/portfolio/test_engine.py](backend/tests/apps/portfolio/test_engine.py) and [backend/tests/apps/portfolio/test_engine_branches.py](backend/tests/apps/portfolio/test_engine_branches.py) now exercise async [backend/src/apps/portfolio/services.py](backend/src/apps/portfolio/services.py) plus `PortfolioSideEffectDispatcher` for state, helper and balance-sync coverage
+- the public sync selector API formerly living in [backend/src/apps/portfolio/selectors.py](backend/src/apps/portfolio/selectors.py) has been removed; callers and tests read state/actions/positions only through async [backend/src/apps/portfolio/query_services.py](backend/src/apps/portfolio/query_services.py), and `selectors.py` no longer exports compatibility query functions
+- the public sync `portfolio.engine` wrappers for `ensure_portfolio_state`, `refresh_portfolio_state`, `evaluate_portfolio_action` and `sync_exchange_balances` are gone, and [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) is now an empty tombstone module with no public exports
 - remaining follow-up:
-  - [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) still owns sync helper logic that should be folded into async services so the residual engine module can shrink further
+  - retire the empty `portfolio.engine` tombstone entirely once no tooling or ad-hoc imports still expect the module to exist
 
 Classification:
 
-- `OK` on the async/public API, scheduled sync and runtime worker surfaces
-- `later migration` for residual sync analytical helpers kept behind the compatibility engine module
+- `OK` on the async/public API, scheduled sync, runtime worker and test-facing surfaces
 
 ### Sync-Heavy Analytical Domains
 
-These domains are still dominated by synchronous `Session` access inside selectors/engines and represent the largest remaining migration surface:
-
-- legacy `apps/portfolio/engine.py`
-
-Shared issues:
-
-- business logic and persistence are tightly coupled.
-- read paths frequently return ad-hoc dictionaries.
-- engines/selectors call `commit()` directly.
-- some methods are N+1-prone because they load base rows and then perform follow-up scalar lookups inside loops.
-- sync-only execution paths complicate the async-first target.
+No application domains are still dominated by synchronous `Session` access inside selector/engine compatibility modules.
 
 Classification:
 
@@ -337,7 +315,6 @@ Representative offenders:
 
 - [backend/src/apps/market_structure/services.py](backend/src/apps/market_structure/services.py)
 - [backend/src/apps/market_data/services.py](backend/src/apps/market_data/services.py)
-- [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py)
 
 Recently fixed:
 
@@ -394,7 +371,7 @@ Recommended rollout order:
 11. completed on the async/public API and scheduled runtime surface: `apps/predictions`
 12. completed on the async/public API plus signal-fusion/signal-history runtime and test-facing surfaces: `apps/signals`
 13. completed on the async/public API and scheduled sync surface: `apps/portfolio`
-14. next: helper-only sync logic in `portfolio` engine
+14. next: residual direct-session service internals in `market_structure` and `market_data`
 15. later: helper-only sync analytical modules and leftover compatibility assertions in tests
 
 ## Current Behavior To Preserve

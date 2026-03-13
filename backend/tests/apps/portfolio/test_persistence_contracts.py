@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import FrozenInstanceError
 
 import pytest
+import src.apps.portfolio.engine as portfolio_engine_module
 import src.apps.portfolio.selectors as portfolio_selectors_module
 from sqlalchemy import select
 
@@ -209,3 +210,18 @@ def test_portfolio_modules_export_no_public_sync_selectors() -> None:
 
     for export_name in forbidden_exports:
         assert not hasattr(portfolio_selectors_module, export_name), export_name
+
+
+def test_portfolio_modules_export_no_public_sync_engine_helpers() -> None:
+    forbidden_exports = (
+        "PORTFOLIO_POSITION_STATUSES",
+        "_ensure_coin_for_balance",
+        "_maybe_auto_watch_coin",
+        "_rebalance_existing_position",
+        "_sync_balance_position",
+        "calculate_position_size",
+        "calculate_stops",
+    )
+
+    for export_name in forbidden_exports:
+        assert not hasattr(portfolio_engine_module, export_name), export_name
