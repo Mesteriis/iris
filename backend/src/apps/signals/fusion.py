@@ -324,7 +324,7 @@ class SignalFusionCompatibilityService:
             coin_id=coin_id,
             timeframe=timeframe,
             candle_timestamp=trigger_timestamp,
-            commit=True,
+            commit=False,
         )
         signals = _recent_signals(self._db, coin_id=coin_id, timeframe=timeframe)
         if not signals:
@@ -349,6 +349,7 @@ class SignalFusionCompatibilityService:
         )
         fused = _apply_news_impact(fused_base, news_impact) if fused_base is not None else None
         if fused is None:
+            self._db.commit()
             return SignalFusionResult(
                 status="skipped",
                 coin_id=int(coin_id),
@@ -363,6 +364,7 @@ class SignalFusionCompatibilityService:
             and latest.signal_count == fused.signal_count
             and abs(float(latest.confidence) - fused.confidence) < MATERIAL_CONFIDENCE_DELTA
         ):
+            self._db.commit()
             cache_market_decision_snapshot(
                 coin_id=coin_id,
                 timeframe=timeframe,

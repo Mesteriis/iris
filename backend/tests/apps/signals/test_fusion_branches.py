@@ -103,6 +103,25 @@ def test_evaluate_market_decision_skip_and_unchanged_branches(db_session, monkey
     assert unchanged["reason"] == "decision_unchanged"
 
 
+def test_evaluate_market_decision_disables_nested_context_commit(db_session, monkeypatch) -> None:
+    coin = create_test_coin(db_session, symbol="LINKUSD_EVT", name="Chainlink Event Test")
+    upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=15)
+    captured: dict[str, object] = {}
+
+    def _capture_context(*args, **kwargs):
+        del args
+        captured.update(kwargs)
+        return {"status": "ok"}
+
+    monkeypatch.setattr("src.apps.signals.fusion.enrich_signal_context", _capture_context)
+    skipped = evaluate_market_decision(db_session, coin_id=int(coin.id), timeframe=15, emit_event=False)
+
+    assert skipped["reason"] == "signals_not_found"
+    assert captured["commit"] is False
+    assert int(captured["coin_id"]) == int(coin.id)
+    assert int(captured["timeframe"]) == 15
+
+
 def test_evaluate_market_decision_handles_null_fusion_window(db_session, monkeypatch) -> None:
     coin = create_test_coin(db_session, symbol="SOLUSD_EVT", name="Solana Event Test")
     upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=15)
