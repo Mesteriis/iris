@@ -98,3 +98,7 @@ async def test_patterns_persistence_logs_cover_query_repo_and_uow(async_db_sessi
 
 def test_patterns_legacy_selector_module_is_absent() -> None:
     assert importlib.util.find_spec("src.apps.patterns.selectors") is None
+
+
+def test_patterns_legacy_engine_module_is_absent() -> None:
+    assert importlib.util.find_spec("src.apps.patterns.domain.engine") is None

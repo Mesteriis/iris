@@ -312,6 +312,7 @@ Recent cleanup:
 - async worker/pipeline regression tests in `anomalies`, `signals`, `cross_market` and `portfolio` no longer open ad-hoc sync `SessionLocal()` handles inside `pytest.mark.asyncio` flows
 - those tests now verify committed worker results through shared `db_session` / `async_db_session` fixtures plus explicit Redis stream/event waits, keeping test persistence boundaries aligned with the runtime model
 - `patterns.domain.regime` and `patterns.domain.scheduler` no longer expose sync DB helper functions; async/query caller paths now go through `PatternQueryService.compute_live_regimes(...)` and `AnalysisSchedulerService.evaluate_indicator_update(...)`
+- `patterns.domain.engine` has been deleted; active detection/bootstrap coverage now goes through `PatternRealtimeService` and `PatternBootstrapService`, and contract tests assert the sync engine module is absent
 
 ### Transaction Boundary Drift
 

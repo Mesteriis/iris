@@ -11,37 +11,17 @@ from src.apps.cross_market.models import Sector
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.models import Coin
-from src.apps.patterns.domain.base import PatternDetection, PatternDetector
 from src.apps.patterns.domain.clusters import build_pattern_clusters
 from src.apps.patterns.domain.cycle import _detect_cycle_phase, refresh_market_cycles, update_market_cycle
 from src.apps.patterns.domain.discovery import _window_signature, refresh_discovered_patterns
-from src.apps.patterns.domain.engine import PatternEngine
 from src.apps.patterns.domain.hierarchy import build_hierarchy_signals
 from src.apps.patterns.domain.narrative import _capital_wave_bucket, _coin_bar_return, build_sector_narratives, refresh_sector_metrics
 from src.apps.patterns.domain.registry import sync_pattern_metadata
-from src.apps.patterns.domain.utils import signal_timestamp
 from src.apps.patterns.models import PatternFeature
 from src.apps.signals.models import Signal
 from tests.factories.market_data import build_candle_points
 from tests.cross_market_support import DEFAULT_START, seed_candles
 from tests.fusion_support import create_test_coin, insert_signals
-
-
-class _StaticBullishDetector(PatternDetector):
-    slug = "bull_flag"
-    category = "continuation"
-
-    def detect(self, candles, indicators):
-        del indicators
-        return [
-            PatternDetection(
-                slug=self.slug,
-                signal_type="pattern_bull_flag",
-                confidence=0.83,
-                candle_timestamp=signal_timestamp(candles),
-                category=self.category,
-            )
-        ]
 
 
 def test_cluster_and_hierarchy_domains_build_real_meta_signals(db_session, seeded_api_state) -> None:
@@ -254,62 +234,6 @@ def test_cycle_discovery_and_narrative_domains_cover_real_market_state(db_sessio
     assert any(item.timeframe == 15 for item in narratives)
 
 
-def test_pattern_engine_covers_incremental_bootstrap_and_history_paths(db_session, seeded_market, monkeypatch) -> None:
-    engine = PatternEngine()
-    coin_id = int(seeded_market["BTCUSD_EVT"]["coin_id"])
-    candles = build_candle_points(closes=[100.0 + 0.5 * index for index in range(40)], volumes=[1000.0] * 40)
-
-    monkeypatch.setattr("src.apps.patterns.domain.engine.feature_enabled", lambda db, slug: False)
-    assert engine.detect_incremental(db_session, coin_id=coin_id, timeframe=15)["reason"] == "pattern_detection_disabled"
-
-    monkeypatch.setattr("src.apps.patterns.domain.engine.feature_enabled", lambda db, slug: True)
-    monkeypatch.setattr("src.apps.patterns.domain.engine.fetch_candle_points", lambda db, coin_id, timeframe, lookback: candles[:20])
-    assert engine.detect_incremental(db_session, coin_id=coin_id, timeframe=15)["reason"] == "insufficient_candles"
-
-    monkeypatch.setattr("src.apps.patterns.domain.engine.fetch_candle_points", lambda db, coin_id, timeframe, lookback: candles)
-    monkeypatch.setattr("src.apps.patterns.domain.engine.load_active_detectors", lambda db, timeframe: [_StaticBullishDetector()])
-    monkeypatch.setattr(
-        "src.apps.patterns.domain.engine.current_indicator_map",
-        lambda candles: {
-            "price_current": candles[-1].close,
-            "ema_50": candles[-1].close * 0.99,
-            "ema_200": candles[-1].close * 0.95,
-            "current_volume": candles[-1].volume,
-            "average_volume_20": 1000.0,
-        },
-    )
-    monkeypatch.setattr("src.apps.patterns.domain.engine.apply_pattern_context", lambda detection, detector, indicators, regime: detection)
-    monkeypatch.setattr("src.apps.patterns.domain.engine.apply_pattern_success_validation", lambda db, detection, timeframe, market_regime, coin_id, emit_events, snapshot_cache: detection)
-
-    result = engine.detect_incremental(db_session, coin_id=coin_id, timeframe=15, regime="bull_trend")
-    assert result["status"] == "ok"
-    assert result["coin_id"] == coin_id
-    assert result["timeframe"] == 15
-    assert result["detections"] == 1
-    assert result["created"] != 0
-    assert db_session.scalar(
-        select(Signal).where(
-            Signal.coin_id == coin_id,
-            Signal.timeframe == 15,
-            Signal.signal_type == "pattern_bull_flag",
-        )
-    ) is not None
-    assert engine._coin_has_pattern_history(db_session, coin_id)
-
-    actual_coin = db_session.get(Coin, coin_id)
-    assert actual_coin is not None
-    skipped = engine.bootstrap_coin(db_session, coin=actual_coin, force=False)
-    assert skipped["reason"] == "pattern_history_exists"
-
-    fresh_coin = create_test_coin(db_session, symbol="BOOT_EVT", name="Bootstrap Coin")
-    fresh_coin.candles_config = [{"interval": "15m", "retention_bars": 40}]
-    db_session.commit()
-    created = engine.bootstrap_coin(db_session, coin=fresh_coin, force=True)
-    assert created["status"] == "ok"
-    assert created["detections"] > 0
-    assert created["created"] != 0
-
-
 def test_cluster_hierarchy_engine_and_narrative_guard_paths(db_session, seeded_api_state, monkeypatch) -> None:
     sync_pattern_metadata(db_session)
     timestamp = seeded_api_state["signal_timestamp"]
@@ -331,102 +255,6 @@ def test_cluster_hierarchy_engine_and_narrative_guard_paths(db_session, seeded_a
         candle_timestamp=timestamp + timedelta(days=30),
     )
     assert no_patterns_hierarchy["reason"] == "pattern_signals_not_found"
-
-    engine = PatternEngine()
-    candles = build_candle_points(closes=[100.0 + 0.5 * index for index in range(40)], volumes=[1000.0] * 40)
-    indicators = {
-        "price_current": candles[-1].close,
-        "ema_50": candles[-1].close * 0.99,
-        "ema_200": candles[-1].close * 0.95,
-        "current_volume": candles[-1].volume,
-        "average_volume_20": 1000.0,
-    }
-
-    class _DisabledDetector(PatternDetector):
-        slug = "disabled_detector"
-        category = "continuation"
-        enabled = False
-
-        def detect(self, candles, indicators):
-            del candles, indicators
-            return []
-
-    class _NeedsVolumeDetector(PatternDetector):
-        slug = "needs_volume"
-        category = "continuation"
-        required_indicators = ["current_volume", "average_volume_20", "ema_20"]
-
-        def detect(self, candles, indicators):
-            del candles, indicators
-            return []
-
-    class _PassingDetector(PatternDetector):
-        slug = "bull_flag"
-        category = "continuation"
-
-        def detect(self, candles, indicators):
-            del indicators
-            return [
-                PatternDetection(
-                    slug="bull_flag",
-                    signal_type="pattern_bull_flag",
-                    confidence=0.82,
-                    candle_timestamp=signal_timestamp(candles),
-                    category="continuation",
-                )
-            ]
-
-    monkeypatch.setattr("src.apps.patterns.domain.engine.load_pattern_success_cache", lambda *args, **kwargs: {})
-    monkeypatch.setattr("src.apps.patterns.domain.engine.apply_pattern_context", lambda **kwargs: None)
-    assert engine.detect(
-        db_session,
-        coin_id=int(btc.id),
-        candles=candles,
-        indicators=indicators,
-        detectors=[_DisabledDetector(), _NeedsVolumeDetector(), _PassingDetector()],
-        timeframe=15,
-        regime="bull_trend",
-    ) == []
-
-    monkeypatch.setattr(
-        "src.apps.patterns.domain.engine.apply_pattern_context",
-        lambda detection, detector, indicators, regime: detection,
-    )
-    monkeypatch.setattr("src.apps.patterns.domain.engine.apply_pattern_success_validation", lambda *args, **kwargs: None)
-    assert engine.detect(
-        db_session,
-        coin_id=int(btc.id),
-        candles=candles,
-        indicators=indicators,
-        detectors=[_PassingDetector()],
-        timeframe=15,
-        regime="bull_trend",
-    ) == []
-    assert engine._insert_detections(db_session, coin_id=int(btc.id), timeframe=15, detections=[]) == 0
-
-    monkeypatch.setattr("src.apps.patterns.domain.engine.feature_enabled", lambda db, slug: False)
-    assert engine.bootstrap_coin(db_session, coin=btc, force=True)["reason"] == "pattern_detection_disabled"
-
-    bootstrap_coin = create_test_coin(db_session, symbol="BRANCH_EVT", name="Branch Coin")
-    bootstrap_coin.candles_config = [
-        {"interval": "3m", "retention_bars": 40},
-        {"interval": "15m", "retention_bars": 40},
-        {"interval": "1h", "retention_bars": 40},
-    ]
-    db_session.commit()
-
-    monkeypatch.setattr("src.apps.patterns.domain.engine.feature_enabled", lambda db, slug: True)
-    monkeypatch.setattr(
-        "src.apps.patterns.domain.engine.load_active_detectors",
-        lambda db, timeframe: [] if timeframe == 15 else [_PassingDetector()],
-    )
-    monkeypatch.setattr(
-        "src.apps.patterns.domain.engine.fetch_candle_points",
-        lambda db, coin_id, timeframe, lookback: candles[:20] if timeframe == 60 else candles,
-    )
-    guarded_bootstrap = engine.bootstrap_coin(db_session, coin=bootstrap_coin, force=True)
-    assert guarded_bootstrap["status"] == "ok"
-    assert guarded_bootstrap["detections"] == 0
 
     assert _capital_wave_bucket(sol, SimpleNamespace(market_cap=2_000_000_000.0), top_sector_id=int(sol.sector_id)) == "sector_leaders"
     btc_dominance_coin = db_session.scalar(select(Coin).where(Coin.symbol == "BTCUSD")) or btc
