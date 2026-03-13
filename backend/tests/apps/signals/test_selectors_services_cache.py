@@ -8,7 +8,6 @@ import pytest
 from sqlalchemy import select
 
 import src.apps.signals.cache as signal_cache_module
-import src.apps.signals.market_decision_selectors as market_selector_module
 import src.apps.signals.query_services as signal_query_module
 from src.apps.patterns.selectors import _signal_select
 from src.apps.signals.cache import (
@@ -23,16 +22,12 @@ from src.apps.signals.cache import (
     read_cached_market_decision,
     read_cached_market_decision_async,
 )
-from src.apps.signals.decision_selectors import get_coin_decision, list_decisions, list_top_decisions
-from src.apps.signals.final_signal_selectors import get_coin_final_signal, list_final_signals, list_top_final_signals
-from src.apps.signals.market_decision_selectors import get_coin_market_decision, list_market_decisions, list_top_market_decisions
 from src.apps.signals.models import FinalSignal, InvestmentDecision, Signal, Strategy, StrategyRule
 from src.apps.signals.query_services import (
     SignalQueryService,
     _cluster_membership_map_async,
     _serialize_signal_rows_async,
 )
-from src.apps.signals.strategies import list_strategies, list_strategy_performance
 from tests.factories.seeds import DecisionSeedFactory, StrategySeedFactory
 
 
@@ -148,131 +143,6 @@ def test_signals_cache_round_trip_and_parse_guards(monkeypatch, settings, seeded
     assert parsed_without_datetime.regime == "bull_trend"
 
     assert decision_cache_key(7, 15) == "iris:decision:7:15"
-
-
-def test_signal_sync_selectors_and_strategies_cover_cached_and_db_paths(db_session, seeded_api_state, monkeypatch) -> None:
-    btc = seeded_api_state["btc"]
-    eth = seeded_api_state["eth"]
-    timestamp = seeded_api_state["signal_timestamp"]
-
-    extra_final = FinalSignal(
-        coin_id=int(eth.id),
-        timeframe=60,
-        decision="HOLD",
-        confidence=0.41,
-        risk_adjusted_score=45.2,
-        reason="Range-bound market",
-        created_at=timestamp + timedelta(minutes=5),
-    )
-    disabled_strategy_seed = StrategySeedFactory.build(created_at=timestamp + timedelta(minutes=3))
-    disabled_strategy = Strategy(
-        name=disabled_strategy_seed.name,
-        description=disabled_strategy_seed.description,
-        enabled=False,
-        created_at=disabled_strategy_seed.created_at,
-    )
-    disabled_rule = StrategyRule(
-        strategy=disabled_strategy,
-        pattern_slug="breakout_retest",
-        regime="sideways_range",
-        sector="smart_contract",
-        cycle="accumulation",
-        min_confidence=0.58,
-    )
-    db_session.add_all([extra_final, disabled_strategy, disabled_rule])
-    db_session.commit()
-
-    decisions = list_decisions(db_session, symbol="btcusd_evt", timeframe=15, limit=0)
-    assert len(decisions) == 1
-    assert decisions[0]["sector"] == "store_of_value"
-    assert list_decisions(db_session, symbol="BTCUSD_EVT", limit=10)
-    assert list_decisions(db_session, timeframe=15, limit=10)
-    top_decisions = list_top_decisions(db_session, limit=200)
-    assert any(row["symbol"] == "BTCUSD_EVT" and row["decision"] == "BUY" for row in top_decisions)
-    coin_decision = get_coin_decision(db_session, "BTCUSD_EVT")
-    assert coin_decision is not None
-    assert coin_decision["canonical_decision"] == "BUY"
-    empty_coin_decision = get_coin_decision(db_session, "ETHUSD_EVT")
-    assert empty_coin_decision is not None
-    assert empty_coin_decision["canonical_decision"] is None
-    assert empty_coin_decision["items"] == []
-    assert get_coin_decision(db_session, "MISSING_EVT") is None
-
-    market_rows = list_market_decisions(db_session, symbol="ETHUSD_EVT", timeframe=60, limit=10)
-    assert [row["symbol"] for row in market_rows] == ["ETHUSD_EVT"]
-    assert list_market_decisions(db_session, symbol="ETHUSD_EVT", limit=10)
-    assert list_market_decisions(db_session, timeframe=60, limit=10)
-    top_market_rows = list_top_market_decisions(db_session, limit=200)
-    assert any(row["symbol"] == "BTCUSD_EVT" and row["decision"] == "BUY" for row in top_market_rows)
-
-    cached_entries = {
-        1440: DecisionCacheEntry(
-            coin_id=int(btc.id),
-            timeframe=1440,
-            decision="STRONG_BUY",
-            confidence=0.97,
-            signal_count=9,
-            regime=None,
-            created_at=timestamp,
-        ),
-        15: DecisionCacheEntry(
-            coin_id=int(btc.id),
-            timeframe=15,
-            decision="BUY",
-            confidence=0.83,
-            signal_count=3,
-            regime=None,
-            created_at=timestamp,
-        ),
-    }
-    monkeypatch.setattr(
-        market_selector_module,
-        "read_cached_market_decision",
-        lambda *, coin_id, timeframe: cached_entries.get(timeframe) if coin_id == int(btc.id) else None,
-    )
-    cached_market = get_coin_market_decision(db_session, "BTCUSD_EVT")
-    assert cached_market is not None
-    assert cached_market["canonical_decision"] == "STRONG_BUY"
-    assert [row["timeframe"] for row in cached_market["items"]] == [15, 1440]
-    assert {row["regime"] for row in cached_market["items"]} == {"bull_trend"}
-
-    monkeypatch.setattr(market_selector_module, "read_cached_market_decision", lambda **_: None)
-    fallback_market = get_coin_market_decision(db_session, "ETHUSD_EVT")
-    assert fallback_market is not None
-    assert fallback_market["canonical_decision"] == "HOLD"
-    assert fallback_market["items"][0]["regime"] == "sideways_range"
-    empty_sync_market = get_coin_market_decision(db_session, "SOLUSD_EVT")
-    assert empty_sync_market is not None
-    assert empty_sync_market["canonical_decision"] is None
-    assert empty_sync_market["items"] == []
-    assert get_coin_market_decision(db_session, "MISSING_EVT") is None
-
-    final_rows = list_final_signals(db_session, symbol="ETHUSD_EVT", timeframe=60, limit=10)
-    assert [row["symbol"] for row in final_rows] == ["ETHUSD_EVT"]
-    final_rows = list_final_signals(db_session, limit=200)
-    assert {"BTCUSD_EVT", "ETHUSD_EVT"} <= {row["symbol"] for row in final_rows}
-    top_final_rows = list_top_final_signals(db_session, limit=200)
-    assert any(row["symbol"] == "BTCUSD_EVT" and row["risk_adjusted_score"] == 99.69 for row in top_final_rows)
-    btc_final = get_coin_final_signal(db_session, "BTCUSD_EVT")
-    assert btc_final is not None
-    assert btc_final["items"][0]["liquidity_score"] == 0.87
-    eth_final = get_coin_final_signal(db_session, "ETHUSD_EVT")
-    assert eth_final is not None
-    assert eth_final["items"][0]["liquidity_score"] == 0.0
-    empty_final = get_coin_final_signal(db_session, "SOLUSD_EVT")
-    assert empty_final is not None
-    assert empty_final["canonical_decision"] is None
-    assert empty_final["items"] == []
-    assert get_coin_final_signal(db_session, "MISSING_EVT") is None
-
-    enabled_strategies = list_strategies(db_session, enabled_only=True, limit=10)
-    assert [row["id"] for row in enabled_strategies] == [101]
-    all_strategies = list_strategies(db_session, enabled_only=False, limit=10)
-    assert {row["name"] for row in all_strategies} >= {"Momentum Breakout", disabled_strategy_seed.name}
-    assert next(row for row in all_strategies if row["name"] == disabled_strategy_seed.name)["performance"] is None
-    performance = list_strategy_performance(db_session, limit=0)
-    assert performance[0]["strategy_id"] == 101
-
 
 @pytest.mark.asyncio
 async def test_signal_async_services_cover_selectors_serialization_and_strategy_paths(async_db_session, seeded_api_state, monkeypatch) -> None:

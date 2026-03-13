@@ -6,20 +6,11 @@ from datetime import timedelta
 import pytest
 import src.apps.signals.services as signal_services_module
 from sqlalchemy import select
-from src.apps.signals.backtests import get_coin_backtests, list_backtests, list_top_backtests
-from src.apps.signals.decision_selectors import get_coin_decision, list_decisions, list_top_decisions
-from src.apps.signals.final_signal_selectors import get_coin_final_signal, list_final_signals, list_top_final_signals
 from src.apps.signals.fusion import evaluate_market_decision
 from src.apps.signals.history import refresh_signal_history
-from src.apps.signals.market_decision_selectors import (
-    get_coin_market_decision,
-    list_market_decisions,
-    list_top_market_decisions,
-)
 from src.apps.signals.models import MarketDecision, Signal, SignalHistory
 from src.apps.signals.query_services import SignalQueryService
 from src.apps.signals.services import SignalFusionService, SignalHistoryService
-from src.apps.signals.strategies import list_strategies, list_strategy_performance
 from src.core.db.persistence import PERSISTENCE_LOGGER
 from src.core.db.uow import SessionUnitOfWork
 
@@ -263,100 +254,6 @@ def test_signal_services_exports_no_public_async_query_wrappers() -> None:
 
     for export_name in forbidden_exports:
         assert not hasattr(signal_services_module, export_name), export_name
-
-
-def test_signal_legacy_compatibility_queries_emit_deprecation_logs(db_session, seeded_api_state, monkeypatch) -> None:
-    del seeded_api_state
-    events: list[str] = []
-
-    def _log(level: int, message: str, *args, **kwargs) -> None:
-        del level, args, kwargs
-        events.append(message)
-
-    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
-
-    assert list_backtests(db_session, limit=5)
-    assert list_decisions(db_session, limit=5)
-    assert list_market_decisions(db_session, limit=5)
-    assert list_final_signals(db_session, limit=5)
-    assert list_strategies(db_session, enabled_only=False, limit=5)
-    assert list_strategy_performance(db_session, limit=5)
-
-    assert "compat.list_backtests.deprecated" in events
-    assert "compat.list_decisions.deprecated" in events
-    assert "compat.list_market_decisions.deprecated" in events
-    assert "compat.list_final_signals.deprecated" in events
-    assert "compat.list_strategies.deprecated" in events
-    assert "compat.list_strategy_performance.deprecated" in events
-
-
-def test_signal_legacy_backtest_strategy_queries_emit_execution_logs(db_session, seeded_api_state, monkeypatch) -> None:
-    del seeded_api_state
-    events: list[str] = []
-
-    def _log(level: int, message: str, *args, **kwargs) -> None:
-        del level, args, kwargs
-        events.append(message)
-
-    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
-
-    assert list_backtests(db_session, limit=5)
-    assert list_top_backtests(db_session, limit=5)
-    assert get_coin_backtests(db_session, "BTCUSD_EVT", limit=5) is not None
-    assert list_strategies(db_session, enabled_only=False, limit=5)
-    assert list_strategy_performance(db_session, limit=5)
-
-    assert "compat.list_backtests.execute" in events
-    assert "compat.list_backtests.result" in events
-    assert "compat.list_top_backtests.execute" in events
-    assert "compat.list_top_backtests.result" in events
-    assert "compat.get_coin_backtests.execute" in events
-    assert "compat.get_coin_backtests.result" in events
-    assert "compat.list_strategies.execute" in events
-    assert "compat.list_strategies.result" in events
-    assert "compat.list_strategy_performance.execute" in events
-    assert "compat.list_strategy_performance.result" in events
-
-
-def test_signal_legacy_decision_queries_emit_execution_logs(db_session, seeded_api_state, monkeypatch) -> None:
-    del seeded_api_state
-    events: list[str] = []
-
-    def _log(level: int, message: str, *args, **kwargs) -> None:
-        del level, args, kwargs
-        events.append(message)
-
-    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
-
-    assert list_decisions(db_session, limit=5)
-    assert list_top_decisions(db_session, limit=5)
-    assert get_coin_decision(db_session, "BTCUSD_EVT") is not None
-    assert list_market_decisions(db_session, limit=5)
-    assert list_top_market_decisions(db_session, limit=5)
-    assert get_coin_market_decision(db_session, "BTCUSD_EVT") is not None
-    assert list_final_signals(db_session, limit=5)
-    assert list_top_final_signals(db_session, limit=5)
-    assert get_coin_final_signal(db_session, "BTCUSD_EVT") is not None
-
-    assert "compat.list_decisions.execute" in events
-    assert "compat.list_decisions.result" in events
-    assert "compat.list_top_decisions.execute" in events
-    assert "compat.list_top_decisions.result" in events
-    assert "compat.get_coin_decision.execute" in events
-    assert "compat.get_coin_decision.result" in events
-    assert "compat.list_market_decisions.execute" in events
-    assert "compat.list_market_decisions.result" in events
-    assert "compat.list_top_market_decisions.execute" in events
-    assert "compat.list_top_market_decisions.result" in events
-    assert "compat.get_coin_market_decision.execute" in events
-    assert "compat.get_coin_market_decision.result" in events
-    assert "compat.list_final_signals.execute" in events
-    assert "compat.list_final_signals.result" in events
-    assert "compat.list_top_final_signals.execute" in events
-    assert "compat.list_top_final_signals.result" in events
-    assert "compat.get_coin_final_signal.execute" in events
-    assert "compat.get_coin_final_signal.result" in events
-
 
 def test_signal_legacy_compatibility_services_emit_deprecation_logs(db_session, monkeypatch) -> None:
     events: list[str] = []
