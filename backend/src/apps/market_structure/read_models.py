@@ -29,6 +29,7 @@ from src.apps.market_structure.constants import (
 )
 from src.apps.market_structure.normalizers import get_market_structure_webhook_normalizer_class
 from src.apps.market_structure.plugins import get_market_structure_plugin
+from src.core.http.router_policy import api_path
 from src.core.db.persistence import freeze_json_value
 from src.core.settings import get_settings
 
@@ -349,8 +350,8 @@ def market_structure_webhook_registration_read_model_from_orm(
         source=market_structure_source_read_model_from_orm(source),
         provider=provider,
         venue=str(settings.get("venue") or "manual"),
-        ingest_path=f"/market-structure/sources/{int(source.id)}/snapshots",
-        native_ingest_path=f"/market-structure/sources/{int(source.id)}/webhook/native",
+        ingest_path=api_path(f"/market-structure/sources/{int(source.id)}/snapshots"),
+        native_ingest_path=api_path(f"/market-structure/sources/{int(source.id)}/webhook/native"),
         method="POST",
         token_header=MARKET_STRUCTURE_INGEST_TOKEN_HEADER,
         token_query_parameter=MARKET_STRUCTURE_INGEST_TOKEN_QUERY_PARAMETER,

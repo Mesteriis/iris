@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     app_env: str = "development"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    api_root_prefix: str = Field(default="/api", alias="IRIS_API_ROOT_PREFIX")
+    api_version_prefix: str = Field(default="/v1", alias="IRIS_API_VERSION_PREFIX")
+    api_launch_mode: str = Field(default="full", alias="IRIS_API_LAUNCH_MODE")
+    api_deployment_profile: str = Field(default="platform_full", alias="IRIS_API_DEPLOYMENT_PROFILE")
     database_url: str = Field(
         default="postgresql+psycopg://iris:iris@db:5432/iris",
         alias="DATABASE_URL",
@@ -82,6 +86,14 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @field_validator("api_root_prefix", "api_version_prefix", mode="before")
+    @classmethod
+    def normalize_api_prefix(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized.startswith("/"):
+            normalized = f"/{normalized}"
+        return normalized.rstrip("/") or "/"
 
 
 @lru_cache(maxsize=1)

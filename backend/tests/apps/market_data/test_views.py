@@ -100,7 +100,10 @@ async def test_market_data_endpoints(api_app_client, seeded_market, monkeypatch)
 
 @pytest.mark.asyncio
 async def test_market_data_view_branches(monkeypatch) -> None:
-    uow = SimpleNamespace(session=object())
+    async def _commit() -> None:
+        return None
+
+    uow = SimpleNamespace(session=object(), commit=_commit)
     request_with_trigger = SimpleNamespace(
         app=SimpleNamespace(
             state=SimpleNamespace(taskiq_backfill_event=SimpleNamespace(set=lambda: setattr(request_with_trigger.app.state, "triggered", True)))

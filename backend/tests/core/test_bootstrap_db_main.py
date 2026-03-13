@@ -42,7 +42,9 @@ def test_bootstrap_app_builds_config_runs_migrations_and_enters_deferred_lifespa
     app = bootstrap_app_module.create_app()
     assert app.title == bootstrap_app_module.settings.app_name
     assert callable(app.state.run_migrations)
-    assert any(route.path == "/status" for route in app.routes)
+    assert any(route.path == "/api/v1/system/status" for route in app.routes)
+    assert str(app.state.api_launch_mode) == bootstrap_app_module.settings.api_launch_mode
+    assert str(app.state.api_deployment_profile) == bootstrap_app_module.settings.api_deployment_profile
     assert any(middleware.cls.__name__ == "CORSMiddleware" for middleware in app.user_middleware)
 
     async def _exercise() -> None:

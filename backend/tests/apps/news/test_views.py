@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
+from tests.apps.conftest import api_path
 
 from src.apps.news.models import NewsItem, NewsSource
 
@@ -222,7 +223,7 @@ async def test_telegram_source_provisioning_endpoints(api_app_client) -> None:
     assert wizard_response.status_code == 200
     wizard_payload = wizard_response.json()
     assert wizard_payload["plugin_name"] == "telegram_user"
-    assert wizard_payload["steps"][-1]["endpoint"] == "/news/onboarding/telegram/sources/bulk"
+    assert wizard_payload["steps"][-1]["endpoint"] == api_path("/news/onboarding/telegram/sources/bulk")
 
     single_response = await client.post(
         "/news/onboarding/telegram/sources",

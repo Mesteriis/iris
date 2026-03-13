@@ -18,17 +18,8 @@ sys.path = _ORIGINAL_SYS_PATH
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.apps.control_plane.views import router as control_plane_router
-from src.apps.hypothesis_engine.views import router as hypothesis_router
-from src.apps.indicators.views import router as indicators_router
-from src.apps.market_data.views import router as market_data_router
-from src.apps.market_structure.views import router as market_structure_router
-from src.apps.news.views import router as news_router
-from src.apps.patterns.views import router as patterns_router
-from src.apps.portfolio.views import router as portfolio_router
-from src.apps.predictions.views import router as predictions_router
-from src.apps.signals.views import router as signals_router
-from src.apps.system.views import router as system_router
+from src.api.router import build_router as build_api_router
+from src.core.http.launch_modes import resolve_deployment_profile, resolve_launch_mode
 from src.core.settings import get_settings
 
 settings = get_settings()
@@ -56,6 +47,11 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title=settings.app_name, lifespan=deferred_lifespan)
     app.state.run_migrations = run_migrations
+    app.state.api_launch_mode = resolve_launch_mode(settings.api_launch_mode)
+    app.state.api_deployment_profile = resolve_deployment_profile(
+        settings.api_deployment_profile,
+        mode=app.state.api_launch_mode,
+    )
 
     app.add_middleware(
         CORSMiddleware,
@@ -65,16 +61,5 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(system_router)
-    app.include_router(control_plane_router)
-    app.include_router(market_data_router)
-    app.include_router(market_structure_router)
-    app.include_router(news_router)
-    app.include_router(indicators_router)
-    app.include_router(patterns_router)
-    app.include_router(signals_router)
-    app.include_router(portfolio_router)
-    app.include_router(predictions_router)
-    if settings.enable_hypothesis_engine:
-        app.include_router(hypothesis_router)
+    app.include_router(build_api_router(settings))
     return app

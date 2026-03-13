@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
+from tests.apps.conftest import api_path
 
 
 @pytest.mark.asyncio
@@ -94,7 +95,9 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
     assert liqscope_webhook["venue"] == "liqscope"
     assert liqscope_webhook["token"]
     assert liqscope_webhook["token_header"] == "X-IRIS-Ingest-Token"
-    assert liqscope_webhook["native_ingest_path"] == f"/market-structure/sources/{liqscope_webhook['source']['id']}/webhook/native"
+    assert liqscope_webhook["native_ingest_path"] == api_path(
+        f"/market-structure/sources/{liqscope_webhook['source']['id']}/webhook/native"
+    )
     assert liqscope_webhook["native_payload_example"]["liquidations"]["long"] == 3300.0
     liqscope_source_id = int(liqscope_webhook["source"]["id"])
     liqscope_token = liqscope_webhook["token"]
@@ -204,7 +207,7 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
     assert webhook_info["source"]["id"] == liqscope_source_id
     assert webhook_info["token"] is None
     assert webhook_info["token_required"] is True
-    assert webhook_info["native_ingest_path"] == f"/market-structure/sources/{liqscope_source_id}/webhook/native"
+    assert webhook_info["native_ingest_path"] == api_path(f"/market-structure/sources/{liqscope_source_id}/webhook/native")
 
     health_response = await client.get(f"/market-structure/sources/{liqscope_source_id}/health")
     assert health_response.status_code == 200

@@ -86,6 +86,7 @@ from src.apps.market_structure.schemas import (
     MarketStructureSourceUpdate,
     MarketStructureWebhookRegistrationRead,
 )
+from src.core.http.router_policy import api_path
 from src.core.db.persistence import thaw_json_value
 from src.core.db.uow import BaseAsyncUnitOfWork
 from src.core.settings import get_settings
@@ -1070,7 +1071,7 @@ class MarketStructureSourceProvisioningService:
                     plugin_name=MARKET_STRUCTURE_PLUGIN_BINANCE_USDM,
                     title="Binance USD-M",
                     description="Create a public polling source for mark price, index price, funding and open interest from Binance USD-M Futures.",
-                    endpoint="/market-structure/onboarding/sources/binance-usdm",
+                    endpoint=api_path("/market-structure/onboarding/sources/binance-usdm"),
                     method="POST",
                     fields=[
                         MarketStructureOnboardingFieldRead(
@@ -1105,7 +1106,7 @@ class MarketStructureSourceProvisioningService:
                     plugin_name=MARKET_STRUCTURE_PLUGIN_BYBIT_DERIVATIVES,
                     title="Bybit Derivatives",
                     description="Create a public polling source for mark price, index price, funding and open interest from Bybit derivatives.",
-                    endpoint="/market-structure/onboarding/sources/bybit-derivatives",
+                    endpoint=api_path("/market-structure/onboarding/sources/bybit-derivatives"),
                     method="POST",
                     fields=[
                         MarketStructureOnboardingFieldRead(
@@ -1140,7 +1141,7 @@ class MarketStructureSourceProvisioningService:
                     plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
                     title="Manual Push Feed",
                     description="Create a source for external collectors that push liquidation or derivatives snapshots directly into IRIS.",
-                    endpoint="/market-structure/onboarding/sources/manual-push",
+                    endpoint=api_path("/market-structure/onboarding/sources/manual-push"),
                     method="POST",
                     fields=[
                         MarketStructureOnboardingFieldRead(
@@ -1172,7 +1173,7 @@ class MarketStructureSourceProvisioningService:
                     plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
                     title="Liqscope Webhook",
                     description="Register a write-only manual push source for Liqscope-style liquidation collectors and return a webhook token.",
-                    endpoint="/market-structure/onboarding/sources/liqscope-webhook",
+                    endpoint=api_path("/market-structure/onboarding/sources/liqscope-webhook"),
                     method="POST",
                     fields=[
                         MarketStructureOnboardingFieldRead(
@@ -1196,7 +1197,7 @@ class MarketStructureSourceProvisioningService:
                     plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
                     title="Liquidation Collector Webhook",
                     description="Register a token-protected webhook for generic liquidation collectors that post snapshots into IRIS.",
-                    endpoint="/market-structure/onboarding/sources/liquidation-webhook",
+                    endpoint=api_path("/market-structure/onboarding/sources/liquidation-webhook"),
                     method="POST",
                     fields=[
                         MarketStructureOnboardingFieldRead(
@@ -1224,7 +1225,7 @@ class MarketStructureSourceProvisioningService:
                     plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
                     title="Derivatives Snapshot Webhook",
                     description="Register a token-protected webhook for external derivatives collectors that push funding, OI and liquidation snapshots.",
-                    endpoint="/market-structure/onboarding/sources/derivatives-webhook",
+                    endpoint=api_path("/market-structure/onboarding/sources/derivatives-webhook"),
                     method="POST",
                     fields=[
                         MarketStructureOnboardingFieldRead(
@@ -1252,7 +1253,7 @@ class MarketStructureSourceProvisioningService:
                     plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
                     title="Coinglass Webhook",
                     description="Register a token-protected webhook for Coinglass-style liquidation collectors.",
-                    endpoint="/market-structure/onboarding/sources/coinglass-webhook",
+                    endpoint=api_path("/market-structure/onboarding/sources/coinglass-webhook"),
                     method="POST",
                     fields=[
                         MarketStructureOnboardingFieldRead(
@@ -1280,7 +1281,7 @@ class MarketStructureSourceProvisioningService:
                     plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
                     title="Hyblock Webhook",
                     description="Register a token-protected webhook for Hyblock-style liquidation collectors.",
-                    endpoint="/market-structure/onboarding/sources/hyblock-webhook",
+                    endpoint=api_path("/market-structure/onboarding/sources/hyblock-webhook"),
                     method="POST",
                     fields=[
                         MarketStructureOnboardingFieldRead(
@@ -1308,7 +1309,7 @@ class MarketStructureSourceProvisioningService:
                     plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
                     title="Coinalyze Webhook",
                     description="Register a token-protected webhook for Coinalyze-style derivatives collectors.",
-                    endpoint="/market-structure/onboarding/sources/coinalyze-webhook",
+                    endpoint=api_path("/market-structure/onboarding/sources/coinalyze-webhook"),
                     method="POST",
                     fields=[
                         MarketStructureOnboardingFieldRead(

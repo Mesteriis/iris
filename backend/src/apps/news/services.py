@@ -32,6 +32,7 @@ from src.apps.news.schemas import (
     TelegramWizardRead,
     TelegramWizardStepRead,
 )
+from src.core.http.router_policy import api_path
 from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
 
@@ -421,7 +422,7 @@ class TelegramSourceProvisioningService:
                     id="request_code",
                     title="Request Login Code",
                     description="Send Telegram login code to the user's phone number.",
-                    endpoint="/news/onboarding/telegram/session/request",
+                    endpoint=api_path("/news/onboarding/telegram/session/request"),
                     method="POST",
                     fields=[
                         TelegramWizardFieldRead(id="api_id", label="API ID", type="number", required=True),
@@ -433,7 +434,7 @@ class TelegramSourceProvisioningService:
                     id="confirm_code",
                     title="Confirm Session",
                     description="Exchange the received code for a reusable MTProto session string.",
-                    endpoint="/news/onboarding/telegram/session/confirm",
+                    endpoint=api_path("/news/onboarding/telegram/session/confirm"),
                     method="POST",
                     fields=[
                         TelegramWizardFieldRead(id="code", label="Login Code", type="text", required=True),
@@ -444,7 +445,7 @@ class TelegramSourceProvisioningService:
                     id="list_dialogs",
                     title="Choose Dialogs",
                     description="Load channels and groups available to the authenticated Telegram account.",
-                    endpoint="/news/onboarding/telegram/dialogs",
+                    endpoint=api_path("/news/onboarding/telegram/dialogs"),
                     method="POST",
                     fields=[
                         TelegramWizardFieldRead(id="session_string", label="Session String", type="text", required=True, secret=True),
@@ -455,7 +456,7 @@ class TelegramSourceProvisioningService:
                     id="create_sources",
                     title="Create News Sources",
                     description="Create one or more IRIS news sources from the selected Telegram dialogs.",
-                    endpoint="/news/onboarding/telegram/sources/bulk",
+                    endpoint=api_path("/news/onboarding/telegram/sources/bulk"),
                     method="POST",
                     fields=[
                         TelegramWizardFieldRead(id="dialogs", label="Selected Dialogs", type="array", required=True),

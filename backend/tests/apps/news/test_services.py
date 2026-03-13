@@ -23,6 +23,7 @@ from src.apps.news.schemas import (
     TelegramSourceFromDialogCreate,
 )
 from src.apps.news.services import NewsService, TelegramSessionOnboardingService, TelegramSourceProvisioningService
+from src.core.http.router_policy import api_path
 from src.core.db.uow import SessionUnitOfWork
 
 
@@ -427,5 +428,5 @@ def test_telegram_source_provisioning_wizard_spec() -> None:
 
     assert wizard.plugin_name == "telegram_user"
     assert "channel" in wizard.supported_dialog_types
-    assert wizard.steps[-1].endpoint == "/news/onboarding/telegram/sources/bulk"
+    assert wizard.steps[-1].endpoint == api_path("/news/onboarding/telegram/sources/bulk")
     assert wizard.source_payload_example["settings"]["entity_type"] == "channel"

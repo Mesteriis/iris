@@ -9,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 
 import src.core.bootstrap.app as bootstrap_app_module
 from src.runtime.streams.publisher import flush_publisher, publish_event
+from tests.apps.conftest import PrefixedAsyncClient
 
 
 @pytest.fixture
@@ -26,7 +27,7 @@ async def hypothesis_api_client(monkeypatch):
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        yield app, client
+        yield app, PrefixedAsyncClient(client)
 
 
 @pytest.mark.asyncio

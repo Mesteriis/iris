@@ -24,6 +24,49 @@ from tests.factories.base import json_utc
 from tests.factories.seeds import DecisionSeedFactory, MetricSeedFactory, NarrativeSeedFactory, SectorSeedFactory, SignalSeedFactory, StrategySeedFactory
 from tests.portfolio_support import create_exchange_account, create_sector
 
+API_PREFIX = "/api/v1"
+
+
+def api_path(path: str) -> str:
+    if path == "/status":
+        return f"{API_PREFIX}/system/status"
+    if path == "/health":
+        return f"{API_PREFIX}/system/health"
+    if path.startswith(API_PREFIX):
+        return path
+    if path.startswith("/"):
+        return f"{API_PREFIX}{path}"
+    return f"{API_PREFIX}/{path}"
+
+
+class PrefixedAsyncClient:
+    def __init__(self, client: AsyncClient) -> None:
+        self._client = client
+
+    async def get(self, url: str, *args, **kwargs):
+        return await self._client.get(api_path(url), *args, **kwargs)
+
+    async def post(self, url: str, *args, **kwargs):
+        return await self._client.post(api_path(url), *args, **kwargs)
+
+    async def put(self, url: str, *args, **kwargs):
+        return await self._client.put(api_path(url), *args, **kwargs)
+
+    async def patch(self, url: str, *args, **kwargs):
+        return await self._client.patch(api_path(url), *args, **kwargs)
+
+    async def delete(self, url: str, *args, **kwargs):
+        return await self._client.delete(api_path(url), *args, **kwargs)
+
+    async def request(self, method: str, url: str, *args, **kwargs):
+        return await self._client.request(method, api_path(url), *args, **kwargs)
+
+    def stream(self, method: str, url: str, *args, **kwargs):
+        return self._client.stream(method, api_path(url), *args, **kwargs)
+
+    def __getattr__(self, name: str):
+        return getattr(self._client, name)
+
 
 class AliveProcess:
     def __init__(self, *, alive: bool) -> None:
@@ -56,7 +99,7 @@ async def api_app_client():
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        yield app, client
+        yield app, PrefixedAsyncClient(client)
 
 
 @pytest.fixture

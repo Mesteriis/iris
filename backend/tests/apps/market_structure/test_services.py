@@ -17,6 +17,7 @@ from src.apps.market_structure.schemas import (
 )
 from src.apps.market_structure.services import MarketStructureService, MarketStructureSourceProvisioningService
 from src.apps.market_structure.exceptions import UnauthorizedMarketStructureIngestError
+from src.core.http.router_policy import api_path
 from src.core.db.uow import SessionUnitOfWork
 
 
@@ -450,8 +451,8 @@ async def test_market_structure_provisioning_service_builds_frontend_friendly_so
         assert webhook.source.plugin_name == "manual_push"
         assert webhook.provider == "liqscope"
         assert webhook.venue == "liqscope"
-        assert webhook.ingest_path == f"/market-structure/sources/{webhook.source.id}/snapshots"
-        assert webhook.native_ingest_path == f"/market-structure/sources/{webhook.source.id}/webhook/native"
+        assert webhook.ingest_path == api_path(f"/market-structure/sources/{webhook.source.id}/snapshots")
+        assert webhook.native_ingest_path == api_path(f"/market-structure/sources/{webhook.source.id}/webhook/native")
         assert webhook.token
         assert webhook.native_payload_example["liquidations"]["long"] == 3300.0
         assert webhook.source.credential_fields_present == ["ingest_token"]
@@ -460,7 +461,7 @@ async def test_market_structure_provisioning_service_builds_frontend_friendly_so
         assert coinglass.native_payload_example["data"][0]["longLiquidationUsd"] == 5100.0
 
         wizard = provisioning.wizard_spec()
-        assert wizard.presets[0].endpoint == "/market-structure/onboarding/sources/binance-usdm"
+        assert wizard.presets[0].endpoint == api_path("/market-structure/onboarding/sources/binance-usdm")
         assert any("low-level plugin settings" in note for note in wizard.notes)
         assert any("rotated from the frontend" in note for note in wizard.notes)
         assert any(preset.id == "coinglass_webhook" for preset in wizard.presets)
