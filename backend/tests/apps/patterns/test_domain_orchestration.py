@@ -11,14 +11,14 @@ from src.apps.cross_market.models import Sector
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.models import Coin
-from src.apps.patterns.domain.cycle import _detect_cycle_phase, refresh_market_cycles, update_market_cycle
+from src.apps.patterns.domain.cycle import _detect_cycle_phase
 from src.apps.patterns.domain.discovery import _window_signature, refresh_discovered_patterns
 from src.apps.patterns.domain.narrative import _capital_wave_bucket, _coin_bar_return, build_sector_narratives, refresh_sector_metrics
 from src.apps.patterns.domain.registry import sync_pattern_metadata
 from src.apps.patterns.models import PatternFeature
 from tests.factories.market_data import build_candle_points
 from tests.cross_market_support import DEFAULT_START, seed_candles
-from tests.fusion_support import create_test_coin, insert_signals
+from tests.fusion_support import create_test_coin
 
 
 def test_cycle_discovery_and_narrative_domains_cover_real_market_state(db_session, seeded_market, seeded_api_state, monkeypatch) -> None:
@@ -34,19 +34,11 @@ def test_cycle_discovery_and_narrative_domains_cover_real_market_state(db_sessio
     assert _detect_cycle_phase(trend_score=52, regime="sideways_range", volatility=3.5, price_current=100.0, pattern_density=1, cluster_frequency=0, sector_strength=0.0, capital_flow=-0.1)[0] == "DISTRIBUTION"
     assert _detect_cycle_phase(trend_score=55, regime="unknown", volatility=1.0, price_current=100.0, pattern_density=0, cluster_frequency=0, sector_strength=0.0, capital_flow=0.0)[0] == "ACCUMULATION"
 
-    missing_coin = create_test_coin(db_session, symbol="MISSING_EVT", name="Missing Metrics")
-    missing_metrics = db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(missing_coin.id)))
-    if missing_metrics is not None:
-        db_session.delete(missing_metrics)
-        db_session.commit()
-    assert update_market_cycle(db_session, coin_id=int(missing_coin.id), timeframe=15)["reason"] == "coin_metrics_not_found"
-
     btc_metrics = db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(btc.id)))
     assert btc_metrics is not None
     btc_metrics.trend_score = 78
     btc_metrics.price_current = 100.0
     btc_metrics.volatility = 1.2
-    cycle_timestamp = timestamp + timedelta(minutes=15)
     db_session.add(
         SectorMetric(
             sector_id=int(btc.sector_id),
@@ -61,25 +53,7 @@ def test_cycle_discovery_and_narrative_domains_cover_real_market_state(db_sessio
             updated_at=timestamp,
         )
     )
-    insert_signals(
-        db_session,
-        coin_id=int(btc.id),
-        timeframe=15,
-        candle_timestamp=cycle_timestamp,
-        items=[
-            ("pattern_breakout_retest", 0.8),
-            ("pattern_cluster_bullish", 0.88),
-        ],
-    )
     db_session.commit()
-
-    updated_cycle = update_market_cycle(db_session, coin_id=int(btc.id), timeframe=15)
-    assert updated_cycle["status"] == "ok"
-    assert updated_cycle["cycle_phase"] == "MARKUP"
-
-    cycle_refresh = refresh_market_cycles(db_session)
-    assert cycle_refresh["status"] == "ok"
-    assert cycle_refresh["cycles"] >= 4
 
     discovery_feature = db_session.get(PatternFeature, "pattern_discovery_engine")
     assert discovery_feature is not None

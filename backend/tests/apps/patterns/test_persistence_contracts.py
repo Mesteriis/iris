@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
+import importlib
 import importlib.util
 
 import pytest
@@ -107,3 +108,9 @@ def test_patterns_legacy_engine_module_is_absent() -> None:
 def test_patterns_legacy_cluster_and_hierarchy_modules_are_absent() -> None:
     assert importlib.util.find_spec("src.apps.patterns.domain.clusters") is None
     assert importlib.util.find_spec("src.apps.patterns.domain.hierarchy") is None
+
+
+def test_patterns_cycle_module_has_no_sync_db_entrypoints() -> None:
+    module = importlib.import_module("src.apps.patterns.domain.cycle")
+    assert not hasattr(module, "update_market_cycle")
+    assert not hasattr(module, "refresh_market_cycles")

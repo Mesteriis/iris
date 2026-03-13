@@ -314,6 +314,7 @@ Recent cleanup:
 - `patterns.domain.regime` and `patterns.domain.scheduler` no longer expose sync DB helper functions; async/query caller paths now go through `PatternQueryService.compute_live_regimes(...)` and `AnalysisSchedulerService.evaluate_indicator_update(...)`
 - `patterns.domain.engine` has been deleted; active detection/bootstrap coverage now goes through `PatternRealtimeService` and `PatternBootstrapService`, and contract tests assert the sync engine module is absent
 - `patterns.domain.clusters` and `patterns.domain.hierarchy` have been deleted; meta-signal coverage now runs only through `PatternRealtimeService`, and contract tests assert both sync modules are absent
+- `patterns.domain.cycle` no longer exposes sync DB mutation entrypoints; cycle updates now run only through `PatternRealtimeService._update_market_cycle(...)` and `PatternMarketStructureService.refresh()`
 
 ### Transaction Boundary Drift
 

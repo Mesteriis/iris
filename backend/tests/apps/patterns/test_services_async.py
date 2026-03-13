@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -8,13 +9,14 @@ from sqlalchemy import select
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics
 from src.apps.patterns.models import PatternFeature
+from src.apps.patterns.models import MarketCycle
 from src.apps.patterns.query_builders import signal_select as _signal_select
 from src.apps.patterns.query_services import PatternQueryService
 from src.apps.patterns.services import PatternAdminService
-from src.apps.patterns.task_services import PatternRealtimeService
+from src.apps.patterns.task_services import PatternMarketStructureService, PatternRealtimeService
 from src.apps.signals.models import Signal
 from src.core.db.uow import SessionUnitOfWork
-from tests.fusion_support import insert_signals
+from tests.fusion_support import create_test_coin, insert_signals
 from tests.patterns_support import seed_pattern_api_state
 
 
@@ -564,3 +566,77 @@ async def test_pattern_realtime_service_covers_cluster_and_hierarchy_paths(
 
     assert disabled_hierarchy["reason"] == "pattern_hierarchy_disabled"
     assert disabled_clusters["reason"] == "pattern_clusters_disabled"
+
+
+@pytest.mark.asyncio
+async def test_pattern_services_cover_market_cycle_paths(async_db_session, db_session) -> None:
+    seeded_api_state = seed_pattern_api_state(db_session)
+    btc = seeded_api_state["btc"]
+    timestamp = seeded_api_state["signal_timestamp"]
+
+    missing_coin = create_test_coin(db_session, symbol="MISSING_EVT", name="Missing Metrics")
+    missing_metrics = db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(missing_coin.id)))
+    if missing_metrics is not None:
+        db_session.delete(missing_metrics)
+        db_session.commit()
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        missing_result = await PatternRealtimeService(uow)._update_market_cycle(
+            coin_id=int(missing_coin.id),
+            timeframe=15,
+        )
+
+    assert missing_result["reason"] == "coin_metrics_not_found"
+
+    btc_metrics = db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(btc.id)))
+    assert btc_metrics is not None
+    btc_metrics.trend_score = 78
+    btc_metrics.price_current = 100.0
+    btc_metrics.volatility = 1.2
+    cycle_timestamp = timestamp + timedelta(minutes=15)
+    db_session.add(
+        SectorMetric(
+            sector_id=int(btc.sector_id),
+            timeframe=15,
+            sector_strength=0.91,
+            relative_strength=0.83,
+            capital_flow=0.62,
+            avg_price_change_24h=5.4,
+            avg_volume_change_24h=17.0,
+            volatility=0.052,
+            trend="up",
+            updated_at=timestamp,
+        )
+    )
+    insert_signals(
+        db_session,
+        coin_id=int(btc.id),
+        timeframe=15,
+        candle_timestamp=cycle_timestamp,
+        items=[
+            ("pattern_breakout_retest", 0.8),
+            ("pattern_cluster_bullish", 0.88),
+        ],
+    )
+    db_session.commit()
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        realtime = PatternRealtimeService(uow)
+        updated_cycle = await realtime._update_market_cycle(
+            coin_id=int(btc.id),
+            timeframe=15,
+        )
+        await uow.commit()
+
+    assert updated_cycle["status"] == "ok"
+    assert updated_cycle["cycle_phase"] == "MARKUP"
+    stored_cycle = await async_db_session.get(MarketCycle, (int(btc.id), 15))
+    assert stored_cycle is not None
+    assert stored_cycle.cycle_phase == "MARKUP"
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        refreshed = await PatternMarketStructureService(uow).refresh()
+
+    assert refreshed["status"] == "ok"
+    assert refreshed["cycles"]["status"] == "ok"
+    assert refreshed["cycles"]["cycles"] >= 4
