@@ -8,14 +8,12 @@ from types import SimpleNamespace
 import pytest
 import src.apps.indicators.query_services as indicator_query_module
 from sqlalchemy import select
-from src.apps.indicators.market_flow import MarketFlowQueryService
-from src.apps.indicators.market_radar import MarketRadarQueryService
 from src.apps.indicators.models import CoinMetrics, FeatureSnapshot
 from src.apps.indicators.query_services import IndicatorQueryService
+from src.apps.indicators.read_models import market_radar_coin_read_model_from_mapping
 from src.apps.indicators.services import (
     AnalysisSchedulerService,
     FeatureSnapshotService,
-    IndicatorReadService,
 )
 from src.core.db.uow import SessionUnitOfWork
 
@@ -130,7 +128,7 @@ def _stream_messages(seeded_api_state) -> list[tuple[str, dict[str, str]]]:
 
 
 @pytest.mark.asyncio
-async def test_indicator_query_services_and_async_wrappers_cover_flow_radar_and_snapshots(
+async def test_indicator_query_services_cover_flow_radar_and_snapshots(
     async_db_session,
     seeded_api_state,
     monkeypatch,
@@ -183,45 +181,24 @@ async def test_indicator_query_services_and_async_wrappers_cover_flow_radar_and_
     assert any(change.symbol == "BTCUSD_EVT" for change in radar.regime_changes)
     assert radar.volatility_spikes
 
-    serialized = MarketRadarQueryService.metric_rows(
-        [
-            {
-                "coin_id": 77,
-                "symbol": "NULL_EVT",
-                "name": "Null Coin",
-                "activity_score": None,
-                "activity_bucket": None,
-                "analysis_priority": None,
-                "price_change_24h": None,
-                "price_change_7d": None,
-                "volatility": None,
-                "market_regime": None,
-                "updated_at": None,
-                "last_analysis_at": None,
-            }
-        ]
+    serialized = market_radar_coin_read_model_from_mapping(
+        {
+            "coin_id": 77,
+            "symbol": "NULL_EVT",
+            "name": "Null Coin",
+            "activity_score": None,
+            "activity_bucket": None,
+            "analysis_priority": None,
+            "price_change_24h": None,
+            "price_change_7d": None,
+            "volatility": None,
+            "market_regime": None,
+            "updated_at": None,
+            "last_analysis_at": None,
+        }
     )
-    assert serialized[0].coin_id == 77
-    assert serialized[0].activity_score is None
-
-    flow_service = MarketFlowQueryService(async_db_session)
-    radar_service = MarketRadarQueryService(async_db_session)
-
-    async_client = _AsyncRedisClient(messages)
-    monkeypatch.setattr(indicator_query_module, "_stream_client", lambda: async_client)
-    assert len(await flow_service.list_recent_market_leaders(limit=1)) == 1
-    async_client = _AsyncRedisClient(messages)
-    monkeypatch.setattr(indicator_query_module, "_stream_client", lambda: async_client)
-    assert len(await flow_service.list_recent_sector_rotations(limit=1)) == 1
-    async_client = _AsyncRedisClient(messages)
-    monkeypatch.setattr(indicator_query_module, "_stream_client", lambda: async_client)
-    assert len(await radar_service.list_recent_regime_changes(limit=1)) == 1
-    async_client = _AsyncRedisClient(messages)
-    monkeypatch.setattr(indicator_query_module, "_stream_client", lambda: async_client)
-    assert (await radar_service.get_market_radar(limit=10)).hot_coins
-    async_client = _AsyncRedisClient(messages)
-    monkeypatch.setattr(indicator_query_module, "_stream_client", lambda: async_client)
-    assert (await flow_service.get_market_flow(limit=10, timeframe=60)).leaders
+    assert serialized.coin_id == 77
+    assert serialized.activity_score is None
 
     async with SessionUnitOfWork(async_db_session) as uow:
         skipped = await FeatureSnapshotService(uow).capture_snapshot(
@@ -264,22 +241,20 @@ async def test_indicator_query_services_and_async_wrappers_cover_flow_radar_and_
     assert snapshot_row is not None
     assert float(snapshot_row.price_current) == 113500.0
 
-    read_service = IndicatorReadService(async_db_session)
-
     async_client = _AsyncRedisClient(messages)
     monkeypatch.setattr(indicator_query_module, "_stream_client", lambda: async_client)
-    metrics = await read_service.list_coin_metrics()
+    metrics = await query_service.list_coin_metrics()
     evt_symbols = {row.symbol for row in metrics if row.symbol.endswith("_EVT")}
     assert {"BTCUSD_EVT", "ETHUSD_EVT", "SOLUSD_EVT"} <= evt_symbols
 
     async_client = _AsyncRedisClient(messages)
     monkeypatch.setattr(indicator_query_module, "_stream_client", lambda: async_client)
-    radar = await read_service.get_market_radar(limit=10)
+    radar = await query_service.get_market_radar(limit=10)
     assert any(row.symbol == "BTCUSD_EVT" for row in radar.hot_coins)
 
     async_client = _AsyncRedisClient(messages)
     monkeypatch.setattr(indicator_query_module, "_stream_client", lambda: async_client)
-    flow = await read_service.get_market_flow(limit=10, timeframe=60)
+    flow = await query_service.get_market_flow(limit=10, timeframe=60)
     assert flow.leaders[0].symbol == "BTCUSD_EVT"
     assert flow.relations[0].follower_symbol == "ETHUSD_EVT"
     assert any(row.sector == "store_of_value" for row in flow.sectors)

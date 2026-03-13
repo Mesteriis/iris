@@ -32,7 +32,7 @@ from src.apps.indicators.repositories import (
     IndicatorMetricsRepository,
     IndicatorSignalRepository,
 )
-from src.apps.indicators.services import IndicatorAnalyticsService, IndicatorMetricsUpdate, IndicatorReadService
+from src.apps.indicators.services import IndicatorAnalyticsService, IndicatorMetricsUpdate
 from src.apps.market_data.models import Coin
 from src.apps.market_data.repos import CandlePoint
 from src.apps.signals.models import Signal
@@ -310,7 +310,7 @@ async def test_indicator_async_repositories_cover_cache_signal_and_metric_paths(
     cache_repo = IndicatorCacheRepository(async_db_session)
     signals_repo = IndicatorSignalRepository(async_db_session)
 
-    seeded_signal_types = await IndicatorReadService(async_db_session).list_signal_types_at_timestamp(
+    seeded_signal_types = await IndicatorSignalRepository(async_db_session).list_types_at_timestamp(
         coin_id=btc_id,
         timeframe=15,
         candle_timestamp=seeded_api_state["signal_timestamp"],

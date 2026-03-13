@@ -153,6 +153,7 @@ Status: migrated on the async API/application surface and indicator worker path
 - read-only metrics/radar/flow projections now go through [backend/src/apps/indicators/query_services.py](backend/src/apps/indicators/query_services.py)
 - immutable dataclass read models now live in [backend/src/apps/indicators/read_models.py](backend/src/apps/indicators/read_models.py)
 - class-based async write orchestration now lives in [backend/src/apps/indicators/services.py](backend/src/apps/indicators/services.py)
+- thin read wrappers formerly living in `market_flow.py`, `market_radar.py` and `IndicatorReadService` have been removed; callers and tests now use [backend/src/apps/indicators/query_services.py](backend/src/apps/indicators/query_services.py) and [backend/src/apps/indicators/repositories.py](backend/src/apps/indicators/repositories.py) directly
 - views now depend on the shared async UoW instead of owning `AsyncSession` directly
 - `indicator_workers` now execute indicator persistence through async repositories/UoW instead of `AsyncSession.run_sync`
 - market-radar/flow leader reads batch coin+metrics lookups, removing the old leader-path N+1 follow-up reads

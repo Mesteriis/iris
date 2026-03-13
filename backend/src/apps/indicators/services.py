@@ -4,8 +4,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.apps.indicators.analytics import (
     INDICATOR_VERSION,
     PRICE_HISTORY_LOOKBACK_BARS,
@@ -23,13 +21,6 @@ from src.apps.indicators.analytics import (
     _fetch_market_cap,
     _select_primary_snapshot,
     determine_affected_timeframes,
-)
-from src.apps.indicators.query_services import IndicatorQueryService
-from src.apps.indicators.read_models import (
-    CoinMetricsReadModel,
-    MarketFlowReadModel,
-    MarketRadarReadModel,
-    SignalSummaryReadModel,
 )
 from src.apps.indicators.repositories import (
     FeatureSnapshotPayload,
@@ -136,43 +127,6 @@ def _regime_for_timeframe(
     if regime is None:
         return fallback, None
     return str(regime.regime), float(regime.confidence)
-
-
-class IndicatorReadService:
-    def __init__(self, session: AsyncSession) -> None:
-        self._queries = IndicatorQueryService(session)
-        self._signals = IndicatorSignalRepository(session)
-
-    async def list_coin_metrics(self) -> tuple[CoinMetricsReadModel, ...]:
-        return await self._queries.list_coin_metrics()
-
-    async def list_signals(
-        self,
-        *,
-        symbol: str | None = None,
-        timeframe: int | None = None,
-        limit: int = 100,
-    ) -> tuple[SignalSummaryReadModel, ...]:
-        return await self._queries.list_signals(symbol=symbol, timeframe=timeframe, limit=limit)
-
-    async def list_signal_types_at_timestamp(
-        self,
-        *,
-        coin_id: int,
-        timeframe: int,
-        candle_timestamp: object,
-    ) -> set[str]:
-        return await self._signals.list_types_at_timestamp(
-            coin_id=coin_id,
-            timeframe=timeframe,
-            candle_timestamp=candle_timestamp,
-        )
-
-    async def get_market_radar(self, *, limit: int = 8) -> MarketRadarReadModel:
-        return await self._queries.get_market_radar(limit=limit)
-
-    async def get_market_flow(self, *, limit: int = 8, timeframe: int = 60) -> MarketFlowReadModel:
-        return await self._queries.get_market_flow(limit=limit, timeframe=timeframe)
 
 
 class IndicatorAnalyticsService:
@@ -581,5 +535,4 @@ __all__ = [
     "IndicatorEventResult",
     "IndicatorMetricsUpdate",
     "determine_affected_timeframes",
-    "IndicatorReadService",
 ]
