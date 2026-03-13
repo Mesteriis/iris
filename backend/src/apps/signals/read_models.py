@@ -387,6 +387,67 @@ def strategy_read_model_from_mapping(mapping: Mapping[str, Any]) -> StrategyRead
     )
 
 
+def backtest_summary_payload(item: BacktestSummaryReadModel) -> dict[str, Any]:
+    return {
+        "symbol": item.symbol,
+        "signal_type": item.signal_type,
+        "timeframe": int(item.timeframe),
+        "sample_size": int(item.sample_size),
+        "coin_count": int(item.coin_count),
+        "win_rate": float(item.win_rate),
+        "roi": float(item.roi),
+        "avg_return": float(item.avg_return),
+        "sharpe_ratio": float(item.sharpe_ratio),
+        "max_drawdown": float(item.max_drawdown),
+        "avg_confidence": float(item.avg_confidence),
+        "last_evaluated_at": item.last_evaluated_at,
+    }
+
+
+def coin_backtests_payload(item: CoinBacktestsReadModel) -> dict[str, Any]:
+    return {
+        "coin_id": int(item.coin_id),
+        "symbol": item.symbol,
+        "items": [backtest_summary_payload(row) for row in item.items],
+    }
+
+
+def strategy_rule_payload(item: StrategyRuleReadModel) -> dict[str, Any]:
+    return {
+        "pattern_slug": item.pattern_slug,
+        "regime": item.regime,
+        "sector": item.sector,
+        "cycle": item.cycle,
+        "min_confidence": float(item.min_confidence),
+    }
+
+
+def strategy_performance_payload(item: StrategyPerformanceReadModel) -> dict[str, Any]:
+    return {
+        "strategy_id": int(item.strategy_id),
+        "name": item.name,
+        "enabled": bool(item.enabled),
+        "sample_size": int(item.sample_size),
+        "win_rate": float(item.win_rate),
+        "avg_return": float(item.avg_return),
+        "sharpe_ratio": float(item.sharpe_ratio),
+        "max_drawdown": float(item.max_drawdown),
+        "updated_at": item.updated_at,
+    }
+
+
+def strategy_payload(item: StrategyReadModel) -> dict[str, Any]:
+    return {
+        "id": int(item.id),
+        "name": item.name,
+        "description": item.description,
+        "enabled": bool(item.enabled),
+        "created_at": item.created_at,
+        "rules": [strategy_rule_payload(rule) for rule in item.rules],
+        "performance": strategy_performance_payload(item.performance) if item.performance is not None else None,
+    }
+
+
 __all__ = [
     "BacktestSummaryReadModel",
     "CoinBacktestsReadModel",
@@ -403,7 +464,9 @@ __all__ = [
     "StrategyPerformanceReadModel",
     "StrategyReadModel",
     "StrategyRuleReadModel",
+    "backtest_summary_payload",
     "backtest_summary_read_model_from_mapping",
+    "coin_backtests_payload",
     "coin_backtests_read_model_from_mapping",
     "coin_decision_item_read_model_from_mapping",
     "coin_decision_read_model_from_mapping",
@@ -415,7 +478,10 @@ __all__ = [
     "investment_decision_read_model_from_mapping",
     "market_decision_read_model_from_mapping",
     "signal_read_model_from_mapping",
+    "strategy_payload",
+    "strategy_performance_payload",
     "strategy_performance_read_model_from_mapping",
+    "strategy_rule_payload",
     "strategy_read_model_from_mapping",
     "strategy_rule_read_model_from_mapping",
 ]

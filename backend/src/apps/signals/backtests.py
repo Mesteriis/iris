@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Coin
-from src.apps.market_data.service_layer import get_coin_by_symbol
 from src.apps.signals.backtest_support import (
     BacktestPoint as _BacktestPoint,
     clamp_backtest_value as _clamp,
@@ -19,39 +18,14 @@ from src.apps.signals.backtest_support import (
 )
 from src.apps.signals.models import SignalHistory
 from src.apps.signals.read_models import (
-    BacktestSummaryReadModel,
-    CoinBacktestsReadModel,
+    backtest_summary_payload,
     backtest_summary_read_model_from_mapping,
+    coin_backtests_payload,
     coin_backtests_read_model_from_mapping,
 )
 from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 
 BACKTEST_LOOKBACK_DAYS = 365
-
-
-def _backtest_summary_payload(item: BacktestSummaryReadModel) -> dict[str, Any]:
-    return {
-        "symbol": item.symbol,
-        "signal_type": item.signal_type,
-        "timeframe": int(item.timeframe),
-        "sample_size": int(item.sample_size),
-        "coin_count": int(item.coin_count),
-        "win_rate": float(item.win_rate),
-        "roi": float(item.roi),
-        "avg_return": float(item.avg_return),
-        "sharpe_ratio": float(item.sharpe_ratio),
-        "max_drawdown": float(item.max_drawdown),
-        "avg_confidence": float(item.avg_confidence),
-        "last_evaluated_at": item.last_evaluated_at,
-    }
-
-
-def _coin_backtests_payload(item: CoinBacktestsReadModel) -> dict[str, Any]:
-    return {
-        "coin_id": int(item.coin_id),
-        "symbol": item.symbol,
-        "items": [_backtest_summary_payload(row) for row in item.items],
-    }
 
 
 class SignalBacktestCompatibilityQuery:
@@ -169,7 +143,7 @@ class SignalBacktestCompatibilityQuery:
             ),
             reverse=True,
         )
-        return [_backtest_summary_payload(row) for row in sorted_items[: max(limit, 1)]]
+        return [backtest_summary_payload(row) for row in sorted_items[: max(limit, 1)]]
 
     def list_top_backtests(
         self,
@@ -204,7 +178,7 @@ class SignalBacktestCompatibilityQuery:
             ),
             reverse=True,
         )
-        return [_backtest_summary_payload(row) for row in sorted_items[: max(limit, 1)]]
+        return [backtest_summary_payload(row) for row in sorted_items[: max(limit, 1)]]
 
     def get_coin_backtests(
         self,
@@ -226,10 +200,12 @@ class SignalBacktestCompatibilityQuery:
             lookback_days=lookback_days,
             limit=limit,
         )
-        coin = get_coin_by_symbol(self._db, normalized_symbol)
+        coin = self._db.scalar(
+            select(Coin).where(Coin.symbol == normalized_symbol, Coin.deleted_at.is_(None)).limit(1)
+        )
         if coin is None:
             return None
-        return _coin_backtests_payload(
+        return coin_backtests_payload(
             coin_backtests_read_model_from_mapping(
                 {
                     "coin_id": coin.id,

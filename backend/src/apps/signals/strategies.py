@@ -9,47 +9,12 @@ from sqlalchemy.orm import Session, selectinload
 from src.apps.signals.models import Strategy
 from src.apps.signals.models import StrategyPerformance
 from src.apps.signals.read_models import (
-    StrategyPerformanceReadModel,
-    StrategyReadModel,
+    strategy_payload,
+    strategy_performance_payload,
     strategy_performance_read_model_from_mapping,
     strategy_read_model_from_mapping,
 )
 from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
-
-
-def _strategy_performance_payload(item: StrategyPerformanceReadModel) -> dict[str, Any]:
-    return {
-        "strategy_id": int(item.strategy_id),
-        "name": item.name,
-        "enabled": bool(item.enabled),
-        "sample_size": int(item.sample_size),
-        "win_rate": float(item.win_rate),
-        "avg_return": float(item.avg_return),
-        "sharpe_ratio": float(item.sharpe_ratio),
-        "max_drawdown": float(item.max_drawdown),
-        "updated_at": item.updated_at,
-    }
-
-
-def _strategy_payload(item: StrategyReadModel) -> dict[str, Any]:
-    return {
-        "id": int(item.id),
-        "name": item.name,
-        "description": item.description,
-        "enabled": bool(item.enabled),
-        "created_at": item.created_at,
-        "rules": [
-            {
-                "pattern_slug": rule.pattern_slug,
-                "regime": rule.regime,
-                "sector": rule.sector,
-                "cycle": rule.cycle,
-                "min_confidence": float(rule.min_confidence),
-            }
-            for rule in item.rules
-        ],
-        "performance": _strategy_performance_payload(item.performance) if item.performance is not None else None,
-    }
 
 
 class SignalStrategyCompatibilityQuery:
@@ -125,8 +90,7 @@ class SignalStrategyCompatibilityQuery:
             )
             for row in rows
         ]
-        return [_strategy_payload(item) for item in items]
-
+        return [strategy_payload(item) for item in items]
 
     def list_strategy_performance(self, *, limit: int = 100) -> Sequence[dict[str, Any]]:
         self._log(logging.WARNING, "compat.list_strategy_performance.deprecated", mode="read", limit=limit)
@@ -151,7 +115,7 @@ class SignalStrategyCompatibilityQuery:
             )
             .limit(max(limit, 1))
         ).all()
-        return [_strategy_performance_payload(strategy_performance_read_model_from_mapping(row._mapping)) for row in rows]
+        return [strategy_performance_payload(strategy_performance_read_model_from_mapping(row._mapping)) for row in rows]
 
 
 def list_strategies(db: Session, *, enabled_only: bool = False, limit: int = 100) -> Sequence[dict[str, Any]]:
