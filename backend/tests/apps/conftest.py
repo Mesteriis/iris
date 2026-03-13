@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 
 import pytest
+from _pytest.fixtures import FixtureLookupError
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select
 
@@ -77,7 +78,11 @@ class AliveProcess:
 
 
 @pytest.fixture(autouse=True)
-def cleanup_app_static_rows(db_session) -> None:
+def cleanup_app_static_rows(request) -> None:
+    try:
+        db_session = request.getfixturevalue("db_session")
+    except FixtureLookupError:
+        return
     db_session.execute(delete(StrategyPerformance))
     db_session.execute(delete(StrategyRule))
     db_session.execute(delete(Strategy))

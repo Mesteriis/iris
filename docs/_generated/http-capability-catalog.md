@@ -106,3 +106,6 @@ Generated from the mode-aware OpenAPI contract and the shared capability metadat
 | `signals_read_top_signals` | `GET` | `/api/v1/signals/top` | `signals` | `read` | `public_read` | `sync` | `strict` | no | `public` | yes | yes | yes |
 | `system_handle_health` | `GET` | `/api/v1/system/health` | `system` | `read` | `internal_platform` | `sync` | `strict` | no | `public` | yes | yes | yes |
 | `system_handle_status` | `GET` | `/api/v1/system/status` | `system` | `read` | `internal_platform` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `system_list_operation_events` | `GET` | `/api/v1/operations/{operation_id}/events` | `system` | `operations` | `internal_platform` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `system_read_operation_result` | `GET` | `/api/v1/operations/{operation_id}/result` | `system` | `operations` | `internal_platform` | `sync` | `strict` | no | `public` | yes | yes | yes |
+| `system_read_operation_status` | `GET` | `/api/v1/operations/{operation_id}` | `system` | `operations` | `internal_platform` | `sync` | `strict` | no | `public` | yes | yes | yes |

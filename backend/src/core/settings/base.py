@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     api_version_prefix: str = Field(default="/v1", alias="IRIS_API_VERSION_PREFIX")
     api_launch_mode: str = Field(default="full", alias="IRIS_API_LAUNCH_MODE")
     api_deployment_profile: str = Field(default="platform_full", alias="IRIS_API_DEPLOYMENT_PROFILE")
+    api_operation_ttl_seconds: int = Field(default=86400, alias="IRIS_API_OPERATION_TTL_SECONDS")
     database_url: str = Field(
         default="postgresql+psycopg://iris:iris@db:5432/iris",
         alias="DATABASE_URL",

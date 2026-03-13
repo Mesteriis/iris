@@ -30,6 +30,9 @@ def test_http_capability_catalog_tracks_mode_specific_operations() -> None:
     assert by_operation["hypothesis_stream_ai_events"].execution_model is capabilities_module.ExecutionModel.STREAM
     assert by_operation["system_handle_status"].audience is capabilities_module.ContractAudience.INTERNAL_PLATFORM
     assert by_operation["system_handle_status"].auth_policy is capabilities_module.AuthPolicy.PUBLIC
+    assert by_operation["system_read_operation_status"].audience is capabilities_module.ContractAudience.INTERNAL_PLATFORM
+    assert by_operation["system_read_operation_status"].operation_resource_required is False
+    assert by_operation["system_read_operation_status"].auth_policy is capabilities_module.AuthPolicy.PUBLIC
 
 
 def test_http_capability_catalog_render_includes_expected_columns() -> None:
@@ -44,6 +47,8 @@ def test_http_capability_catalog_render_includes_expected_columns() -> None:
     )
     assert "`control_plane_create_route`" in rendered
     assert "`/api/v1/control-plane/routes`" in rendered
+    assert "`system_read_operation_status`" in rendered
+    assert "`/api/v1/operations/{operation_id}`" in rendered
     assert "`operator_control`" in rendered
     assert "`non_idempotent`" in rendered
 

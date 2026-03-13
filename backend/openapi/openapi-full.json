@@ -863,12 +863,44 @@
         "title": "CoinFinalSignalRead",
         "type": "object"
       },
-      "CoinJobQueuedRead": {
+      "CoinJobAcceptedRead": {
         "additionalProperties": false,
         "properties": {
+          "accepted_at": {
+            "format": "date-time",
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "deduplicated": {
+            "default": false,
+            "title": "Deduplicated",
+            "type": "boolean"
+          },
           "force": {
             "title": "Force",
             "type": "boolean"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
           },
           "mode": {
             "enum": [
@@ -879,9 +911,26 @@
             "title": "Mode",
             "type": "string"
           },
+          "operation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Id"
+          },
+          "operation_type": {
+            "const": "market_data.coin_history.sync",
+            "default": "market_data.coin_history.sync",
+            "title": "Operation Type",
+            "type": "string"
+          },
           "status": {
-            "const": "queued",
-            "default": "queued",
+            "const": "accepted",
+            "default": "accepted",
             "title": "Status",
             "type": "string"
           },
@@ -891,11 +940,12 @@
           }
         },
         "required": [
+          "accepted_at",
           "symbol",
           "mode",
           "force"
         ],
-        "title": "CoinJobQueuedRead",
+        "title": "CoinJobAcceptedRead",
         "type": "object"
       },
       "CoinMarketDecisionItemRead": {
@@ -2982,17 +3032,69 @@
         "title": "MarketRegimeChangeRead",
         "type": "object"
       },
-      "MarketStructureHealthJobQueuedRead": {
+      "MarketStructureHealthJobAcceptedRead": {
         "additionalProperties": false,
         "properties": {
+          "accepted_at": {
+            "format": "date-time",
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "deduplicated": {
+            "default": false,
+            "title": "Deduplicated",
+            "type": "boolean"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "operation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Id"
+          },
+          "operation_type": {
+            "const": "market_structure.health.refresh",
+            "default": "market_structure.health.refresh",
+            "title": "Operation Type",
+            "type": "string"
+          },
           "status": {
-            "const": "queued",
-            "default": "queued",
+            "const": "accepted",
+            "default": "accepted",
             "title": "Status",
             "type": "string"
           }
         },
-        "title": "MarketStructureHealthJobQueuedRead",
+        "required": [
+          "accepted_at"
+        ],
+        "title": "MarketStructureHealthJobAcceptedRead",
         "type": "object"
       },
       "MarketStructureIngestResultRead": {
@@ -3706,29 +3808,79 @@
         "title": "MarketStructureSourceHealthRead",
         "type": "object"
       },
-      "MarketStructureSourceJobQueuedRead": {
+      "MarketStructureSourceJobAcceptedRead": {
         "additionalProperties": false,
         "properties": {
+          "accepted_at": {
+            "format": "date-time",
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "deduplicated": {
+            "default": false,
+            "title": "Deduplicated",
+            "type": "boolean"
+          },
           "limit": {
             "title": "Limit",
             "type": "integer"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "operation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Id"
+          },
+          "operation_type": {
+            "const": "market_structure.source.poll",
+            "default": "market_structure.source.poll",
+            "title": "Operation Type",
+            "type": "string"
           },
           "source_id": {
             "title": "Source Id",
             "type": "integer"
           },
           "status": {
-            "const": "queued",
-            "default": "queued",
+            "const": "accepted",
+            "default": "accepted",
             "title": "Status",
             "type": "string"
           }
         },
         "required": [
+          "accepted_at",
           "source_id",
           "limit"
         ],
-        "title": "MarketStructureSourceJobQueuedRead",
+        "title": "MarketStructureSourceJobAcceptedRead",
         "type": "object"
       },
       "MarketStructureSourceRead": {
@@ -4372,29 +4524,79 @@
         "title": "NewsSourceCreate",
         "type": "object"
       },
-      "NewsSourceJobQueuedRead": {
+      "NewsSourceJobAcceptedRead": {
         "additionalProperties": false,
         "properties": {
+          "accepted_at": {
+            "format": "date-time",
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "deduplicated": {
+            "default": false,
+            "title": "Deduplicated",
+            "type": "boolean"
+          },
           "limit": {
             "title": "Limit",
             "type": "integer"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "operation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Id"
+          },
+          "operation_type": {
+            "const": "news.source.poll",
+            "default": "news.source.poll",
+            "title": "Operation Type",
+            "type": "string"
           },
           "source_id": {
             "title": "Source Id",
             "type": "integer"
           },
           "status": {
-            "const": "queued",
-            "default": "queued",
+            "const": "accepted",
+            "default": "accepted",
             "title": "Status",
             "type": "string"
           }
         },
         "required": [
+          "accepted_at",
           "source_id",
           "limit"
         ],
-        "title": "NewsSourceJobQueuedRead",
+        "title": "NewsSourceJobAcceptedRead",
         "type": "object"
       },
       "NewsSourceRead": {
@@ -4610,6 +4812,382 @@
           "consumers"
         ],
         "title": "ObservabilityOverviewRead",
+        "type": "object"
+      },
+      "OperationEventResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "operation_type": {
+            "title": "Operation Type",
+            "type": "string"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OperationStatus"
+          }
+        },
+        "required": [
+          "operation_id",
+          "operation_type",
+          "event",
+          "status",
+          "recorded_at"
+        ],
+        "title": "OperationEventResponse",
+        "type": "object"
+      },
+      "OperationResultResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_at": {
+            "format": "date-time",
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "causation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Causation Id"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "deduplication_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deduplication Key"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "operation_type": {
+            "title": "Operation Type",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "requested_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "result_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Ref"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OperationStatus"
+          }
+        },
+        "required": [
+          "operation_id",
+          "operation_type",
+          "status",
+          "accepted_at"
+        ],
+        "title": "OperationResultResponse",
+        "type": "object"
+      },
+      "OperationStatus": {
+        "enum": [
+          "accepted",
+          "deduplicated",
+          "queued",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "rejected",
+          "timed_out"
+        ],
+        "title": "OperationStatus",
+        "type": "string"
+      },
+      "OperationStatusResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_at": {
+            "format": "date-time",
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "causation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Causation Id"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "deduplication_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deduplication Key"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "operation_type": {
+            "title": "Operation Type",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "requested_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By"
+          },
+          "result_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Ref"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OperationStatus"
+          }
+        },
+        "required": [
+          "operation_id",
+          "operation_type",
+          "status",
+          "accepted_at"
+        ],
+        "title": "OperationStatusResponse",
         "type": "object"
       },
       "PatternFeatureRead": {
@@ -8119,7 +8697,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CoinJobQueuedRead"
+                  "$ref": "#/components/schemas/CoinJobAcceptedRead"
                 }
               }
             },
@@ -10225,7 +10803,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MarketStructureHealthJobQueuedRead"
+                  "$ref": "#/components/schemas/MarketStructureHealthJobAcceptedRead"
                 }
               }
             },
@@ -11096,7 +11674,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MarketStructureSourceJobQueuedRead"
+                  "$ref": "#/components/schemas/MarketStructureSourceJobAcceptedRead"
                 }
               }
             },
@@ -12243,7 +12821,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NewsSourceJobQueuedRead"
+                  "$ref": "#/components/schemas/NewsSourceJobAcceptedRead"
                 }
               }
             },
@@ -12273,6 +12851,166 @@
         "summary": "Queue news source poll job",
         "tags": [
           "news:jobs"
+        ]
+      }
+    },
+    "/api/v1/operations/{operation_id}": {
+      "get": {
+        "operationId": "system_read_operation_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Requested operation resource was not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read async operation status",
+        "tags": [
+          "system:operations"
+        ]
+      }
+    },
+    "/api/v1/operations/{operation_id}/events": {
+      "get": {
+        "operationId": "system_list_operation_events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OperationEventResponse"
+                  },
+                  "title": "Response System List Operation Events",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Requested operation resource was not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read async operation events",
+        "tags": [
+          "system:operations"
+        ]
+      }
+    },
+    "/api/v1/operations/{operation_id}/result": {
+      "get": {
+        "operationId": "system_read_operation_result",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Requested operation resource was not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read async operation result",
+        "tags": [
+          "system:operations"
         ]
       }
     },

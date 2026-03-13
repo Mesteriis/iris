@@ -76,6 +76,7 @@ IRIS now treats the HTTP surface as a transport adapter layer:
 - command endpoints use the shared `core/http/command_executor.py` flow; mode/profile-aware router assembly controls what is exposed in `full`, `local` and `ha_addon`
 - OpenAPI contract governance is enforced through centralized `operationId` generation, category tags and committed schema snapshots
 - generated capability governance is also enforced: the committed capability catalog now carries `audience`, `execution`, `idempotency`, `operation_resource_required` and `auth` metadata per `operationId`
+- async/job HTTP triggers now return typed accepted contracts with `operation_id`, and the global `/api/v1/operations/{operation_id}` surface exposes status, result and event history for tracked operations
 - GitHub Actions validates OpenAPI snapshots, mode-aware availability matrix drift and core API governance tests on every PR/push to `main`
 
 ## Stack

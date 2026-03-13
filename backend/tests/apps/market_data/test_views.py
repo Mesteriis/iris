@@ -15,6 +15,7 @@ from src.apps.market_data.api.deps import MarketDataBackfillTrigger
 from src.apps.market_data.api.job_endpoints import run_coin_job_endpoint
 from src.apps.market_data.api.read_endpoints import read_coin_history
 from src.apps.market_data.api.router import build_router as build_market_data_router
+from src.core.http.operations import OperationStatus, OperationStatusResponse
 from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 from tests.factories.market_data import CoinCreateFactory, PriceHistoryCreateFactory
@@ -93,7 +94,19 @@ async def test_market_data_endpoints(api_app_client, seeded_market, monkeypatch)
 
     queued_response = await client.post("/coins/BTCUSD_EVT/jobs/run?mode=latest&force=false")
     assert queued_response.status_code == 202
-    assert queued == {"symbol": "BTCUSD_EVT", "mode": "latest", "force": False}
+    queued_payload = queued_response.json()
+    assert queued_payload["status"] == "accepted"
+    assert queued_payload["operation_type"] == "market_data.coin_history.sync"
+    assert queued_payload["symbol"] == "BTCUSD_EVT"
+    assert queued_payload["mode"] == "latest"
+    assert queued_payload["force"] is False
+    assert isinstance(queued_payload["operation_id"], str) and queued_payload["operation_id"]
+    assert queued == {
+        "symbol": "BTCUSD_EVT",
+        "mode": "latest",
+        "force": False,
+        "operation_id": queued_payload["operation_id"],
+    }
 
     assert (await client.post("/coins/MISSING_EVT/jobs/run")).status_code == 404
     assert (await client.get("/coins/MISSING_EVT/history")).status_code == 404
@@ -179,6 +192,12 @@ async def test_market_data_view_branches() -> None:
 
     async def fake_dispatch_coin_history(**kwargs):
         dispatcher_calls.update(kwargs)
+        return OperationStatusResponse(
+            operation_id="op-market-data",
+            operation_type="market_data.coin_history.sync",
+            status=OperationStatus.QUEUED,
+            accepted_at="2026-03-13T00:00:00Z",
+        )
 
     dispatcher = SimpleNamespace(dispatch_coin_history=fake_dispatch_coin_history)
 
@@ -222,7 +241,9 @@ async def test_market_data_view_branches() -> None:
         dispatcher=dispatcher,
         query_service=query_service,
     )
-    assert queued.status == "queued"
+    assert queued.status == "accepted"
+    assert queued.operation_id == "op-market-data"
+    assert queued.operation_type == "market_data.coin_history.sync"
     assert dispatcher_calls == {"symbol": "BTCUSD_EVT", "mode": "latest", "force": False}
 
     query_service.get_coin_read_by_symbol = missing_coin

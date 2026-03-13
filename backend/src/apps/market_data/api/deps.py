@@ -8,6 +8,10 @@ from fastapi import Depends, Request
 from src.apps.market_data.query_services import MarketDataQueryService
 from src.apps.market_data.services import MarketDataService
 from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
+from src.core.http.deps import get_operation_store, get_trace_context
+from src.core.http.operation_store import OperationStore, dispatch_background_operation
+from src.core.http.operations import OperationStatusResponse
+from src.core.http.tracing import TraceContext
 
 
 @dataclass(slots=True, frozen=True)
@@ -27,11 +31,25 @@ class MarketDataCommandGateway:
     backfill_trigger: MarketDataBackfillTrigger
 
 
+@dataclass(slots=True, frozen=True)
 class MarketDataJobDispatcher:
-    async def dispatch_coin_history(self, *, symbol: str, mode: str, force: bool) -> None:
+    operation_store: OperationStore
+    trace_context: TraceContext
+
+    async def dispatch_coin_history(self, *, symbol: str, mode: str, force: bool) -> OperationStatusResponse:
         from src.apps.market_data.tasks import run_coin_history_job
 
-        await run_coin_history_job.kiq(symbol=symbol, mode=mode, force=force)
+        return await dispatch_background_operation(
+            store=self.operation_store,
+            operation_type="market_data.coin_history.sync",
+            trace_context=self.trace_context,
+            dispatch=lambda operation_id: run_coin_history_job.kiq(
+                symbol=symbol,
+                mode=mode,
+                force=force,
+                operation_id=operation_id,
+            ),
+        )
 
 
 def get_market_data_query_service(uow: BaseAsyncUnitOfWork = Depends(get_uow)) -> MarketDataQueryService:
@@ -49,8 +67,11 @@ def get_market_data_command_gateway(
     return MarketDataCommandGateway(service=MarketDataService(uow), uow=uow, backfill_trigger=backfill_trigger)
 
 
-def get_market_data_job_dispatcher() -> MarketDataJobDispatcher:
-    return MarketDataJobDispatcher()
+def get_market_data_job_dispatcher(
+    operation_store: OperationStore = Depends(get_operation_store),
+    trace_context: TraceContext = Depends(get_trace_context),
+) -> MarketDataJobDispatcher:
+    return MarketDataJobDispatcher(operation_store=operation_store, trace_context=trace_context)
 
 
 MarketDataQueryDep = Annotated[MarketDataQueryService, Depends(get_market_data_query_service)]

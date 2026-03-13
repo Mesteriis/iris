@@ -19,11 +19,11 @@ from src.apps.news.schemas import (
     TelegramSourceFromDialogCreate,
     TelegramWizardRead,
 )
-from src.core.http.contracts import HttpContract
+from src.core.http.contracts import AcceptedResponse
 
 
-class NewsSourceJobQueuedRead(HttpContract):
-    status: Literal["queued"] = "queued"
+class NewsSourceJobAcceptedRead(AcceptedResponse):
+    operation_type: Literal["news.source.poll"] = "news.source.poll"
     source_id: int
     limit: int
 
@@ -32,7 +32,7 @@ __all__ = [
     "NewsItemRead",
     "NewsPluginRead",
     "NewsSourceCreate",
-    "NewsSourceJobQueuedRead",
+    "NewsSourceJobAcceptedRead",
     "NewsSourceRead",
     "NewsSourceUpdate",
     "TelegramBulkSubscribeRead",

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.apps.market_data.api.contracts import CoinJobQueuedRead, CoinRead, PriceHistoryRead
+from src.apps.market_data.api.contracts import CoinJobAcceptedRead, CoinRead, PriceHistoryRead
+from src.core.http.operations import OperationStatusResponse
 
 
 def coin_read(item: Any) -> CoinRead:
@@ -55,8 +56,23 @@ def price_history_read(item: Any) -> PriceHistoryRead:
     )
 
 
-def coin_job_queued_read(*, symbol: str, mode: str, force: bool) -> CoinJobQueuedRead:
-    return CoinJobQueuedRead(symbol=symbol, mode=mode, force=force)
+def coin_job_accepted_read(
+    *,
+    operation: OperationStatusResponse,
+    symbol: str,
+    mode: str,
+    force: bool,
+) -> CoinJobAcceptedRead:
+    return CoinJobAcceptedRead.model_validate(
+        {
+            "operation_id": operation.operation_id,
+            "accepted_at": operation.accepted_at,
+            "correlation_id": operation.correlation_id,
+            "symbol": symbol,
+            "mode": mode,
+            "force": force,
+        }
+    )
 
 
-__all__ = ["coin_job_queued_read", "coin_read", "price_history_read"]
+__all__ = ["coin_job_accepted_read", "coin_read", "price_history_read"]

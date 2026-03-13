@@ -18,5 +18,5 @@ router = APIRouter(tags=["hypothesis:jobs"])
 async def run_hypothesis_evaluation_job(
     dispatcher: HypothesisJobDispatcherDep,
 ) -> HypothesisEvaluationJobAcceptedRead:
-    await dispatcher.dispatch_evaluation()
-    return hypothesis_evaluation_job_accepted_read()
+    operation = await dispatcher.dispatch_evaluation()
+    return hypothesis_evaluation_job_accepted_read(operation=operation)

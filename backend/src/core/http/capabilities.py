@@ -69,9 +69,11 @@ AUDIENCE_OVERRIDES: dict[tuple[str, str], ContractAudience] = {
     ("news", "onboarding"): ContractAudience.OPERATOR_CONTROL,
     ("patterns", "commands"): ContractAudience.OPERATOR_CONTROL,
     ("portfolio", "read"): ContractAudience.OPERATOR_CONTROL,
+    ("system", "operations"): ContractAudience.INTERNAL_PLATFORM,
     ("system", "read"): ContractAudience.INTERNAL_PLATFORM,
 }
 AUTH_POLICY_OVERRIDES: dict[tuple[str, str], AuthPolicy] = {
+    ("system", "operations"): AuthPolicy.PUBLIC,
     ("system", "read"): AuthPolicy.PUBLIC,
 }
 

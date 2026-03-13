@@ -9,6 +9,10 @@ from src.apps.hypothesis_engine.api.stream_adapter import HypothesisEventStreamA
 from src.apps.hypothesis_engine.query_services import HypothesisQueryService
 from src.apps.hypothesis_engine.services import PromptService
 from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
+from src.core.http.deps import get_operation_store, get_trace_context
+from src.core.http.operation_store import OperationStore, dispatch_background_operation
+from src.core.http.operations import OperationStatusResponse
+from src.core.http.tracing import TraceContext
 from src.core.settings import Settings, get_settings
 
 
@@ -18,11 +22,20 @@ class HypothesisPromptCommandGateway:
     uow: BaseAsyncUnitOfWork
 
 
+@dataclass(slots=True, frozen=True)
 class HypothesisJobDispatcher:
-    async def dispatch_evaluation(self) -> None:
+    operation_store: OperationStore
+    trace_context: TraceContext
+
+    async def dispatch_evaluation(self) -> OperationStatusResponse:
         from src.apps.hypothesis_engine.tasks.hypothesis_tasks import evaluate_hypotheses_job
 
-        await evaluate_hypotheses_job.kiq()
+        return await dispatch_background_operation(
+            store=self.operation_store,
+            operation_type="hypothesis.evaluate",
+            trace_context=self.trace_context,
+            dispatch=lambda operation_id: evaluate_hypotheses_job.kiq(operation_id=operation_id),
+        )
 
 
 def get_hypothesis_query_service(uow: BaseAsyncUnitOfWork = Depends(get_uow)) -> HypothesisQueryService:
@@ -35,8 +48,11 @@ def get_hypothesis_prompt_command_gateway(
     return HypothesisPromptCommandGateway(service=PromptService(uow), uow=uow)
 
 
-def get_hypothesis_job_dispatcher() -> HypothesisJobDispatcher:
-    return HypothesisJobDispatcher()
+def get_hypothesis_job_dispatcher(
+    operation_store: OperationStore = Depends(get_operation_store),
+    trace_context: TraceContext = Depends(get_trace_context),
+) -> HypothesisJobDispatcher:
+    return HypothesisJobDispatcher(operation_store=operation_store, trace_context=trace_context)
 
 
 def get_hypothesis_event_stream_adapter(

@@ -339,8 +339,13 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
 
     queued_response = await client.post(f"/market-structure/sources/{source_id}/jobs/run?limit=2")
     assert queued_response.status_code == 202
-    assert queued_response.json() == {"status": "queued", "source_id": source_id, "limit": 2}
-    assert queued == {"source_id": source_id, "limit": 2}
+    queued_payload = queued_response.json()
+    assert queued_payload["status"] == "accepted"
+    assert queued_payload["operation_type"] == "market_structure.source.poll"
+    assert queued_payload["source_id"] == source_id
+    assert queued_payload["limit"] == 2
+    assert isinstance(queued_payload["operation_id"], str) and queued_payload["operation_id"]
+    assert queued == {"source_id": source_id, "limit": 2, "operation_id": queued_payload["operation_id"]}
 
     queued_health: dict[str, object] = {}
     from src.apps.market_structure.tasks import refresh_market_structure_source_health_job
@@ -352,8 +357,11 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
 
     health_job_response = await client.post("/market-structure/health/jobs/run")
     assert health_job_response.status_code == 202
-    assert health_job_response.json() == {"status": "queued"}
-    assert queued_health == {}
+    health_payload = health_job_response.json()
+    assert health_payload["status"] == "accepted"
+    assert health_payload["operation_type"] == "market_structure.health.refresh"
+    assert isinstance(health_payload["operation_id"], str) and health_payload["operation_id"]
+    assert queued_health == {"operation_id": health_payload["operation_id"]}
 
     manual_response = await client.post(
         "/market-structure/sources",

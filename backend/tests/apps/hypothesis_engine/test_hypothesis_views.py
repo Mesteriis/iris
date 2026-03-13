@@ -37,12 +37,12 @@ async def hypothesis_api_client(monkeypatch):
 async def test_hypothesis_prompt_endpoints(hypothesis_api_client, monkeypatch) -> None:
     _, client = hypothesis_api_client
 
-    queued: dict[str, bool] = {}
+    queued: dict[str, object] = {}
 
     from src.apps.hypothesis_engine.tasks.hypothesis_tasks import evaluate_hypotheses_job
 
-    async def fake_kiq() -> None:
-        queued["called"] = True
+    async def fake_kiq(**kwargs) -> None:
+        queued.update(kwargs)
 
     monkeypatch.setattr(evaluate_hypotheses_job, "kiq", fake_kiq)
 
@@ -82,9 +82,11 @@ async def test_hypothesis_prompt_endpoints(hypothesis_api_client, monkeypatch) -
 
     job_response = await client.post("/hypothesis/jobs/evaluate")
     assert job_response.status_code == 202
-    assert job_response.json()["status"] == "accepted"
-    assert job_response.json()["operation_type"] == "hypothesis.evaluate"
-    assert queued == {"called": True}
+    payload = job_response.json()
+    assert payload["status"] == "accepted"
+    assert payload["operation_type"] == "hypothesis.evaluate"
+    assert isinstance(payload["operation_id"], str) and payload["operation_id"]
+    assert queued == {"operation_id": payload["operation_id"]}
 
 
 @pytest.mark.asyncio

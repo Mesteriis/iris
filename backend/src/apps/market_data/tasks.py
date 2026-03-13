@@ -4,6 +4,7 @@ from src.apps.market_data.query_services import MarketDataQueryService
 from src.apps.market_data.services import MarketDataHistorySyncService, MarketDataService
 from src.apps.patterns.tasks import patterns_bootstrap_scan
 from src.core.db.uow import AsyncUnitOfWork, BaseAsyncUnitOfWork
+from src.core.http.operation_store import OperationStore, run_tracked_operation
 from src.runtime.orchestration.broker import broker
 from src.runtime.orchestration.locks import async_redis_task_lock
 
@@ -198,5 +199,10 @@ async def run_coin_history_job(
     symbol: str,
     mode: str = "auto",
     force: bool = True,
+    operation_id: str | None = None,
 ) -> dict[str, object]:
-    return await _run_manual_coin_history_job(symbol=symbol, mode=mode, force=force)
+    return await run_tracked_operation(
+        store=OperationStore(),
+        operation_id=operation_id,
+        action=lambda: _run_manual_coin_history_job(symbol=symbol, mode=mode, force=force),
+    )

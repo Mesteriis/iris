@@ -14,7 +14,7 @@ Generated from the mode-aware OpenAPI contract.
 | `portfolio` | `read` | `read` | `read` |
 | `predictions` | `read` | `read` | `read` |
 | `signals` | `read`, `backtests`, `decisions`, `final-signals`, `market-decisions`, `strategies` | `read`, `backtests`, `decisions`, `final-signals`, `market-decisions`, `strategies` | `read`, `backtests`, `decisions`, `final-signals`, `market-decisions`, `strategies` |
-| `system` | `read` | `read` | `read` |
+| `system` | `read`, `operations` | `read`, `operations` | `read`, `operations` |
 
 ## Route Counts
 
@@ -50,3 +50,4 @@ Generated from the mode-aware OpenAPI contract.
 | `signals` | `market-decisions` | 3 | 3 | 3 |
 | `signals` | `strategies` | 2 | 2 | 2 |
 | `system` | `read` | 2 | 2 | 2 |
+| `system` | `operations` | 3 | 3 | 3 |

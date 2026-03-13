@@ -133,6 +133,8 @@ def isolated_event_stream(redis_client: Redis, settings) -> Iterator[None]:
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:control_plane:*"):
         redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:http:operations:*"):
+        redis_client.delete(key)
     yield
     flush_publisher(timeout=2.0)
     redis_client.delete(settings.event_stream_name)
@@ -151,6 +153,8 @@ def isolated_event_stream(redis_client: Redis, settings) -> Iterator[None]:
     for key in redis_client.scan_iter("iris:ai:*"):
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:control_plane:*"):
+        redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:http:operations:*"):
         redis_client.delete(key)
     reset_event_publisher()
 

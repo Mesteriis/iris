@@ -4,15 +4,16 @@ from collections.abc import Mapping
 from typing import Any
 
 from src.apps.market_structure.api.contracts import (
-    MarketStructureHealthJobQueuedRead,
+    MarketStructureHealthJobAcceptedRead,
     MarketStructureIngestResultRead,
     MarketStructurePluginRead,
     MarketStructureSnapshotRead,
     MarketStructureSourceHealthRead,
-    MarketStructureSourceJobQueuedRead,
+    MarketStructureSourceJobAcceptedRead,
     MarketStructureSourceRead,
     MarketStructureWebhookRegistrationRead,
 )
+from src.core.http.operations import OperationStatusResponse
 from src.core.db.persistence import thaw_json_value
 
 
@@ -112,12 +113,34 @@ def market_structure_webhook_registration_read(item: Any) -> MarketStructureWebh
     )
 
 
-def market_structure_source_job_queued_read(*, source_id: int, limit: int) -> MarketStructureSourceJobQueuedRead:
-    return MarketStructureSourceJobQueuedRead(source_id=int(source_id), limit=int(limit))
+def market_structure_source_job_accepted_read(
+    *,
+    operation: OperationStatusResponse,
+    source_id: int,
+    limit: int,
+) -> MarketStructureSourceJobAcceptedRead:
+    return MarketStructureSourceJobAcceptedRead.model_validate(
+        {
+            "operation_id": operation.operation_id,
+            "accepted_at": operation.accepted_at,
+            "correlation_id": operation.correlation_id,
+            "source_id": int(source_id),
+            "limit": int(limit),
+        }
+    )
 
 
-def market_structure_health_job_queued_read() -> MarketStructureHealthJobQueuedRead:
-    return MarketStructureHealthJobQueuedRead()
+def market_structure_health_job_accepted_read(
+    *,
+    operation: OperationStatusResponse,
+) -> MarketStructureHealthJobAcceptedRead:
+    return MarketStructureHealthJobAcceptedRead.model_validate(
+        {
+            "operation_id": operation.operation_id,
+            "accepted_at": operation.accepted_at,
+            "correlation_id": operation.correlation_id,
+        }
+    )
 
 
 def market_structure_ingest_result_read(result: Mapping[str, object]) -> MarketStructureIngestResultRead:
@@ -125,12 +148,12 @@ def market_structure_ingest_result_read(result: Mapping[str, object]) -> MarketS
 
 
 __all__ = [
-    "market_structure_health_job_queued_read",
+    "market_structure_health_job_accepted_read",
     "market_structure_ingest_result_read",
     "market_structure_plugin_read",
     "market_structure_snapshot_read",
     "market_structure_source_health_read",
-    "market_structure_source_job_queued_read",
+    "market_structure_source_job_accepted_read",
     "market_structure_source_read",
     "market_structure_webhook_registration_read",
 ]

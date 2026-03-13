@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from datetime import datetime
 from enum import StrEnum
 
@@ -37,3 +39,17 @@ class OperationStatusResponse(OperationResponse):
     error_code: str | None = None
     error_message: str | None = None
     retryable: bool = False
+
+
+class OperationResultResponse(OperationStatusResponse):
+    result: dict[str, Any] | None = None
+
+
+class OperationEventResponse(HttpContract):
+    operation_id: str
+    operation_type: str
+    event: str
+    status: OperationStatus
+    recorded_at: datetime
+    message: str | None = None
+    payload: dict[str, Any] | None = None

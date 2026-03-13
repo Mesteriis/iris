@@ -8,7 +8,7 @@ from src.apps.hypothesis_engine.api.contracts import (
     AIPromptRead,
     HypothesisEvaluationJobAcceptedRead,
 )
-from src.core.http.responses import accepted
+from src.core.http.operations import OperationStatusResponse
 
 
 def prompt_read(item: Any) -> AIPromptRead:
@@ -23,12 +23,16 @@ def hypothesis_eval_read(item: Any) -> AIHypothesisEvalRead:
     return AIHypothesisEvalRead.model_validate(item)
 
 
-def hypothesis_evaluation_job_accepted_read() -> HypothesisEvaluationJobAcceptedRead:
+def hypothesis_evaluation_job_accepted_read(
+    *,
+    operation: OperationStatusResponse,
+) -> HypothesisEvaluationJobAcceptedRead:
     return HypothesisEvaluationJobAcceptedRead.model_validate(
-        accepted(
-            operation_type="hypothesis.evaluate",
-            message="Hypothesis evaluation job queued.",
-        ).model_dump(mode="json")
+        {
+            "operation_id": operation.operation_id,
+            "accepted_at": operation.accepted_at,
+            "correlation_id": operation.correlation_id,
+        }
     )
 
 

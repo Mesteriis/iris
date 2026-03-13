@@ -14,6 +14,7 @@ def test_http_mode_matrix_tracks_mode_limited_categories() -> None:
     assert set(matrix["news"][matrix_module.LaunchMode.HA_ADDON]) == {"read"}
     assert set(matrix["hypothesis"][matrix_module.LaunchMode.FULL]) == {"commands", "jobs", "read", "streams"}
     assert set(matrix["hypothesis"][matrix_module.LaunchMode.HA_ADDON]) == {"commands", "read"}
+    assert set(matrix["system"][matrix_module.LaunchMode.FULL]) == {"operations", "read"}
 
 
 def test_http_availability_matrix_render_includes_route_counts() -> None:
@@ -25,6 +26,7 @@ def test_http_availability_matrix_render_includes_route_counts() -> None:
     assert "| `control-plane` | `read`, `commands` | `read`, `commands` | `read` |" in rendered
     assert "| `hypothesis` | `read`, `commands`, `jobs`, `streams` | `read`, `commands`, `jobs`, `streams` | `read`, `commands` |" in rendered
     assert "| `news` | `onboarding` |" in rendered
+    assert "| `system` | `read`, `operations` | `read`, `operations` | `read`, `operations` |" in rendered
 
 
 def test_http_availability_matrix_check_matches_generated_snapshot(tmp_path) -> None:

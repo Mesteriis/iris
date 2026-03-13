@@ -43,6 +43,7 @@ def test_bootstrap_app_builds_config_runs_migrations_and_enters_deferred_lifespa
     app = bootstrap_app_module.create_app()
     assert app.title == bootstrap_app_module.settings.app_name
     assert callable(app.state.run_migrations)
+    assert any(route.path == "/api/v1/operations/{operation_id}" for route in app.routes)
     assert any(route.path == "/api/v1/system/status" for route in app.routes)
     assert str(app.state.api_launch_mode) == bootstrap_app_module.settings.api_launch_mode
     assert str(app.state.api_deployment_profile) == bootstrap_app_module.settings.api_deployment_profile
@@ -84,6 +85,7 @@ def test_openapi_operation_ids_and_tags_follow_http_governance(monkeypatch) -> N
     assert "control_plane_read_event_registry" in operation_ids
     assert "market_data_create_coin" in operation_ids
     assert "hypothesis_run_evaluation_job" in operation_ids
+    assert "system_read_operation_status" in operation_ids
 
 
 def test_ha_addon_openapi_excludes_mode_limited_routes(monkeypatch) -> None:
@@ -98,6 +100,7 @@ def test_ha_addon_openapi_excludes_mode_limited_routes(monkeypatch) -> None:
     assert "/api/v1/hypothesis/sse/ai" not in paths
     assert "/api/v1/news/sources/{source_id}/jobs/run" not in paths
     assert "/api/v1/market-structure/health/jobs/run" not in paths
+    assert "/api/v1/operations/{operation_id}" in paths
     assert "post" not in paths["/api/v1/control-plane/routes"]
     assert "get" in paths["/api/v1/control-plane/routes"]
     assert "/api/v1/hypothesis/prompts" in paths

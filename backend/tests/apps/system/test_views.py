@@ -52,6 +52,50 @@ async def test_status_and_health_endpoints(api_app_client, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_operation_endpoints_expose_tracked_job_state(api_app_client, seeded_market, monkeypatch) -> None:
+    del seeded_market
+    _, client = api_app_client
+
+    queued: dict[str, object] = {}
+
+    from src.apps.market_data.tasks import run_coin_history_job
+
+    async def fake_kiq(**kwargs) -> None:
+        queued.update(kwargs)
+
+    monkeypatch.setattr(run_coin_history_job, "kiq", fake_kiq)
+
+    queue_response = await client.post("/coins/BTCUSD_EVT/jobs/run?mode=latest&force=false")
+    assert queue_response.status_code == 202
+    operation_id = queue_response.json()["operation_id"]
+
+    status_response = await client.get(f"/operations/{operation_id}")
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["operation_id"] == operation_id
+    assert status_payload["operation_type"] == "market_data.coin_history.sync"
+    assert status_payload["status"] == "queued"
+
+    result_response = await client.get(f"/operations/{operation_id}/result")
+    assert result_response.status_code == 200
+    result_payload = result_response.json()
+    assert result_payload["operation_id"] == operation_id
+    assert result_payload["result"] is None
+
+    events_response = await client.get(f"/operations/{operation_id}/events")
+    assert events_response.status_code == 200
+    events_payload = events_response.json()
+    assert [item["event"] for item in events_payload] == ["accepted", "queued"]
+    assert {item["status"] for item in events_payload} == {"accepted", "queued"}
+
+    missing_response = await client.get("/operations/missing-operation")
+    assert missing_response.status_code == 404
+    assert missing_response.json()["detail"]["code"] == "resource_not_found"
+
+    assert queued == {"symbol": "BTCUSD_EVT", "mode": "latest", "force": False, "operation_id": operation_id}
+
+
+@pytest.mark.asyncio
 async def test_source_status_rows_uses_carousel_and_rate_limits(monkeypatch) -> None:
     async def fake_snapshot(_name: str):
         return SimpleNamespace(
@@ -109,6 +153,8 @@ def test_system_api_router_is_mode_agnostic_and_legacy_views_removed() -> None:
     ha_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in ha_router.routes}
 
     assert full_paths == ha_paths
+    assert any(path == "/operations/{operation_id}" and "GET" in methods for path, methods in full_paths)
+    assert any(path == "/operations/{operation_id}/events" and "GET" in methods for path, methods in full_paths)
     assert any(path == "/system/status" and "GET" in methods for path, methods in full_paths)
     assert any(path == "/system/health" and "GET" in methods for path, methods in full_paths)
     assert importlib.util.find_spec("src.apps.system.views") is None

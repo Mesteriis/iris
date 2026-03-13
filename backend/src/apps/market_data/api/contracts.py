@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Literal
 
 from src.apps.market_data.schemas import CoinCreate, CoinRead, PriceHistoryCreate, PriceHistoryRead
-from src.core.http.contracts import HttpContract
+from src.core.http.contracts import AcceptedResponse
 
 
-class CoinJobQueuedRead(HttpContract):
-    status: Literal["queued"] = "queued"
+class CoinJobAcceptedRead(AcceptedResponse):
+    operation_type: Literal["market_data.coin_history.sync"] = "market_data.coin_history.sync"
     symbol: str
     mode: Literal["auto", "backfill", "latest"]
     force: bool
@@ -15,7 +15,7 @@ class CoinJobQueuedRead(HttpContract):
 
 __all__ = [
     "CoinCreate",
-    "CoinJobQueuedRead",
+    "CoinJobAcceptedRead",
     "CoinRead",
     "PriceHistoryCreate",
     "PriceHistoryRead",

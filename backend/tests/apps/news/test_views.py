@@ -109,12 +109,13 @@ async def test_news_endpoints(api_app_client, db_session, monkeypatch) -> None:
 
     queued_response = await client.post(f"/news/sources/{source_id}/jobs/run?limit=25")
     assert queued_response.status_code == 202
-    assert queued_response.json() == {
-        "status": "queued",
-        "source_id": source_id,
-        "limit": 25,
-    }
-    assert queued == {"source_id": source_id, "limit": 25}
+    queued_payload = queued_response.json()
+    assert queued_payload["status"] == "accepted"
+    assert queued_payload["operation_type"] == "news.source.poll"
+    assert queued_payload["source_id"] == source_id
+    assert queued_payload["limit"] == 25
+    assert isinstance(queued_payload["operation_id"], str) and queued_payload["operation_id"]
+    assert queued == {"source_id": source_id, "limit": 25, "operation_id": queued_payload["operation_id"]}
 
     missing_response = await client.post("/news/sources/999999/jobs/run")
     assert missing_response.status_code == 404

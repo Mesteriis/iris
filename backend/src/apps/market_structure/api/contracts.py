@@ -19,21 +19,21 @@ from src.apps.market_structure.schemas import (
     MarketStructureSourceUpdate,
     MarketStructureWebhookRegistrationRead,
 )
-from src.core.http.contracts import HttpContract
+from src.core.http.contracts import AcceptedResponse, HttpContract
 
 
 class NativeWebhookPayloadWrite(RootModel[dict[str, Any]]):
     root: dict[str, Any]
 
 
-class MarketStructureSourceJobQueuedRead(HttpContract):
-    status: Literal["queued"] = "queued"
+class MarketStructureSourceJobAcceptedRead(AcceptedResponse):
+    operation_type: Literal["market_structure.source.poll"] = "market_structure.source.poll"
     source_id: int
     limit: int
 
 
-class MarketStructureHealthJobQueuedRead(HttpContract):
-    status: Literal["queued"] = "queued"
+class MarketStructureHealthJobAcceptedRead(AcceptedResponse):
+    operation_type: Literal["market_structure.health.refresh"] = "market_structure.health.refresh"
 
 
 class MarketStructureIngestResultRead(HttpContract):
@@ -49,14 +49,14 @@ __all__ = [
     "ManualMarketStructureIngestRequest",
     "ManualPushMarketStructureSourceCreateRequest",
     "ManualWebhookMarketStructureSourceCreateRequest",
-    "MarketStructureHealthJobQueuedRead",
+    "MarketStructureHealthJobAcceptedRead",
     "MarketStructureIngestResultRead",
     "MarketStructureOnboardingRead",
     "MarketStructurePluginRead",
     "MarketStructureSnapshotRead",
     "MarketStructureSourceCreate",
     "MarketStructureSourceHealthRead",
-    "MarketStructureSourceJobQueuedRead",
+    "MarketStructureSourceJobAcceptedRead",
     "MarketStructureSourceRead",
     "MarketStructureSourceUpdate",
     "MarketStructureWebhookRegistrationRead",

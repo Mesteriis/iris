@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Annotated
+
+from fastapi import Depends
 
 from src.apps.system.schemas import SourceStatusRead, SystemStatusRead
 from src.apps.system.services import get_market_source_carousel, get_rate_limit_manager
 from src.core.db.session import ping_database
+from src.core.http.deps import get_operation_store
+from src.core.http.operation_store import OperationStore
+from src.core.http.operations import OperationEventResponse, OperationResultResponse, OperationStatusResponse
 
 
 @dataclass(slots=True, frozen=True)
@@ -48,8 +54,39 @@ class SystemStatusFacade:
         await ping_database()
 
 
+@dataclass(slots=True, frozen=True)
+class SystemOperationFacade:
+    store: OperationStore
+
+    async def get_status(self, operation_id: str) -> OperationStatusResponse | None:
+        return await self.store.get_status(operation_id)
+
+    async def get_result(self, operation_id: str) -> OperationResultResponse | None:
+        return await self.store.get_result(operation_id)
+
+    async def list_events(self, operation_id: str) -> tuple[OperationEventResponse, ...]:
+        return await self.store.list_events(operation_id)
+
+
 def get_system_status_facade() -> SystemStatusFacade:
     return SystemStatusFacade()
 
 
-__all__ = ["SystemStatusFacade", "get_system_status_facade"]
+def get_system_operation_facade(
+    store: OperationStore = Depends(get_operation_store),
+) -> SystemOperationFacade:
+    return SystemOperationFacade(store=store)
+
+
+SystemStatusFacadeDep = Annotated[SystemStatusFacade, Depends(get_system_status_facade)]
+SystemOperationFacadeDep = Annotated[SystemOperationFacade, Depends(get_system_operation_facade)]
+
+
+__all__ = [
+    "SystemOperationFacadeDep",
+    "SystemOperationFacade",
+    "SystemStatusFacadeDep",
+    "SystemStatusFacade",
+    "get_system_operation_facade",
+    "get_system_status_facade",
+]

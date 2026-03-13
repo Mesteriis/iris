@@ -9,7 +9,7 @@
 - `artifact drift control`: done
 - `review governance`: done
 - `capability metadata enrichment`: done
-- `operation resource model`: pending
+- `operation resource model`: done
 - `idempotency/concurrency runtime enforcement`: pending
 - `consistency/freshness semantics`: pending
 - `cache/revalidation governance`: pending
@@ -25,21 +25,29 @@
 - [x] Generated HTTP availability matrix with drift checks
 - [x] Generated HTTP capability catalog with drift checks
 - [x] Capability metadata policy over the generated catalog
+- [x] Unified operation resource model for async/job endpoints
 - [x] PR review checklist and API governance CI workflow
 
 ## Current Block
 
-- [ ] Unified operation resource model
+- [ ] Hard idempotency and concurrency policy at runtime level
   Scope:
-  - introduce first-class operation resource contract for async/job/apply/run flows
-  - expose consistent `operation_id` read model and follow-up endpoints
-  - connect capability metadata `operation_resource_required=yes` to real runtime/API behavior
+  - formalize deduplication/repeat semantics beyond `operation_id` visibility
+  - make conflict/version semantics explicit for mutable HTTP resources
+  - connect capability metadata to real runtime guards for retries and concurrent mutation
 
 ## Remaining Blocks
 
-- [ ] Hard idempotency and concurrency policy at runtime level
 - [ ] Consistency/freshness metadata for analytical reads
 - [ ] Cache/revalidation HTTP policy
+
+## Operation Resource Model
+
+- [x] async/job endpoints now return typed accepted contracts with stable `operation_id`
+- [x] `core/http/operation_store.py` persists operation status, result and event history in Redis
+- [x] system HTTP surface exposes `GET /operations/{operation_id}`, `/result` and `/events`
+- [x] job dispatchers in `news`, `market_data`, `market_structure` and `hypothesis_engine` now create tracked operations before queue dispatch
+- [x] TaskIQ job entrypoints update operation lifecycle through `run_tracked_operation(...)`
 
 ## Recent Commits
 
