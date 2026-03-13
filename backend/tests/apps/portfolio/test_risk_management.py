@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import select
 
 from src.core.settings import get_settings
 from src.apps.portfolio.models import PortfolioPosition
-from src.apps.portfolio.engine import evaluate_portfolio_action
+from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
+from src.core.db.uow import SessionUnitOfWork
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_market_decision, create_sector
 
 
-def test_risk_management_blocks_new_position_when_max_positions_reached(db_session) -> None:
+@pytest.mark.asyncio
+async def test_risk_management_blocks_new_position_when_max_positions_reached(async_db_session, db_session) -> None:
     settings = get_settings()
     for index in range(settings.portfolio_max_positions):
         coin = create_test_coin(db_session, symbol=f"BTC{index:02d}_EVT", name=f"Coin {index}")
@@ -21,8 +24,16 @@ def test_risk_management_blocks_new_position_when_max_positions_reached(db_sessi
             decision="BUY",
             confidence=0.8,
         )
-        result = evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=False)
-        assert result["status"] == "ok"
+        async with SessionUnitOfWork(async_db_session) as uow:
+            result = await PortfolioService(uow).evaluate_portfolio_action(
+                coin_id=int(coin.id),
+                timeframe=15,
+                emit_events=False,
+            )
+            await uow.commit()
+            await PortfolioSideEffectDispatcher().apply_action_result(result)
+        db_session.expire_all()
+        assert result.status == "ok"
 
     blocked = create_test_coin(db_session, symbol="SOLUSD_EVT", name="Solana Event Test")
     upsert_coin_metrics(db_session, coin_id=int(blocked.id), regime="bull_trend", timeframe=15)
@@ -34,10 +45,19 @@ def test_risk_management_blocks_new_position_when_max_positions_reached(db_sessi
         confidence=0.9,
     )
 
-    result = evaluate_portfolio_action(db_session, coin_id=int(blocked.id), timeframe=15, emit_events=False)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(blocked.id),
+            timeframe=15,
+            emit_events=False,
+        )
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_action_result(result)
 
-    assert result["status"] == "ok"
-    assert result["action"] == "HOLD_POSITION"
+    db_session.expire_all()
+
+    assert result.status == "ok"
+    assert result.action == "HOLD_POSITION"
     position = db_session.scalar(
         select(PortfolioPosition)
         .where(PortfolioPosition.coin_id == int(blocked.id), PortfolioPosition.timeframe == 15)
@@ -46,7 +66,8 @@ def test_risk_management_blocks_new_position_when_max_positions_reached(db_sessi
     assert position is None
 
 
-def test_risk_management_blocks_new_sector_when_exposure_limit_hit(db_session) -> None:
+@pytest.mark.asyncio
+async def test_risk_management_blocks_new_sector_when_exposure_limit_hit(async_db_session, db_session) -> None:
     settings = get_settings()
     sector = create_sector(db_session, name="Infrastructure")
     leader = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
@@ -60,8 +81,16 @@ def test_risk_management_blocks_new_sector_when_exposure_limit_hit(db_session) -
         decision="BUY",
         confidence=1.0,
     )
-    first = evaluate_portfolio_action(db_session, coin_id=int(leader.id), timeframe=15, emit_events=False)
-    assert first["action"] == "OPEN_POSITION"
+    async with SessionUnitOfWork(async_db_session) as uow:
+        first = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(leader.id),
+            timeframe=15,
+            emit_events=False,
+        )
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_action_result(first)
+    db_session.expire_all()
+    assert first.action == "OPEN_POSITION"
 
     original_limit = settings.portfolio_max_sector_exposure
     settings.portfolio_max_sector_exposure = 0.01
@@ -78,7 +107,15 @@ def test_risk_management_blocks_new_sector_when_exposure_limit_hit(db_session) -
             confidence=0.9,
         )
 
-        result = evaluate_portfolio_action(db_session, coin_id=int(follower.id), timeframe=15, emit_events=False)
-        assert result["action"] == "HOLD_POSITION"
+        async with SessionUnitOfWork(async_db_session) as uow:
+            result = await PortfolioService(uow).evaluate_portfolio_action(
+                coin_id=int(follower.id),
+                timeframe=15,
+                emit_events=False,
+            )
+            await uow.commit()
+            await PortfolioSideEffectDispatcher().apply_action_result(result)
+        db_session.expire_all()
+        assert result.action == "HOLD_POSITION"
     finally:
         settings.portfolio_max_sector_exposure = original_limit

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import select
 
 from src.apps.market_data.models import Coin
-from src.apps.portfolio.engine import sync_exchange_balances
+from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
+from src.core.db.uow import SessionUnitOfWork
 from tests.portfolio_support import create_exchange_account
 
 
@@ -24,15 +26,21 @@ class AutoWatchPlugin:
         return []
 
 
-def test_auto_watch_enables_coin_from_portfolio_balance(db_session) -> None:
+@pytest.mark.asyncio
+async def test_auto_watch_enables_coin_from_portfolio_balance(async_db_session, db_session) -> None:
     from src.apps.portfolio.clients import register_exchange
 
     register_exchange("fixture_watch", AutoWatchPlugin)
     create_exchange_account(db_session, exchange_name="fixture_watch")
 
-    result = sync_exchange_balances(db_session, emit_events=False)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await PortfolioService(uow).sync_exchange_balances(emit_events=False)
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_sync_result(result)
 
-    assert result["status"] == "ok"
+    db_session.expire_all()
+
+    assert result.status == "ok"
     coin = db_session.scalar(select(Coin).where(Coin.symbol == "SOLUSD_EVT").limit(1))
     assert coin is not None
     assert coin.enabled is True
