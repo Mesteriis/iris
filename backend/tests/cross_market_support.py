@@ -1,21 +1,26 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
-
 from src.apps.cross_market.cache import cache_correlation_snapshot_async
-from src.apps.market_data.models import Coin
-from src.apps.indicators.models import CoinMetrics
-from src.apps.predictions.models import MarketPrediction
-from src.apps.predictions.services import PredictionSideEffectDispatcher
 from src.apps.cross_market.services import CrossMarketService
 from src.apps.cross_market.support import relation_timeframe
+from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.domain import utc_now
+from src.apps.market_data.models import Coin
 from src.apps.market_data.repos import upsert_base_candles
 from src.apps.market_data.sources.base import MarketBar
+from src.apps.predictions.models import MarketPrediction
+from src.apps.predictions.services import (
+    PredictionCreationBatch,
+    PredictionEvaluationBatch,
+    PredictionService,
+    PredictionSideEffectDispatcher,
+)
 from src.core.db.uow import SessionUnitOfWork
 from src.runtime.streams.publisher import publish_event
+
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_sector
 
@@ -132,7 +137,7 @@ def create_pending_prediction(
     return row
 
 
-DEFAULT_START = datetime(2026, 3, 1, 0, 0, tzinfo=timezone.utc)
+DEFAULT_START = datetime(2026, 3, 1, 0, 0, tzinfo=UTC)
 
 
 async def run_cross_market_relation_update(
@@ -265,3 +270,47 @@ async def run_cross_market_process_event(
             payload=payload,
             emit_events=emit_events,
         )
+
+
+async def run_prediction_creation(
+    async_db_session,
+    *,
+    leader_coin_id: int,
+    prediction_event: str,
+    expected_move: str,
+    base_confidence: float,
+    emit_events: bool = False,
+    apply_side_effects: bool = True,
+) -> PredictionCreationBatch:
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await PredictionService(uow).create_market_predictions(
+            leader_coin_id=leader_coin_id,
+            prediction_event=prediction_event,
+            expected_move=expected_move,
+            base_confidence=base_confidence,
+            emit_events=emit_events,
+        )
+        if result.status == "ok":
+            await uow.commit()
+    if apply_side_effects:
+        await PredictionSideEffectDispatcher().apply_creation(result)
+    return result
+
+
+async def run_prediction_evaluation(
+    async_db_session,
+    *,
+    limit: int = 200,
+    emit_events: bool = True,
+    apply_side_effects: bool = True,
+) -> PredictionEvaluationBatch:
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await PredictionService(uow).evaluate_pending_predictions(
+            limit=limit,
+            emit_events=emit_events,
+        )
+        if result.status == "ok":
+            await uow.commit()
+    if apply_side_effects:
+        await PredictionSideEffectDispatcher().apply_evaluation(result)
+    return result

@@ -748,7 +748,8 @@ Typical use:
 
 ## Market Prediction Memory Engine
 
-The prediction memory layer lives under `backend/src/apps/predictions/engine.py`.
+The prediction persistence layer now lives under `backend/src/apps/predictions/services.py`,
+`backend/src/apps/predictions/repositories.py` and `backend/src/apps/predictions/query_services.py`.
 
 Responsibilities:
 
@@ -776,7 +777,12 @@ Redis caches and events:
 - `prediction_confirmed`
 - `prediction_failed`
 
-The evaluation worker checks only the required candle window between prediction creation and `evaluation_time`. It does not rescan full history.
+Operational rules:
+
+- all prediction writes run through `PredictionService` under the shared async UoW
+- repository methods own `flush()` when needed, but not `commit()`
+- cache writes and published prediction outcome events happen only after the transaction commits
+- prediction window evaluation checks only the required candle window between creation and `evaluation_time`; it does not rescan full history
 
 ## Signal History And Backtests
 

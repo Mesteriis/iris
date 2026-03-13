@@ -221,18 +221,17 @@ Status: migrated on the async API surface, scheduled evaluation job and cross-ma
 - scheduled evaluation now runs through [backend/src/apps/predictions/services.py](backend/src/apps/predictions/services.py) under the shared async UoW, with cache writes and published events deferred until after commit
 - cross-market leader detection now calls the same class-based prediction service instead of issuing direct prediction writes through a module-level async helper
 - creation now batches pending-window lookups by leader/target set, removing the old per-relation pending-check N+1 path from the active async flow
-- shared prediction constants/outcome helpers used by async services now live in [backend/src/apps/predictions/support.py](backend/src/apps/predictions/support.py), removing service-level imports from the legacy sync compatibility engine
-- internal sync prediction engine impls in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) still preserve the old transaction order for low-level tests and residual sync compatibility callers, including cache writes and evaluation event publication only after the top-level `commit()`
+- shared prediction constants/outcome helpers used by async services now live in [backend/src/apps/predictions/support.py](backend/src/apps/predictions/support.py)
+- [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) has been reduced to a shallow legacy import alias and no longer owns direct session queries or transaction boundaries
 - async prediction cache clients in [backend/src/apps/predictions/cache.py](backend/src/apps/predictions/cache.py) are now loop-scoped instead of process-global cached objects
 - the sync [backend/src/apps/predictions/selectors.py](backend/src/apps/predictions/selectors.py) layer has now been removed; active callers and tests read predictions only through async [backend/src/apps/predictions/query_services.py](backend/src/apps/predictions/query_services.py)
-- the public sync `create_market_predictions(...)` / `evaluate_pending_predictions(...)` wrappers have now also been removed from [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py); residual sync callers either use async [backend/src/apps/predictions/services.py](backend/src/apps/predictions/services.py) or explicit internal engine impls during the remaining compatibility cutover
+- low-level tests now execute prediction creation/evaluation through `SessionUnitOfWork`-backed service harnesses instead of internal sync engine helpers
 - remaining follow-up:
-- residual direct use of internal sync helpers in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) should disappear once the remaining low-level sync tests and helper-only `portfolio` engine paths are retired
+- helper-only `portfolio` paths should eventually stop treating `predictions/engine.py` as an operational module and depend directly on [backend/src/apps/predictions/services.py](backend/src/apps/predictions/services.py) if they need prediction orchestration
 
 Classification:
 
-- `OK` on the async/public API and scheduled runtime surface
-- `later migration` for the last internal sync helper callers kept behind compatibility/test-only code
+- `OK`
 
 #### `apps/signals`
 

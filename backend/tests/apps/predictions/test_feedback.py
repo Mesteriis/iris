@@ -2,22 +2,29 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from redis import Redis
-
-from src.apps.predictions.engine import _evaluate_pending_predictions_impl
-from src.runtime.streams.publisher import flush_publisher
 from src.apps.cross_market.models import CoinRelation
 from src.apps.market_data.domain import utc_now
+from src.runtime.streams.publisher import flush_publisher
+
 from tests.cross_market_support import (
     DEFAULT_START,
     create_cross_market_coin,
     create_pending_prediction,
     generate_close_series,
+    run_prediction_evaluation,
     seed_candles,
 )
 
 
-def test_prediction_feedback_updates_relation_confidence_and_emits_event(db_session, redis_client: Redis, settings) -> None:
+@pytest.mark.asyncio
+async def test_prediction_feedback_updates_relation_confidence_and_emits_event(
+    async_db_session,
+    db_session,
+    redis_client: Redis,
+    settings,
+) -> None:
     leader = create_cross_market_coin(
         db_session,
         symbol="BTCUSD_EVT",
@@ -54,7 +61,7 @@ def test_prediction_feedback_updates_relation_confidence_and_emits_event(db_sess
         expected_move="up",
     )
 
-    _evaluate_pending_predictions_impl(db_session, emit_events=True)
+    await run_prediction_evaluation(async_db_session, emit_events=True)
     assert flush_publisher(timeout=5.0)
 
     db_session.refresh(relation)

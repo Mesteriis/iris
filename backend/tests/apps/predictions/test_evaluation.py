@@ -1,20 +1,21 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import select
+from src.apps.predictions.models import MarketPrediction, PredictionResult
 
-from src.apps.predictions.engine import _evaluate_pending_predictions_impl
-from src.apps.predictions.models import MarketPrediction
-from src.apps.predictions.models import PredictionResult
 from tests.cross_market_support import (
     DEFAULT_START,
     create_cross_market_coin,
     create_pending_prediction,
     generate_close_series,
+    run_prediction_evaluation,
     seed_candles,
 )
 
 
-def test_prediction_evaluation_marks_prediction_confirmed(db_session) -> None:
+@pytest.mark.asyncio
+async def test_prediction_evaluation_marks_prediction_confirmed(async_db_session, db_session) -> None:
     leader = create_cross_market_coin(
         db_session,
         symbol="BTCUSD_EVT",
@@ -41,14 +42,15 @@ def test_prediction_evaluation_marks_prediction_confirmed(db_session) -> None:
         expected_move="up",
     )
 
-    result = _evaluate_pending_predictions_impl(db_session, emit_events=False)
+    result = await run_prediction_evaluation(async_db_session, emit_events=False)
 
+    db_session.expire_all()
     refreshed = db_session.get(MarketPrediction, int(prediction.id))
     outcome = db_session.scalar(
         select(PredictionResult).where(PredictionResult.prediction_id == int(prediction.id)).limit(1)
     )
-    assert result["status"] == "ok"
-    assert result["confirmed"] >= 1
+    assert result.status == "ok"
+    assert result.confirmed >= 1
     assert refreshed is not None
     assert refreshed.status == "confirmed"
     assert outcome is not None
@@ -56,7 +58,8 @@ def test_prediction_evaluation_marks_prediction_confirmed(db_session) -> None:
     assert float(outcome.profit) > 0
 
 
-def test_prediction_evaluation_marks_prediction_failed(db_session) -> None:
+@pytest.mark.asyncio
+async def test_prediction_evaluation_marks_prediction_failed(async_db_session, db_session) -> None:
     leader = create_cross_market_coin(
         db_session,
         symbol="BTCUSD_EVT",
@@ -83,14 +86,15 @@ def test_prediction_evaluation_marks_prediction_failed(db_session) -> None:
         expected_move="up",
     )
 
-    result = _evaluate_pending_predictions_impl(db_session, emit_events=False)
+    result = await run_prediction_evaluation(async_db_session, emit_events=False)
 
+    db_session.expire_all()
     refreshed = db_session.get(MarketPrediction, int(prediction.id))
     outcome = db_session.scalar(
         select(PredictionResult).where(PredictionResult.prediction_id == int(prediction.id)).limit(1)
     )
-    assert result["status"] == "ok"
-    assert result["failed"] >= 1
+    assert result.status == "ok"
+    assert result.failed >= 1
     assert refreshed is not None
     assert refreshed.status == "failed"
     assert outcome is not None
