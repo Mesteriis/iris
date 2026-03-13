@@ -160,15 +160,17 @@ Classification:
 
 #### `apps/patterns`
 
-Status: migrated on the async API/application and TaskIQ orchestration surface; legacy sync helper modules still remain under `domain/`
+Status: migrated on the async API/application, TaskIQ orchestration and runtime worker surfaces; legacy sync helper modules still remain under `domain/`
 
 - repositories now isolate pattern feature and pattern registry write paths in [backend/src/apps/patterns/repositories.py](backend/src/apps/patterns/repositories.py)
 - read-only pattern catalog, discovered pattern, coin regime, coin pattern, sector metrics and market-cycle projections now go through [backend/src/apps/patterns/query_services.py](backend/src/apps/patterns/query_services.py)
 - immutable dataclass read models now live in [backend/src/apps/patterns/read_models.py](backend/src/apps/patterns/read_models.py)
 - views now depend on the shared async UoW instead of owning `AsyncSession` directly
 - the market-cycle endpoint consumed by `indicators` now reuses the same query service instead of a module-level function facade
+- async signal projection builders now live in [backend/src/apps/patterns/query_builders.py](backend/src/apps/patterns/query_builders.py) and are reused by both `patterns` and `signals` query services instead of importing selector helpers from [backend/src/apps/patterns/selectors.py](backend/src/apps/patterns/selectors.py)
 - persistence logging now covers pattern feature/pattern registry writes and public query paths
 - TaskIQ flows now run through async class-based services in [backend/src/apps/patterns/task_services.py](backend/src/apps/patterns/task_services.py) and [backend/src/apps/patterns/tasks.py](backend/src/apps/patterns/tasks.py), removing the old `AsyncSession.run_sync` bridge from active runtime orchestration
+- `pattern_workers` and `regime_workers` now delegate incremental detection + regime refresh to async class-based [backend/src/apps/patterns/task_service_runtime.py](backend/src/apps/patterns/task_service_runtime.py) (`PatternRealtimeService`) under shared UoW ownership, removing the old sync `PatternEngine` / `update_market_cycle` / cluster+hierarchy `run_sync` path from [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py)
 - `decision_workers` now delegate context enrichment plus decision/final-signal generation to async `PatternSignalContextService` under UoW, removing the old sync `run_sync` decision path from [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py)
 - async market-data candle repositories now expose range/series fetchers used by the pattern task services without pushing raw session access back into the task layer
 - remaining follow-up:
@@ -177,7 +179,7 @@ Status: migrated on the async API/application and TaskIQ orchestration surface; 
 
 Classification:
 
-- `OK` on async/public callers and TaskIQ entrypoints
+- `OK` on async/public callers, TaskIQ entrypoints and runtime workers
 - `later migration` for residual sync helper modules kept behind the persistence layer
 
 #### `apps/cross_market`
@@ -190,8 +192,10 @@ Status: migrated on the async runtime/worker surface; legacy sync helpers remain
 - active worker writes now run through [backend/src/apps/cross_market/services.py](backend/src/apps/cross_market/services.py) under the shared async UoW instead of `AsyncSession.run_sync`
 - leader/follower candle loading now batches candidate leader history through [backend/src/apps/market_data/repositories.py](backend/src/apps/market_data/repositories.py), removing the old loop-driven N+1 path from relation updates
 - correlation cache writes, prediction cache writes and emitted leader/rotation/correlation events now happen only after the persistence transaction commits on the active runtime path
+- legacy sync helpers under [backend/src/apps/cross_market/engine.py](backend/src/apps/cross_market/engine.py) now emit structured deprecation logs and reuse the same summary result contracts as the async service layer, keeping compatibility callers on the same payload shape while migration continues
+- async correlation cache clients in [backend/src/apps/cross_market/cache.py](backend/src/apps/cross_market/cache.py) are now loop-scoped like `signals`/`predictions`, removing another shared-client edge from tests and worker runtimes
 - remaining follow-up:
-  - legacy sync helpers under [backend/src/apps/cross_market/engine.py](backend/src/apps/cross_market/engine.py) still exist for `signals`/compatibility callers and should be retired incrementally as those callers migrate
+  - legacy sync helpers under [backend/src/apps/cross_market/engine.py](backend/src/apps/cross_market/engine.py) still exist for `signals`/compatibility callers and should be retired incrementally as those callers migrate off the compatibility module entirely
 
 Classification:
 
@@ -209,6 +213,9 @@ Status: migrated on the async API surface, scheduled evaluation job and cross-ma
 - scheduled evaluation now runs through [backend/src/apps/predictions/services.py](backend/src/apps/predictions/services.py) under the shared async UoW, with cache writes and published events deferred until after commit
 - cross-market leader detection now calls the same class-based prediction service instead of issuing direct prediction writes through a module-level async helper
 - creation now batches pending-window lookups by leader/target set, removing the old per-relation pending-check N+1 path from the active async flow
+- shared prediction constants/outcome helpers used by async services now live in [backend/src/apps/predictions/support.py](backend/src/apps/predictions/support.py), removing service-level imports from the legacy sync compatibility engine
+- legacy sync helpers in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) and [backend/src/apps/predictions/selectors.py](backend/src/apps/predictions/selectors.py) now emit structured deprecation logs, share a common prediction select builder and use the same summary/result contracts as the async service and query layers
+- async prediction cache clients in [backend/src/apps/predictions/cache.py](backend/src/apps/predictions/cache.py) are now loop-scoped instead of process-global cached objects
 - remaining follow-up:
   - legacy sync helpers in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) and [backend/src/apps/predictions/selectors.py](backend/src/apps/predictions/selectors.py) still exist for compatibility callers/tests and should be retired incrementally as the remaining sync-heavy domains migrate
 
@@ -226,13 +233,16 @@ Status: migrated on the async/public API read surface plus signal-fusion and sig
 - views now depend on the shared async UoW instead of injecting `AsyncSession` directly in [backend/src/apps/signals/views.py](backend/src/apps/signals/views.py)
 - write-side signal-fusion persistence now goes through [backend/src/apps/signals/repositories.py](backend/src/apps/signals/repositories.py)
 - history writes now also go through [backend/src/apps/signals/repositories.py](backend/src/apps/signals/repositories.py)
-- [backend/src/apps/signals/services.py](backend/src/apps/signals/services.py) now hosts the class-based async `SignalFusionService`, `SignalHistoryService` and post-commit side-effect dispatcher while preserving only sync compatibility exports for legacy callers
+- [backend/src/apps/signals/services.py](backend/src/apps/signals/services.py) now hosts only class-based async `SignalFusionService`, `SignalHistoryService` and post-commit side-effect dispatchers on the active runtime path, without re-exporting legacy sync compatibility helpers
 - [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py) now routes `signal_fusion_workers` through the shared async UoW instead of opening sync write boundaries inside `fusion.py`
 - [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py) now refreshes signal history through the shared async UoW instead of calling `refresh_recent_signal_history()` inside the sync decision flow
 - [backend/src/apps/patterns/task_service_history.py](backend/src/apps/patterns/task_service_history.py) now delegates signal-history refresh to `SignalHistoryService`, removing the duplicated async history persistence path
 - active async query/service code now uses [backend/src/apps/signals/backtest_support.py](backend/src/apps/signals/backtest_support.py), [backend/src/apps/signals/fusion_support.py](backend/src/apps/signals/fusion_support.py) and [backend/src/apps/signals/history_support.py](backend/src/apps/signals/history_support.py) instead of importing pure helper logic from the legacy sync compatibility modules directly
+- active async query paths now resolve latest decision/final-signal/market-decision ranking subqueries via [backend/src/apps/signals/query_builders.py](backend/src/apps/signals/query_builders.py), removing direct imports from compatibility selector modules inside [backend/src/apps/signals/query_services.py](backend/src/apps/signals/query_services.py)
+- sync compatibility selector adapters now reuse the same latest-* query builders and align sector projection with the async read path, avoiding drift between `SignalQueryService` payloads and legacy selector payloads
+- `SignalFusionService` now enriches pattern context through async [backend/src/apps/patterns/task_services.py](backend/src/apps/patterns/task_services.py) (`PatternSignalContextService.enrich_context_only`) under shared UoW ownership, removing the old `AsyncSession.run_sync` bridge to `patterns.domain.context`
 - sync compatibility readers in [backend/src/apps/signals/backtests.py](backend/src/apps/signals/backtests.py), [backend/src/apps/signals/strategies.py](backend/src/apps/signals/strategies.py), [backend/src/apps/signals/decision_selectors.py](backend/src/apps/signals/decision_selectors.py), [backend/src/apps/signals/market_decision_selectors.py](backend/src/apps/signals/market_decision_selectors.py) and [backend/src/apps/signals/final_signal_selectors.py](backend/src/apps/signals/final_signal_selectors.py) now use class-based adapters with structured deprecation logs
-- sync compatibility write entrypoints in [backend/src/apps/signals/fusion.py](backend/src/apps/signals/fusion.py) and [backend/src/apps/signals/history.py](backend/src/apps/signals/history.py) now run through class-based compatibility services with structured deprecation logs
+- sync compatibility write entrypoints in [backend/src/apps/signals/fusion.py](backend/src/apps/signals/fusion.py) and [backend/src/apps/signals/history.py](backend/src/apps/signals/history.py) now run through class-based compatibility services with structured deprecation logs and emit the same summary-shape contracts as the active async services
 - market-decision detail reads keep their cache-first behavior but the fallback and DB projection are now logged through the shared persistence logger inside `SignalQueryService`
 - remaining follow-up:
   - legacy sync compatibility helpers inside [backend/src/apps/signals/fusion.py](backend/src/apps/signals/fusion.py) still remain and should be retired once all remaining callers move to `SignalFusionService`
@@ -254,9 +264,13 @@ Status: migrated on the async/public API read surface, scheduled balance-sync pa
 - `/portfolio/*` views now depend on the shared async UoW instead of injecting `AsyncSession` directly in [backend/src/apps/portfolio/views.py](backend/src/apps/portfolio/views.py)
 - `portfolio_sync_job` now runs through [backend/src/apps/portfolio/services.py](backend/src/apps/portfolio/services.py) under the shared async UoW, with cache writes and published events deferred until after commit
 - `portfolio_workers` now evaluate portfolio actions through the class-based async `PortfolioService` under the shared async UoW, with event/cache side effects applied post-commit
+- async portfolio decision-ranking projection now uses [backend/src/apps/portfolio/query_builders.py](backend/src/apps/portfolio/query_builders.py) from both query and compatibility selector layers, and shared position-sizing/stop helpers now live in [backend/src/apps/portfolio/support.py](backend/src/apps/portfolio/support.py) so async services no longer depend on legacy sync engine modules
+- legacy sync selectors in [backend/src/apps/portfolio/selectors.py](backend/src/apps/portfolio/selectors.py) now emit structured deprecation logs and reuse the same shared projection builders plus immutable read-model mapping logic as [backend/src/apps/portfolio/query_services.py](backend/src/apps/portfolio/query_services.py)
+- legacy sync wrappers in [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) now emit structured deprecation logs and normalize their public payloads through the same `PortfolioActionEvaluationResult` / `PortfolioSyncResult` summary contracts used by the async service layer
+- async portfolio cache clients in [backend/src/apps/portfolio/cache.py](backend/src/apps/portfolio/cache.py) are now loop-scoped instead of process-global cached clients
 - the active sync path no longer re-fetches `ExchangeAccount` per balance row, removing an avoidable per-item read on the balance-sync loop
 - remaining follow-up:
-  - [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) and [backend/src/apps/portfolio/selectors.py](backend/src/apps/portfolio/selectors.py) still own sync analytical logic, ad-hoc dict read contracts and direct commit boundaries that require a later async/class-first pass
+  - [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) and [backend/src/apps/portfolio/selectors.py](backend/src/apps/portfolio/selectors.py) still own sync analytical logic and direct commit boundaries that require a later async/class-first retirement of the compatibility layer
 
 Classification:
 
@@ -297,6 +311,10 @@ Priority note:
 
 Direct session injection on migrated FastAPI surfaces has been removed. Remaining DB-bound caller drift is concentrated in legacy sync analytical helpers rather than `views.py`.
 
+Runtime note:
+
+- `analysis_scheduler_workers` now use `AnalysisSchedulerService` under shared async UoW ownership instead of direct `AsyncSession` reads/commits in [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py).
+
 ### Transaction Boundary Drift
 
 Representative offenders:
@@ -305,6 +323,10 @@ Representative offenders:
 - [backend/src/apps/market_data/services.py](backend/src/apps/market_data/services.py)
 - [backend/src/apps/patterns/selectors.py](backend/src/apps/patterns/selectors.py)
 - [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py)
+
+Recently fixed:
+
+- analysis scheduler stream handling in [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py) no longer commits through direct session ownership.
 
 Required action:
 
@@ -352,7 +374,7 @@ Recommended rollout order:
 6. completed: `apps/anomalies`
 7. completed: `apps/market_data`
 8. completed: `apps/indicators`
-9. completed on the async/public and TaskIQ orchestration surface: `apps/patterns`
+9. completed on the async/public, TaskIQ orchestration and runtime worker surfaces: `apps/patterns`
 10. completed on the async/background runtime surface: `apps/cross_market`
 11. completed on the async/public API and scheduled runtime surface: `apps/predictions`
 12. completed on the async/public API read plus signal-fusion/signal-history runtime surfaces: `apps/signals`

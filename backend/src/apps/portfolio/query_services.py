@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apps.cross_market.models import Sector
-from src.apps.indicators.models import CoinMetrics
-from src.apps.market_data.models import Coin
 from src.apps.patterns.domain.regime import read_regime_details
 from src.apps.portfolio.cache import cache_portfolio_state_async, read_cached_portfolio_state_async
 from src.apps.portfolio.models import PortfolioAction, PortfolioPosition, PortfolioState
@@ -17,8 +14,10 @@ from src.apps.portfolio.read_models import (
     portfolio_position_read_model_from_mapping,
     portfolio_state_read_model_from_mapping,
 )
-from src.apps.portfolio.selectors import _latest_market_decisions_subquery
-from src.apps.signals.models import MarketDecision
+from src.apps.portfolio.query_builders import (
+    portfolio_actions_select as _portfolio_actions_select,
+    portfolio_positions_select as _portfolio_positions_select,
+)
 from src.core.db.persistence import AsyncQueryService
 from src.core.settings import get_settings
 
@@ -29,44 +28,9 @@ class PortfolioQueryService(AsyncQueryService):
 
     async def list_positions(self, *, limit: int = 200) -> tuple[PortfolioPositionReadModel, ...]:
         self._log_debug("query.list_portfolio_positions", mode="read", limit=limit, loading_profile="projection")
-        latest_decisions = _latest_market_decisions_subquery()
         rows = (
             await self.session.execute(
-                select(
-                    PortfolioPosition.id,
-                    PortfolioPosition.coin_id,
-                    Coin.symbol,
-                    Coin.name,
-                    Sector.name.label("sector"),
-                    PortfolioPosition.exchange_account_id,
-                    PortfolioPosition.source_exchange,
-                    PortfolioPosition.position_type,
-                    PortfolioPosition.timeframe,
-                    PortfolioPosition.entry_price,
-                    PortfolioPosition.position_size,
-                    PortfolioPosition.position_value,
-                    PortfolioPosition.stop_loss,
-                    PortfolioPosition.take_profit,
-                    PortfolioPosition.status,
-                    PortfolioPosition.opened_at,
-                    PortfolioPosition.closed_at,
-                    CoinMetrics.price_current,
-                    CoinMetrics.market_regime,
-                    CoinMetrics.market_regime_details,
-                    latest_decisions.c.decision.label("latest_decision"),
-                    latest_decisions.c.confidence.label("latest_decision_confidence"),
-                )
-                .join(Coin, Coin.id == PortfolioPosition.coin_id)
-                .outerjoin(Sector, Sector.id == Coin.sector_id)
-                .outerjoin(CoinMetrics, CoinMetrics.coin_id == PortfolioPosition.coin_id)
-                .outerjoin(
-                    latest_decisions,
-                    and_(
-                        latest_decisions.c.coin_id == PortfolioPosition.coin_id,
-                        latest_decisions.c.timeframe == PortfolioPosition.timeframe,
-                        latest_decisions.c.decision_rank == 1,
-                    ),
-                )
+                _portfolio_positions_select()
                 .where(PortfolioPosition.status.in_(("open", "partial")))
                 .order_by(PortfolioPosition.position_value.desc(), PortfolioPosition.id.desc())
                 .limit(max(limit, 1))
@@ -109,20 +73,7 @@ class PortfolioQueryService(AsyncQueryService):
         self._log_debug("query.list_portfolio_actions", mode="read", limit=limit, loading_profile="projection")
         rows = (
             await self.session.execute(
-                select(
-                    PortfolioAction.id,
-                    PortfolioAction.coin_id,
-                    Coin.symbol,
-                    Coin.name,
-                    PortfolioAction.action,
-                    PortfolioAction.size,
-                    PortfolioAction.confidence,
-                    PortfolioAction.decision_id,
-                    MarketDecision.decision.label("market_decision"),
-                    PortfolioAction.created_at,
-                )
-                .join(Coin, Coin.id == PortfolioAction.coin_id)
-                .join(MarketDecision, MarketDecision.id == PortfolioAction.decision_id)
+                _portfolio_actions_select()
                 .order_by(PortfolioAction.created_at.desc(), PortfolioAction.id.desc())
                 .limit(max(limit, 1))
             )

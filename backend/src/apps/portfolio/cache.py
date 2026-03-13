@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from functools import lru_cache
 from typing import Any
+from weakref import WeakKeyDictionary
 
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
@@ -12,6 +14,7 @@ from src.core.settings import get_settings
 PORTFOLIO_STATE_CACHE_KEY = "iris:portfolio:state"
 PORTFOLIO_BALANCES_CACHE_KEY = "iris:portfolio:balances"
 PORTFOLIO_CACHE_TTL_SECONDS = 60 * 60 * 24
+_ASYNC_PORTFOLIO_CACHE_CLIENTS: "WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedis]" = WeakKeyDictionary()
 
 
 # NOTE:
@@ -23,10 +26,24 @@ def get_portfolio_cache_client() -> Redis:
     return Redis.from_url(settings.redis_url, decode_responses=True)
 
 
-@lru_cache(maxsize=1)
 def get_async_portfolio_cache_client() -> AsyncRedis:
     settings = get_settings()
-    return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+    client = _ASYNC_PORTFOLIO_CACHE_CLIENTS.get(loop)
+    if client is None:
+        client = AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+        _ASYNC_PORTFOLIO_CACHE_CLIENTS[loop] = client
+    return client
+
+
+def _clear_async_portfolio_cache_clients() -> None:
+    _ASYNC_PORTFOLIO_CACHE_CLIENTS.clear()
+
+
+setattr(get_async_portfolio_cache_client, "cache_clear", _clear_async_portfolio_cache_clients)
 
 
 def _serialize_payload(payload: list[dict[str, Any]] | dict[str, Any]) -> str:

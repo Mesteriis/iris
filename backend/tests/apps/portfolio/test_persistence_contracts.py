@@ -6,12 +6,20 @@ import pytest
 from sqlalchemy import select
 
 import src.apps.portfolio.services as portfolio_services_module
-from src.apps.portfolio.models import PortfolioAction, PortfolioBalance
+from src.apps.portfolio.engine import (
+    ensure_portfolio_state,
+    evaluate_portfolio_action,
+    refresh_portfolio_state,
+    sync_exchange_balances,
+)
+from src.apps.portfolio.models import PortfolioAction, PortfolioBalance, PortfolioPosition, PortfolioState
 from src.apps.portfolio.query_services import PortfolioQueryService
+from src.apps.portfolio.selectors import get_portfolio_state, list_portfolio_actions, list_portfolio_positions
 from src.apps.portfolio.services import PortfolioService
 from src.core.db.persistence import PERSISTENCE_LOGGER
 from src.core.db.uow import SessionUnitOfWork
-from tests.portfolio_support import create_exchange_account
+from tests.fusion_support import create_test_coin, upsert_coin_metrics
+from tests.portfolio_support import create_exchange_account, create_market_decision
 
 
 class _SingleBalancePlugin:
@@ -28,9 +36,55 @@ class _SingleBalancePlugin:
         return []
 
 
+def _seed_portfolio_projection_state(db_session):
+    coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
+    upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=15)
+    decision = create_market_decision(
+        db_session,
+        coin_id=int(coin.id),
+        timeframe=15,
+        decision="BUY",
+        confidence=0.8,
+    )
+    db_session.merge(
+        PortfolioState(
+            id=1,
+            total_capital=100_000.0,
+            allocated_capital=250.0,
+            available_capital=99_750.0,
+        )
+    )
+    db_session.add(
+        PortfolioPosition(
+            coin_id=int(coin.id),
+            exchange_account_id=None,
+            source_exchange="fixture",
+            position_type="long",
+            timeframe=15,
+            entry_price=100.0,
+            position_size=2.5,
+            position_value=250.0,
+            stop_loss=95.0,
+            take_profit=110.0,
+            status="open",
+        )
+    )
+    db_session.add(
+        PortfolioAction(
+            coin_id=int(coin.id),
+            action="OPEN_POSITION",
+            size=250.0,
+            confidence=0.8,
+            decision_id=int(decision.id),
+        )
+    )
+    db_session.commit()
+    return coin, decision
+
+
 @pytest.mark.asyncio
-async def test_portfolio_query_returns_immutable_read_models(async_db_session, seeded_api_state) -> None:
-    del seeded_api_state
+async def test_portfolio_query_returns_immutable_read_models(async_db_session, db_session) -> None:
+    _seed_portfolio_projection_state(db_session)
     rows = await PortfolioQueryService(async_db_session).list_positions(limit=10)
 
     assert rows
@@ -61,8 +115,8 @@ async def test_portfolio_service_defers_commit_to_uow(async_db_session, db_sessi
 
 
 @pytest.mark.asyncio
-async def test_portfolio_action_service_defers_commit_to_uow(async_db_session, db_session, seeded_api_state) -> None:
-    btc = seeded_api_state["btc"]
+async def test_portfolio_action_service_defers_commit_to_uow(async_db_session, db_session) -> None:
+    btc, _decision = _seed_portfolio_projection_state(db_session)
     baseline = db_session.scalar(
         select(PortfolioAction)
         .where(PortfolioAction.coin_id == int(btc.id))
@@ -100,10 +154,9 @@ async def test_portfolio_action_service_defers_commit_to_uow(async_db_session, d
 async def test_portfolio_persistence_logs_cover_query_service_service_and_uow(
     async_db_session,
     db_session,
-    seeded_api_state,
     monkeypatch,
 ) -> None:
-    btc = seeded_api_state["btc"]
+    btc, _decision = _seed_portfolio_projection_state(db_session)
     events: list[str] = []
 
     def _debug(message: str, *args, **kwargs) -> None:
@@ -150,3 +203,61 @@ def test_portfolio_services_exports_no_public_async_query_wrappers() -> None:
 
     for export_name in forbidden_exports:
         assert not hasattr(portfolio_services_module, export_name), export_name
+
+
+def test_portfolio_legacy_compatibility_queries_emit_deprecation_logs(db_session, monkeypatch) -> None:
+    _seed_portfolio_projection_state(db_session)
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+
+    positions = list_portfolio_positions(db_session, limit=5)
+    actions = list_portfolio_actions(db_session, limit=5)
+    state_payload = get_portfolio_state(db_session)
+
+    assert positions and positions[0]["symbol"] == "BTCUSD_EVT"
+    assert actions and actions[0]["action"] == "OPEN_POSITION"
+    assert state_payload["open_positions"] == 1
+    assert "compat.list_portfolio_positions.deprecated" in events
+    assert "compat.list_portfolio_actions.deprecated" in events
+    assert "compat.get_portfolio_state.deprecated" in events
+
+
+def test_portfolio_legacy_compatibility_services_emit_deprecation_logs(db_session, monkeypatch) -> None:
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+    monkeypatch.setattr(
+        "src.apps.portfolio.engine.PortfolioCompatibilityService.evaluate_portfolio_action",
+        lambda self, **_kwargs: {
+            "status": "ok",
+            "coin_id": 1,
+            "timeframe": 15,
+            "decision": "BUY",
+            "action": "HOLD_POSITION",
+            "size": 0.0,
+            "portfolio_state": None,
+        },
+    )
+    monkeypatch.setattr(
+        "src.apps.portfolio.engine.PortfolioCompatibilityService.sync_exchange_balances",
+        lambda self, **_kwargs: {"status": "ok", "accounts": 0, "balances": 0, "items": []},
+    )
+
+    assert ensure_portfolio_state(db_session).id == 1
+    assert refresh_portfolio_state(db_session).id == 1
+    assert evaluate_portfolio_action(db_session, coin_id=1, timeframe=15, emit_events=False)["status"] == "ok"
+    assert sync_exchange_balances(db_session, emit_events=False)["status"] == "ok"
+
+    assert "compat.ensure_portfolio_state.deprecated" in events
+    assert "compat.refresh_portfolio_state.deprecated" in events
+    assert "compat.evaluate_portfolio_action.deprecated" in events
+    assert "compat.sync_exchange_balances.deprecated" in events

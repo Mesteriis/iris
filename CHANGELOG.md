@@ -26,6 +26,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - legacy `signals` `backtests.py` and `strategies.py` sync entrypoints now execute through class-based compatibility adapters with structured deprecation logging.
 - legacy `signals` `decision_selectors.py`, `market_decision_selectors.py` and `final_signal_selectors.py` sync read entrypoints now execute through class-based compatibility adapters with structured deprecation logging.
 - legacy `signals` `fusion.py` and `history.py` sync write entrypoints now execute through class-based compatibility services with structured deprecation logging.
+- legacy `predictions` `engine.py` and `selectors.py` sync entrypoints now use structured deprecation logging, shared query/result contracts and loop-scoped async cache clients instead of standalone legacy payload builders.
+- legacy `cross_market` `engine.py` sync entrypoints now use structured deprecation logging plus the same summary result contracts as the async service layer, and async correlation cache clients are now loop-scoped for worker/test safety.
+- legacy `portfolio` `engine.py` and `selectors.py` sync entrypoints now use structured deprecation logging, shared projection builders, loop-scoped async cache clients and the same summary/result contracts as the async portfolio service/query layers.
 - `portfolio` public API and scheduled balance-sync surface now use repositories, `PortfolioQueryService`, `PortfolioService`, immutable read models, UoW-owned transaction boundaries and post-commit cache/event side effects instead of direct async session helpers.
 - `portfolio_workers` now evaluate decision-driven portfolio actions through class-based async `PortfolioService` with UoW-owned transaction boundaries and post-commit side effects instead of the sync `portfolio.engine` path.
 - Persistence audit and target standard docs under `docs/persistence-audit.md` and `docs/persistence-standard.md`, formalizing repository/query/UoW boundaries, immutable read-model policy, anti-N+1 rules and raw SQL exception policy.
@@ -96,7 +99,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - `indicators` no longer exposes module-level persistence facades for reads or snapshot writes; callers now instantiate class-based services/query adapters and own UoW commits explicitly.
+- `analysis_scheduler_workers` now evaluate analysis-gating persistence through `AnalysisSchedulerService` and shared async UoW boundaries instead of direct `AsyncSession` commits in `runtime/streams/workers.py`.
 - `cross_market_workers` now execute persistence through async services/repositories/UoW instead of `AsyncSession.run_sync`, and correlation/prediction caches plus emitted events are deferred until after the transaction commits on the active runtime path.
+- `signals` compatibility selectors now share the same ranking query builders and sector projection contract as the async query layer, and legacy fusion/history adapters now emit the same summary-shaped payloads as `SignalFusionService` / `SignalHistoryService`.
 - New API surfaces for patterns, per-coin regimes, sector metrics, market cycles and top-ranked signals, plus dashboard/detail page updates for pattern intelligence.
 - Manual feature-flag and pattern lifecycle management via API, plus discovery review endpoint for `discovered_patterns`.
 - Dashboard now surfaces feature-flag state and discovery candidates, and maintenance jobs re-enrich recent signal context after market structure/statistics updates.

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
-from datetime import datetime
+import logging
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -18,30 +18,42 @@ from src.apps.portfolio.models import PortfolioAction
 from src.apps.portfolio.models import PortfolioBalance
 from src.apps.portfolio.models import PortfolioPosition
 from src.apps.portfolio.models import PortfolioState
-from src.apps.market_data.domain import ensure_utc, utc_now
+from src.apps.portfolio.support import (
+    DEFAULT_PORTFOLIO_TIMEFRAME,
+    PORTFOLIO_ACTIONS,
+    SIMULATION_EXCHANGE,
+    calculate_position_size,
+    calculate_stops,
+    clamp_portfolio_value as _clamp,
+)
+from src.apps.market_data.domain import utc_now
 from src.apps.portfolio.cache import cache_portfolio_balances, cache_portfolio_state
 from src.apps.market_data.schemas import CoinCreate
+from src.apps.portfolio.read_models import portfolio_state_read_model_from_mapping
+from src.apps.portfolio.services import (
+    PortfolioActionEvaluationResult,
+    PortfolioSyncItem,
+    PortfolioSyncResult,
+)
+from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 
 PORTFOLIO_POSITION_STATUSES = {"open", "closed", "partial"}
-PORTFOLIO_ACTIONS = {
-    "OPEN_POSITION",
-    "CLOSE_POSITION",
-    "REDUCE_POSITION",
-    "INCREASE_POSITION",
-    "HOLD_POSITION",
-}
-SIMULATION_EXCHANGE = "portfolio_engine"
-DEFAULT_PORTFOLIO_TIMEFRAME = 1440
 
 
-@dataclass(slots=True, frozen=True)
-class StopRead:
-    stop_loss: float | None
-    take_profit: float | None
-
-
-def _clamp(value: float, lower: float, upper: float) -> float:
-    return max(lower, min(value, upper))
+def _log_compat(level: int, event: str, /, *, component_type: str, component: str, **fields: Any) -> None:
+    PERSISTENCE_LOGGER.log(
+        level,
+        event,
+        extra={
+            "persistence": {
+                "event": event,
+                "component_type": component_type,
+                "domain": "portfolio",
+                "component": component,
+                **{key: sanitize_log_value(value) for key, value in fields.items()},
+            }
+        },
+    )
 
 
 def _open_positions(db: Session) -> list[PortfolioPosition]:
@@ -61,7 +73,7 @@ def _latest_market_decision(db: Session, *, coin_id: int, timeframe: int) -> Mar
     )
 
 
-def ensure_portfolio_state(db: Session) -> PortfolioState:
+def _ensure_portfolio_state_impl(db: Session) -> PortfolioState:
     settings = get_settings()
     state = db.get(PortfolioState, 1)
     if state is None:
@@ -77,8 +89,8 @@ def ensure_portfolio_state(db: Session) -> PortfolioState:
     return state
 
 
-def refresh_portfolio_state(db: Session) -> PortfolioState:
-    state = ensure_portfolio_state(db)
+def _refresh_portfolio_state_impl(db: Session) -> PortfolioState:
+    state = _ensure_portfolio_state_impl(db)
     allocated = float(
         db.scalar(
             select(func.coalesce(func.sum(PortfolioPosition.position_value), 0.0)).where(
@@ -103,48 +115,6 @@ def refresh_portfolio_state(db: Session) -> PortfolioState:
         }
     )
     return state
-
-
-def calculate_stops(*, entry_price: float | None, atr: float | None) -> StopRead:
-    settings = get_settings()
-    if not entry_price or entry_price <= 0 or atr is None or atr <= 0:
-        return StopRead(stop_loss=None, take_profit=None)
-    stop_loss = max(entry_price - atr * settings.portfolio_stop_atr_multiplier, 0.0)
-    take_profit = entry_price + atr * settings.portfolio_take_profit_atr_multiplier
-    return StopRead(stop_loss=stop_loss, take_profit=take_profit)
-
-
-def calculate_position_size(
-    *,
-    total_capital: float,
-    available_capital: float,
-    decision_confidence: float,
-    regime: str | None,
-    price_current: float | None,
-    atr_14: float | None,
-) -> dict[str, float]:
-    settings = get_settings()
-    base_size = total_capital * settings.portfolio_max_position_size
-    regime_factor = 1.0
-    if regime == "bull_trend":
-        regime_factor = 1.15
-    elif regime == "bear_trend":
-        regime_factor = 0.75
-    elif regime == "sideways_range":
-        regime_factor = 0.85
-    elif regime == "high_volatility":
-        regime_factor = 0.95
-    volatility_adjustment = 1.0
-    if price_current and price_current > 0 and atr_14 is not None:
-        volatility_adjustment = _clamp(1.0 - float(atr_14) / float(price_current), 0.55, 1.05)
-    raw_value = base_size * _clamp(decision_confidence, 0.0, 1.0) * regime_factor * volatility_adjustment
-    capped_value = min(raw_value, total_capital * settings.portfolio_max_position_size, available_capital)
-    return {
-        "base_size": base_size,
-        "regime_factor": regime_factor,
-        "volatility_adjustment": volatility_adjustment,
-        "position_value": max(capped_value, 0.0),
-    }
 
 
 def _sector_exposure_ratio(db: Session, *, sector_id: int | None, total_capital: float) -> float:
@@ -245,7 +215,7 @@ def _rebalance_existing_position(
     return "HOLD_POSITION", 0.0
 
 
-def evaluate_portfolio_action(
+def _evaluate_portfolio_action_impl(
     db: Session,
     *,
     coin_id: int,
@@ -254,7 +224,7 @@ def evaluate_portfolio_action(
     emit_events: bool = True,
 ) -> dict[str, object]:
     settings = get_settings()
-    state = refresh_portfolio_state(db)
+    state = _refresh_portfolio_state_impl(db)
     decision_row = decision or _latest_market_decision(db, coin_id=coin_id, timeframe=timeframe)
     if decision_row is None:
         return {"status": "skipped", "reason": "decision_not_found", "coin_id": coin_id, "timeframe": timeframe}
@@ -347,7 +317,7 @@ def evaluate_portfolio_action(
         confidence=float(decision_row.confidence),
         decision_id=int(decision_row.id),
     )
-    state = refresh_portfolio_state(db)
+    state = _refresh_portfolio_state_impl(db)
     if emit_events:
         if action == "OPEN_POSITION":
             publish_event(
@@ -399,6 +369,9 @@ def evaluate_portfolio_action(
             "total_capital": float(state.total_capital),
             "allocated_capital": float(state.allocated_capital),
             "available_capital": float(state.available_capital),
+            "updated_at": state.updated_at.isoformat(),
+            "open_positions": len(_open_positions(db)),
+            "max_positions": int(get_settings().portfolio_max_positions),
         },
     }
 
@@ -506,7 +479,7 @@ def _sync_balance_position(
             position.closed_at = None
 
 
-def sync_exchange_balances(db: Session, *, emit_events: bool = True) -> dict[str, object]:
+def _sync_exchange_balances_impl(db: Session, *, emit_events: bool = True) -> dict[str, object]:
     accounts = db.scalars(
         select(ExchangeAccount)
         .where(ExchangeAccount.enabled.is_(True))
@@ -598,10 +571,177 @@ def sync_exchange_balances(db: Session, *, emit_events: bool = True) -> dict[str
                 }
             )
     cache_portfolio_balances(cached_rows)
-    refresh_portfolio_state(db)
+    state = _refresh_portfolio_state_impl(db)
     return {
         "status": "ok",
         "accounts": len(accounts),
         "balances": len(items),
         "items": items,
+        "portfolio_state": {
+            "total_capital": float(state.total_capital),
+            "allocated_capital": float(state.allocated_capital),
+            "available_capital": float(state.available_capital),
+            "updated_at": state.updated_at.isoformat(),
+            "open_positions": len(_open_positions(db)),
+            "max_positions": int(get_settings().portfolio_max_positions),
+        },
     }
+
+
+class PortfolioCompatibilityService:
+    def __init__(self, db: Session) -> None:
+        self._db = db
+
+    def _log(self, level: int, event: str, /, **fields: Any) -> None:
+        _log_compat(
+            level,
+            event,
+            component_type="compatibility_service",
+            component="PortfolioCompatibilityService",
+            **fields,
+        )
+
+    def evaluate_portfolio_action(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        decision: MarketDecision | None = None,
+        emit_events: bool = True,
+    ) -> dict[str, object]:
+        result = _evaluate_portfolio_action_impl(
+            self._db,
+            coin_id=coin_id,
+            timeframe=timeframe,
+            decision=decision,
+            emit_events=emit_events,
+        )
+        state_payload = result.get("portfolio_state")
+        return PortfolioActionEvaluationResult(
+            status=str(result["status"]),
+            coin_id=int(result["coin_id"]),
+            timeframe=int(result["timeframe"]),
+            reason=str(result["reason"]) if result.get("reason") is not None else None,
+            decision=str(result["decision"]) if result.get("decision") is not None else None,
+            action=str(result["action"]) if result.get("action") is not None else None,
+            size=float(result.get("size") or 0.0),
+            portfolio_state=(
+                portfolio_state_read_model_from_mapping(
+                    {
+                        "total_capital": float(state_payload.get("total_capital", 0.0)),
+                        "allocated_capital": float(state_payload.get("allocated_capital", 0.0)),
+                        "available_capital": float(state_payload.get("available_capital", 0.0)),
+                        "updated_at": state_payload.get("updated_at"),
+                        "open_positions": int(state_payload.get("open_positions", 0)),
+                        "max_positions": int(state_payload.get("max_positions", 0)),
+                    }
+                )
+                if isinstance(state_payload, dict)
+                else None
+            ),
+        ).to_payload()
+
+    def sync_exchange_balances(self, *, emit_events: bool = True) -> dict[str, object]:
+        result = _sync_exchange_balances_impl(
+            self._db,
+            emit_events=emit_events,
+        )
+        state_payload = result.get("portfolio_state") or {
+            "total_capital": 0.0,
+            "allocated_capital": 0.0,
+            "available_capital": 0.0,
+            "updated_at": None,
+            "open_positions": 0,
+            "max_positions": 0,
+        }
+        return PortfolioSyncResult(
+            status=str(result["status"]),
+            accounts=int(result.get("accounts") or 0),
+            items=tuple(
+                PortfolioSyncItem(
+                    exchange_account_id=int(item["exchange_account_id"]),
+                    symbol=str(item["symbol"]),
+                    balance=float(item["balance"]),
+                    value_usd=float(item["value_usd"]),
+                )
+                for item in result.get("items", [])
+                if isinstance(item, dict)
+            ),
+            cached_rows=tuple(),
+            state=portfolio_state_read_model_from_mapping(state_payload),
+            pending_events=tuple(),
+        ).to_payload()
+
+
+def ensure_portfolio_state(db: Session) -> PortfolioState:
+    _log_compat(
+        logging.WARNING,
+        "compat.ensure_portfolio_state.deprecated",
+        component_type="compatibility_service",
+        component="ensure_portfolio_state",
+        mode="write",
+    )
+    return _ensure_portfolio_state_impl(db)
+
+
+def refresh_portfolio_state(db: Session) -> PortfolioState:
+    _log_compat(
+        logging.WARNING,
+        "compat.refresh_portfolio_state.deprecated",
+        component_type="compatibility_service",
+        component="refresh_portfolio_state",
+        mode="write",
+    )
+    return _refresh_portfolio_state_impl(db)
+
+
+def evaluate_portfolio_action(
+    db: Session,
+    *,
+    coin_id: int,
+    timeframe: int,
+    decision: MarketDecision | None = None,
+    emit_events: bool = True,
+) -> dict[str, object]:
+    service = PortfolioCompatibilityService(db)
+    service._log(
+        logging.WARNING,
+        "compat.evaluate_portfolio_action.deprecated",
+        mode="write",
+        coin_id=coin_id,
+        timeframe=timeframe,
+        emit_events=emit_events,
+    )
+    return service.evaluate_portfolio_action(
+        coin_id=coin_id,
+        timeframe=timeframe,
+        decision=decision,
+        emit_events=emit_events,
+    )
+
+
+def sync_exchange_balances(db: Session, *, emit_events: bool = True) -> dict[str, object]:
+    service = PortfolioCompatibilityService(db)
+    service._log(
+        logging.WARNING,
+        "compat.sync_exchange_balances.deprecated",
+        mode="write",
+        emit_events=emit_events,
+    )
+    return service.sync_exchange_balances(emit_events=emit_events)
+
+
+__all__ = [
+    "PORTFOLIO_POSITION_STATUSES",
+    "PortfolioCompatibilityService",
+    "_ensure_coin_for_balance",
+    "_maybe_auto_watch_coin",
+    "_rebalance_existing_position",
+    "_sync_balance_position",
+    "calculate_position_size",
+    "calculate_stops",
+    "ensure_portfolio_state",
+    "evaluate_portfolio_action",
+    "refresh_portfolio_state",
+    "sync_exchange_balances",
+]

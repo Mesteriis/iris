@@ -207,7 +207,7 @@ Initial rollout completed in this refactor pass:
   - `apps/signals` on the active async/public API read surface plus signal-fusion and signal-history runtime surfaces
   - `apps/portfolio` on the active async/public API and scheduled sync surface
   - `apps/cross_market` on the active async worker/runtime surface
-  - `apps/patterns` on the async/public API surface and TaskIQ orchestration layer
+  - `apps/patterns` on the async/public API surface, TaskIQ orchestration layer and runtime worker path
   - repository/query split
   - immutable read models for read paths
   - centralized transaction ownership in services/tasks/views/consumers

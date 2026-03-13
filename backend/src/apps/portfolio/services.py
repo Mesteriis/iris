@@ -8,7 +8,7 @@ from src.apps.market_data.models import Coin
 from src.apps.market_data.repositories import CoinMetricsRepository, CoinRepository
 from src.apps.portfolio.cache import cache_portfolio_balances_async, cache_portfolio_state_async
 from src.apps.portfolio.clients import create_exchange_plugin
-from src.apps.portfolio.engine import (
+from src.apps.portfolio.support import (
     DEFAULT_PORTFOLIO_TIMEFRAME,
     PORTFOLIO_ACTIONS,
     SIMULATION_EXCHANGE,
