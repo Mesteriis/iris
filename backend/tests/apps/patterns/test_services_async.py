@@ -14,6 +14,7 @@ from src.apps.patterns.services import PatternAdminService
 from src.apps.patterns.task_services import PatternRealtimeService
 from src.apps.signals.models import Signal
 from src.core.db.uow import SessionUnitOfWork
+from tests.fusion_support import insert_signals
 from tests.patterns_support import seed_pattern_api_state
 
 
@@ -420,3 +421,146 @@ async def test_pattern_realtime_service_handles_pattern_and_regime_runtime_paths
         assert regime_state["regime"] == "bull_trend"
         assert "next_cycle" in regime_state
         await uow.commit()
+
+
+@pytest.mark.asyncio
+async def test_pattern_realtime_service_covers_cluster_and_hierarchy_paths(
+    async_db_session, db_session
+) -> None:
+    seeded_api_state = seed_pattern_api_state(db_session)
+    timestamp = seeded_api_state["signal_timestamp"]
+    btc = seeded_api_state["btc"]
+    eth = seeded_api_state["eth"]
+
+    btc_metrics = db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(btc.id)))
+    assert btc_metrics is not None
+    btc_metrics.trend_score = 72
+    btc_metrics.price_current = 100.0
+    btc_metrics.volatility = 0.8
+    insert_signals(
+        db_session,
+        coin_id=int(btc.id),
+        timeframe=15,
+        candle_timestamp=timestamp,
+        items=[
+            ("pattern_breakout_retest", 0.81),
+            ("pattern_volume_spike", 0.88),
+        ],
+    )
+
+    eth_metrics = db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(eth.id)))
+    assert eth_metrics is not None
+    eth_metrics.trend_score = 32
+    eth_metrics.price_current = 100.0
+    eth_metrics.volatility = 5.0
+    insert_signals(
+        db_session,
+        coin_id=int(eth.id),
+        timeframe=60,
+        candle_timestamp=timestamp,
+        items=[
+            ("pattern_bear_flag", 0.82),
+            ("pattern_rising_channel_breakdown", 0.8),
+            ("pattern_volume_climax", 0.9),
+            ("pattern_momentum_exhaustion", 0.86),
+        ],
+    )
+    db_session.commit()
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = PatternRealtimeService(uow)
+        cluster_result = await service._build_pattern_clusters(
+            coin_id=int(btc.id),
+            timeframe=15,
+            candle_timestamp=timestamp,
+        )
+        hierarchy_result = await service._build_hierarchy_signals(
+            coin_id=int(btc.id),
+            timeframe=15,
+            candle_timestamp=timestamp,
+        )
+        bearish_cluster = await service._build_pattern_clusters(
+            coin_id=int(eth.id),
+            timeframe=60,
+            candle_timestamp=timestamp,
+        )
+        bearish_hierarchy = await service._build_hierarchy_signals(
+            coin_id=int(eth.id),
+            timeframe=60,
+            candle_timestamp=timestamp,
+        )
+        no_patterns_cluster = await service._build_pattern_clusters(
+            coin_id=int(btc.id),
+            timeframe=240,
+            candle_timestamp=timestamp,
+        )
+        no_patterns_hierarchy = await service._build_hierarchy_signals(
+            coin_id=int(btc.id),
+            timeframe=240,
+            candle_timestamp=timestamp,
+        )
+        await uow.commit()
+
+    assert cluster_result["status"] == "ok"
+    assert cluster_result["created"] != 0
+    assert hierarchy_result["status"] == "ok"
+    assert hierarchy_result["created"] != 0
+    assert bearish_cluster["status"] == "ok"
+    assert bearish_cluster["created"] != 0
+    assert bearish_hierarchy["status"] == "ok"
+    assert bearish_hierarchy["created"] != 0
+    assert no_patterns_cluster["reason"] == "pattern_signals_not_found"
+    assert no_patterns_hierarchy["reason"] == "pattern_signals_not_found"
+
+    btc_signals = {
+        row.signal_type
+        for row in (
+            await async_db_session.execute(
+                select(Signal).where(
+                    Signal.coin_id == int(btc.id),
+                    Signal.timeframe == 15,
+                    Signal.candle_timestamp == timestamp,
+                    Signal.signal_type.like("pattern_%"),
+                )
+            )
+        ).scalars()
+    }
+    assert {"pattern_cluster_bullish", "pattern_hierarchy_accumulation", "pattern_hierarchy_trend_continuation"} <= btc_signals
+
+    eth_signals = {
+        row.signal_type
+        for row in (
+            await async_db_session.execute(
+                select(Signal).where(
+                    Signal.coin_id == int(eth.id),
+                    Signal.timeframe == 60,
+                    Signal.candle_timestamp == timestamp,
+                    Signal.signal_type.like("pattern_hierarchy_%"),
+                )
+            )
+        ).scalars()
+    }
+    assert eth_signals == {"pattern_hierarchy_distribution", "pattern_hierarchy_trend_exhaustion"}
+
+    pattern_hierarchy_feature = await async_db_session.get(PatternFeature, "pattern_hierarchy")
+    pattern_clusters_feature = await async_db_session.get(PatternFeature, "pattern_clusters")
+    assert pattern_hierarchy_feature is not None and pattern_clusters_feature is not None
+    pattern_hierarchy_feature.enabled = False
+    pattern_clusters_feature.enabled = False
+    await async_db_session.commit()
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = PatternRealtimeService(uow)
+        disabled_hierarchy = await service._build_hierarchy_signals(
+            coin_id=int(btc.id),
+            timeframe=15,
+            candle_timestamp=timestamp,
+        )
+        disabled_clusters = await service._build_pattern_clusters(
+            coin_id=int(btc.id),
+            timeframe=15,
+            candle_timestamp=timestamp,
+        )
+
+    assert disabled_hierarchy["reason"] == "pattern_hierarchy_disabled"
+    assert disabled_clusters["reason"] == "pattern_clusters_disabled"

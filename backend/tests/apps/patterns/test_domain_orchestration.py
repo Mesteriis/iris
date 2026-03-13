@@ -11,113 +11,14 @@ from src.apps.cross_market.models import Sector
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.models import Coin
-from src.apps.patterns.domain.clusters import build_pattern_clusters
 from src.apps.patterns.domain.cycle import _detect_cycle_phase, refresh_market_cycles, update_market_cycle
 from src.apps.patterns.domain.discovery import _window_signature, refresh_discovered_patterns
-from src.apps.patterns.domain.hierarchy import build_hierarchy_signals
 from src.apps.patterns.domain.narrative import _capital_wave_bucket, _coin_bar_return, build_sector_narratives, refresh_sector_metrics
 from src.apps.patterns.domain.registry import sync_pattern_metadata
 from src.apps.patterns.models import PatternFeature
-from src.apps.signals.models import Signal
 from tests.factories.market_data import build_candle_points
 from tests.cross_market_support import DEFAULT_START, seed_candles
 from tests.fusion_support import create_test_coin, insert_signals
-
-
-def test_cluster_and_hierarchy_domains_build_real_meta_signals(db_session, seeded_api_state) -> None:
-    sync_pattern_metadata(db_session)
-    timestamp = seeded_api_state["signal_timestamp"]
-    btc = seeded_api_state["btc"]
-    eth = seeded_api_state["eth"]
-
-    btc_metrics = db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(btc.id)))
-    assert btc_metrics is not None
-    btc_metrics.trend_score = 72
-    btc_metrics.price_current = 100.0
-    btc_metrics.volatility = 0.8
-
-    insert_signals(
-        db_session,
-        coin_id=int(btc.id),
-        timeframe=15,
-        candle_timestamp=timestamp,
-        items=[
-            ("pattern_breakout_retest", 0.81),
-            ("pattern_volume_spike", 0.88),
-        ],
-    )
-    cluster_result = build_pattern_clusters(db_session, coin_id=int(btc.id), timeframe=15, candle_timestamp=timestamp)
-    assert cluster_result["status"] == "ok"
-    assert cluster_result["created"] != 0
-    assert db_session.scalar(
-        select(Signal).where(
-            Signal.coin_id == int(btc.id),
-            Signal.timeframe == 15,
-            Signal.candle_timestamp == timestamp,
-            Signal.signal_type == "pattern_cluster_bullish",
-        )
-    ) is not None
-
-    hierarchy_result = build_hierarchy_signals(db_session, coin_id=int(btc.id), timeframe=15, candle_timestamp=timestamp)
-    hierarchy_signals = {
-        row.signal_type
-        for row in db_session.scalars(
-            select(Signal).where(
-                Signal.coin_id == int(btc.id),
-                Signal.timeframe == 15,
-                Signal.candle_timestamp == timestamp,
-                Signal.signal_type.like("pattern_hierarchy_%"),
-            )
-        ).all()
-    }
-    assert hierarchy_result["created"] != 0
-    assert hierarchy_signals == {"pattern_hierarchy_accumulation", "pattern_hierarchy_trend_continuation"}
-
-    eth_metrics = db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(eth.id)))
-    assert eth_metrics is not None
-    eth_metrics.trend_score = 32
-    eth_metrics.price_current = 100.0
-    eth_metrics.volatility = 5.0
-    db_session.commit()
-
-    insert_signals(
-        db_session,
-        coin_id=int(eth.id),
-        timeframe=60,
-        candle_timestamp=timestamp,
-        items=[
-            ("pattern_bear_flag", 0.82),
-            ("pattern_rising_channel_breakdown", 0.8),
-            ("pattern_volume_climax", 0.9),
-            ("pattern_momentum_exhaustion", 0.86),
-        ],
-    )
-    bearish_cluster = build_pattern_clusters(db_session, coin_id=int(eth.id), timeframe=60, candle_timestamp=timestamp)
-    assert bearish_cluster["status"] == "ok"
-    assert bearish_cluster["created"] != 0
-    bearish_hierarchy = build_hierarchy_signals(db_session, coin_id=int(eth.id), timeframe=60, candle_timestamp=timestamp)
-    bearish_signals = {
-        row.signal_type
-        for row in db_session.scalars(
-            select(Signal).where(
-                Signal.coin_id == int(eth.id),
-                Signal.timeframe == 60,
-                Signal.candle_timestamp == timestamp,
-                Signal.signal_type.like("pattern_hierarchy_%"),
-            )
-        ).all()
-    }
-    assert bearish_hierarchy["created"] != 0
-    assert bearish_signals == {"pattern_hierarchy_distribution", "pattern_hierarchy_trend_exhaustion"}
-
-    pattern_hierarchy_feature = db_session.get(PatternFeature, "pattern_hierarchy")
-    pattern_clusters_feature = db_session.get(PatternFeature, "pattern_clusters")
-    assert pattern_hierarchy_feature is not None and pattern_clusters_feature is not None
-    pattern_hierarchy_feature.enabled = False
-    pattern_clusters_feature.enabled = False
-    db_session.commit()
-    assert build_hierarchy_signals(db_session, coin_id=int(btc.id), timeframe=15, candle_timestamp=timestamp)["reason"] == "pattern_hierarchy_disabled"
-    assert build_pattern_clusters(db_session, coin_id=int(btc.id), timeframe=15, candle_timestamp=timestamp)["reason"] == "pattern_clusters_disabled"
 
 
 def test_cycle_discovery_and_narrative_domains_cover_real_market_state(db_session, seeded_market, seeded_api_state, monkeypatch) -> None:
@@ -239,22 +140,6 @@ def test_cluster_hierarchy_engine_and_narrative_guard_paths(db_session, seeded_a
     timestamp = seeded_api_state["signal_timestamp"]
     btc = seeded_api_state["btc"]
     sol = seeded_api_state["sol"]
-
-    no_patterns_cluster = build_pattern_clusters(
-        db_session,
-        coin_id=int(btc.id),
-        timeframe=240,
-        candle_timestamp=timestamp + timedelta(days=30),
-    )
-    assert no_patterns_cluster["reason"] == "pattern_signals_not_found"
-
-    no_patterns_hierarchy = build_hierarchy_signals(
-        db_session,
-        coin_id=int(btc.id),
-        timeframe=240,
-        candle_timestamp=timestamp + timedelta(days=30),
-    )
-    assert no_patterns_hierarchy["reason"] == "pattern_signals_not_found"
 
     assert _capital_wave_bucket(sol, SimpleNamespace(market_cap=2_000_000_000.0), top_sector_id=int(sol.sector_id)) == "sector_leaders"
     btc_dominance_coin = db_session.scalar(select(Coin).where(Coin.symbol == "BTCUSD")) or btc

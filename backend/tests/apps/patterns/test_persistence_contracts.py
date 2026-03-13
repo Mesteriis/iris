@@ -102,3 +102,8 @@ def test_patterns_legacy_selector_module_is_absent() -> None:
 
 def test_patterns_legacy_engine_module_is_absent() -> None:
     assert importlib.util.find_spec("src.apps.patterns.domain.engine") is None
+
+
+def test_patterns_legacy_cluster_and_hierarchy_modules_are_absent() -> None:
+    assert importlib.util.find_spec("src.apps.patterns.domain.clusters") is None
+    assert importlib.util.find_spec("src.apps.patterns.domain.hierarchy") is None
