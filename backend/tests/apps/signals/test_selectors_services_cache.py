@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 import src.apps.signals.cache as signal_cache_module
 import src.apps.signals.query_services as signal_query_module
-from src.apps.patterns.selectors import _signal_select
+from src.apps.patterns.query_builders import signal_select as _signal_select
 from src.apps.signals.cache import (
     DECISION_CACHE_TTL_SECONDS,
     DecisionCacheEntry,

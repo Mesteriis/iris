@@ -8,9 +8,9 @@ from sqlalchemy import select
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics
 from src.apps.patterns.models import PatternFeature
+from src.apps.patterns.query_builders import signal_select as _signal_select
 from src.apps.patterns.query_services import PatternQueryService
 from src.apps.patterns.services import PatternAdminService
-from src.apps.patterns.selectors import _signal_select
 from src.apps.patterns.task_services import PatternRealtimeService
 from src.apps.signals.models import Signal
 from src.core.db.uow import SessionUnitOfWork

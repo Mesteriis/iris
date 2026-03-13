@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
+import importlib.util
 
 import pytest
 
@@ -93,3 +94,7 @@ async def test_patterns_persistence_logs_cover_query_repo_and_uow(async_db_sessi
     assert "repo.get_pattern_feature_for_update" in events
     assert "query.list_patterns" in events
     assert "uow.commit" in events
+
+
+def test_patterns_legacy_selector_module_is_absent() -> None:
+    assert importlib.util.find_spec("src.apps.patterns.selectors") is None
