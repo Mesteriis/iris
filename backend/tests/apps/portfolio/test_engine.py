@@ -6,13 +6,14 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import select
 
+from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
 from src.core.db.session import SessionLocal
+from src.core.db.uow import SessionUnitOfWork
 from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
 from src.apps.portfolio.models import PortfolioAction
 from src.apps.portfolio.models import PortfolioPosition
-from src.apps.portfolio.engine import evaluate_portfolio_action
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_market_decision
 
@@ -45,7 +46,8 @@ def _stop_processes(*processes: multiprocessing.Process) -> None:
         process.join(timeout=2.0)
 
 
-def test_portfolio_engine_opens_position_from_buy_decision(db_session) -> None:
+@pytest.mark.asyncio
+async def test_portfolio_engine_opens_position_from_buy_decision(async_db_session, db_session) -> None:
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=15)
     create_market_decision(
@@ -56,15 +58,19 @@ def test_portfolio_engine_opens_position_from_buy_decision(db_session) -> None:
         confidence=0.82,
     )
 
-    result = evaluate_portfolio_action(
-        db_session,
-        coin_id=int(coin.id),
-        timeframe=15,
-        emit_events=False,
-    )
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(coin.id),
+            timeframe=15,
+            emit_events=False,
+        )
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_action_result(result)
 
-    assert result["status"] == "ok"
-    assert result["action"] == "OPEN_POSITION"
+    db_session.expire_all()
+
+    assert result.status == "ok"
+    assert result.action == "OPEN_POSITION"
     position = db_session.scalar(
         select(PortfolioPosition)
         .where(PortfolioPosition.coin_id == int(coin.id), PortfolioPosition.timeframe == 15)

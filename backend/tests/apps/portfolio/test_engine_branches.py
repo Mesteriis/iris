@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import select
 
 from src.apps.indicators.models import CoinMetrics
@@ -16,51 +17,109 @@ from src.apps.portfolio.engine import (
     sync_exchange_balances,
 )
 from src.apps.portfolio.models import ExchangeAccount, PortfolioAction, PortfolioBalance, PortfolioPosition
+from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
+from src.core.db.uow import SessionUnitOfWork
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_exchange_account, create_market_decision, create_sector
 
 
-def test_portfolio_state_helpers_and_skip_paths(db_session) -> None:
-    state = ensure_portfolio_state(db_session)
-    refreshed = refresh_portfolio_state(db_session)
+@pytest.mark.asyncio
+async def test_portfolio_state_helpers_and_skip_paths(async_db_session, db_session) -> None:
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = PortfolioService(uow)
+        state = await service._ensure_portfolio_state()
+        refreshed = await service._refresh_portfolio_state()
+        await uow.commit()
+
+    db_session.expire_all()
     assert state.id == 1
     assert refreshed.available_capital == refreshed.total_capital
 
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
-    assert evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=False)["reason"] == "decision_not_found"
+    async with SessionUnitOfWork(async_db_session) as uow:
+        missing_decision = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(coin.id),
+            timeframe=15,
+            emit_events=False,
+        )
+    assert missing_decision.reason == "decision_not_found"
     create_market_decision(db_session, coin_id=int(coin.id), timeframe=15, decision="BUY", confidence=0.8)
-    assert evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=False)["reason"] == "coin_metrics_not_found"
+    async with SessionUnitOfWork(async_db_session) as uow:
+        missing_metrics = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(coin.id),
+            timeframe=15,
+            emit_events=False,
+        )
+    assert missing_metrics.reason == "coin_metrics_not_found"
 
 
-def test_portfolio_engine_rebalances_existing_positions(db_session) -> None:
+@pytest.mark.asyncio
+async def test_portfolio_engine_rebalances_existing_positions(async_db_session, db_session) -> None:
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     metrics = upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bear_trend", timeframe=15)
     create_market_decision(db_session, coin_id=int(coin.id), timeframe=15, decision="BUY", confidence=0.45)
-    open_result = evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=False)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        open_result = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(coin.id),
+            timeframe=15,
+            emit_events=False,
+        )
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_action_result(open_result)
+    db_session.expire_all()
     position = db_session.scalar(select(PortfolioPosition).where(PortfolioPosition.coin_id == int(coin.id), PortfolioPosition.timeframe == 15).limit(1))
-    assert open_result["action"] == "OPEN_POSITION"
+    assert open_result.action == "OPEN_POSITION"
     assert position is not None
 
     metrics.market_regime = "bull_trend"
     db_session.commit()
     create_market_decision(db_session, coin_id=int(coin.id), timeframe=15, decision="BUY", confidence=0.95)
-    increased = evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=False)
-    assert increased["action"] == "INCREASE_POSITION"
+    async with SessionUnitOfWork(async_db_session) as uow:
+        increased = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(coin.id),
+            timeframe=15,
+            emit_events=False,
+        )
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_action_result(increased)
+    db_session.expire_all()
+    assert increased.action == "INCREASE_POSITION"
 
     create_market_decision(db_session, coin_id=int(coin.id), timeframe=15, decision="BUY", confidence=0.95)
-    held = evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=False)
-    assert held["action"] in {"HOLD_POSITION", "INCREASE_POSITION"}
+    async with SessionUnitOfWork(async_db_session) as uow:
+        held = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(coin.id),
+            timeframe=15,
+            emit_events=False,
+        )
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_action_result(held)
+    assert held.action in {"HOLD_POSITION", "INCREASE_POSITION"}
 
     create_market_decision(db_session, coin_id=int(coin.id), timeframe=15, decision="SELL", confidence=0.4)
-    reduced = evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=False)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        reduced = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(coin.id),
+            timeframe=15,
+            emit_events=False,
+        )
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_action_result(reduced)
     db_session.refresh(position)
-    assert reduced["action"] == "REDUCE_POSITION"
+    assert reduced.action == "REDUCE_POSITION"
     assert position.status == "partial"
 
     create_market_decision(db_session, coin_id=int(coin.id), timeframe=15, decision="SELL", confidence=0.8)
-    closed = evaluate_portfolio_action(db_session, coin_id=int(coin.id), timeframe=15, emit_events=False)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        closed = await PortfolioService(uow).evaluate_portfolio_action(
+            coin_id=int(coin.id),
+            timeframe=15,
+            emit_events=False,
+        )
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_action_result(closed)
     db_session.refresh(position)
-    assert closed["action"] == "CLOSE_POSITION"
+    assert closed.action == "CLOSE_POSITION"
     assert position.status == "closed"
 
 
@@ -101,7 +160,8 @@ def test_portfolio_balance_helpers_cover_auto_watch_and_closing(db_session, monk
     assert position.status == "closed"
 
 
-def test_portfolio_sync_skips_blank_balances(db_session) -> None:
+@pytest.mark.asyncio
+async def test_portfolio_sync_skips_blank_balances(async_db_session, db_session) -> None:
     class BlankPlugin:
         def __init__(self, account: ExchangeAccount) -> None:
             self.account = account
@@ -122,14 +182,19 @@ def test_portfolio_sync_skips_blank_balances(db_session) -> None:
 
     register_exchange("fixture_blank", BlankPlugin)
     create_exchange_account(db_session, exchange_name="fixture_blank")
-    result = sync_exchange_balances(db_session, emit_events=False)
-    assert result["accounts"] == 1
-    assert result["balances"] == 0
-    assert result["portfolio_state"]["open_positions"] == 0
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await PortfolioService(uow).sync_exchange_balances(emit_events=False)
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_sync_result(result)
+    db_session.expire_all()
+    assert result.accounts == 1
+    assert result.balances == 0
+    assert result.state.open_positions == 0
     assert db_session.scalar(select(PortfolioAction.id).limit(1)) is None
 
 
-def test_portfolio_sync_emits_auto_watch_after_commit(db_session, monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_portfolio_sync_emits_auto_watch_after_commit(async_db_session, db_session, monkeypatch) -> None:
     class WatchPlugin:
         def __init__(self, account: ExchangeAccount) -> None:
             self.account = account
@@ -151,11 +216,14 @@ def test_portfolio_sync_emits_auto_watch_after_commit(db_session, monkeypatch) -
     register_exchange("fixture_watch_events", WatchPlugin)
     create_exchange_account(db_session, exchange_name="fixture_watch_events")
     published: list[str] = []
-    monkeypatch.setattr("src.apps.portfolio.engine.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr("src.apps.portfolio.services.publish_event", lambda event_type, payload: published.append(event_type))
 
-    result = sync_exchange_balances(db_session, emit_events=True)
+    async with SessionUnitOfWork(async_db_session) as uow:
+        result = await PortfolioService(uow).sync_exchange_balances(emit_events=True)
+        await uow.commit()
+        await PortfolioSideEffectDispatcher().apply_sync_result(result)
 
-    assert result["status"] == "ok"
+    assert result.status == "ok"
     assert published[:3] == [
         "coin_auto_watch_enabled",
         "portfolio_balance_updated",
