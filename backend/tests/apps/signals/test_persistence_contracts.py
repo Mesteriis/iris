@@ -1,21 +1,24 @@
 from __future__ import annotations
 
-from datetime import timedelta
 from dataclasses import FrozenInstanceError
+from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
-
 import src.apps.signals.services as signal_services_module
+from sqlalchemy import select
 from src.apps.signals.backtests import list_backtests
+from src.apps.signals.decision_selectors import list_decisions
+from src.apps.signals.final_signal_selectors import list_final_signals
 from src.apps.signals.fusion import evaluate_market_decision
 from src.apps.signals.history import refresh_signal_history
+from src.apps.signals.market_decision_selectors import list_market_decisions
 from src.apps.signals.models import MarketDecision, Signal, SignalHistory
 from src.apps.signals.query_services import SignalQueryService
 from src.apps.signals.services import SignalFusionService, SignalHistoryService
 from src.apps.signals.strategies import list_strategies
 from src.core.db.persistence import PERSISTENCE_LOGGER
 from src.core.db.uow import SessionUnitOfWork
+
 from tests.cross_market_support import DEFAULT_START, seed_candles
 from tests.factories.seeds import SignalSeedFactory
 from tests.fusion_support import create_test_coin, insert_signals, replace_pattern_statistics, upsert_coin_metrics
@@ -269,9 +272,15 @@ def test_signal_legacy_compatibility_queries_emit_deprecation_logs(db_session, s
     monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
 
     assert list_backtests(db_session, limit=5)
+    assert list_decisions(db_session, limit=5)
+    assert list_market_decisions(db_session, limit=5)
+    assert list_final_signals(db_session, limit=5)
     assert list_strategies(db_session, enabled_only=False, limit=5)
 
     assert "compat.list_backtests.deprecated" in events
+    assert "compat.list_decisions.deprecated" in events
+    assert "compat.list_market_decisions.deprecated" in events
+    assert "compat.list_final_signals.deprecated" in events
     assert "compat.list_strategies.deprecated" in events
 
 
