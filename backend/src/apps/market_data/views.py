@@ -35,33 +35,9 @@ def _price_history_response(item):
         return item
 
 
-async def get_coin_by_symbol_async(db: BaseAsyncUnitOfWork, symbol: str):
-    return await MarketDataQueryService(db.session).get_coin_read_by_symbol(symbol)
-
-
-async def list_coins_async(db: BaseAsyncUnitOfWork):
-    return await MarketDataQueryService(db.session).list_coins()
-
-
-async def create_coin_async(db: BaseAsyncUnitOfWork, payload: CoinCreate):
-    return await MarketDataService(db).create_coin(payload)
-
-
-async def delete_coin_async(db: BaseAsyncUnitOfWork, coin) -> None:
-    await MarketDataService(db).delete_coin(str(coin.symbol))
-
-
-async def list_price_history_async(db: BaseAsyncUnitOfWork, symbol: str, interval: str | None = None):
-    return await MarketDataQueryService(db.session).list_price_history(symbol, interval)
-
-
-async def create_price_history_async(db: BaseAsyncUnitOfWork, coin, payload: PriceHistoryCreate):
-    return await MarketDataService(db).create_price_history(symbol=str(coin.symbol), payload=payload)
-
-
 @router.get("/coins", response_model=list[CoinRead], tags=["coins"])
 async def read_coins(db: BaseAsyncUnitOfWork = DB_UOW) -> list[CoinRead]:
-    items = await list_coins_async(db)
+    items = await MarketDataQueryService(db.session).list_coins()
     return [_coin_response(item) for item in items]
 
 
@@ -71,12 +47,12 @@ async def create_coin_endpoint(
     request: Request,
     db: BaseAsyncUnitOfWork = DB_UOW,
 ) -> CoinRead:
-    if await get_coin_by_symbol_async(db, payload.symbol) is not None:
+    if await MarketDataQueryService(db.session).get_coin_read_by_symbol(payload.symbol) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Coin '{payload.symbol.upper()}' already exists.",
         )
-    coin = await create_coin_async(db, payload)
+    coin = await MarketDataService(db).create_coin(payload)
     trigger = getattr(request.app.state, "taskiq_backfill_event", None)
     if trigger is not None:
         trigger.set()
@@ -85,13 +61,13 @@ async def create_coin_endpoint(
 
 @router.delete("/coins/{symbol}", status_code=status.HTTP_204_NO_CONTENT, tags=["coins"])
 async def delete_coin_endpoint(symbol: str, db: BaseAsyncUnitOfWork = DB_UOW) -> None:
-    coin = await get_coin_by_symbol_async(db, symbol)
+    coin = await MarketDataQueryService(db.session).get_coin_read_by_symbol(symbol)
     if coin is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Coin '{symbol.upper()}' was not found.",
         )
-    await delete_coin_async(db, coin)
+    await MarketDataService(db).delete_coin(str(coin.symbol))
 
 
 @router.post("/coins/{symbol}/jobs/run", status_code=status.HTTP_202_ACCEPTED, tags=["coins"])
@@ -103,7 +79,7 @@ async def run_coin_job_endpoint(
 ) -> dict[str, object]:
     from src.apps.market_data.tasks import run_coin_history_job
 
-    coin = await get_coin_by_symbol_async(db, symbol)
+    coin = await MarketDataQueryService(db.session).get_coin_read_by_symbol(symbol)
     if coin is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -125,13 +101,13 @@ async def read_coin_history(
     interval: str | None = Query(default=None),
     db: BaseAsyncUnitOfWork = DB_UOW,
 ) -> list[PriceHistoryRead]:
-    coin = await get_coin_by_symbol_async(db, symbol)
+    coin = await MarketDataQueryService(db.session).get_coin_read_by_symbol(symbol)
     if coin is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Coin '{symbol.upper()}' was not found.",
         )
-    items = await list_price_history_async(db, coin.symbol, interval)
+    items = await MarketDataQueryService(db.session).list_price_history(coin.symbol, interval)
     return [_price_history_response(item) for item in items]
 
 
@@ -146,14 +122,14 @@ async def create_coin_history(
     payload: PriceHistoryCreate,
     db: BaseAsyncUnitOfWork = DB_UOW,
 ) -> PriceHistoryRead:
-    coin = await get_coin_by_symbol_async(db, symbol)
+    coin = await MarketDataQueryService(db.session).get_coin_read_by_symbol(symbol)
     if coin is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Coin '{symbol.upper()}' was not found.",
         )
     try:
-        item = await create_price_history_async(db, coin, payload)
+        item = await MarketDataService(db).create_price_history(symbol=str(coin.symbol), payload=payload)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

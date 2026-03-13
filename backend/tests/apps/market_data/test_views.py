@@ -5,8 +5,14 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from src.apps.market_data.views import (
+    create_coin_endpoint,
+    create_coin_history,
+    delete_coin_endpoint,
+    read_coin_history,
+    run_coin_job_endpoint,
+)
 
-from src.apps.market_data.views import create_coin_endpoint, create_coin_history, delete_coin_endpoint, read_coin_history, run_coin_job_endpoint
 from tests.factories.market_data import CoinCreateFactory, PriceHistoryCreateFactory
 
 
@@ -94,6 +100,7 @@ async def test_market_data_endpoints(api_app_client, seeded_market, monkeypatch)
 
 @pytest.mark.asyncio
 async def test_market_data_view_branches(monkeypatch) -> None:
+    uow = SimpleNamespace(session=object())
     request_with_trigger = SimpleNamespace(
         app=SimpleNamespace(
             state=SimpleNamespace(taskiq_backfill_event=SimpleNamespace(set=lambda: setattr(request_with_trigger.app.state, "triggered", True)))
@@ -102,46 +109,46 @@ async def test_market_data_view_branches(monkeypatch) -> None:
     request_with_trigger.app.state.triggered = False
     payload = CoinCreateFactory.build(symbol="BTCUSD_EVT", name="Bitcoin Event Test")
 
-    async def missing_coin(*_args, **_kwargs):
+    async def missing_coin(self, *_args, **_kwargs):
         return None
 
-    async def existing_coin(*_args, **_kwargs):
+    async def existing_coin(self, *_args, **_kwargs):
         return SimpleNamespace(symbol="BTCUSD_EVT")
 
-    async def created_coin(*_args, **_kwargs):
+    async def created_coin(self, *_args, **_kwargs):
         return SimpleNamespace(symbol="BTCUSD_EVT")
 
-    async def deleted(*_args, **_kwargs):
+    async def deleted(self, *_args, **_kwargs):
         return None
 
-    async def listed_history(*_args, **_kwargs):
+    async def listed_history(self, *_args, **_kwargs):
         return [{"coin_id": 1, "interval": "15m", "timestamp": "2026-03-12T00:00:00Z", "price": 1.0, "volume": None}]
 
-    async def created_history(*_args, **_kwargs):
+    async def created_history(self, *_args, **_kwargs):
         return {"coin_id": 1, "interval": "15m", "timestamp": "2026-03-12T00:00:00Z", "price": 1.0, "volume": None}
 
-    monkeypatch.setattr("src.apps.market_data.views.get_coin_by_symbol_async", missing_coin)
-    monkeypatch.setattr("src.apps.market_data.views.create_coin_async", created_coin)
-    result = await create_coin_endpoint(payload, request_with_trigger, db=object())
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataQueryService.get_coin_read_by_symbol", missing_coin)
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataService.create_coin", created_coin)
+    result = await create_coin_endpoint(payload, request_with_trigger, db=uow)
     assert result.symbol == "BTCUSD_EVT"
     assert request_with_trigger.app.state.triggered is True
 
     request_without_trigger = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
-    assert (await create_coin_endpoint(payload, request_without_trigger, db=object())).symbol == "BTCUSD_EVT"
+    assert (await create_coin_endpoint(payload, request_without_trigger, db=uow)).symbol == "BTCUSD_EVT"
 
-    monkeypatch.setattr("src.apps.market_data.views.get_coin_by_symbol_async", existing_coin)
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataQueryService.get_coin_read_by_symbol", existing_coin)
     with pytest.raises(HTTPException) as conflict:
-        await create_coin_endpoint(payload, request_without_trigger, db=object())
+        await create_coin_endpoint(payload, request_without_trigger, db=uow)
     assert conflict.value.status_code == 409
 
-    monkeypatch.setattr("src.apps.market_data.views.get_coin_by_symbol_async", missing_coin)
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataQueryService.get_coin_read_by_symbol", missing_coin)
     with pytest.raises(HTTPException) as delete_missing:
-        await delete_coin_endpoint("BTCUSD_EVT", db=object())
+        await delete_coin_endpoint("BTCUSD_EVT", db=uow)
     assert delete_missing.value.status_code == 404
 
-    monkeypatch.setattr("src.apps.market_data.views.get_coin_by_symbol_async", existing_coin)
-    monkeypatch.setattr("src.apps.market_data.views.delete_coin_async", deleted)
-    assert await delete_coin_endpoint("BTCUSD_EVT", db=object()) is None
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataQueryService.get_coin_read_by_symbol", existing_coin)
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataService.delete_coin", deleted)
+    assert await delete_coin_endpoint("BTCUSD_EVT", db=uow) is None
 
     from src.apps.market_data.tasks import run_coin_history_job
 
@@ -151,39 +158,41 @@ async def test_market_data_view_branches(monkeypatch) -> None:
         captured.update(kwargs)
 
     monkeypatch.setattr(run_coin_history_job, "kiq", fake_kiq)
-    monkeypatch.setattr("src.apps.market_data.views.get_coin_by_symbol_async", missing_coin)
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataQueryService.get_coin_read_by_symbol", missing_coin)
     with pytest.raises(HTTPException) as run_missing:
-        await run_coin_job_endpoint("BTCUSD_EVT", db=object())
+        await run_coin_job_endpoint("BTCUSD_EVT", db=uow)
     assert run_missing.value.status_code == 404
 
-    monkeypatch.setattr("src.apps.market_data.views.get_coin_by_symbol_async", existing_coin)
-    queued = await run_coin_job_endpoint("BTCUSD_EVT", mode="latest", force=False, db=object())
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataQueryService.get_coin_read_by_symbol", existing_coin)
+    queued = await run_coin_job_endpoint("BTCUSD_EVT", mode="latest", force=False, db=uow)
     assert queued["status"] == "queued"
     assert captured == {"symbol": "BTCUSD_EVT", "mode": "latest", "force": False}
 
-    monkeypatch.setattr("src.apps.market_data.views.get_coin_by_symbol_async", missing_coin)
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataQueryService.get_coin_read_by_symbol", missing_coin)
     with pytest.raises(HTTPException) as history_missing:
-        await read_coin_history("BTCUSD_EVT", db=object())
+        await read_coin_history("BTCUSD_EVT", db=uow)
     assert history_missing.value.status_code == 404
 
-    monkeypatch.setattr("src.apps.market_data.views.get_coin_by_symbol_async", existing_coin)
-    monkeypatch.setattr("src.apps.market_data.views.list_price_history_async", listed_history)
-    assert await read_coin_history("BTCUSD_EVT", db=object()) == await listed_history()
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataQueryService.get_coin_read_by_symbol", existing_coin)
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataQueryService.list_price_history", listed_history)
+    expected_history = await listed_history(None)
+    assert await read_coin_history("BTCUSD_EVT", db=uow) == expected_history
 
     price_payload = PriceHistoryCreateFactory.build(interval="15m", price=1.0)
-    monkeypatch.setattr("src.apps.market_data.views.get_coin_by_symbol_async", missing_coin)
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataQueryService.get_coin_read_by_symbol", missing_coin)
     with pytest.raises(HTTPException) as create_history_missing:
-        await create_coin_history("BTCUSD_EVT", price_payload, db=object())
+        await create_coin_history("BTCUSD_EVT", price_payload, db=uow)
     assert create_history_missing.value.status_code == 404
 
-    async def invalid_history(*_args, **_kwargs):
+    async def invalid_history(self, *_args, **_kwargs):
         raise ValueError("bad history")
 
-    monkeypatch.setattr("src.apps.market_data.views.get_coin_by_symbol_async", existing_coin)
-    monkeypatch.setattr("src.apps.market_data.views.create_price_history_async", invalid_history)
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataQueryService.get_coin_read_by_symbol", existing_coin)
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataService.create_price_history", invalid_history)
     with pytest.raises(HTTPException) as bad_history:
-        await create_coin_history("BTCUSD_EVT", price_payload, db=object())
+        await create_coin_history("BTCUSD_EVT", price_payload, db=uow)
     assert bad_history.value.status_code == 400
 
-    monkeypatch.setattr("src.apps.market_data.views.create_price_history_async", created_history)
-    assert await create_coin_history("BTCUSD_EVT", price_payload, db=object()) == await created_history()
+    monkeypatch.setattr("src.apps.market_data.views.MarketDataService.create_price_history", created_history)
+    expected_created_history = await created_history(None)
+    assert await create_coin_history("BTCUSD_EVT", price_payload, db=uow) == expected_created_history

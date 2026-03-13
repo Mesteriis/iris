@@ -5,6 +5,8 @@ from datetime import timedelta
 
 import pytest
 import src.apps.market_data.services as market_data_services_module
+import src.apps.market_data.tasks as market_data_tasks_module
+import src.apps.market_data.views as market_data_views_module
 from src.apps.market_data.query_services import MarketDataQueryService
 from src.apps.market_data.schemas import CoinCreate, PriceHistoryCreate
 from src.apps.market_data.services import MarketDataService
@@ -112,3 +114,34 @@ def test_market_data_services_export_no_public_async_session_wrappers() -> None:
 
     for export_name in forbidden_exports:
         assert not hasattr(market_data_services_module, export_name), export_name
+
+
+def test_market_data_tasks_export_no_wrapper_helpers() -> None:
+    forbidden_exports = (
+        "AsyncSessionLocal",
+        "get_next_pending_backfill_due_at_async",
+        "list_coin_symbols_pending_backfill_async",
+        "list_coin_symbols_ready_for_latest_sync_async",
+        "get_coin_by_symbol_async",
+        "sync_watched_assets_async",
+        "sync_coin_history_backfill_async",
+        "sync_coin_history_backfill_forced_async",
+        "sync_coin_latest_history_async",
+    )
+
+    for export_name in forbidden_exports:
+        assert not hasattr(market_data_tasks_module, export_name), export_name
+
+
+def test_market_data_views_export_no_wrapper_helpers() -> None:
+    forbidden_exports = (
+        "get_coin_by_symbol_async",
+        "list_coins_async",
+        "create_coin_async",
+        "delete_coin_async",
+        "list_price_history_async",
+        "create_price_history_async",
+    )
+
+    for export_name in forbidden_exports:
+        assert not hasattr(market_data_views_module, export_name), export_name

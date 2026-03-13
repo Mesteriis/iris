@@ -10,48 +10,11 @@ from src.runtime.orchestration.locks import async_redis_task_lock
 HISTORY_BACKFILL_LOCK_TIMEOUT_SECONDS = 3600
 HISTORY_REFRESH_LOCK_TIMEOUT_SECONDS = 900
 COIN_HISTORY_LOCK_TIMEOUT_SECONDS = 1800
-AsyncSessionLocal = AsyncUnitOfWork
-
-
-def _session(value):
-    return value.session if hasattr(value, "session") else value
-
-
-async def get_next_pending_backfill_due_at_async():
-    async with AsyncSessionLocal() as db:
-        return await MarketDataQueryService(_session(db)).get_next_pending_backfill_due_at()
-
-
-async def sync_watched_assets_async(db):
-    return await MarketDataService(db).sync_watched_assets()
-
-
-async def list_coin_symbols_pending_backfill_async(db, *, symbol: str | None = None):
-    return await MarketDataQueryService(_session(db)).list_coin_symbols_pending_backfill(symbol=symbol)
-
-
-async def list_coin_symbols_ready_for_latest_sync_async(db):
-    return await MarketDataQueryService(_session(db)).list_coin_symbols_ready_for_latest_sync()
-
-
-async def get_coin_by_symbol_async(db, symbol: str):
-    return await MarketDataQueryService(_session(db)).get_coin_read_by_symbol(symbol)
-
-
-async def sync_coin_history_backfill_async(db, coin):
-    return await MarketDataHistorySyncService(db).sync_coin_history_backfill(symbol=coin.symbol, force=False)
-
-
-async def sync_coin_history_backfill_forced_async(db, coin):
-    return await MarketDataHistorySyncService(db).sync_coin_history_backfill(symbol=coin.symbol, force=True)
-
-
-async def sync_coin_latest_history_async(db, coin, *, force: bool = False):
-    return await MarketDataHistorySyncService(db).sync_coin_latest_history(symbol=coin.symbol, force=force)
 
 
 async def get_next_history_backfill_due_at():
-    return await get_next_pending_backfill_due_at_async()
+    async with AsyncUnitOfWork() as uow:
+        return await MarketDataQueryService(uow.session).get_next_pending_backfill_due_at()
 
 
 def _with_coin_history_lock(symbol: str):
@@ -72,7 +35,7 @@ async def _enqueue_patterns_bootstrap(*, symbol: str, force: bool = False) -> di
 
 
 async def _sync_coin_backfill_item(
-    db: BaseAsyncUnitOfWork,
+    uow: BaseAsyncUnitOfWork,
     coin,
     *,
     force: bool = False,
@@ -86,16 +49,14 @@ async def _sync_coin_backfill_item(
                 "status": "skipped",
                 "reason": "coin_history_in_progress",
             }
-        result = await (
-            sync_coin_history_backfill_forced_async(db, coin) if force else sync_coin_history_backfill_async(db, coin)
-        )
+        result = await MarketDataHistorySyncService(uow).sync_coin_history_backfill(symbol=symbol, force=force)
         if result.get("status") == "ok":
             result["patterns_bootstrap"] = await _enqueue_patterns_bootstrap(symbol=str(result["symbol"]), force=force)
         return result
 
 
 async def _sync_coin_latest_item(
-    db: BaseAsyncUnitOfWork,
+    uow: BaseAsyncUnitOfWork,
     coin,
     *,
     force: bool = False,
@@ -109,7 +70,7 @@ async def _sync_coin_latest_item(
                 "status": "skipped",
                 "reason": "coin_history_in_progress",
             }
-        return await sync_coin_latest_history_async(db, coin, force=force)
+        return await MarketDataHistorySyncService(uow).sync_coin_latest_history(symbol=symbol, force=force)
 
 
 async def _run_history_backfill(*, symbol: str | None = None) -> dict[str, object]:
@@ -124,15 +85,16 @@ async def _run_history_backfill(*, symbol: str | None = None) -> dict[str, objec
                 "mode": "backfill",
             }
 
-        async with AsyncSessionLocal() as db:
-            await sync_watched_assets_async(db)
-            coin_symbols = await list_coin_symbols_pending_backfill_async(db, symbol=symbol)
+        async with AsyncUnitOfWork() as uow:
+            query_service = MarketDataQueryService(uow.session)
+            await MarketDataService(uow).sync_watched_assets()
+            coin_symbols = await query_service.list_coin_symbols_pending_backfill(symbol=symbol)
             items: list[dict[str, object]] = []
             for coin_symbol in coin_symbols:
-                coin = await get_coin_by_symbol_async(db, coin_symbol)
+                coin = await query_service.get_coin_read_by_symbol(coin_symbol)
                 if coin is None:
                     continue
-                items.append(await _sync_coin_backfill_item(db, coin))
+                items.append(await _sync_coin_backfill_item(uow, coin))
             return {
                 "status": "ok",
                 "mode": "backfill",
@@ -154,14 +116,15 @@ async def _run_latest_history_sync() -> dict[str, object]:
                 "mode": "latest",
             }
 
-        async with AsyncSessionLocal() as db:
-            coin_symbols = await list_coin_symbols_ready_for_latest_sync_async(db)
+        async with AsyncUnitOfWork() as uow:
+            query_service = MarketDataQueryService(uow.session)
+            coin_symbols = await query_service.list_coin_symbols_ready_for_latest_sync()
             items: list[dict[str, object]] = []
             for coin_symbol in coin_symbols:
-                coin = await get_coin_by_symbol_async(db, coin_symbol)
+                coin = await query_service.get_coin_read_by_symbol(coin_symbol)
                 if coin is None:
                     continue
-                items.append(await _sync_coin_latest_item(db, coin))
+                items.append(await _sync_coin_latest_item(uow, coin))
             return {
                 "status": "ok",
                 "mode": "latest",
@@ -185,8 +148,9 @@ async def _run_manual_coin_history_job(
             "reason": f"Unsupported mode '{mode}'.",
         }
 
-    async with AsyncSessionLocal() as db:
-        coin = await get_coin_by_symbol_async(db, symbol)
+    async with AsyncUnitOfWork() as uow:
+        query_service = MarketDataQueryService(uow.session)
+        coin = await query_service.get_coin_read_by_symbol(symbol)
         if coin is None:
             return {
                 "status": "error",
@@ -195,18 +159,18 @@ async def _run_manual_coin_history_job(
             }
 
         if normalized_mode == "backfill":
-            result = await _sync_coin_backfill_item(db, coin, force=force)
+            result = await _sync_coin_backfill_item(uow, coin, force=force)
             return {"status": "ok", "mode": "backfill", "forced": force, **result}
 
         if normalized_mode == "latest":
-            result = await _sync_coin_latest_item(db, coin, force=force)
+            result = await _sync_coin_latest_item(uow, coin, force=force)
             return {"status": "ok", "mode": "latest", "forced": force, **result}
 
         if coin.history_backfill_completed_at is None:
-            result = await _sync_coin_backfill_item(db, coin, force=force)
+            result = await _sync_coin_backfill_item(uow, coin, force=force)
             return {"status": "ok", "mode": "backfill", "forced": force, **result}
 
-        result = await _sync_coin_latest_item(db, coin, force=force)
+        result = await _sync_coin_latest_item(uow, coin, force=force)
         return {"status": "ok", "mode": "latest", "forced": force, **result}
 
 
