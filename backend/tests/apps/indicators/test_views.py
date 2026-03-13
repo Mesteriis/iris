@@ -41,6 +41,10 @@ async def test_indicator_endpoints(api_app_client, seeded_api_state) -> None:
     radar_payload = radar_response.json()
     assert any(row["symbol"] == "BTCUSD_EVT" for row in radar_payload["hot_coins"])
     assert any(row["symbol"] == "BTCUSD_EVT" and row["regime"] == "bull_trend" for row in radar_payload["regime_changes"])
+    assert radar_payload["consistency"] == "derived"
+    assert radar_payload["freshness_class"] == "near_real_time"
+    assert isinstance(radar_payload["generated_at"], str) and radar_payload["generated_at"]
+    assert isinstance(radar_payload["staleness_ms"], int)
 
     flow_response = await client.get("/market/flow?limit=24&timeframe=60")
     assert flow_response.status_code == 200
@@ -57,6 +61,10 @@ async def test_indicator_endpoints(api_app_client, seeded_api_state) -> None:
         "timeframe": 60,
         "timestamp": json_utc(seeded_api_state["signal_timestamp"]),
     }
+    assert flow_payload["consistency"] == "derived"
+    assert flow_payload["freshness_class"] == "near_real_time"
+    assert isinstance(flow_payload["generated_at"], str) and flow_payload["generated_at"]
+    assert isinstance(flow_payload["staleness_ms"], int)
 
 
 def test_indicators_api_router_is_mode_agnostic_and_legacy_views_removed() -> None:

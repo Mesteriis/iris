@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
+from src.core.http.contracts import AnalyticalReadContract
 
 
 class SignalRead(BaseModel):
@@ -132,7 +133,7 @@ class CoinMarketDecisionItemRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class CoinMarketDecisionRead(BaseModel):
+class CoinMarketDecisionRead(AnalyticalReadContract):
     coin_id: int
     symbol: str
     canonical_decision: str | None = None

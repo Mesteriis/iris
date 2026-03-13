@@ -26,14 +26,17 @@ async def test_portfolio_endpoints(api_app_client, seeded_api_state) -> None:
 
     state_response = await client.get("/portfolio/state")
     assert state_response.status_code == 200
-    assert state_response.json() == {
-        "total_capital": 100000.0,
-        "allocated_capital": 3200.0,
-        "available_capital": 96800.0,
-        "updated_at": seeded_api_state["signal_timestamp"].isoformat(),
-        "open_positions": 1,
-        "max_positions": get_settings().portfolio_max_positions,
-    }
+    state_payload = state_response.json()
+    assert state_payload["total_capital"] == 100000.0
+    assert state_payload["allocated_capital"] == 3200.0
+    assert state_payload["available_capital"] == 96800.0
+    assert state_payload["updated_at"] == seeded_api_state["signal_timestamp"].isoformat()
+    assert state_payload["open_positions"] == 1
+    assert state_payload["max_positions"] == get_settings().portfolio_max_positions
+    assert state_payload["consistency"] == "cached"
+    assert state_payload["freshness_class"] == "near_real_time"
+    assert isinstance(state_payload["generated_at"], str) and state_payload["generated_at"]
+    assert isinstance(state_payload["staleness_ms"], int) and state_payload["staleness_ms"] >= 0
 
 
 def test_portfolio_api_router_is_mode_agnostic_and_legacy_views_removed() -> None:

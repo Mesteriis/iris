@@ -111,21 +111,24 @@ async def test_signal_and_strategy_endpoints(api_app_client, seeded_api_state) -
 
     coin_market_decision_response = await client.get("/coins/BTCUSD_EVT/market-decision")
     assert coin_market_decision_response.status_code == 200
-    assert coin_market_decision_response.json() == {
-        "coin_id": seeded_api_state["btc"].id,
-        "symbol": "BTCUSD_EVT",
-        "canonical_decision": "BUY",
-        "items": [
-            {
-                "timeframe": 15,
-                "decision": "BUY",
-                "confidence": 0.998,
-                "signal_count": 3,
-                "regime": "bull_trend",
-                "created_at": json_utc(seeded_api_state["signal_timestamp"]),
-            }
-        ],
-    }
+    coin_market_decision_payload = coin_market_decision_response.json()
+    assert coin_market_decision_payload["coin_id"] == seeded_api_state["btc"].id
+    assert coin_market_decision_payload["symbol"] == "BTCUSD_EVT"
+    assert coin_market_decision_payload["canonical_decision"] == "BUY"
+    assert coin_market_decision_payload["items"] == [
+        {
+            "timeframe": 15,
+            "decision": "BUY",
+            "confidence": 0.998,
+            "signal_count": 3,
+            "regime": "bull_trend",
+            "created_at": json_utc(seeded_api_state["signal_timestamp"]),
+        }
+    ]
+    assert coin_market_decision_payload["consistency"] == "snapshot"
+    assert coin_market_decision_payload["freshness_class"] == "near_real_time"
+    assert isinstance(coin_market_decision_payload["generated_at"], str) and coin_market_decision_payload["generated_at"]
+    assert isinstance(coin_market_decision_payload["staleness_ms"], int)
 
     missing_market_decision_response = await client.get("/coins/MISSING_EVT/market-decision")
     assert missing_market_decision_response.status_code == 404

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
+from src.core.http.contracts import AnalyticalReadContract
 
 
 class PortfolioPositionRead(BaseModel):
@@ -48,7 +49,7 @@ class PortfolioActionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class PortfolioStateRead(BaseModel):
+class PortfolioStateRead(AnalyticalReadContract):
     total_capital: float
     allocated_capital: float
     available_capital: float

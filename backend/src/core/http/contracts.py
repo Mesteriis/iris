@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeAlias, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
 ItemT = TypeVar("ItemT")
+ConsistencyClass: TypeAlias = Literal["strong", "snapshot", "eventual", "derived", "cached"]
+FreshnessClass: TypeAlias = Literal["real_time", "near_real_time", "delayed", "historical", "unknown"]
 
 
 class HttpContract(BaseModel):
@@ -31,6 +33,13 @@ class SortContract(HttpContract):
     sort_order: Literal["asc", "desc"] | None = None
 
 
+class AnalyticalReadContract(HttpContract):
+    generated_at: datetime
+    consistency: ConsistencyClass
+    freshness_class: FreshnessClass
+    staleness_ms: int | None = None
+
+
 class PageEnvelope(HttpContract, Generic[ItemT]):
     items: list[ItemT]
     limit: int
@@ -41,7 +50,8 @@ class PageEnvelope(HttpContract, Generic[ItemT]):
     filters: dict[str, Any] = Field(default_factory=dict)
     sort: SortContract | None = None
     generated_at: datetime | None = None
-    consistency: str | None = None
+    consistency: ConsistencyClass | None = None
+    freshness_class: FreshnessClass | None = None
     staleness_ms: int | None = None
 
 

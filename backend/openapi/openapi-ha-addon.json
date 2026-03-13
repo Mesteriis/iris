@@ -881,6 +881,7 @@
         "type": "object"
       },
       "CoinMarketDecisionRead": {
+        "additionalProperties": false,
         "properties": {
           "canonical_decision": {
             "anyOf": [
@@ -897,6 +898,33 @@
             "title": "Coin Id",
             "type": "integer"
           },
+          "consistency": {
+            "enum": [
+              "strong",
+              "snapshot",
+              "eventual",
+              "derived",
+              "cached"
+            ],
+            "title": "Consistency",
+            "type": "string"
+          },
+          "freshness_class": {
+            "enum": [
+              "real_time",
+              "near_real_time",
+              "delayed",
+              "historical",
+              "unknown"
+            ],
+            "title": "Freshness Class",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/CoinMarketDecisionItemRead"
@@ -904,12 +932,26 @@
             "title": "Items",
             "type": "array"
           },
+          "staleness_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staleness Ms"
+          },
           "symbol": {
             "title": "Symbol",
             "type": "string"
           }
         },
         "required": [
+          "generated_at",
+          "consistency",
+          "freshness_class",
           "coin_id",
           "symbol",
           "items"
@@ -2340,7 +2382,35 @@
         "type": "object"
       },
       "MarketFlowRead": {
+        "additionalProperties": false,
         "properties": {
+          "consistency": {
+            "enum": [
+              "strong",
+              "snapshot",
+              "eventual",
+              "derived",
+              "cached"
+            ],
+            "title": "Consistency",
+            "type": "string"
+          },
+          "freshness_class": {
+            "enum": [
+              "real_time",
+              "near_real_time",
+              "delayed",
+              "historical",
+              "unknown"
+            ],
+            "title": "Freshness Class",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
           "leaders": {
             "items": {
               "$ref": "#/components/schemas/MarketLeaderRead"
@@ -2368,9 +2438,23 @@
             },
             "title": "Sectors",
             "type": "array"
+          },
+          "staleness_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staleness Ms"
           }
         },
         "required": [
+          "generated_at",
+          "consistency",
+          "freshness_class",
           "leaders",
           "relations",
           "sectors",
@@ -2582,13 +2666,41 @@
         "type": "object"
       },
       "MarketRadarRead": {
+        "additionalProperties": false,
         "properties": {
+          "consistency": {
+            "enum": [
+              "strong",
+              "snapshot",
+              "eventual",
+              "derived",
+              "cached"
+            ],
+            "title": "Consistency",
+            "type": "string"
+          },
           "emerging_coins": {
             "items": {
               "$ref": "#/components/schemas/MarketRadarCoinRead"
             },
             "title": "Emerging Coins",
             "type": "array"
+          },
+          "freshness_class": {
+            "enum": [
+              "real_time",
+              "near_real_time",
+              "delayed",
+              "historical",
+              "unknown"
+            ],
+            "title": "Freshness Class",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
           },
           "hot_coins": {
             "items": {
@@ -2604,6 +2716,17 @@
             "title": "Regime Changes",
             "type": "array"
           },
+          "staleness_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staleness Ms"
+          },
           "volatility_spikes": {
             "items": {
               "$ref": "#/components/schemas/MarketRadarCoinRead"
@@ -2613,6 +2736,9 @@
           }
         },
         "required": [
+          "generated_at",
+          "consistency",
+          "freshness_class",
           "hot_coins",
           "emerging_coins",
           "regime_changes",
@@ -4838,6 +4964,7 @@
         "type": "object"
       },
       "PortfolioStateRead": {
+        "additionalProperties": false,
         "properties": {
           "allocated_capital": {
             "title": "Allocated Capital",
@@ -4847,6 +4974,33 @@
             "title": "Available Capital",
             "type": "number"
           },
+          "consistency": {
+            "enum": [
+              "strong",
+              "snapshot",
+              "eventual",
+              "derived",
+              "cached"
+            ],
+            "title": "Consistency",
+            "type": "string"
+          },
+          "freshness_class": {
+            "enum": [
+              "real_time",
+              "near_real_time",
+              "delayed",
+              "historical",
+              "unknown"
+            ],
+            "title": "Freshness Class",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
           "max_positions": {
             "title": "Max Positions",
             "type": "integer"
@@ -4854,6 +5008,17 @@
           "open_positions": {
             "title": "Open Positions",
             "type": "integer"
+          },
+          "staleness_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staleness Ms"
           },
           "total_capital": {
             "title": "Total Capital",
@@ -4872,6 +5037,9 @@
           }
         },
         "required": [
+          "generated_at",
+          "consistency",
+          "freshness_class",
           "total_capital",
           "allocated_capital",
           "available_capital",

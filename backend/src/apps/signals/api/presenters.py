@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastapi.encoders import jsonable_encoder
+
 from src.apps.signals.api.contracts import (
     BacktestSummaryRead,
     CoinBacktestsRead,
@@ -15,6 +17,7 @@ from src.apps.signals.api.contracts import (
     StrategyPerformanceRead,
     StrategyRead,
 )
+from src.core.http.analytics import analytical_metadata, latest_timestamp
 
 
 def signal_read(item: Any) -> SignalRead:
@@ -38,7 +41,17 @@ def coin_decision_read(item: Any) -> CoinDecisionRead:
 
 
 def coin_market_decision_read(item: Any) -> CoinMarketDecisionRead:
-    return CoinMarketDecisionRead.model_validate(item)
+    payload = jsonable_encoder(item)
+    return CoinMarketDecisionRead.model_validate(
+        {
+            **payload,
+            **analytical_metadata(
+                source_updated_at=latest_timestamp(row.get("created_at") for row in payload.get("items", ())),
+                consistency="snapshot",
+                freshness_class="near_real_time",
+            ),
+        }
+    )
 
 
 def coin_final_signal_read(item: Any) -> CoinFinalSignalRead:

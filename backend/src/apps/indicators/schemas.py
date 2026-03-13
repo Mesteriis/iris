@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
+from src.core.http.contracts import AnalyticalReadContract
 
 
 class CoinMetricsRead(BaseModel):
@@ -96,7 +97,7 @@ class SectorRotationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class MarketFlowRead(BaseModel):
+class MarketFlowRead(AnalyticalReadContract):
     leaders: list[MarketLeaderRead]
     relations: list[CoinRelationRead]
     sectors: list[SectorMomentumRead]
@@ -134,7 +135,7 @@ class MarketRegimeChangeRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class MarketRadarRead(BaseModel):
+class MarketRadarRead(AnalyticalReadContract):
     hot_coins: list[MarketRadarCoinRead]
     emerging_coins: list[MarketRadarCoinRead]
     regime_changes: list[MarketRegimeChangeRead]

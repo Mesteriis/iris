@@ -11,7 +11,7 @@
 - `capability metadata enrichment`: done
 - `operation resource model`: done
 - `idempotency/concurrency runtime enforcement`: done
-- `consistency/freshness semantics`: pending
+- `consistency/freshness semantics`: done
 - `cache/revalidation governance`: pending
 
 ## Completed Blocks
@@ -27,19 +27,23 @@
 - [x] Capability metadata policy over the generated catalog
 - [x] Unified operation resource model for async/job endpoints
 - [x] Runtime deduplication for async job triggers and explicit concurrency conflicts for stale control-plane draft apply
+- [x] Consistency/freshness metadata on derived/cached analytical reads
 - [x] PR review checklist and API governance CI workflow
 
 ## Current Block
 
-- [ ] Consistency/freshness metadata for analytical reads
-  Scope:
-  - formalize `generated_at`, `consistency` and `staleness_ms` for derived read payloads
-  - classify analytical endpoints by freshness semantics without polluting simple CRUD/read contracts
-  - connect read presenters/page envelopes to explicit data-semantics metadata where it matters
-
-## Remaining Blocks
-
 - [ ] Cache/revalidation HTTP policy
+  Scope:
+  - add explicit `ETag`/`Cache-Control` policy for cacheable analytical reads
+  - make conditional GET semantics deterministic for high-value derived snapshots
+  - keep cache policy out of CRUD/read surfaces where freshness metadata adds no value
+
+## Consistency And Freshness Semantics
+
+- [x] shared analytical metadata contract now exists in `core/http/contracts.py` and `core/http/analytics.py`
+- [x] `portfolio/state` now declares `generated_at`, `consistency`, `freshness_class` and `staleness_ms` as a cached analytical snapshot
+- [x] `market/radar` and `market/flow` now expose explicit derived-read semantics based on the freshest contributing timestamps
+- [x] `coins/{symbol}/market-decision` now exposes snapshot semantics instead of an unqualified aggregate payload
 
 ## Idempotency And Concurrency Runtime Enforcement
 
