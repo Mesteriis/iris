@@ -20,6 +20,7 @@
 
 - **async-first**
 - **class-first**
+- **async-class-first**
 - **typed contracts**
 - **caller-owned transaction boundary**
 - **services orchestrate, repositories persist, query services project**
@@ -211,6 +212,29 @@ Engine ничего не знает про:
 - **service loads and persists**
 - **engine computes**
 
+### Async-class-first rule
+
+Это отдельное обязательное правило, а не stylistic preference.
+
+Для active application path по умолчанию:
+
+- orchestration capabilities оформляются как async classes;
+- service boundary выражается class contract-ом;
+- public operations оформляются async methods;
+- dependency graph собирается вокруг class-based services/engines, а не вокруг россыпи module-level helper functions.
+
+Запрещено по умолчанию:
+
+- строить active orchestration path на module-level async helper functions как на основном contract-е;
+- держать procedural “service modules” без явного class boundary;
+- плодить ad-hoc function chains, которые фактически играют роль service layer без явного ownership.
+
+Допустимое исключение:
+
+- pure analytical math/transform functions внутри engine/support layer;
+- tiny pure helpers в `support.py` / `math.py` / `policies.py`;
+- но не orchestration boundary.
+
 ## Целевой service and engine standard
 
 ## 1. Service categories
@@ -222,6 +246,10 @@ Engine ничего не знает про:
 Для synchronous write/use-case orchestration:
 
 - create/update/delete/apply/approve/recalculate/refresh
+
+Форма по умолчанию:
+
+- async class with explicit constructor dependencies
 
 Примеры имен:
 
@@ -238,6 +266,10 @@ Engine ничего не знает про:
 - TaskIQ workloads;
 - heavy recalculation flows.
 
+Форма по умолчанию:
+
+- async class with explicit constructor dependencies
+
 Примеры имен:
 
 - `PatternRealtimeService`
@@ -251,6 +283,10 @@ Engine ничего не знает про:
 - onboarding;
 - source provisioning;
 - provider-specific setup.
+
+Форма по умолчанию:
+
+- async class with explicit constructor dependencies
 
 Примеры:
 
@@ -291,6 +327,8 @@ Engine ничего не знает про:
 
 - pure functions by default
 - thin class wrapper only when shared configuration/strategy injection is really needed
+
+То есть `async-class-first` относится к orchestration layer, а не к pure math layer.
 
 ### Pure support/policy modules
 
@@ -396,6 +434,8 @@ Service может:
 - вернуть typed result contract;
 - поднять typed domain/application exception.
 
+Service public boundary по умолчанию выражается class method-ами, а не набором свободных async functions.
+
 Service не должен:
 
 - принимать `Request`, `Response`, `HTTPException`, Pydantic transport DTO as transport concern;
@@ -438,6 +478,8 @@ Service запрещено инжектить напрямую:
 
 - `flush()` внутри service допустим, если нужен generated ID / ordering / locking semantics;
 - `AsyncSession` допустим только внутри infrastructure adapter или как временный audit item на миграцию, но не как целевой service contract.
+
+Конструктор service/engine boundary должен быть явным. Скрытая сборка dependency graph через module globals или function-local factories запрещена.
 
 Engine разрешено инжектить только:
 
@@ -619,6 +661,8 @@ Engine layer сам по себе не обязан быть heavily logged.
 ## 13. Module and package layout
 
 Если домен простой, допускается один `services.py`.
+
+Но даже в этом случае active orchestration boundary должен оставаться class-based.
 
 Но если выполняется хотя бы одно условие, домен обязан перейти на `services/` package:
 

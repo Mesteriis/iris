@@ -5,6 +5,7 @@
 - `service governance design`: done
 - `service hotspot audit`: done
 - `analytical engine governance design`: done
+- `async-class-first rule`: done
 - `service/engine split standard`: done
 - `service package split`: pending
 - `analytical engine extraction`: pending
@@ -19,6 +20,7 @@
 
 - [x] Defined a unified service-layer governance standard
 - [x] Defined a separate pure analytical engine standard for math-heavy domains
+- [x] Locked `async-class-first` as the default rule for active orchestration boundaries
 - [x] Classified service responsibilities into command, job, provisioning, side-effect and support layers
 - [x] Classified the engine layer as pure compute with no hidden fetch/persist side effects
 - [x] Captured current hotspot modules and migration priorities
@@ -43,6 +45,7 @@
 ## Current Standard
 
 - [x] caller owns `commit()`
+- [x] active orchestration boundaries are `async-class-first`
 - [x] services may `flush()` but do not own transaction finalization
 - [x] services may register post-commit side effects only through explicit boundaries
 - [x] orchestration service loads/prepares/persists, analytical engine computes only
