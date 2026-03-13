@@ -8,7 +8,48 @@ from sqlalchemy.orm import Session, selectinload
 
 from src.apps.signals.models import Strategy
 from src.apps.signals.models import StrategyPerformance
+from src.apps.signals.read_models import (
+    StrategyPerformanceReadModel,
+    StrategyReadModel,
+    strategy_performance_read_model_from_mapping,
+    strategy_read_model_from_mapping,
+)
 from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
+
+
+def _strategy_performance_payload(item: StrategyPerformanceReadModel) -> dict[str, Any]:
+    return {
+        "strategy_id": int(item.strategy_id),
+        "name": item.name,
+        "enabled": bool(item.enabled),
+        "sample_size": int(item.sample_size),
+        "win_rate": float(item.win_rate),
+        "avg_return": float(item.avg_return),
+        "sharpe_ratio": float(item.sharpe_ratio),
+        "max_drawdown": float(item.max_drawdown),
+        "updated_at": item.updated_at,
+    }
+
+
+def _strategy_payload(item: StrategyReadModel) -> dict[str, Any]:
+    return {
+        "id": int(item.id),
+        "name": item.name,
+        "description": item.description,
+        "enabled": bool(item.enabled),
+        "created_at": item.created_at,
+        "rules": [
+            {
+                "pattern_slug": rule.pattern_slug,
+                "regime": rule.regime,
+                "sector": rule.sector,
+                "cycle": rule.cycle,
+                "min_confidence": float(rule.min_confidence),
+            }
+            for rule in item.rules
+        ],
+        "performance": _strategy_performance_payload(item.performance) if item.performance is not None else None,
+    }
 
 
 class SignalStrategyCompatibilityQuery:
@@ -47,10 +88,8 @@ class SignalStrategyCompatibilityQuery:
         if enabled_only:
             stmt = stmt.where(Strategy.enabled.is_(True))
         rows = self._db.scalars(stmt).all()
-        payload: list[dict[str, Any]] = []
-        for row in rows:
-            performance = row.performance
-            payload.append(
+        items = [
+            strategy_read_model_from_mapping(
                 {
                     "id": row.id,
                     "name": row.name,
@@ -69,22 +108,24 @@ class SignalStrategyCompatibilityQuery:
                     ],
                     "performance": (
                         {
-                            "strategy_id": performance.strategy_id,
+                            "strategy_id": row.performance.strategy_id,
                             "name": row.name,
                             "enabled": row.enabled,
-                            "sample_size": performance.sample_size,
-                            "win_rate": float(performance.win_rate),
-                            "avg_return": float(performance.avg_return),
-                            "sharpe_ratio": float(performance.sharpe_ratio),
-                            "max_drawdown": float(performance.max_drawdown),
-                            "updated_at": performance.updated_at,
+                            "sample_size": row.performance.sample_size,
+                            "win_rate": row.performance.win_rate,
+                            "avg_return": row.performance.avg_return,
+                            "sharpe_ratio": row.performance.sharpe_ratio,
+                            "max_drawdown": row.performance.max_drawdown,
+                            "updated_at": row.performance.updated_at,
                         }
-                        if performance is not None
+                        if row.performance is not None
                         else None
                     ),
                 }
             )
-        return payload
+            for row in rows
+        ]
+        return [_strategy_payload(item) for item in items]
 
 
     def list_strategy_performance(self, *, limit: int = 100) -> Sequence[dict[str, Any]]:
@@ -110,20 +151,7 @@ class SignalStrategyCompatibilityQuery:
             )
             .limit(max(limit, 1))
         ).all()
-        return [
-            {
-                "strategy_id": int(row.strategy_id),
-                "name": str(row.name),
-                "enabled": bool(row.enabled),
-                "sample_size": int(row.sample_size),
-                "win_rate": float(row.win_rate),
-                "avg_return": float(row.avg_return),
-                "sharpe_ratio": float(row.sharpe_ratio),
-                "max_drawdown": float(row.max_drawdown),
-                "updated_at": row.updated_at,
-            }
-            for row in rows
-        ]
+        return [_strategy_performance_payload(strategy_performance_read_model_from_mapping(row._mapping)) for row in rows]
 
 
 def list_strategies(db: Session, *, enabled_only: bool = False, limit: int = 100) -> Sequence[dict[str, Any]]:

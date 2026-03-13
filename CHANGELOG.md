@@ -110,6 +110,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `patterns` runtime workers now use exported async `PatternRealtimeService` and `PatternSignalContextService.enrich_context_only` paths for incremental detection plus context refresh without falling back to sync persistence helpers.
 - `hypothesis_engine` event ingestion now uses the canonical `HypothesisRepository.add_hypothesis(...)` write contract again, and the pipeline regression test now runs under the control-plane dispatcher-backed delivery topology used by the rest of the event worker stack.
 - `patterns` coin-signal read paths now share a deterministic ordering contract across async query services and legacy sync selectors, so base pattern rows consistently sort ahead of derived cluster/hierarchy rows at the same timestamp.
+- `signals` legacy `backtests.py` and `strategies.py` compatibility queries now normalize their payloads through the shared immutable `signals.read_models` contracts instead of building transport dictionaries directly from ORM/query rows.
 - New API surfaces for patterns, per-coin regimes, sector metrics, market cycles and top-ranked signals, plus dashboard/detail page updates for pattern intelligence.
 - Manual feature-flag and pattern lifecycle management via API, plus discovery review endpoint for `discovered_patterns`.
 - Dashboard now surfaces feature-flag state and discovery candidates, and maintenance jobs re-enrich recent signal context after market structure/statistics updates.

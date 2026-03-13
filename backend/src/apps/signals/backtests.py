@@ -18,9 +18,40 @@ from src.apps.signals.backtest_support import (
     sharpe_ratio as _sharpe_ratio,
 )
 from src.apps.signals.models import SignalHistory
+from src.apps.signals.read_models import (
+    BacktestSummaryReadModel,
+    CoinBacktestsReadModel,
+    backtest_summary_read_model_from_mapping,
+    coin_backtests_read_model_from_mapping,
+)
 from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 
 BACKTEST_LOOKBACK_DAYS = 365
+
+
+def _backtest_summary_payload(item: BacktestSummaryReadModel) -> dict[str, Any]:
+    return {
+        "symbol": item.symbol,
+        "signal_type": item.signal_type,
+        "timeframe": int(item.timeframe),
+        "sample_size": int(item.sample_size),
+        "coin_count": int(item.coin_count),
+        "win_rate": float(item.win_rate),
+        "roi": float(item.roi),
+        "avg_return": float(item.avg_return),
+        "sharpe_ratio": float(item.sharpe_ratio),
+        "max_drawdown": float(item.max_drawdown),
+        "avg_confidence": float(item.avg_confidence),
+        "last_evaluated_at": item.last_evaluated_at,
+    }
+
+
+def _coin_backtests_payload(item: CoinBacktestsReadModel) -> dict[str, Any]:
+    return {
+        "coin_id": int(item.coin_id),
+        "symbol": item.symbol,
+        "items": [_backtest_summary_payload(row) for row in item.items],
+    }
 
 
 class SignalBacktestCompatibilityQuery:
@@ -117,25 +148,28 @@ class SignalBacktestCompatibilityQuery:
         grouped: dict[tuple[str, int], list[_BacktestPoint]] = defaultdict(list)
         for point in points:
             grouped[(point.signal_type, point.timeframe)].append(point)
-        rows = [
-            _serialize_group(
-                symbol=symbol.upper() if symbol is not None else None,
-                signal_type=group_signal_type,
-                timeframe=group_timeframe,
-                points=group_points,
+        items = tuple(
+            backtest_summary_read_model_from_mapping(
+                _serialize_group(
+                    symbol=symbol.upper() if symbol is not None else None,
+                    signal_type=group_signal_type,
+                    timeframe=group_timeframe,
+                    points=group_points,
+                )
             )
             for (group_signal_type, group_timeframe), group_points in grouped.items()
-        ]
-        rows.sort(
+        )
+        sorted_items = list(items)
+        sorted_items.sort(
             key=lambda row: (
-                row["sample_size"],
-                row["sharpe_ratio"],
-                row["roi"],
-                row["win_rate"],
+                row.sample_size,
+                row.sharpe_ratio,
+                row.roi,
+                row.win_rate,
             ),
             reverse=True,
         )
-        return rows[: max(limit, 1)]
+        return [_backtest_summary_payload(row) for row in sorted_items[: max(limit, 1)]]
 
     def list_top_backtests(
         self,
@@ -157,17 +191,20 @@ class SignalBacktestCompatibilityQuery:
             lookback_days=lookback_days,
             limit=max(limit * 4, 50),
         )
-        sorted_rows = list(rows)
-        sorted_rows.sort(
+        sorted_items = [
+            backtest_summary_read_model_from_mapping(row)
+            for row in rows
+        ]
+        sorted_items.sort(
             key=lambda row: (
-                row["sharpe_ratio"],
-                row["roi"],
-                row["win_rate"],
-                row["sample_size"],
+                row.sharpe_ratio,
+                row.roi,
+                row.win_rate,
+                row.sample_size,
             ),
             reverse=True,
         )
-        return sorted_rows[: max(limit, 1)]
+        return [_backtest_summary_payload(row) for row in sorted_items[: max(limit, 1)]]
 
     def get_coin_backtests(
         self,
@@ -192,19 +229,21 @@ class SignalBacktestCompatibilityQuery:
         coin = get_coin_by_symbol(self._db, normalized_symbol)
         if coin is None:
             return None
-        return {
-            "coin_id": coin.id,
-            "symbol": coin.symbol,
-            "items": list(
-                self.list_backtests(
-                    symbol=coin.symbol,
-                    timeframe=timeframe,
-                    signal_type=signal_type,
-                    lookback_days=lookback_days,
-                    limit=limit,
-                )
-            ),
-        }
+        return _coin_backtests_payload(
+            coin_backtests_read_model_from_mapping(
+                {
+                    "coin_id": coin.id,
+                    "symbol": coin.symbol,
+                    "items": self.list_backtests(
+                        symbol=coin.symbol,
+                        timeframe=timeframe,
+                        signal_type=signal_type,
+                        lookback_days=lookback_days,
+                        limit=limit,
+                    ),
+                }
+            )
+        )
 
 
 def list_backtests(
