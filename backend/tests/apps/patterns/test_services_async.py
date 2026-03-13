@@ -136,9 +136,17 @@ async def test_pattern_async_services_cover_listing_update_and_regime_paths(
 
     patterns = await query_service.list_patterns()
     assert {"bull_flag", "breakout_retest"} <= {row.slug for row in patterns}
+    pattern = await query_service.get_pattern_read_by_slug("bull_flag")
+    assert pattern is not None
+    assert pattern.statistics
+    assert await query_service.get_pattern_read_by_slug("missing_pattern") is None
 
     features = await query_service.list_pattern_features()
     assert {"market_regime_engine", "pattern_context_engine"} <= {row.feature_slug for row in features}
+    assert await query_service.get_pattern_feature_read_by_slug("missing_feature") is None
+    feature = await query_service.get_pattern_feature_read_by_slug("pattern_context_engine")
+    assert feature is not None
+    assert feature.feature_slug == "pattern_context_engine"
 
     async with SessionUnitOfWork(async_db_session) as uow:
         admin_service = PatternAdminService(uow)

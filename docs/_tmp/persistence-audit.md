@@ -164,7 +164,7 @@ Classification:
 
 #### `apps/patterns`
 
-Status: migrated on the async API/application, TaskIQ orchestration and runtime worker surfaces; legacy sync helper modules still remain under `domain/`
+Status: migrated on the async API/application, TaskIQ orchestration and runtime worker surfaces; public sync selector surface removed, with only legacy sync helper modules under `domain/` remaining
 
 - repositories now isolate pattern feature and pattern registry write paths in [backend/src/apps/patterns/repositories.py](backend/src/apps/patterns/repositories.py)
 - read-only pattern catalog, discovered pattern, coin regime, coin pattern, sector metrics and market-cycle projections now go through [backend/src/apps/patterns/query_services.py](backend/src/apps/patterns/query_services.py)
@@ -177,21 +177,17 @@ Status: migrated on the async API/application, TaskIQ orchestration and runtime 
 - `pattern_workers` and `regime_workers` now delegate incremental detection + regime refresh to async class-based [backend/src/apps/patterns/task_service_runtime.py](backend/src/apps/patterns/task_service_runtime.py) (`PatternRealtimeService`) under shared UoW ownership, removing the old sync `PatternEngine` / `update_market_cycle` / cluster+hierarchy `run_sync` path from [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py)
 - `decision_workers` now delegate context enrichment plus decision/final-signal generation to async `PatternSignalContextService` under UoW, removing the old sync `run_sync` decision path from [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py)
 - `PatternSignalContextService` now exposes `enrich_context_only(...)` from [backend/src/apps/patterns/task_services.py](backend/src/apps/patterns/task_services.py), so `signals` runtime callers can reuse async context enrichment without invoking the broader sync compatibility flow
-- legacy sync selectors in [backend/src/apps/patterns/selectors.py](backend/src/apps/patterns/selectors.py) now emit structured deprecation logs and reuse the same shared signal projection builders plus immutable read-model mapping logic as [backend/src/apps/patterns/query_services.py](backend/src/apps/patterns/query_services.py)
-- sync compatibility writes in [backend/src/apps/patterns/selectors.py](backend/src/apps/patterns/selectors.py) now also emit structured execute/result logging for `update_pattern_feature` and `update_pattern`, keeping residual sync admin mutations visible in persistence traces
-- sync `get_coin_regimes(...)` in [backend/src/apps/patterns/selectors.py](backend/src/apps/patterns/selectors.py) now resolves `Coin` locally with SQLAlchemy instead of delegating to legacy [backend/src/apps/market_data/service_layer.py](backend/src/apps/market_data/service_layer.py), removing another cross-domain sync persistence dependency from the compatibility read path
-- sync compatibility query reads in [backend/src/apps/patterns/selectors.py](backend/src/apps/patterns/selectors.py) now also emit structured execute/result logging for catalog, coin-regime, sector, cycle and pattern-signal list flows instead of relying only on wrapper-level deprecation warnings
+- the public sync [backend/src/apps/patterns/selectors.py](backend/src/apps/patterns/selectors.py) wrapper API has now been removed; callers and tests use async [backend/src/apps/patterns/query_services.py](backend/src/apps/patterns/query_services.py), [backend/src/apps/patterns/services.py](backend/src/apps/patterns/services.py) and [backend/src/apps/signals/query_services.py](backend/src/apps/signals/query_services.py) instead, while `selectors.py` remains only as a tiny internal `_signal_select()` query-builder helper
 - async and sync `list_coin_patterns` read paths now share the same explicit ordering profile from [backend/src/apps/patterns/query_builders.py](backend/src/apps/patterns/query_builders.py), preventing timestamp-tie instability between base pattern rows and derived cluster/hierarchy rows
 - async regime cache clients in [backend/src/apps/patterns/cache.py](backend/src/apps/patterns/cache.py) are now loop-scoped instead of process-global cached clients
 - async market-data candle repositories now expose range/series fetchers used by the pattern task services without pushing raw session access back into the task layer
 - remaining follow-up:
   - legacy sync modules under [backend/src/apps/patterns/domain](backend/src/apps/patterns/domain) still exist for compatibility/tests and should be retired incrementally as their async service equivalents absorb more helper logic
-  - [backend/src/apps/patterns/selectors.py](backend/src/apps/patterns/selectors.py) still owns sync write compatibility wrappers with direct `commit()` boundaries and should be retired once compatibility callers stop depending on the sync API
 
 Classification:
 
 - `OK` on async/public callers, TaskIQ entrypoints and runtime workers
-- `later migration` for residual sync helper modules kept behind the persistence layer
+- `later migration` for residual sync helper modules kept under `patterns/domain`
 
 #### `apps/cross_market`
 
@@ -355,7 +351,6 @@ Representative offenders:
 
 - [backend/src/apps/market_structure/services.py](backend/src/apps/market_structure/services.py)
 - [backend/src/apps/market_data/services.py](backend/src/apps/market_data/services.py)
-- [backend/src/apps/patterns/selectors.py](backend/src/apps/patterns/selectors.py)
 - [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py)
 
 Recently fixed:
@@ -414,7 +409,7 @@ Recommended rollout order:
 12. completed on the async/public API read plus signal-fusion/signal-history runtime surfaces: `apps/signals`
 13. completed on the async/public API and scheduled sync surface: `apps/portfolio`
 14. next: residual sync analytical helpers in `signals`
-15. later: compatibility helpers in `cross_market`, `patterns` and legacy sync `portfolio` engine/selectors
+15. later: compatibility helpers in `cross_market` and legacy sync `portfolio` engine/selectors
 
 ## Current Behavior To Preserve
 
