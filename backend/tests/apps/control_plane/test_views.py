@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
 from src.apps.control_plane.contracts import build_route_key
 from src.apps.control_plane.enums import EventRouteScope
 from src.apps.control_plane.metrics import consumer_metric_key, route_metric_key
 from src.apps.market_data.domain import utc_now
+from src.apps.control_plane.api.router import build_router as build_control_plane_router
+from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 from src.core.settings import get_settings
 
 
@@ -274,3 +278,16 @@ async def test_control_plane_draft_apply_and_discard_endpoints(api_app_client, i
     discard_apply_response = await client.post(f"/control-plane/drafts/{discard_draft_id}/discard", headers=headers)
     assert discard_apply_response.status_code == 200
     assert discard_apply_response.json()["draft"]["status"] == "discarded"
+
+
+def test_control_plane_api_router_is_mode_aware_and_legacy_views_removed() -> None:
+    full_router = build_control_plane_router(mode=LaunchMode.FULL, profile=DeploymentProfile.PLATFORM_FULL)
+    full_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in full_router.routes}
+    assert any(path == "/control-plane/routes" and "POST" in methods for path, methods in full_paths)
+
+    ha_router = build_control_plane_router(mode=LaunchMode.HA_ADDON, profile=DeploymentProfile.HA_EMBEDDED)
+    ha_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in ha_router.routes}
+    assert not any(path == "/control-plane/routes" and "POST" in methods for path, methods in ha_paths)
+    assert any(path == "/control-plane/registry/events" and "GET" in methods for path, methods in ha_paths)
+
+    assert importlib.util.find_spec("src.apps.control_plane.views") is None

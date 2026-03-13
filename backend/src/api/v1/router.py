@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from src.apps.control_plane.views import router as control_plane_router
+from src.apps.control_plane.api.router import build_router as build_control_plane_router
 from src.apps.hypothesis_engine.views import router as hypothesis_router
 from src.apps.indicators.views import router as indicators_router
 from src.apps.market_data.views import router as market_data_router
@@ -19,10 +19,9 @@ from src.core.settings import Settings
 
 
 def build_router(*, settings: Settings, mode: LaunchMode, profile: DeploymentProfile) -> APIRouter:
-    del mode, profile
     router = APIRouter(prefix=normalize_path_prefix(settings.api_version_prefix))
     router.include_router(system_router, prefix="/system")
-    router.include_router(control_plane_router)
+    router.include_router(build_control_plane_router(mode=mode, profile=profile))
     router.include_router(market_data_router)
     router.include_router(market_structure_router)
     router.include_router(news_router)
