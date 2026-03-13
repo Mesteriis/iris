@@ -5,12 +5,11 @@ import multiprocessing
 import pytest
 from redis import Redis
 from sqlalchemy import select
-
-from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AIWeight
+from src.apps.hypothesis_engine.models import AIHypothesis, AIWeight
+from src.apps.hypothesis_engine.query_services import HypothesisQueryService
 from src.apps.hypothesis_engine.tasks.hypothesis_tasks import evaluate_hypotheses_job
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Candle
-from src.core.db.session import SessionLocal
 from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
@@ -25,7 +24,12 @@ def _run_dispatcher_loop() -> None:
 
 
 @pytest.mark.asyncio
-async def test_signal_created_pipeline_persists_and_publishes_hypothesis(seeded_market, settings, wait_until) -> None:
+async def test_signal_created_pipeline_persists_and_publishes_hypothesis(
+    async_db_session,
+    seeded_market,
+    settings,
+    wait_until,
+) -> None:
     coin_id = int(seeded_market["ETHUSD_EVT"]["coin_id"])
     event_timestamp = seeded_market["ETHUSD_EVT"]["latest_timestamp"]
 
@@ -56,29 +60,18 @@ async def test_signal_created_pipeline_persists_and_publishes_hypothesis(seeded_
         redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
         try:
             await wait_until(
-                lambda: any(
-                    fields["event_type"] == "hypothesis_created"
-                    for _, fields in redis_client.xrange(settings.event_stream_name, "-", "+")
-                ),
+                lambda: {"hypothesis_created", "ai_insight"}
+                <= {fields["event_type"] for _, fields in redis_client.xrange(settings.event_stream_name, "-", "+")},
                 timeout=20.0,
                 interval=0.2,
             )
-            db = SessionLocal()
-            try:
-                hypothesis = (
-                    db.execute(
-                        select(AIHypothesis)
-                        .where(AIHypothesis.coin_id == coin_id)
-                        .order_by(AIHypothesis.created_at.desc(), AIHypothesis.id.desc())
-                    )
-                ).scalars().first()
-                assert hypothesis is not None
-                assert hypothesis.hypothesis_type == "signal_follow_through"
-                assert hypothesis.provider == "heuristic"
-                messages = redis_client.xrange(settings.event_stream_name, "-", "+")
-                assert any(fields["event_type"] == "ai_insight" for _, fields in messages)
-            finally:
-                db.close()
+            await async_db_session.rollback()
+            hypotheses = await HypothesisQueryService(async_db_session).list_hypotheses(limit=5, coin_id=coin_id)
+            assert hypotheses
+            assert hypotheses[0].hypothesis_type == "signal_follow_through"
+            assert hypotheses[0].provider == "heuristic"
+            messages = redis_client.xrange(settings.event_stream_name, "-", "+")
+            assert any(fields["event_type"] == "ai_insight" for _, fields in messages)
         finally:
             redis_client.close()
     finally:
@@ -89,39 +82,39 @@ async def test_signal_created_pipeline_persists_and_publishes_hypothesis(seeded_
 
 
 @pytest.mark.asyncio
-async def test_hypothesis_evaluation_job_persists_eval_and_weight(seeded_market, settings) -> None:
+async def test_hypothesis_evaluation_job_persists_eval_and_weight(async_db_session, seeded_market, settings) -> None:
     coin_id = int(seeded_market["ETHUSD_EVT"]["coin_id"])
-    db = SessionLocal()
-    try:
-        candles = (
-            db.execute(
+    candles = (
+        (
+            await async_db_session.execute(
                 select(Candle)
                 .where(Candle.coin_id == coin_id, Candle.timeframe == 15)
                 .order_by(Candle.timestamp.asc())
             )
-        ).scalars().all()
-        hypothesis = AIHypothesis(
-            coin_id=coin_id,
-            timeframe=15,
-            status="active",
-            hypothesis_type="signal_follow_through",
-            statement_json={"direction": "up", "target_move": 0.005, "assets": ["ETHUSD_EVT"]},
-            confidence=0.62,
-            horizon_min=60,
-            eval_due_at=utc_now(),
-            context_json={"trigger_timestamp": candles[-8].timestamp.isoformat()},
-            provider="heuristic",
-            model="rule-based",
-            prompt_name="hypothesis.signal_created",
-            prompt_version=1,
-            source_event_type="signal_created",
-            source_stream_id="1-0",
         )
-        db.add(hypothesis)
-        db.commit()
-        hypothesis_id = int(hypothesis.id)
-    finally:
-        db.close()
+        .scalars()
+        .all()
+    )
+    hypothesis = AIHypothesis(
+        coin_id=coin_id,
+        timeframe=15,
+        status="active",
+        hypothesis_type="signal_follow_through",
+        statement_json={"direction": "up", "target_move": 0.005, "assets": ["ETHUSD_EVT"]},
+        confidence=0.62,
+        horizon_min=60,
+        eval_due_at=utc_now(),
+        context_json={"trigger_timestamp": candles[-8].timestamp.isoformat()},
+        provider="heuristic",
+        model="rule-based",
+        prompt_name="hypothesis.signal_created",
+        prompt_version=1,
+        source_event_type="signal_created",
+        source_stream_id="1-0",
+    )
+    async_db_session.add(hypothesis)
+    await async_db_session.commit()
+    hypothesis_id = int(hypothesis.id)
 
     result = await evaluate_hypotheses_job()
     assert result["status"] == "ok"
@@ -136,14 +129,14 @@ async def test_hypothesis_evaluation_job_persists_eval_and_weight(seeded_market,
     finally:
         redis_client.close()
 
-    db = SessionLocal()
-    try:
-        evaluation = db.scalar(select(AIHypothesisEval).where(AIHypothesisEval.hypothesis_id == hypothesis_id).limit(1))
-        weight = db.scalar(select(AIWeight).where(AIWeight.scope == "hypothesis_type", AIWeight.weight_key == "signal_follow_through").limit(1))
-        hypothesis = db.get(AIHypothesis, hypothesis_id)
-        assert evaluation is not None
-        assert weight is not None
-        assert hypothesis is not None
-        assert hypothesis.status == "evaluated"
-    finally:
-        db.close()
+    await async_db_session.rollback()
+    async_db_session.expire_all()
+    evaluations = await HypothesisQueryService(async_db_session).list_evals(limit=5, hypothesis_id=hypothesis_id)
+    weight = await async_db_session.scalar(
+        select(AIWeight).where(AIWeight.scope == "hypothesis_type", AIWeight.weight_key == "signal_follow_through").limit(1)
+    )
+    hypothesis = await async_db_session.get(AIHypothesis, hypothesis_id)
+    assert evaluations
+    assert weight is not None
+    assert hypothesis is not None
+    assert hypothesis.status == "evaluated"
