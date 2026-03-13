@@ -1,0 +1,40 @@
+name: API Governance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: api-governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: OpenAPI And Matrix Contracts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install backend dependencies
+        run: uv sync --project backend --group dev
+
+      - name: Check committed OpenAPI snapshots
+        run: make openapi-check
+
+      - name: Check committed HTTP availability matrix
+        run: make api-matrix-check
+
+      - name: Run API governance tests
+        run: cd backend && uv run pytest tests/core/test_bootstrap_db_main.py tests/core/test_http_matrix.py

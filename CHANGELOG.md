@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added automated HTTP availability-matrix export from the real mode-aware router assembly, with `backend/scripts/export_http_matrix.py`, `core/http/matrix.py` and `make api-matrix-export` generating `docs/_generated/http-availability-matrix.md`.
 - Added matrix snapshot drift checks through `backend/scripts/check_http_matrix.py`, `core/http/matrix.py` diff helpers and `make api-matrix-check`, so mode-aware route exposure can now be enforced the same way as OpenAPI snapshots.
 - Added a formal HTTP endpoint review checklist in `docs/product/http-endpoint-review-checklist.md` plus `.github/pull_request_template.md`, so transport governance is part of PR review instead of tribal knowledge.
+- Added `.github/workflows/api-governance.yml`, which now enforces committed OpenAPI snapshots, HTTP availability-matrix drift and core API governance tests on PRs and pushes to `main`.
 - Shared persistence foundation in `backend/src/core/db` with structured persistence logging helpers, explicit async unit-of-work boundaries and session-backed UoW support for tests and externally managed sessions.
 - `hypothesis_engine` repository/query split with immutable read models, UoW-owned transactions and persistence contract tests covering read-model immutability, logging hooks and explicit commit/rollback behavior.
 - `hypothesis_engine` prompt loading and reasoning helpers now depend on explicit `HypothesisQueryService` / `PromptLoader` contracts instead of optional `AsyncSession` injection.

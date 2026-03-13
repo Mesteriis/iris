@@ -1131,7 +1131,7 @@ HTTP/API governance должен учитывать эволюцию surface, а
 9. Перевести `news`, отдельно разведя source API, item reads, jobs и onboarding.
 10. Разбить `signals` на несколько bounded read routers и проверить URL semantics.
 11. Active domain HTTP cutover закрыт; `operationId`/tag governance уже enforced кодом и bootstrap tests.
-12. Дальше остаются meta-governance tasks: привязать snapshot/check workflow и matrix export к CI и расширить availability matrix до richer capability matrix; review checklist enforcement уже вынесен в `docs/product/http-endpoint-review-checklist.md` и `.github/pull_request_template.md`.
+12. Snapshot/check workflow и matrix drift control уже привязаны к GitHub Actions; из meta-governance задач остаются richer capability matrix и при желании более глубокая CI policy вокруг OpenAPI diff review.
 
 ## Правила миграции
 

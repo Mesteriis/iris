@@ -75,6 +75,7 @@ IRIS now treats the HTTP surface as a transport adapter layer:
 - request and response contracts are expressed through `Pydantic` schemas; error mapping is centralized through `core/http` plus domain-local `api/errors.py`
 - command endpoints use the shared `core/http/command_executor.py` flow; mode/profile-aware router assembly controls what is exposed in `full`, `local` and `ha_addon`
 - OpenAPI contract governance is enforced through centralized `operationId` generation, category tags and committed schema snapshots
+- GitHub Actions validates OpenAPI snapshots, mode-aware availability matrix drift and core API governance tests on every PR/push to `main`
 
 ## Stack
 
