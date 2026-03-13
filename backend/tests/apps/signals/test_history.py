@@ -186,6 +186,23 @@ def test_refresh_signal_history_emits_compatibility_execution_logs(db_session, m
     assert "compat.refresh_signal_history.result" in events
 
 
+def test_refresh_recent_signal_history_emits_compatibility_execution_logs(db_session, monkeypatch) -> None:
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+
+    result = refresh_recent_signal_history(db_session, coin_id=999_999, timeframe=60, commit=False)
+
+    assert result["rows"] == 0
+    assert "compat.refresh_recent_signal_history.deprecated" in events
+    assert "compat.refresh_recent_signal_history.execute" in events
+    assert "compat.refresh_recent_signal_history.result" in events
+
+
 def test_refresh_signal_history_handles_missing_candles(db_session) -> None:
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     signal_timestamp = DEFAULT_START + timedelta(hours=1)

@@ -241,13 +241,25 @@ class SignalHistoryCompatibilityService:
             timeframe=timeframe,
             commit=commit,
         )
-        return self.refresh_signal_history(
+        result = self.refresh_signal_history(
             lookback_days=SIGNAL_HISTORY_LOOKBACK_DAYS,
             coin_id=coin_id,
             timeframe=timeframe,
             limit_per_scope=SIGNAL_HISTORY_RECENT_LIMIT,
             commit=commit,
         )
+        self._log(
+            logging.INFO,
+            "compat.refresh_recent_signal_history.result",
+            mode="write",
+            coin_id=coin_id,
+            timeframe=timeframe,
+            commit=commit,
+            rows=result.get("rows"),
+            evaluated=result.get("evaluated"),
+            status=result.get("status"),
+        )
+        return result
 
 
 def refresh_signal_history(
