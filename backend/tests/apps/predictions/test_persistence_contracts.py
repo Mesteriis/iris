@@ -166,3 +166,36 @@ def test_prediction_legacy_compatibility_services_emit_deprecation_logs(db_sessi
 
     assert "compat.create_market_predictions.deprecated" in events
     assert "compat.evaluate_pending_predictions.deprecated" in events
+
+
+def test_prediction_legacy_compatibility_services_emit_execution_logs(db_session, monkeypatch) -> None:
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+    monkeypatch.setattr(
+        "src.apps.predictions.engine._create_market_predictions_impl",
+        lambda *_args, **_kwargs: {"status": "ok", "created": 2, "leader_coin_id": 1},
+    )
+    monkeypatch.setattr(
+        "src.apps.predictions.engine._evaluate_pending_predictions_impl",
+        lambda *_args, **_kwargs: {"status": "ok", "evaluated": 3, "confirmed": 1, "failed": 1, "expired": 1},
+    )
+
+    assert create_market_predictions(
+        db_session,
+        leader_coin_id=1,
+        prediction_event="leader_breakout",
+        expected_move="up",
+        base_confidence=0.8,
+        emit_events=False,
+    )["status"] == "ok"
+    assert evaluate_pending_predictions(db_session, limit=10, emit_events=False)["status"] == "ok"
+
+    assert "compat.create_market_predictions.execute" in events
+    assert "compat.create_market_predictions.result" in events
+    assert "compat.evaluate_pending_predictions.execute" in events
+    assert "compat.evaluate_pending_predictions.result" in events
