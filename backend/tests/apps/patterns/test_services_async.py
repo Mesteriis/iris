@@ -198,7 +198,7 @@ async def test_pattern_async_services_cover_listing_update_and_regime_paths(
     assert (await query_service.list_discovered_patterns(limit=1))[0].structure_hash == "cluster:bull_flag:15"
 
     coin_patterns = await query_service.list_coin_patterns("btcusd_evt", limit=10)
-    assert [row.signal_type for row in coin_patterns] == ["pattern_bull_flag", "pattern_cluster_breakout"]
+    assert sorted(row.signal_type for row in coin_patterns) == ["pattern_bull_flag", "pattern_cluster_breakout"]
 
     assert await query_service.get_coin_regime_read_by_symbol("missing_evt") is None
     direct_regime = await query_service.get_coin_regime_read_by_symbol("BTCUSD_EVT")

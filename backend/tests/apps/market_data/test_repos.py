@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from src.apps.market_data.models import Coin
 from src.apps.market_data.repos import (
@@ -31,6 +32,7 @@ from src.apps.market_data.repos import (
     upsert_base_candles,
 )
 from src.apps.market_data.sources.base import MarketBar
+from src.core.db.persistence import PERSISTENCE_LOGGER
 
 
 def test_market_data_repos_direct_paths(db_session, seeded_market) -> None:
@@ -281,3 +283,65 @@ def test_market_data_repos_helper_and_guard_branches(monkeypatch) -> None:
     assert upsert_base_candles(upsert_db, coin, "15m", [older_bar]) is None
     assert upsert_base_candles(upsert_db, coin, "1h", [older_bar]) is None
     assert refresh_calls == [60, 240, 1440]
+
+
+def test_market_data_repos_timescale_fallback_logs_and_skips(monkeypatch) -> None:
+    point = CandlePoint(
+        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+        open=100.0,
+        high=110.0,
+        low=95.0,
+        close=105.0,
+        volume=12.0,
+    )
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+
+    class FailingDb:
+        def execute(self, _stmt, _params=None):
+            raise OperationalError(
+                "SELECT",
+                {},
+                Exception('materialized view "candles_1h" has not been populated'),
+            )
+
+    assert _fetch_view_candle_points(FailingDb(), 1, 60, 1) == []
+    assert _fetch_view_candle_points_between(FailingDb(), 1, 60, point.timestamp, point.timestamp) == []
+    assert aggregate_has_rows(FailingDb(), 1, 60) is False
+
+    class RefreshConnection:
+        def execution_options(self, **kwargs):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, _stmt, _params):
+            raise ProgrammingError(
+                "CALL",
+                {},
+                Exception("procedure refresh_continuous_aggregate does not exist"),
+            )
+
+    class RefreshBind:
+        def connect(self):
+            return RefreshConnection()
+
+    class RefreshDb:
+        def get_bind(self):
+            return RefreshBind()
+
+    refresh_continuous_aggregate_range(RefreshDb(), 60, point.timestamp, point.timestamp)
+
+    assert "aggregate.view_read.fallback" in events
+    assert "aggregate.view_range_read.fallback" in events
+    assert "aggregate.has_rows.fallback" in events
+    assert "aggregate.refresh.skipped" in events

@@ -2,16 +2,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import logging
 from typing import Sequence
 
 from sqlalchemy import Select, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.apps.market_data.models import Candle
 from src.apps.market_data.models import Coin
 from src.apps.market_data.domain import ensure_utc, normalize_interval
 from src.apps.market_data.sources.base import MarketBar
+from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 
 BASE_TIMEFRAME_MINUTES = 15
 TIMEFRAME_INTERVALS: dict[int, str] = {
@@ -27,6 +30,40 @@ AGGREGATE_VIEW_BY_TIMEFRAME: dict[int, str] = {
     1440: "candles_1d",
 }
 UPSERT_BATCH_SIZE = 2000
+
+
+def _aggregate_fallback_log(event: str, /, **fields: object) -> None:
+    PERSISTENCE_LOGGER.log(
+        logging.WARNING,
+        event,
+        extra={
+            "persistence": {
+                "event": event,
+                "component_type": "repository",
+                "domain": "market_data",
+                "component": "timescale_aggregate_adapter",
+                **{key: sanitize_log_value(value) for key, value in fields.items()},
+            }
+        },
+    )
+
+
+def _should_fallback_aggregate_error(error: SQLAlchemyError) -> bool:
+    message = str(error).lower()
+    return any(
+        marker in message
+        for marker in (
+            "refresh_continuous_aggregate",
+            "materialized view",
+            "has not been populated",
+            "does not exist",
+            "undefinedfunction",
+            "undefinedtable",
+            "candles_1h",
+            "candles_4h",
+            "candles_1d",
+        )
+    )
 
 
 @dataclass(slots=True, frozen=True)
@@ -132,7 +169,19 @@ def _fetch_view_candle_points(db: Session, coin_id: int, timeframe: int, limit: 
     params = {"coin_id": coin_id}
     if limit is not None:
         params["limit"] = limit
-    rows = db.execute(query, params).all()
+    try:
+        rows = db.execute(query, params).all()
+    except SQLAlchemyError as error:
+        if not _should_fallback_aggregate_error(error):
+            raise
+        _aggregate_fallback_log(
+            "aggregate.view_read.fallback",
+            timeframe=timeframe,
+            coin_id=coin_id,
+            limit=limit,
+            error=str(error),
+        )
+        return []
     return _rows_to_candle_points(rows, timestamp_field="bucket")
 
 
@@ -144,19 +193,32 @@ def _fetch_view_candle_points_between(
     end: datetime,
 ) -> list[CandlePoint]:
     view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
-    rows = db.execute(
-        text(
-            f"""
-            SELECT bucket, open, high, low, close, volume
-            FROM {view_name}
-            WHERE coin_id = :coin_id
-              AND bucket >= :start
-              AND bucket <= :end
-            ORDER BY bucket ASC
-            """
-        ),
-        {"coin_id": coin_id, "start": ensure_utc(start), "end": ensure_utc(end)},
-    ).all()
+    try:
+        rows = db.execute(
+            text(
+                f"""
+                SELECT bucket, open, high, low, close, volume
+                FROM {view_name}
+                WHERE coin_id = :coin_id
+                  AND bucket >= :start
+                  AND bucket <= :end
+                ORDER BY bucket ASC
+                """
+            ),
+            {"coin_id": coin_id, "start": ensure_utc(start), "end": ensure_utc(end)},
+        ).all()
+    except SQLAlchemyError as error:
+        if not _should_fallback_aggregate_error(error):
+            raise
+        _aggregate_fallback_log(
+            "aggregate.view_range_read.fallback",
+            timeframe=timeframe,
+            coin_id=coin_id,
+            start=ensure_utc(start).isoformat(),
+            end=ensure_utc(end).isoformat(),
+            error=str(error),
+        )
+        return []
     return _rows_to_candle_points(rows, timestamp_field="bucket")
 
 
@@ -262,10 +324,21 @@ def get_latest_candle_timestamp(db: Session, coin_id: int, timeframe: int = BASE
 
     if timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
         view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
-        row = db.execute(
-            text(f"SELECT MAX(bucket) AS bucket FROM {view_name} WHERE coin_id = :coin_id"),
-            {"coin_id": coin_id},
-        ).first()
+        try:
+            row = db.execute(
+                text(f"SELECT MAX(bucket) AS bucket FROM {view_name} WHERE coin_id = :coin_id"),
+                {"coin_id": coin_id},
+            ).first()
+        except SQLAlchemyError as error:
+            if not _should_fallback_aggregate_error(error):
+                raise
+            _aggregate_fallback_log(
+                "aggregate.latest_timestamp.fallback",
+                timeframe=timeframe,
+                coin_id=coin_id,
+                error=str(error),
+            )
+            row = None
         if row is not None and row.bucket is not None:
             return ensure_utc(row.bucket)
 
@@ -386,10 +459,21 @@ def aggregate_has_rows(db: Session, coin_id: int, timeframe: int) -> bool:
         return False
 
     view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
-    row = db.execute(
-        text(f"SELECT 1 FROM {view_name} WHERE coin_id = :coin_id LIMIT 1"),
-        {"coin_id": coin_id},
-    ).first()
+    try:
+        row = db.execute(
+            text(f"SELECT 1 FROM {view_name} WHERE coin_id = :coin_id LIMIT 1"),
+            {"coin_id": coin_id},
+        ).first()
+    except SQLAlchemyError as error:
+        if not _should_fallback_aggregate_error(error):
+            raise
+        _aggregate_fallback_log(
+            "aggregate.has_rows.fallback",
+            timeframe=timeframe,
+            coin_id=coin_id,
+            error=str(error),
+        )
+        return False
     return row is not None
 
 
@@ -406,14 +490,26 @@ def refresh_continuous_aggregate_range(
     aligned_end = align_timeframe_timestamp(window_end, timeframe) + timeframe_delta(timeframe)
     bind = db.get_bind()
     with bind.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
-        connection.execute(
-            text("CALL refresh_continuous_aggregate(:view_name, :window_start, :window_end)"),
-            {
-                "view_name": AGGREGATE_VIEW_BY_TIMEFRAME[timeframe],
-                "window_start": aligned_start,
-                "window_end": aligned_end,
-            },
-        )
+        try:
+            connection.execute(
+                text("CALL refresh_continuous_aggregate(:view_name, :window_start, :window_end)"),
+                {
+                    "view_name": AGGREGATE_VIEW_BY_TIMEFRAME[timeframe],
+                    "window_start": aligned_start,
+                    "window_end": aligned_end,
+                },
+            )
+        except SQLAlchemyError as error:
+            if not _should_fallback_aggregate_error(error):
+                raise
+            _aggregate_fallback_log(
+                "aggregate.refresh.skipped",
+                timeframe=timeframe,
+                view_name=AGGREGATE_VIEW_BY_TIMEFRAME[timeframe],
+                window_start=aligned_start.isoformat(),
+                window_end=aligned_end.isoformat(),
+                error=str(error),
+            )
 
 
 def refresh_continuous_aggregate_window(db: Session, timeframe: int, candle_timestamp: datetime) -> None:

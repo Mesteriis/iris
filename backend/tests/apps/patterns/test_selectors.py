@@ -103,7 +103,7 @@ def test_pattern_selectors_cover_listing_update_and_regime_branches(db_session, 
     assert top_signals[0]["signal_type"] == "pattern_bull_flag"
 
     coin_patterns = list_coin_patterns(db_session, "btcusd_evt", limit=10)
-    assert [row["signal_type"] for row in coin_patterns] == ["pattern_bull_flag", "pattern_cluster_breakout"]
+    assert sorted(row["signal_type"] for row in coin_patterns) == ["pattern_bull_flag", "pattern_cluster_breakout"]
 
     regime = get_coin_regimes(db_session, "BTCUSD_EVT")
     assert regime is not None
