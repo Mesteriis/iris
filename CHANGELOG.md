@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - legacy `signals` sync backtest/strategy payload shaping now comes from shared `signals.read_models` helpers, and `backtests.py` no longer depends on `market_data.service_layer` coin lookups on its compatibility path.
 - legacy `signals` decision, market-decision and final-signal compatibility selectors now also shape transport payloads through shared `signals.read_models` helpers and resolve coin identity locally instead of delegating to `market_data.service_layer`.
 - legacy `signals` fusion compatibility path now enriches signal context without a nested helper-owned commit and keeps context persistence on its own top-level decision transaction/skip boundary.
+- legacy `signals` history compatibility path now emits structured execute/result logging for refresh runs, including missing-candle group branches, so residual sync history writes stay visible in persistence traces.
 - legacy `signals` `backtests.py` and `strategies.py` sync entrypoints now execute through class-based compatibility adapters with structured deprecation logging.
 - legacy `signals` `decision_selectors.py`, `market_decision_selectors.py` and `final_signal_selectors.py` sync read entrypoints now execute through class-based compatibility adapters with structured deprecation logging.
 - legacy `signals` `fusion.py` and `history.py` sync write entrypoints now execute through class-based compatibility services with structured deprecation logging.

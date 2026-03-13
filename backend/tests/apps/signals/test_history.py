@@ -23,6 +23,7 @@ from src.apps.signals.history import (
     refresh_signal_history,
 )
 from src.apps.signals.models import Signal, SignalHistory
+from src.core.db.persistence import PERSISTENCE_LOGGER
 from tests.cross_market_support import DEFAULT_START, seed_candles
 from tests.factories.seeds import SignalSeedFactory
 from tests.fusion_support import create_test_coin
@@ -166,6 +167,23 @@ def test_refresh_signal_history_returns_empty_when_no_signals(db_session) -> Non
         "coin_id": 999_999,
         "timeframe": 60,
     }
+
+
+def test_refresh_signal_history_emits_compatibility_execution_logs(db_session, monkeypatch) -> None:
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+
+    result = refresh_signal_history(db_session, coin_id=999_999, timeframe=60, lookback_days=30, commit=False)
+
+    assert result["rows"] == 0
+    assert "compat.refresh_signal_history.deprecated" in events
+    assert "compat.refresh_signal_history.execute" in events
+    assert "compat.refresh_signal_history.result" in events
 
 
 def test_refresh_signal_history_handles_missing_candles(db_session) -> None:

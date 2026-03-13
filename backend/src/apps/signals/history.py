@@ -89,6 +89,16 @@ class SignalHistoryCompatibilityService:
         limit_per_scope: int | None = None,
         commit: bool = True,
     ) -> dict[str, object]:
+        self._log(
+            logging.DEBUG,
+            "compat.refresh_signal_history.execute",
+            mode="write",
+            lookback_days=lookback_days,
+            coin_id=coin_id,
+            timeframe=timeframe,
+            limit_per_scope=limit_per_scope,
+            commit=commit,
+        )
         signals = _fetch_signals(
             self._db,
             lookback_days=lookback_days,
@@ -97,13 +107,24 @@ class SignalHistoryCompatibilityService:
             limit_per_scope=limit_per_scope,
         )
         if not signals:
-            return SignalHistoryRefreshResult(
+            result = SignalHistoryRefreshResult(
                 status="ok",
                 rows=0,
                 evaluated=0,
                 coin_id=coin_id,
                 timeframe=timeframe,
             ).to_summary()
+            self._log(
+                logging.INFO,
+                "compat.refresh_signal_history.result",
+                mode="write",
+                rows=0,
+                evaluated=0,
+                coin_id=coin_id,
+                timeframe=timeframe,
+                commit=commit,
+            )
+            return result
 
         groups: dict[tuple[int, int], list[Signal]] = defaultdict(list)
         for signal in signals:
@@ -118,6 +139,14 @@ class SignalHistoryCompatibilityService:
             end = ensure_utc(scoped_signals[-1].candle_timestamp) + timedelta(hours=72) + timeframe_delta(group_timeframe)
             candles = fetch_candle_points_between(self._db, group_coin_id, group_timeframe, start, end)
             if not candles:
+                self._log(
+                    logging.DEBUG,
+                    "compat.refresh_signal_history.group_missing_candles",
+                    mode="write",
+                    coin_id=group_coin_id,
+                    timeframe=group_timeframe,
+                    signals=len(scoped_signals),
+                )
                 for signal in scoped_signals:
                     rows.append(
                         {
@@ -178,13 +207,24 @@ class SignalHistoryCompatibilityService:
             self._db.execute(stmt)
         if commit:
             self._db.commit()
-        return SignalHistoryRefreshResult(
+        result = SignalHistoryRefreshResult(
             status="ok",
             rows=len(rows),
             evaluated=evaluated,
             coin_id=coin_id,
             timeframe=timeframe,
         ).to_summary()
+        self._log(
+            logging.INFO,
+            "compat.refresh_signal_history.result",
+            mode="write",
+            rows=len(rows),
+            evaluated=evaluated,
+            coin_id=coin_id,
+            timeframe=timeframe,
+            commit=commit,
+        )
+        return result
 
     def refresh_recent_signal_history(
         self,
@@ -193,6 +233,14 @@ class SignalHistoryCompatibilityService:
         timeframe: int,
         commit: bool = True,
     ) -> dict[str, object]:
+        self._log(
+            logging.DEBUG,
+            "compat.refresh_recent_signal_history.execute",
+            mode="write",
+            coin_id=coin_id,
+            timeframe=timeframe,
+            commit=commit,
+        )
         return self.refresh_signal_history(
             lookback_days=SIGNAL_HISTORY_LOOKBACK_DAYS,
             coin_id=coin_id,
