@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import FrozenInstanceError
 
 import pytest
-import src.apps.portfolio.engine as portfolio_engine_module
-import src.apps.portfolio.selectors as portfolio_selectors_module
 from sqlalchemy import select
 
 import src.apps.portfolio.services as portfolio_services_module
@@ -201,27 +200,8 @@ def test_portfolio_services_exports_no_public_async_query_wrappers() -> None:
 
 
 def test_portfolio_modules_export_no_public_sync_selectors() -> None:
-    forbidden_exports = (
-        "PortfolioCompatibilityQuery",
-        "get_portfolio_state",
-        "list_portfolio_actions",
-        "list_portfolio_positions",
-    )
-
-    for export_name in forbidden_exports:
-        assert not hasattr(portfolio_selectors_module, export_name), export_name
+    assert importlib.util.find_spec("src.apps.portfolio.selectors") is None
 
 
 def test_portfolio_modules_export_no_public_sync_engine_helpers() -> None:
-    forbidden_exports = (
-        "PORTFOLIO_POSITION_STATUSES",
-        "_ensure_coin_for_balance",
-        "_maybe_auto_watch_coin",
-        "_rebalance_existing_position",
-        "_sync_balance_position",
-        "calculate_position_size",
-        "calculate_stops",
-    )
-
-    for export_name in forbidden_exports:
-        assert not hasattr(portfolio_engine_module, export_name), export_name
+    assert importlib.util.find_spec("src.apps.portfolio.engine") is None

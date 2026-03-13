@@ -68,7 +68,7 @@ Status: migrated on the background/runtime surface
 - repositories are centralized in [backend/src/apps/anomalies/repos/anomaly_repo.py](backend/src/apps/anomalies/repos/anomaly_repo.py)
 - read-only anomaly list/detail flows now go through [backend/src/apps/anomalies/query_services.py](backend/src/apps/anomalies/query_services.py)
 - immutable dataclass read models now live in [backend/src/apps/anomalies/read_models.py](backend/src/apps/anomalies/read_models.py)
-- the old compatibility selector module under [backend/src/apps/anomalies/selectors](backend/src/apps/anomalies/selectors) has been reduced to a tombstone; callers read anomalies directly through [backend/src/apps/anomalies/query_services.py](backend/src/apps/anomalies/query_services.py)
+- the old compatibility selector module under [backend/src/apps/anomalies/selectors](backend/src/apps/anomalies/selectors) has been removed entirely; callers read anomalies directly through [backend/src/apps/anomalies/query_services.py](backend/src/apps/anomalies/query_services.py)
 - `candle_closed` consumers and anomaly enrichment / sector-scan tasks now own persistence through the shared async UoW instead of raw session commits
 - persistence logging now covers anomaly repositories, query services, service orchestration and transaction lifecycle events
 - sector and related-peer candle loading now batches peer reads in one explicit query path, removing the old loop-driven N+1 pattern from sector scan context building
@@ -226,13 +226,10 @@ Status: migrated on the async API surface, scheduled evaluation job and cross-ma
 - cross-market leader detection now calls the same class-based prediction service instead of issuing direct prediction writes through a module-level async helper
 - creation now batches pending-window lookups by leader/target set, removing the old per-relation pending-check N+1 path from the active async flow
 - shared prediction constants/outcome helpers used by async services now live in [backend/src/apps/predictions/support.py](backend/src/apps/predictions/support.py)
-- [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) has been reduced to a shallow legacy import alias and no longer owns direct session queries or transaction boundaries
+- the old [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) alias has been removed entirely; callers depend on [backend/src/apps/predictions/services.py](backend/src/apps/predictions/services.py) directly
 - async prediction cache clients in [backend/src/apps/predictions/cache.py](backend/src/apps/predictions/cache.py) are now loop-scoped instead of process-global cached objects
 - the sync [backend/src/apps/predictions/selectors.py](backend/src/apps/predictions/selectors.py) layer has now been removed; active callers and tests read predictions only through async [backend/src/apps/predictions/query_services.py](backend/src/apps/predictions/query_services.py)
 - low-level tests now execute prediction creation/evaluation through `SessionUnitOfWork`-backed service harnesses instead of internal sync engine helpers
-- remaining follow-up:
-- helper-only `portfolio` paths should eventually stop treating `predictions/engine.py` as an operational module and depend directly on [backend/src/apps/predictions/services.py](backend/src/apps/predictions/services.py) if they need prediction orchestration
-
 Classification:
 
 - `OK`
@@ -265,7 +262,7 @@ Classification:
 
 #### `apps/portfolio`
 
-Status: migrated on the async/public API, scheduled balance-sync, runtime worker and test-facing helper surfaces; sync selector and engine modules are now tombstones
+Status: migrated on the async/public API, scheduled balance-sync, runtime worker and test-facing helper surfaces; legacy sync selector/engine entrypoints removed
 
 - read-only portfolio projections now go through [backend/src/apps/portfolio/query_services.py](backend/src/apps/portfolio/query_services.py)
 - immutable dataclass read models now live in [backend/src/apps/portfolio/read_models.py](backend/src/apps/portfolio/read_models.py)
@@ -277,10 +274,8 @@ Status: migrated on the async/public API, scheduled balance-sync, runtime worker
 - async portfolio cache clients in [backend/src/apps/portfolio/cache.py](backend/src/apps/portfolio/cache.py) are now loop-scoped instead of process-global cached clients
 - the active balance-sync path no longer re-fetches `ExchangeAccount` per balance row, removing an avoidable per-item read on the loop
 - consumer tests in [backend/tests/apps/portfolio/test_sync_worker.py](backend/tests/apps/portfolio/test_sync_worker.py), [backend/tests/apps/portfolio/test_auto_watch_feature.py](backend/tests/apps/portfolio/test_auto_watch_feature.py), [backend/tests/apps/portfolio/test_risk_management.py](backend/tests/apps/portfolio/test_risk_management.py), [backend/tests/apps/portfolio/test_engine.py](backend/tests/apps/portfolio/test_engine.py) and [backend/tests/apps/portfolio/test_engine_branches.py](backend/tests/apps/portfolio/test_engine_branches.py) now exercise async [backend/src/apps/portfolio/services.py](backend/src/apps/portfolio/services.py) plus `PortfolioSideEffectDispatcher` for state, helper and balance-sync coverage
-- the public sync selector API formerly living in [backend/src/apps/portfolio/selectors.py](backend/src/apps/portfolio/selectors.py) has been removed; callers and tests read state/actions/positions only through async [backend/src/apps/portfolio/query_services.py](backend/src/apps/portfolio/query_services.py), and `selectors.py` no longer exports compatibility query functions
-- the public sync `portfolio.engine` wrappers for `ensure_portfolio_state`, `refresh_portfolio_state`, `evaluate_portfolio_action` and `sync_exchange_balances` are gone, and [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) is now an empty tombstone module with no public exports
-- remaining follow-up:
-  - retire the empty `portfolio.engine` tombstone entirely once no tooling or ad-hoc imports still expect the module to exist
+- the public sync selector API formerly living in [backend/src/apps/portfolio/selectors.py](backend/src/apps/portfolio/selectors.py) has been removed entirely; callers and tests read state/actions/positions only through async [backend/src/apps/portfolio/query_services.py](backend/src/apps/portfolio/query_services.py)
+- the public sync `portfolio.engine` wrappers for `ensure_portfolio_state`, `refresh_portfolio_state`, `evaluate_portfolio_action` and `sync_exchange_balances` are gone, and [backend/src/apps/portfolio/engine.py](backend/src/apps/portfolio/engine.py) has now been deleted instead of kept as an empty tombstone
 
 Classification:
 

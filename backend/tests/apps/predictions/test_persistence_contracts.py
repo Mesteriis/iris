@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import FrozenInstanceError
 from datetime import timedelta
 
@@ -93,3 +94,7 @@ async def test_prediction_persistence_logs_cover_query_service_and_uow(async_db_
     assert "uow.begin" in events
     assert "query.list_predictions" in events
     assert "uow.rollback_uncommitted" in events
+
+
+def test_prediction_engine_module_is_removed() -> None:
+    assert importlib.util.find_spec("src.apps.predictions.engine") is None

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime, timedelta
 
@@ -196,3 +197,7 @@ async def test_anomaly_persistence_logs_cover_query_repo_and_uow(async_db_sessio
     assert "repo.touch_anomaly" in events
     assert "query.list_active_anomalies" in events
     assert "uow.commit" in events
+
+
+def test_anomaly_selectors_module_is_removed() -> None:
+    assert importlib.util.find_spec("src.apps.anomalies.selectors") is None
