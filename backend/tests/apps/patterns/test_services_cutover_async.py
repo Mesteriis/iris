@@ -157,6 +157,7 @@ async def test_pattern_strategy_service_refreshes_current_runtime_path(async_db_
 
     async with SessionUnitOfWork(async_db_session) as uow:
         refreshed = await PatternStrategyService(uow).refresh()
+        await uow.commit()
 
     assert refreshed["status"] == "ok"
     assert refreshed["strategies"]["status"] == "ok"

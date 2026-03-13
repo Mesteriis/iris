@@ -199,6 +199,11 @@ class RouteManagementService:
         self._routes = EventRouteRepository(self._session)
         self._audit = AuditLogService(self._session)
 
+    def _publish_after_commit(self, event_type: str, payload: dict[str, object]) -> None:
+        self._uow.add_after_commit_action(
+            lambda event_type=event_type, payload=dict(payload): publish_control_event(event_type, payload)
+        )
+
     async def list_routes(self) -> list[EventRoute]:
         return await self._routes.list_all()
 
@@ -235,8 +240,7 @@ class RouteManagementService:
             before={},
             after=route_to_snapshot(route),
         )
-        await self._uow.commit()
-        publish_control_event(
+        self._publish_after_commit(
             CONTROL_ROUTE_CREATED,
             {
                 "route_key": route.route_key,
@@ -246,7 +250,7 @@ class RouteManagementService:
                 "actor": actor.actor,
             },
         )
-        publish_control_event(
+        self._publish_after_commit(
             CONTROL_CACHE_INVALIDATED,
             {"reason": "route_created", "route_key": route.route_key, "actor": actor.actor},
         )
@@ -292,8 +296,7 @@ class RouteManagementService:
             before=before,
             after=route_to_snapshot(route),
         )
-        await self._uow.commit()
-        publish_control_event(
+        self._publish_after_commit(
             CONTROL_ROUTE_UPDATED,
             {
                 "route_key": route.route_key,
@@ -303,7 +306,7 @@ class RouteManagementService:
                 "actor": actor.actor,
             },
         )
-        publish_control_event(
+        self._publish_after_commit(
             CONTROL_CACHE_INVALIDATED,
             {"reason": "route_updated", "route_key": route.route_key, "actor": actor.actor},
         )
@@ -330,8 +333,7 @@ class RouteManagementService:
             before=before,
             after=route_to_snapshot(route),
         )
-        await self._uow.commit()
-        publish_control_event(
+        self._publish_after_commit(
             CONTROL_ROUTE_STATUS_CHANGED,
             {
                 "route_key": route.route_key,
@@ -339,7 +341,7 @@ class RouteManagementService:
                 "actor": actor.actor,
             },
         )
-        publish_control_event(
+        self._publish_after_commit(
             CONTROL_CACHE_INVALIDATED,
             {"reason": "route_status_changed", "route_key": route.route_key, "actor": actor.actor},
         )
@@ -420,6 +422,11 @@ class TopologyDraftService:
         self._versions = TopologyVersionRepository(self._session)
         self._audit = AuditLogService(self._session)
 
+    def _publish_after_commit(self, event_type: str, payload: dict[str, object]) -> None:
+        self._uow.add_after_commit_action(
+            lambda event_type=event_type, payload=dict(payload): publish_control_event(event_type, payload)
+        )
+
     async def create_draft(self, command: DraftCreateCommand) -> TopologyDraft:
         latest_version = await self._versions.get_latest_published()
         draft = TopologyDraft(
@@ -431,7 +438,6 @@ class TopologyDraftService:
             created_by=command.created_by,
         )
         draft = await self._drafts.add(draft)
-        await self._uow.commit()
         return draft
 
     async def list_drafts(self) -> list[TopologyDraft]:
@@ -451,7 +457,6 @@ class TopologyDraftService:
         change = await self._changes.add(change)
         draft.updated_at = utc_now()
         await self._uow.flush()
-        await self._uow.commit()
         return change
 
     async def preview_diff(self, draft_id: int) -> list[TopologyDiffItem]:
@@ -497,9 +502,7 @@ class TopologyDraftService:
         draft.applied_at = utc_now()
         draft.updated_at = draft.applied_at
         await self._uow.flush()
-        await self._uow.commit()
-
-        publish_control_event(
+        self._publish_after_commit(
             CONTROL_TOPOLOGY_PUBLISHED,
             {
                 "draft_id": int(draft.id),
@@ -507,7 +510,7 @@ class TopologyDraftService:
                 "actor": actor.actor,
             },
         )
-        publish_control_event(
+        self._publish_after_commit(
             CONTROL_CACHE_INVALIDATED,
             {
                 "reason": "topology_published",
@@ -537,7 +540,6 @@ class TopologyDraftService:
         draft.discarded_at = utc_now()
         draft.updated_at = draft.discarded_at
         await self._uow.flush()
-        await self._uow.commit()
         return draft
 
     async def _apply_change(

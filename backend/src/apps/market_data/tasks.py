@@ -50,6 +50,7 @@ async def _sync_coin_backfill_item(
                 "reason": "coin_history_in_progress",
             }
         result = await MarketDataHistorySyncService(uow).sync_coin_history_backfill(symbol=symbol, force=force)
+        await uow.commit()
         if result.get("status") == "ok":
             result["patterns_bootstrap"] = await _enqueue_patterns_bootstrap(symbol=str(result["symbol"]), force=force)
         return result
@@ -70,7 +71,9 @@ async def _sync_coin_latest_item(
                 "status": "skipped",
                 "reason": "coin_history_in_progress",
             }
-        return await MarketDataHistorySyncService(uow).sync_coin_latest_history(symbol=symbol, force=force)
+        result = await MarketDataHistorySyncService(uow).sync_coin_latest_history(symbol=symbol, force=force)
+        await uow.commit()
+        return result
 
 
 async def _run_history_backfill(*, symbol: str | None = None) -> dict[str, object]:
@@ -88,6 +91,7 @@ async def _run_history_backfill(*, symbol: str | None = None) -> dict[str, objec
         async with AsyncUnitOfWork() as uow:
             query_service = MarketDataQueryService(uow.session)
             await MarketDataService(uow).sync_watched_assets()
+            await uow.commit()
             coin_symbols = await query_service.list_coin_symbols_pending_backfill(symbol=symbol)
             items: list[dict[str, object]] = []
             for coin_symbol in coin_symbols:

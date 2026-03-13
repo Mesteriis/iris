@@ -177,6 +177,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backtest API powered by `signal_history` with `/backtests`, `/backtests/top` and `/coins/{symbol}/backtests`.
 
 ### Changed
+- Remaining caller-facing persistence boundaries in `news`, `hypothesis_engine`, `anomalies`, `cross_market`, `patterns`, `market_data` and `control_plane` now follow the same rule: write services mutate state only, while `views`, `tasks` and runtime workers own the final `commit()`.
+- `market_data` history sync no longer commits from internal helper paths; candle refreshes, aggregate refreshes and analysis/history notifications now queue through `BaseAsyncUnitOfWork.add_after_commit_action(...)` and execute only after the caller transaction commits.
 - `control_plane` HTTP reads now go through dedicated query services with immutable read models, while route/draft mutations run under the shared async UoW instead of direct session ownership in views and services.
 - `hypothesis_engine` HTTP routes, services, task job and stream consumer now use the shared UoW and query/repository boundaries instead of direct repository commits and route-level session-driven reads.
 - README and architecture docs now document the new persistence standard, including where DB access is allowed, how transaction ownership works and when raw SQL is still acceptable.
@@ -226,6 +228,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Decision scoring now incorporates active strategy alignment from auto-discovered strategies, and the dashboard shows top strategy performance.
 
 ### Fixed
+- Fixed the last `market_data` write helper leak where watched-asset synchronization still passed a bare `AsyncSession` into a write-side helper after the UoW cutover.
+- Fixed direct async service/runtime tests across `news`, `hypothesis_engine`, `cross_market`, `patterns`, `market_data` and `control_plane` to assert the new caller-owned commit contract instead of relying on implicit service commits or live ORM state after transaction completion.
 - Control-plane draft change writes now stay inside the shared async unit-of-work boundary, and persistence contract tests no longer collide during pytest collection.
 - Prevented market structure sources from reporting false healthy status after a simple error reset by requiring successful activity before transitioning from `idle`/`error` into `healthy` or `stale`.
 - Added loop-safe async TaskIQ locking for anomaly/market-structure background work so Redis-backed locks no longer flake between worker event loops.

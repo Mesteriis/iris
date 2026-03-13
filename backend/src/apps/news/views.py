@@ -46,7 +46,9 @@ async def create_news_source(
     uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> NewsSourceRead:
     try:
-        return await NewsService(uow).create_source(payload)
+        item = await NewsService(uow).create_source(payload)
+        await uow.commit()
+        return item
     except (InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -63,6 +65,7 @@ async def patch_news_source(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"News source '{source_id}' was not found.")
+    await uow.commit()
     return updated
 
 
@@ -71,6 +74,7 @@ async def delete_news_source(source_id: int, uow: BaseAsyncUnitOfWork = DB_UOW) 
     deleted = await NewsService(uow).delete_source(source_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"News source '{source_id}' was not found.")
+    await uow.commit()
 
 
 @router.get("/news/items", response_model=list[NewsItemRead])
@@ -158,7 +162,9 @@ async def create_telegram_source_from_dialog(
     uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> NewsSourceRead:
     try:
-        return await TelegramSourceProvisioningService(uow).create_source_from_dialog(payload)
+        item = await TelegramSourceProvisioningService(uow).create_source_from_dialog(payload)
+        await uow.commit()
+        return item
     except InvalidNewsSourceConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -172,4 +178,6 @@ async def bulk_subscribe_telegram_sources(
     payload: TelegramBulkSubscribeRequest,
     uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> TelegramBulkSubscribeRead:
-    return await TelegramSourceProvisioningService(uow).bulk_subscribe(payload)
+    item = await TelegramSourceProvisioningService(uow).bulk_subscribe(payload)
+    await uow.commit()
+    return item

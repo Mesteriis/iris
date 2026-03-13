@@ -46,6 +46,7 @@ async def test_news_query_returns_immutable_item_read_models(async_db_session, s
                 settings={"user_id": "7"},
             )
         )
+        await uow.commit()
 
     coin_id = int((await async_db_session.execute(select(Coin.id).order_by(Coin.id.asc()).limit(1))).scalar_one())
     async_db_session.add(
@@ -116,6 +117,7 @@ async def test_news_persistence_logs_cover_query_and_uow(async_db_session, monke
             )
         )
         items = await NewsQueryService(uow.session).list_sources()
+        await uow.commit()
 
     assert items
     assert "uow.begin" in events

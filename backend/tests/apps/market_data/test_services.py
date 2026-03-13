@@ -43,6 +43,7 @@ async def _list_coins(async_db_session, *, enabled_only: bool = False, include_d
 async def _create_coin(async_db_session, payload) -> Coin:
     async with SessionUnitOfWork(async_db_session) as uow:
         item = await MarketDataService(uow).create_coin(payload)
+        await uow.commit()
     created = await CoinRepository(async_db_session).get_by_symbol(item.symbol, include_deleted=True)
     assert created is not None
     await async_db_session.refresh(created)
@@ -52,6 +53,7 @@ async def _create_coin(async_db_session, payload) -> Coin:
 async def _delete_coin(async_db_session, symbol: str) -> None:
     async with SessionUnitOfWork(async_db_session) as uow:
         await MarketDataService(uow).delete_coin(symbol)
+        await uow.commit()
 
 
 async def _list_price_history(async_db_session, symbol: str, interval: str | None = None) -> list[dict[str, object]]:
@@ -75,6 +77,7 @@ async def _create_price_history(async_db_session, coin: Coin, payload) -> dict[s
     assert managed_coin is not None
     async with SessionUnitOfWork(async_db_session) as uow:
         item = await MarketDataService(uow).create_price_history(symbol=managed_coin.symbol, payload=payload)
+        await uow.commit()
     assert item is not None
     return {
         "coin_id": item.coin_id,
@@ -87,7 +90,9 @@ async def _create_price_history(async_db_session, coin: Coin, payload) -> dict[s
 
 async def _sync_watched_assets(async_db_session) -> list[str]:
     async with SessionUnitOfWork(async_db_session) as uow:
-        return await MarketDataService(uow).sync_watched_assets()
+        items = await MarketDataService(uow).sync_watched_assets()
+        await uow.commit()
+        return items
 
 
 async def _sync_coin_history_backfill(async_db_session, coin: Coin, *, force: bool = False) -> dict[str, int | str]:
@@ -96,7 +101,9 @@ async def _sync_coin_history_backfill(async_db_session, coin: Coin, *, force: bo
     managed_coin = await async_db_session.get(Coin, coin_id)
     assert managed_coin is not None
     async with SessionUnitOfWork(async_db_session) as uow:
-        return await MarketDataHistorySyncService(uow).sync_coin_history_backfill(symbol=managed_coin.symbol, force=force)
+        result = await MarketDataHistorySyncService(uow).sync_coin_history_backfill(symbol=managed_coin.symbol, force=force)
+        await uow.commit()
+        return result
 
 
 async def _sync_coin_latest_history(async_db_session, coin: Coin, *, force: bool = False) -> dict[str, int | str]:
@@ -105,22 +112,30 @@ async def _sync_coin_latest_history(async_db_session, coin: Coin, *, force: bool
     managed_coin = await async_db_session.get(Coin, coin_id)
     assert managed_coin is not None
     async with SessionUnitOfWork(async_db_session) as uow:
-        return await MarketDataHistorySyncService(uow).sync_coin_latest_history(symbol=managed_coin.symbol, force=force)
+        result = await MarketDataHistorySyncService(uow).sync_coin_latest_history(symbol=managed_coin.symbol, force=force)
+        await uow.commit()
+        return result
 
 
 async def _prune_future_price_history(async_db_session, **kwargs) -> int:
     async with SessionUnitOfWork(async_db_session) as uow:
-        return await _prune_future_price_history_async(uow, **kwargs)
+        result = await _prune_future_price_history_async(uow, **kwargs)
+        await uow.commit()
+        return result
 
 
 async def _prune_price_history(async_db_session, **kwargs) -> int:
     async with SessionUnitOfWork(async_db_session) as uow:
-        return await _prune_price_history_async(uow, **kwargs)
+        result = await _prune_price_history_async(uow, **kwargs)
+        await uow.commit()
+        return result
 
 
 async def _upsert_base_candles(async_db_session, **kwargs) -> datetime | None:
     async with SessionUnitOfWork(async_db_session) as uow:
-        return await _upsert_base_candles_async(uow, **kwargs)
+        result = await _upsert_base_candles_async(uow, **kwargs)
+        await uow.commit()
+        return result
 
 
 @pytest.mark.asyncio
@@ -617,9 +632,18 @@ async def test_market_data_async_services_sync_history_progress_update_and_lates
     class FakeUow:
         def __init__(self) -> None:
             self.session = FakeSession()
+            self._after_commit_actions: list[object] = []
+
+        def add_after_commit_action(self, action) -> None:
+            self._after_commit_actions.append(action)
 
         async def commit(self) -> None:
-            return None
+            actions = list(self._after_commit_actions)
+            self._after_commit_actions.clear()
+            for action in actions:
+                result = action()
+                if hasattr(result, "__await__"):
+                    await result
 
     class Carousel:
         async def fetch_history_window(self, coin_obj, interval: str, start: datetime, end: datetime):
@@ -646,13 +670,17 @@ async def test_market_data_async_services_sync_history_progress_update_and_lates
     monkeypatch.setattr("src.apps.market_data.services.publish_coin_analysis_messages", lambda coin: events.append(("analysis", coin.symbol)))
     monkeypatch.setattr("src.apps.market_data.support.publish_candle_events", lambda **kwargs: events.append(("candle", kwargs["created_count"])))
 
-    result = await _sync_coin_history_async(FakeUow(), coin, history_mode="backfill")
+    backfill_uow = FakeUow()
+    result = await _sync_coin_history_async(backfill_uow, coin, history_mode="backfill")
+    await backfill_uow.commit()
     assert result == {"symbol": "ASYNC_SYNC_EVT", "created": 1, "status": "ok"}
     assert events == [("progress", 10.0), ("progress", 50.0), ("progress", 100.0), ("loaded", 10), ("analysis", "ASYNC_SYNC_EVT")]
 
     coin.history_backfill_completed_at = now
     events.clear()
-    latest_result = await _sync_coin_history_async(FakeUow(), coin, history_mode="latest", force=True)
+    latest_uow = FakeUow()
+    latest_result = await _sync_coin_history_async(latest_uow, coin, history_mode="latest", force=True)
+    await latest_uow.commit()
     assert latest_result["status"] == "ok"
     assert fetch_calls[-1] == ("15m", latest_available)
     assert events == []

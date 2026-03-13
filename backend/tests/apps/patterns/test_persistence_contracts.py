@@ -88,6 +88,7 @@ async def test_patterns_persistence_logs_cover_query_repo_and_uow(async_db_sessi
     async with SessionUnitOfWork(async_db_session) as uow:
         updated = await PatternAdminService(uow).update_pattern_feature("pattern_context_engine", enabled=False)
         items = await PatternQueryService(uow.session).list_patterns()
+        await uow.commit()
 
     assert updated is not None
     assert items

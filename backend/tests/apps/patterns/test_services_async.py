@@ -155,6 +155,7 @@ async def test_pattern_async_services_cover_listing_update_and_regime_paths(
         admin_service = PatternAdminService(uow)
         assert await admin_service.update_pattern_feature("missing_feature", enabled=False) is None
         assert (await admin_service.update_pattern_feature("pattern_context_engine", enabled=False)).enabled is False
+        await uow.commit()
 
     async with SessionUnitOfWork(async_db_session) as uow:
         admin_service = PatternAdminService(uow)
@@ -182,6 +183,7 @@ async def test_pattern_async_services_cover_listing_update_and_regime_paths(
             lifecycle_state="experimental",
             cpu_cost=0,
         )
+        await uow.commit()
     assert updated.enabled is False
     assert updated.lifecycle_state == "EXPERIMENTAL"
     assert updated.cpu_cost == 1
@@ -192,6 +194,7 @@ async def test_pattern_async_services_cover_listing_update_and_regime_paths(
             lifecycle_state="active",
             cpu_cost=None,
         )
+        await uow.commit()
     assert active_update is not None
     assert active_update.lifecycle_state == "ACTIVE"
     async with SessionUnitOfWork(async_db_session) as uow:
@@ -201,6 +204,7 @@ async def test_pattern_async_services_cover_listing_update_and_regime_paths(
             lifecycle_state=None,
             cpu_cost=2,
         )
+        await uow.commit()
     assert cpu_only_update is not None
     assert cpu_only_update.cpu_cost == 2
 
@@ -219,6 +223,7 @@ async def test_pattern_async_services_cover_listing_update_and_regime_paths(
 
     async with SessionUnitOfWork(async_db_session) as uow:
         await PatternAdminService(uow).update_pattern_feature("market_regime_engine", enabled=False)
+        await uow.commit()
     disabled_regime = await query_service.get_coin_regime_read_by_symbol("BTCUSD_EVT")
     assert disabled_regime.canonical_regime is None
     assert disabled_regime.items == ()

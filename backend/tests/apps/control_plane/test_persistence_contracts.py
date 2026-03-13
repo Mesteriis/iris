@@ -96,9 +96,11 @@ async def test_control_plane_persistence_logs_cover_query_and_uow(
             ),
             actor=AuditActor(actor="ops"),
         )
+        route_key = route.route_key
+        await uow.commit()
 
     assert items
-    assert route.route_key.endswith(":LOGS:*")
+    assert route_key.endswith(":LOGS:*")
     assert "uow.begin" in events
     assert "query.list_event_definitions" in events
     assert "repo.add_route" in events

@@ -35,8 +35,7 @@ class PromptService:
                 vars_json=dict(payload.vars_json),
             )
         )
-        await self._uow.commit()
-        await self._loader.invalidate(prompt.name)
+        self._uow.add_after_commit_action(lambda name=prompt.name: self._loader.invalidate(name))
         item = await self._queries.get_prompt_read_by_id(int(prompt.id))
         return AIPromptRead.model_validate(item if item is not None else prompt)
 
@@ -54,9 +53,9 @@ class PromptService:
             prompt.is_active = bool(payload.is_active)
             if prompt.is_active:
                 await self._deactivate_other_versions(prompt)
-        await self._uow.commit()
+        await self._uow.flush()
         await self._repo.refresh(prompt)
-        await self._loader.invalidate(prompt.name)
+        self._uow.add_after_commit_action(lambda name=prompt.name: self._loader.invalidate(name))
         item = await self._queries.get_prompt_read_by_id(int(prompt.id))
         return AIPromptRead.model_validate(item if item is not None else prompt)
 
@@ -66,9 +65,9 @@ class PromptService:
             raise PromptNotFoundError(f"Prompt '{prompt_id}' was not found.")
         prompt.is_active = True
         await self._deactivate_other_versions(prompt)
-        await self._uow.commit()
+        await self._uow.flush()
         await self._repo.refresh(prompt)
-        await self._loader.invalidate(prompt.name)
+        self._uow.add_after_commit_action(lambda name=prompt.name: self._loader.invalidate(name))
         item = await self._queries.get_prompt_read_by_id(int(prompt.id))
         return AIPromptRead.model_validate(item if item is not None else prompt)
 

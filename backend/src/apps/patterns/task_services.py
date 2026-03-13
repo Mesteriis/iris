@@ -34,7 +34,6 @@ class PatternEvaluationService(_PatternTaskSupport):
         context_result = await self._refresh_recent_signal_contexts(lookback_days=30)
         decision_result = await self._refresh_investment_decisions(lookback_days=30, emit_events=False)
         final_signal_result = await self._refresh_final_signals(lookback_days=30, emit_events=False)
-        await self._uow.commit()
         return {
             "status": "ok",
             "signal_history": history_result,
@@ -85,7 +84,6 @@ class PatternSignalContextService(_PatternTaskSupport):
             emit_event=False,
         )
         metrics = await self.session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(coin_id)).limit(1))
-        await self._uow.commit()
         return {
             "status": "ok",
             "context": context,
@@ -116,7 +114,6 @@ class PatternMarketStructureService(_PatternTaskSupport):
         context = await self._refresh_recent_signal_contexts(lookback_days=30)
         decisions = await self._refresh_investment_decisions(lookback_days=30, emit_events=False)
         final_signals = await self._refresh_final_signals(lookback_days=30, emit_events=False)
-        await self._uow.commit()
         return {
             "status": "ok",
             "sectors": sectors,
@@ -132,9 +129,7 @@ class PatternDiscoveryService(_PatternTaskSupport):
         super().__init__(uow, service_name="PatternDiscoveryService")
 
     async def refresh(self) -> dict[str, object]:
-        result = await self._refresh_discovered_patterns()
-        await self._uow.commit()
-        return result
+        return await self._refresh_discovered_patterns()
 
 
 class PatternStrategyService(_PatternTaskSupport):
@@ -145,7 +140,6 @@ class PatternStrategyService(_PatternTaskSupport):
         strategies = await self._refresh_strategies()
         decisions = await self._refresh_investment_decisions(lookback_days=30, emit_events=False)
         final_signals = await self._refresh_final_signals(lookback_days=30, emit_events=False)
-        await self._uow.commit()
         return {
             "status": "ok",
             "strategies": strategies,

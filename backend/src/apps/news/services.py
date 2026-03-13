@@ -61,6 +61,11 @@ class NewsService:
         self._sources = NewsSourceRepository(uow.session)
         self._items = NewsItemRepository(uow.session)
 
+    def _publish_after_commit(self, event_type: str, payload: dict[str, object]) -> None:
+        self._uow.add_after_commit_action(
+            lambda event_type=event_type, payload=dict(payload): publish_event(event_type, payload)
+        )
+
     async def create_source(self, payload: NewsSourceCreate) -> NewsSourceRead:
         plugin_name = payload.plugin_name.strip().lower()
         plugin_cls = get_news_plugin(plugin_name)
@@ -87,8 +92,6 @@ class NewsService:
                 cursor_json={},
             )
         )
-        await self._uow.commit()
-        await self._sources.refresh(source)
         item = await self._queries.get_source_read_by_id(int(source.id))
         return NewsSourceRead.model_validate(item if item is not None else source)
 
@@ -129,7 +132,7 @@ class NewsService:
         if payload.clear_error:
             source.last_error = None
 
-        await self._uow.commit()
+        await self._uow.flush()
         await self._sources.refresh(source)
         item = await self._queries.get_source_read_by_id(int(source.id))
         return NewsSourceRead.model_validate(item if item is not None else source)
@@ -139,7 +142,6 @@ class NewsService:
         if source is None:
             return False
         await self._sources.delete(source)
-        await self._uow.commit()
         return True
 
     async def poll_source(
@@ -160,7 +162,6 @@ class NewsService:
         except Exception as exc:
             source.last_error = str(exc)[:255]
             source.last_polled_at = utc_now()
-            await self._uow.commit()
             return {
                 "status": "error",
                 "reason": "poll_failed",
@@ -198,10 +199,8 @@ class NewsService:
         source.cursor_json = dict(result.next_cursor)
         source.last_polled_at = utc_now()
         source.last_error = None
-        await self._uow.commit()
-
         for item in created_items:
-            publish_event(
+            self._publish_after_commit(
                 NEWS_EVENT_ITEM_INGESTED,
                 {
                     "coin_id": 0,

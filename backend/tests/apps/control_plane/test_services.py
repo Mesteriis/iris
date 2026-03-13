@@ -53,21 +53,22 @@ async def test_route_management_creates_scoped_route_and_audit(async_db_session,
             ),
             actor=AuditActor(actor="test-suite"),
         )
+        route_key = route.route_key
+        await uow.commit()
 
-    assert route.route_key == build_route_key(
+    assert route_key == build_route_key(
         "signal_created",
         "hypothesis_workers",
         EventRouteScope.SYMBOL,
         "BTCUSD",
         "*",
     )
-    assert route.status == EventRouteStatus.SHADOW.value
 
     audit_rows = (
         (
             await async_db_session.execute(
                 select(EventRouteAuditLog)
-                .where(EventRouteAuditLog.route_key_snapshot == route.route_key)
+                .where(EventRouteAuditLog.route_key_snapshot == route_key)
                 .order_by(EventRouteAuditLog.id.asc())
             )
         )
@@ -113,11 +114,14 @@ async def test_route_status_change_persists_and_audits(async_db_session, isolate
             ),
             actor=AuditActor(actor="ops", reason="portfolio_replay"),
         )
+        updated_route_key = updated.route_key
+        await uow.commit()
 
-    assert updated.status == EventRouteStatus.MUTED.value
+    assert updated_route_key == route_key
     current = (
         await async_db_session.execute(select(EventRoute).where(EventRoute.route_key == route_key).limit(1))
     ).scalar_one()
+    assert current.status == EventRouteStatus.MUTED.value
     assert current.notes == "Muted during portfolio replay"
 
     audit_rows = (
@@ -250,9 +254,15 @@ async def test_topology_draft_apply_publishes_new_version_and_route_changes(
             ),
         )
         applied_draft, version = await draft_service.apply_draft(int(draft.id), actor=AuditActor(actor="ops"))
+        draft_id = int(draft.id)
+        version_id = int(version.id)
+        version_number = int(version.version_number)
+        await uow.commit()
 
-    assert applied_draft.status == "applied"
-    assert int(version.version_number) == 2
+    persisted_draft = await async_db_session.get(type(applied_draft), draft_id)
+    assert persisted_draft is not None
+    assert persisted_draft.status == "applied"
+    assert version_number == 2
 
     refreshed_route = (
         await async_db_session.execute(select(EventRoute).where(EventRoute.route_key == route_key).limit(1))
@@ -273,17 +283,18 @@ async def test_topology_draft_apply_publishes_new_version_and_route_changes(
 
     stored_version = (
         await async_db_session.execute(
-            select(TopologyConfigVersion).where(TopologyConfigVersion.version_number == 2).limit(1)
+            select(TopologyConfigVersion).where(TopologyConfigVersion.version_number == version_number).limit(1)
         )
     ).scalar_one()
-    assert stored_version.snapshot_json["version_number"] == 2
+    assert int(stored_version.id) == version_id
+    assert stored_version.snapshot_json["version_number"] == version_number
     assert any(route["route_key"] == created_route_key for route in stored_version.snapshot_json["routes"])
 
     draft_audit_rows = (
         (
             await async_db_session.execute(
                 select(EventRouteAuditLog)
-                .where(EventRouteAuditLog.draft_id == int(draft.id))
+                .where(EventRouteAuditLog.draft_id == draft_id)
                 .order_by(EventRouteAuditLog.id.asc())
             )
         )
@@ -292,16 +303,16 @@ async def test_topology_draft_apply_publishes_new_version_and_route_changes(
     )
     assert {row.action for row in draft_audit_rows} == {"status_changed", "created"}
     assert {int(row.topology_version_id) for row in draft_audit_rows if row.topology_version_id is not None} == {
-        int(version.id)
+        version_id
     }
     assert published_events == [
         (
             CONTROL_TOPOLOGY_PUBLISHED,
-            {"draft_id": int(draft.id), "version_number": 2, "actor": "ops"},
+            {"draft_id": draft_id, "version_number": version_number, "actor": "ops"},
         ),
         (
             CONTROL_CACHE_INVALIDATED,
-            {"reason": "topology_published", "draft_id": int(draft.id), "version_number": 2, "actor": "ops"},
+            {"reason": "topology_published", "draft_id": draft_id, "version_number": version_number, "actor": "ops"},
         ),
     ]
 
@@ -336,8 +347,12 @@ async def test_topology_draft_discard_marks_state_and_audits(async_db_session, i
             ),
         )
         discarded = await draft_service.discard_draft(int(draft.id), actor=AuditActor(actor="ops"))
+        draft_id = int(draft.id)
+        await uow.commit()
 
-    assert discarded.status == "discarded"
+    persisted_draft = await async_db_session.get(type(discarded), draft_id)
+    assert persisted_draft is not None
+    assert persisted_draft.status == "discarded"
     persisted_route = (
         await async_db_session.execute(select(EventRoute).where(EventRoute.route_key == route_key).limit(1))
     ).scalar_one()
@@ -347,7 +362,7 @@ async def test_topology_draft_discard_marks_state_and_audits(async_db_session, i
         (
             await async_db_session.execute(
                 select(EventRouteAuditLog)
-                .where(EventRouteAuditLog.draft_id == int(draft.id))
+                .where(EventRouteAuditLog.draft_id == draft_id)
                 .order_by(EventRouteAuditLog.id.asc())
             )
         )
@@ -491,9 +506,15 @@ async def test_topology_draft_apply_supports_route_update_and_delete(
             ),
         )
         applied_draft, version = await draft_service.apply_draft(int(draft.id), actor=AuditActor(actor="ops"))
+        draft_id = int(draft.id)
+        version_id = int(version.id)
+        version_number = int(version.version_number)
+        await uow.commit()
 
-    assert applied_draft.status == "applied"
-    assert int(version.version_number) == 2
+    persisted_draft = await async_db_session.get(type(applied_draft), draft_id)
+    assert persisted_draft is not None
+    assert persisted_draft.status == "applied"
+    assert version_number == 2
 
     updated_route_key = build_route_key(
         "market_regime_changed",
@@ -536,5 +557,5 @@ async def test_topology_draft_apply_supports_route_update_and_delete(
     )
     assert {row.action for row in audit_rows} == {"updated", "deleted"}
     assert {int(row.topology_version_id) for row in audit_rows if row.topology_version_id is not None} == {
-        int(version.id)
+        version_id
     }

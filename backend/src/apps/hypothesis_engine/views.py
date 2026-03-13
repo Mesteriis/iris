@@ -98,7 +98,9 @@ async def create_ai_prompt(
     uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> AIPromptRead:
     try:
-        return await PromptService(uow).create_prompt(payload)
+        item = await PromptService(uow).create_prompt(payload)
+        await uow.commit()
+        return item
     except InvalidPromptPayloadError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -110,7 +112,9 @@ async def patch_ai_prompt(
     uow: BaseAsyncUnitOfWork = DB_UOW,
 ) -> AIPromptRead:
     try:
-        return await PromptService(uow).update_prompt(prompt_id, payload)
+        item = await PromptService(uow).update_prompt(prompt_id, payload)
+        await uow.commit()
+        return item
     except PromptNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -118,7 +122,9 @@ async def patch_ai_prompt(
 @router.post("/hypothesis/prompts/{prompt_id}/activate", response_model=AIPromptRead)
 async def activate_ai_prompt(prompt_id: int, uow: BaseAsyncUnitOfWork = DB_UOW) -> AIPromptRead:
     try:
-        return await PromptService(uow).activate_prompt(prompt_id)
+        item = await PromptService(uow).activate_prompt(prompt_id)
+        await uow.commit()
+        return item
     except PromptNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

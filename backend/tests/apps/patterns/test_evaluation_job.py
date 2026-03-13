@@ -53,6 +53,7 @@ async def test_pattern_evaluation_job_disables_weak_patterns_and_emits_events(
 
     async with SessionUnitOfWork(async_db_session) as uow:
         result = await PatternEvaluationService(uow).run()
+        await uow.commit()
     assert result["status"] == "ok"
     assert result["statistics"]["rolling_window"] == 200
     assert flush_publisher(timeout=5.0)

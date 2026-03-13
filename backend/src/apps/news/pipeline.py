@@ -106,6 +106,11 @@ class NewsNormalizationService:
         self._items = NewsItemRepository(uow.session)
         self._market = NewsMarketDataRepository(uow.session)
 
+    def _publish_after_commit(self, event_type: str, payload: dict[str, object]) -> None:
+        self._uow.add_after_commit_action(
+            lambda event_type=event_type, payload=dict(payload): publish_event(event_type, payload)
+        )
+
     async def normalize_item(self, *, item_id: int) -> dict[str, object]:
         item = await self._items.get_for_update(item_id)
         if item is None:
@@ -150,12 +155,10 @@ class NewsNormalizationService:
             item.normalized_at = utc_now()
             item.sentiment_score = round(sentiment, 4)
             item.relevance_score = round(relevance, 4)
-            await self._uow.commit()
         except Exception as exc:
             item.normalization_status = NEWS_NORMALIZATION_STATUS_ERROR
             item.normalized_payload_json = {"error": str(exc)[:255]}
             item.normalized_at = utc_now()
-            await self._uow.commit()
             return {
                 "status": "error",
                 "reason": "normalization_failed",
@@ -163,7 +166,7 @@ class NewsNormalizationService:
                 "error": str(exc)[:255],
             }
 
-        publish_event(
+        self._publish_after_commit(
             NEWS_EVENT_ITEM_NORMALIZED,
             {
                 "coin_id": 0,
@@ -205,6 +208,11 @@ class NewsCorrelationService:
         self._uow = uow
         self._items = NewsItemRepository(uow.session)
         self._links = NewsItemLinkRepository(uow.session)
+
+    def _publish_after_commit(self, event_type: str, payload: dict[str, object]) -> None:
+        self._uow.add_after_commit_action(
+            lambda event_type=event_type, payload=dict(payload): publish_event(event_type, payload)
+        )
 
     async def correlate_item(self, *, item_id: int) -> dict[str, object]:
         item = await self._items.get_for_update(item_id)
@@ -277,10 +285,9 @@ class NewsCorrelationService:
             created += 1
 
         await self._links.add_many(created_links)
-        await self._uow.commit()
         links = sorted(created_links, key=lambda current: (-float(current.confidence), int(current.coin_id)))
         for link in links:
-            publish_event(
+            self._publish_after_commit(
                 NEWS_EVENT_SYMBOL_CORRELATION_UPDATED,
                 {
                     "coin_id": int(link.coin_id),

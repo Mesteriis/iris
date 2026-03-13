@@ -98,9 +98,11 @@ class EvaluationService:
                 pending_events.append(weight_event)
             created_eval_ids.append(int(evaluation.id))
         if created_eval_ids:
-            await self._uow.commit()
-            for event_type, payload in pending_events:
-                publish_event(event_type, payload)
+            self._uow.add_after_commit_action(
+                lambda pending_events=tuple((event_type, dict(payload)) for event_type, payload in pending_events): (
+                    [publish_event(event_type, payload) for event_type, payload in pending_events]
+                )
+            )
         return created_eval_ids
 
     async def _evaluate_hypothesis(self, hypothesis: AIHypothesis, *, now: datetime) -> HypothesisOutcome | None:

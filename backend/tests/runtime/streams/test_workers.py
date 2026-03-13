@@ -337,6 +337,9 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
             del exc_type, exc, tb
             return False
 
+        async def commit(self):
+            calls.append(("cross_market_commit", self.session))
+
     class FakeCrossMarketService:
         def __init__(self, uow):
             calls.append(("cross_market_session", uow.session))
@@ -349,7 +352,11 @@ async def test_indicator_pattern_decision_fusion_cross_market_and_portfolio_hand
     monkeypatch.setattr(workers, "CrossMarketService", FakeCrossMarketService)
     await workers._handle_cross_market_event(_event(coin_id=-1))
     await workers._handle_cross_market_event(_event(coin_id=9))
-    assert calls == [("cross_market_session", "async-db"), ("cross_market", 9)]
+    assert calls == [
+        ("cross_market_session", "async-db"),
+        ("cross_market", 9),
+        ("cross_market_commit", "async-db"),
+    ]
 
     calls.clear()
 

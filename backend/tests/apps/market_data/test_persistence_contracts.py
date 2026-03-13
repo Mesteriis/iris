@@ -88,6 +88,7 @@ async def test_market_data_persistence_logs_cover_query_repo_and_uow(async_db_se
             )
         )
         items = await MarketDataQueryService(uow.session).list_coins()
+        await uow.commit()
 
     assert items
     assert "uow.begin" in events

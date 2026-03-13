@@ -16,3 +16,4 @@ class HypothesisConsumer:
             return
         async with AsyncUnitOfWork(session_factory=self._session_factory) as uow:
             await HypothesisService(uow).create_from_event(event)
+            await uow.commit()

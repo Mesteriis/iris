@@ -30,7 +30,9 @@ async def patterns_bootstrap_scan(symbol: str | None = None, force: bool = False
             return {"status": "skipped", "reason": "patterns_bootstrap_in_progress", "symbol": lock_suffix}
 
         async with AsyncUnitOfWork() as uow:
-            return await PatternBootstrapService(uow).bootstrap_scan(symbol=symbol, force=force)
+            result = await PatternBootstrapService(uow).bootstrap_scan(symbol=symbol, force=force)
+            await uow.commit()
+            return result
 
 
 async def _run_pattern_evaluation() -> dict[str, object]:
@@ -42,7 +44,9 @@ async def _run_pattern_evaluation() -> dict[str, object]:
             return {"status": "skipped", "reason": "pattern_statistics_refresh_in_progress"}
 
         async with AsyncUnitOfWork() as uow:
-            return await PatternEvaluationService(uow).run()
+            result = await PatternEvaluationService(uow).run()
+            await uow.commit()
+            return result
 
 
 @analytics_broker.task
@@ -62,11 +66,13 @@ async def signal_context_enrichment(
     candle_timestamp: str | None = None,
 ) -> dict[str, object]:
     async with AsyncUnitOfWork() as uow:
-        return await PatternSignalContextService(uow).enrich(
+        result = await PatternSignalContextService(uow).enrich(
             coin_id=int(coin_id),
             timeframe=int(timeframe),
             candle_timestamp=candle_timestamp,
         )
+        await uow.commit()
+        return result
 
 
 @analytics_broker.task
@@ -79,7 +85,9 @@ async def refresh_market_structure() -> dict[str, object]:
             return {"status": "skipped", "reason": "market_structure_refresh_in_progress"}
 
         async with AsyncUnitOfWork() as uow:
-            return await PatternMarketStructureService(uow).refresh()
+            result = await PatternMarketStructureService(uow).refresh()
+            await uow.commit()
+            return result
 
 
 @analytics_broker.task
@@ -92,7 +100,9 @@ async def run_pattern_discovery() -> dict[str, object]:
             return {"status": "skipped", "reason": "pattern_discovery_refresh_in_progress"}
 
         async with AsyncUnitOfWork() as uow:
-            return await PatternDiscoveryService(uow).refresh()
+            result = await PatternDiscoveryService(uow).refresh()
+            await uow.commit()
+            return result
 
 
 @analytics_broker.task
@@ -105,4 +115,6 @@ async def strategy_discovery_job() -> dict[str, object]:
             return {"status": "skipped", "reason": "strategy_discovery_refresh_in_progress"}
 
         async with AsyncUnitOfWork() as uow:
-            return await PatternStrategyService(uow).refresh()
+            result = await PatternStrategyService(uow).refresh()
+            await uow.commit()
+            return result

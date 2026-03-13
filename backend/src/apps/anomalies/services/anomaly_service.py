@@ -77,6 +77,11 @@ class AnomalyService(PersistenceComponent):
             LiquidationCascadeDetector(),
         )
 
+    def _publish_after_commit(self, event_type: str, payload: dict[str, object]) -> None:
+        self._uow.add_after_commit_action(
+            lambda event_type=event_type, payload=dict(payload): publish_event(event_type, payload)
+        )
+
     async def process_candle_closed(
         self,
         *,
@@ -231,7 +236,6 @@ class AnomalyService(PersistenceComponent):
             status=ANOMALY_STATUS_ACTIVE if anomaly.status == ANOMALY_STATUS_NEW else anomaly.status,
             payload_json=payload_json,
         )
-        await self._uow.commit()
         self._log_info("service.enrich_anomaly.result", mode="write", anomaly_id=int(anomaly.id), status="ok")
         return {
             "status": "ok",
@@ -312,7 +316,6 @@ class AnomalyService(PersistenceComponent):
                 )
 
         if changed:
-            await self._uow.commit()
             self._log_info(
                 "service.run_detection_pass.committed",
                 mode="write",
@@ -329,7 +332,7 @@ class AnomalyService(PersistenceComponent):
             # Redis writes are drained on a dedicated background thread, so this
             # async service does not block on network I/O in the event loop here.
             payload = draft.to_event_payload(int(anomaly.id))
-            publish_event(ANOMALY_EVENT_TYPE, payload)
+            self._publish_after_commit(ANOMALY_EVENT_TYPE, payload)
             published_payloads.append(payload)
         self._log_debug(
             "service.run_detection_pass.result",

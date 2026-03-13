@@ -43,6 +43,7 @@ async def patch_pattern_feature(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Pattern feature '{feature_slug}' was not found.",
         )
+    await uow.commit()
     return PatternFeatureRead.model_validate(row)
 
 
@@ -66,6 +67,7 @@ async def patch_pattern(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Pattern '{slug}' was not found.",
         )
+    await uow.commit()
     return PatternRead.model_validate(row)
 
 

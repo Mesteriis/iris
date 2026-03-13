@@ -23,7 +23,9 @@ async def anomaly_enrichment_job(anomaly_id: int) -> dict[str, object]:
             return {"status": "skipped", "reason": "anomaly_enrichment_in_progress", "anomaly_id": int(anomaly_id)}
         async with AsyncUnitOfWork() as uow:
             service = AnomalyService(uow)
-            return await service.enrich_anomaly(int(anomaly_id))
+            result = await service.enrich_anomaly(int(anomaly_id))
+            await uow.commit()
+            return result
 
 
 @analytics_broker.task
@@ -48,12 +50,14 @@ async def sector_anomaly_scan(
             }
         async with AsyncUnitOfWork() as uow:
             service = AnomalyService(uow)
-            return await service.scan_sector_synchrony(
+            result = await service.scan_sector_synchrony(
                 trigger_coin_id=int(trigger_coin_id),
                 timeframe=int(timeframe),
                 timestamp=normalized_timestamp,
                 trigger_anomaly_id=trigger_anomaly_id,
             )
+            await uow.commit()
+            return result
 
 
 @analytics_broker.task
@@ -78,9 +82,11 @@ async def market_structure_anomaly_scan(
             }
         async with AsyncUnitOfWork() as uow:
             service = AnomalyService(uow)
-            return await service.scan_market_structure(
+            result = await service.scan_market_structure(
                 trigger_coin_id=int(trigger_coin_id),
                 timeframe=int(timeframe),
                 timestamp=normalized_timestamp,
                 trigger_anomaly_id=trigger_anomaly_id,
             )
+            await uow.commit()
+            return result

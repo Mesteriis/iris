@@ -105,6 +105,7 @@ async def test_news_service_polls_persists_and_publishes(async_db_session, monke
         )
         first_poll = await service.poll_source(source_id=source.id, limit=2)
         second_poll = await service.poll_source(source_id=source.id, limit=2)
+        await uow.commit()
 
     assert first_poll == {
         "status": "ok",
@@ -159,6 +160,7 @@ async def test_news_service_rejects_duplicate_and_unsupported_sources(async_db_s
                 settings={"user_id": "123456"},
             )
         )
+        await uow.commit()
 
         with pytest.raises(InvalidNewsSourceConfigurationError, match="already exists"):
             await service.create_source(
@@ -194,6 +196,7 @@ async def test_news_service_updates_and_deletes_source(async_db_session) -> None
                 settings={"user_id": "101"},
             )
         )
+        await uow.commit()
 
         updated = await service.update_source(
             created.id,
@@ -212,6 +215,7 @@ async def test_news_service_updates_and_deletes_source(async_db_session) -> None
         assert updated.status == "disabled"
         assert updated.settings == {"user_id": "101", "max_results": 25}
         assert updated.credential_fields_present == ["access_token", "bearer_token"]
+        await uow.commit()
 
         stored = await async_db_session.get(NewsSource, created.id)
         assert stored is not None
@@ -219,6 +223,7 @@ async def test_news_service_updates_and_deletes_source(async_db_session) -> None
         assert stored.credentials_json["access_token"] == "token-b"
 
         assert await service.delete_source(created.id) is True
+        await uow.commit()
         assert await service.delete_source(created.id) is False
 
 

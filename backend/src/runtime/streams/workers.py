@@ -337,6 +337,7 @@ async def _handle_cross_market_event(event: IrisEvent) -> None:
             payload=event.payload,
             emit_events=True,
         )
+        await uow.commit()
 
 
 async def _handle_portfolio_event(event: IrisEvent) -> None:

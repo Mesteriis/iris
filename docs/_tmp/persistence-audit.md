@@ -322,13 +322,15 @@ Recent cleanup:
 ### Transaction Boundary Drift
 
 Representative offenders:
-- no active async/public domain offenders remain after the `market_structure` cutover.
+- no active async/public or runtime service-owned commit offenders remain after the final caller-owned transaction cleanup.
 
 Recently fixed:
 
 - analysis scheduler stream handling in [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py) no longer commits through direct session ownership.
 - write-side helper functions in [backend/src/apps/market_data/services.py](backend/src/apps/market_data/services.py) now require a shared async UoW boundary instead of accepting bare `AsyncSession` / mixed write contracts.
 - [backend/src/apps/market_structure/services.py](backend/src/apps/market_structure/services.py) no longer owns `commit()` either; write callers now commit explicitly and side effects are queued via `BaseAsyncUnitOfWork.add_after_commit_action(...)`.
+- the remaining write services in `news`, `hypothesis_engine`, `anomalies`, `cross_market`, `patterns`, `market_data` and `control_plane` no longer commit internally; their HTTP routes, tasks and runtime workers now close the transaction explicitly.
+- `market_data` history sync helper paths now flush only, while aggregate refreshes, candle events and analysis/history notifications are queued as post-commit actions on the shared async UoW.
 
 Required action:
 
@@ -381,8 +383,8 @@ Recommended rollout order:
 12. completed on the async/public API plus signal-fusion/signal-history runtime and test-facing surfaces: `apps/signals`
 13. completed on the async/public API and scheduled sync surface: `apps/portfolio`
 14. completed: remove residual sync DB helpers from `apps/patterns/domain/*`
-15. next: remaining helper-only sync analytical modules outside `patterns`
-16. later: leftover compatibility assertions in tests and final documentation cleanup
+15. optional later: re-evaluate vendor-specific raw SQL exceptions in `market_data` / `indicators` if Timescale-specific Core abstractions become worthwhile
+16. optional later: final doc cleanup once temporary audit notes move from `docs/_tmp` into permanent architecture docs
 
 ## Current Behavior To Preserve
 

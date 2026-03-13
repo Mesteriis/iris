@@ -167,49 +167,15 @@ class CrossMarketService(PersistenceComponent):
         self._sectors = sector_repo or SectorMetricRepository(uow.session)
         self._candles = candle_repo or CandleRepository(uow.session)
 
-    async def process_event(
+    def _queue_after_commit_side_effects(
         self,
         *,
-        coin_id: int,
+        relation_effects: tuple[_RelationSideEffect, ...],
+        sector_effect: _SectorRotationSideEffect | None,
+        leader_effect: _LeaderDetectionSideEffect | None,
         timeframe: int,
-        event_type: str,
-        payload: dict[str, object],
-        emit_events: bool = True,
-    ) -> dict[str, object]:
-        self._log_debug(
-            "service.process_cross_market_event",
-            mode="write",
-            coin_id=coin_id,
-            timeframe=timeframe,
-            event_type=event_type,
-            emit_events=emit_events,
-        )
-        try:
-            relation_result, relation_effects = await self._update_coin_relations(
-                follower_coin_id=coin_id,
-                timeframe=timeframe,
-                emit_events=emit_events and event_type == "candle_closed",
-            )
-            sector_result, sector_effect = await self._refresh_sector_momentum(
-                timeframe=timeframe,
-                emit_events=emit_events and event_type == "indicator_updated",
-            )
-            if event_type == "indicator_updated":
-                leader_result, leader_effect, leader_requires_commit = await self._detect_market_leader(
-                    coin_id=coin_id,
-                    timeframe=timeframe,
-                    payload=payload,
-                    emit_events=emit_events,
-                )
-            else:
-                leader_result = {"status": "skipped", "reason": "leader_detection_not_requested"}
-                leader_effect = None
-                leader_requires_commit = False
-
-            requires_commit = bool(relation_effects) or sector_result.status == "ok" or leader_requires_commit
-            if requires_commit:
-                await self._uow.commit()
-
+    ) -> None:
+        async def _dispatch() -> None:
             for effect in relation_effects:
                 await cache_correlation_snapshot_async(
                     leader_coin_id=effect.leader_coin_id,
@@ -265,6 +231,56 @@ class CrossMarketService(PersistenceComponent):
                         },
                     )
 
+        self._uow.add_after_commit_action(_dispatch)
+
+    async def process_event(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        event_type: str,
+        payload: dict[str, object],
+        emit_events: bool = True,
+    ) -> dict[str, object]:
+        self._log_debug(
+            "service.process_cross_market_event",
+            mode="write",
+            coin_id=coin_id,
+            timeframe=timeframe,
+            event_type=event_type,
+            emit_events=emit_events,
+        )
+        try:
+            relation_result, relation_effects = await self._update_coin_relations(
+                follower_coin_id=coin_id,
+                timeframe=timeframe,
+                emit_events=emit_events and event_type == "candle_closed",
+            )
+            sector_result, sector_effect = await self._refresh_sector_momentum(
+                timeframe=timeframe,
+                emit_events=emit_events and event_type == "indicator_updated",
+            )
+            if event_type == "indicator_updated":
+                leader_result, leader_effect, leader_requires_commit = await self._detect_market_leader(
+                    coin_id=coin_id,
+                    timeframe=timeframe,
+                    payload=payload,
+                    emit_events=emit_events,
+                )
+            else:
+                leader_result = {"status": "skipped", "reason": "leader_detection_not_requested"}
+                leader_effect = None
+                leader_requires_commit = False
+
+            requires_commit = bool(relation_effects) or sector_result.status == "ok" or leader_requires_commit
+            if requires_commit:
+                self._queue_after_commit_side_effects(
+                    relation_effects=relation_effects,
+                    sector_effect=sector_effect,
+                    leader_effect=leader_effect,
+                    timeframe=timeframe,
+                )
+
             result = {
                 "status": "ok",
                 "relations": relation_result.to_summary(),
@@ -279,7 +295,7 @@ class CrossMarketService(PersistenceComponent):
                 relation_status=relation_result.status,
                 sector_status=sector_result.status,
                 leader_status=leader_result["status"] if isinstance(leader_result, dict) else leader_result.status,
-                committed=requires_commit,
+                requires_commit=requires_commit,
             )
             return result
         except Exception:

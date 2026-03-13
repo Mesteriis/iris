@@ -305,6 +305,7 @@ async def create_route(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except EventRouteConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    await uow.commit()
     return _route_read(route)
 
 
@@ -324,6 +325,7 @@ async def update_route(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except EventRouteConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    await uow.commit()
     return _route_read(route)
 
 
@@ -342,6 +344,7 @@ async def update_route_status(
         )
     except EventRouteNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    await uow.commit()
     return _route_read(route)
 
 
@@ -378,6 +381,7 @@ async def create_draft(
             created_by=actor.actor,
         )
     )
+    await uow.commit()
     return _draft_read(draft)
 
 
@@ -403,6 +407,7 @@ async def create_draft_change(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except TopologyDraftStateError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    await uow.commit()
     return _draft_change_read(change)
 
 
@@ -441,6 +446,7 @@ async def apply_draft(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except TopologyDraftStateError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    await uow.commit()
     return TopologyDraftLifecycleRead(
         draft=_draft_read(draft),
         published_version_number=int(version.version_number),
@@ -460,6 +466,7 @@ async def discard_draft(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except TopologyDraftStateError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    await uow.commit()
     return TopologyDraftLifecycleRead(draft=_draft_read(draft), published_version_number=None)
 
 

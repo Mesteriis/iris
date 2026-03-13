@@ -180,6 +180,7 @@ async def test_cross_market_service_batches_leader_candle_reads(async_db_session
             payload={},
             emit_events=False,
         )
+        await uow.commit()
 
     relations = (
         await async_db_session.execute(
@@ -270,6 +271,7 @@ async def test_cross_market_persistence_logs_cover_query_repo_service_and_uow(as
             payload={},
             emit_events=False,
         )
+        await uow.commit()
 
     assert result["relations"]["status"] == "ok"
     assert "uow.begin" in events

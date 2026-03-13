@@ -19,4 +19,5 @@ async def evaluate_hypotheses_job() -> dict[str, object]:
             return {"status": "skipped", "reason": "hypothesis_evaluation_in_progress"}
         async with AsyncUnitOfWork() as uow:
             eval_ids = await EvaluationService(uow).evaluate_due(utc_now())
+            await uow.commit()
             return {"status": "ok", "evaluated": len(eval_ids), "evaluation_ids": eval_ids}

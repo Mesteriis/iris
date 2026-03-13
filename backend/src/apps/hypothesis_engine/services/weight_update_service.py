@@ -28,9 +28,11 @@ class WeightUpdateService:
         if evaluation is None or evaluation.hypothesis is None:
             return
         event = await self.apply_to_evaluation(evaluation)
-        await self._uow.commit()
         if event is not None:
-            publish_event(event[0], event[1])
+            event_type, payload = event
+            self._uow.add_after_commit_action(
+                lambda event_type=event_type, payload=dict(payload): publish_event(event_type, payload)
+            )
 
     async def apply_to_evaluation(self, evaluation) -> tuple[str, dict[str, object]] | None:
         if evaluation.hypothesis is None:

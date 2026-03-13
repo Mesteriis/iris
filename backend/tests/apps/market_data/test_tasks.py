@@ -17,6 +17,11 @@ class _AsyncDbContext:
     def __init__(self, db: object) -> None:
         self.db = SimpleNamespace(session=db)
 
+        async def _commit() -> None:
+            return None
+
+        self.db.commit = _commit
+
     async def __aenter__(self) -> object:
         return self.db
 
@@ -57,7 +62,10 @@ async def test_market_data_tasks_helpers_and_wrappers(monkeypatch) -> None:
 @pytest.mark.asyncio
 async def test_market_data_tasks_item_level_branches(monkeypatch) -> None:
     coin = SimpleNamespace(symbol="BTCUSD_EVT")
-    uow = SimpleNamespace(session=object())
+    async def _commit() -> None:
+        return None
+
+    uow = SimpleNamespace(session=object(), commit=_commit)
 
     monkeypatch.setattr(tasks, "_with_coin_history_lock", lambda symbol: _async_lock(False))
     skipped_backfill = await tasks._sync_coin_backfill_item(uow, coin)

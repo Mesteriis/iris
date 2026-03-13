@@ -21,3 +21,4 @@ class CandleAnomalyConsumer:
                 timestamp=event.timestamp,
                 source=str(event.payload.get("source")) if event.payload.get("source") is not None else None,
             )
+            await uow.commit()

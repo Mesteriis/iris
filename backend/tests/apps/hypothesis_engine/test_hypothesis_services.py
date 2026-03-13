@@ -158,6 +158,7 @@ async def test_weight_update_service_applies_decayed_bayes(async_db_session, see
 
     async with SessionUnitOfWork(async_db_session) as uow:
         await WeightUpdateService(uow).apply(int(evaluation.id))
+        await uow.commit()
 
     weight = await async_db_session.scalar(
         select(AIWeight).where(AIWeight.scope == "hypothesis_type", AIWeight.weight_key == "signal_follow_through")

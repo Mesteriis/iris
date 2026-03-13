@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,6 +59,15 @@ def _reset_history_sync_state(coin: Coin) -> None:
     coin.last_history_sync_error = None
 
 
+def _coin_message_proxy(coin: Coin) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=int(coin.id),
+        symbol=str(coin.symbol),
+        name=str(getattr(coin, "name", coin.symbol)),
+        asset_type=str(getattr(coin, "asset_type", "unknown")),
+    )
+
+
 async def _coin_read_after_write(
     db: AsyncSession,
     coin: Coin,
@@ -69,9 +79,10 @@ async def _coin_read_after_write(
 
 
 async def _create_or_update_coin_async(
-    db: AsyncSession,
+    uow: BaseAsyncUnitOfWork,
     payload: CoinCreate,
 ) -> Coin:
+    db = uow.session
     coins = CoinRepository(db)
     metrics = CoinMetricsRepository(db)
     existing = await coins.get_by_symbol(payload.symbol, include_deleted=True)
@@ -115,9 +126,10 @@ async def _create_or_update_coin_async(
 
 
 async def _delete_coin_async(
-    db: AsyncSession,
+    uow: BaseAsyncUnitOfWork,
     coin: Coin,
 ) -> None:
+    db = uow.session
     candles = CandleRepository(db)
     indicator_cache = IndicatorCacheRepository(db)
     signals = SignalRepository(db)
@@ -133,10 +145,11 @@ async def _delete_coin_async(
 
 
 async def _create_price_history_async_internal(
-    db: AsyncSession,
+    uow: BaseAsyncUnitOfWork,
     coin: Coin,
     payload,
 ) -> PriceHistoryReadModel:
+    db = uow.session
     resolved_interval = market_data_support.resolve_history_interval(coin, payload.interval)
     base_interval = str(market_data_support.get_base_candle_config(coin)["interval"])
     if resolved_interval != base_interval:
@@ -156,12 +169,14 @@ async def _create_price_history_async_internal(
         close_price=close,
         volume=volume,
     )
-    market_data_support.publish_candle_events(
-        coin_id=int(coin.id),
-        timeframe=timeframe,
-        timestamp=timestamp,
-        created_count=1,
-        source="manual",
+    uow.add_after_commit_action(
+        lambda coin_id=int(coin.id), timeframe=timeframe, timestamp=timestamp: market_data_support.publish_candle_events(
+            coin_id=coin_id,
+            timeframe=timeframe,
+            timestamp=timestamp,
+            created_count=1,
+            source="manual",
+        )
     )
     return price_history_read_model(
         coin_id=int(coin.id),
@@ -173,10 +188,10 @@ async def _create_price_history_async_internal(
 
 
 async def _sync_watched_assets_async_internal(
-    db: AsyncSession,
+    uow: BaseAsyncUnitOfWork,
 ) -> list[str]:
+    db = uow.session
     coins = CoinRepository(db)
-    metrics = CoinMetricsRepository(db)
     for raw_asset in WATCHED_ASSETS:
         asset = CoinCreate(
             symbol=str(raw_asset["symbol"]),
@@ -192,8 +207,7 @@ async def _sync_watched_assets_async_internal(
         if existing is not None and existing.deleted_at is not None:
             continue
         if existing is None:
-            created = await _create_or_update_coin_async(db, asset)
-            await metrics.ensure_row(int(created.id))
+            await _create_or_update_coin_async(uow, asset)
             continue
 
         normalized = _normalized_coin_values(asset)
@@ -223,17 +237,14 @@ class MarketDataService:
         self._coins = CoinRepository(uow.session)
 
     async def create_coin(self, payload: CoinCreate) -> CoinReadModel:
-        coin = await _create_or_update_coin_async(self._uow.session, payload)
-        await self._uow.commit()
-        await self._coins.refresh(coin)
+        coin = await _create_or_update_coin_async(self._uow, payload)
         return await _coin_read_after_write(self._uow.session, coin, include_deleted=True)
 
     async def delete_coin(self, symbol: str) -> bool:
         coin = await self._coins.get_for_update_by_symbol(symbol)
         if coin is None:
             return False
-        await _delete_coin_async(self._uow.session, coin)
-        await self._uow.commit()
+        await _delete_coin_async(self._uow, coin)
         return True
 
     async def create_price_history(
@@ -245,14 +256,10 @@ class MarketDataService:
         coin = await self._coins.get_for_update_by_symbol(symbol)
         if coin is None:
             return None
-        item = await _create_price_history_async_internal(self._uow.session, coin, payload)
-        await self._uow.commit()
-        return item
+        return await _create_price_history_async_internal(self._uow, coin, payload)
 
     async def sync_watched_assets(self) -> list[str]:
-        items = await _sync_watched_assets_async_internal(self._uow.session)
-        await self._uow.commit()
-        return items
+        return await _sync_watched_assets_async_internal(self._uow)
 
 
 class MarketDataHistorySyncService:
@@ -366,7 +373,6 @@ async def _prune_future_price_history_async(
         timeframe=timeframe,
         latest_allowed=latest_allowed,
     )
-    await uow.commit()
     return count
 
 
@@ -392,7 +398,6 @@ async def _prune_price_history_async(
         timeframe=timeframe,
         cutoff=cutoff,
     )
-    await uow.commit()
     return count
 
 
@@ -414,6 +419,7 @@ async def _upsert_base_candles_async(
     coin_id: int,
     interval: str,
     bars,
+    source: str = "history",
 ) -> datetime | None:
     db = uow.session
     coin = await CoinRepository(db).get_by_id(int(coin_id))
@@ -437,18 +443,30 @@ async def _upsert_base_candles_async(
     candles = CandleRepository(db)
     for offset in range(0, len(rows), 2000):
         await candles.upsert_rows(rows[offset : offset + 2000])
-    await uow.commit()
 
     earliest_incoming = min(market_data_domain.ensure_utc(bar.timestamp) for bar in bars)
     latest_incoming = max(market_data_domain.ensure_utc(bar.timestamp) for bar in bars)
     if timeframe == market_data_candles.BASE_TIMEFRAME_MINUTES:
         for aggregate_timeframe in market_data_candles.AGGREGATE_VIEW_BY_TIMEFRAME:
-            await _refresh_continuous_aggregate_range_async(
-                timeframe=aggregate_timeframe,
-                window_start=earliest_incoming,
-                window_end=latest_incoming,
+            uow.add_after_commit_action(
+                lambda aggregate_timeframe=aggregate_timeframe,
+                earliest_incoming=earliest_incoming,
+                latest_incoming=latest_incoming: _refresh_continuous_aggregate_range_async(
+                    timeframe=aggregate_timeframe,
+                    window_start=earliest_incoming,
+                    window_end=latest_incoming,
+                )
             )
     if latest_existing is None or latest_incoming > latest_existing:
+        uow.add_after_commit_action(
+            lambda coin_id=int(coin.id), timeframe=timeframe, timestamp=latest_incoming, created_count=len(rows), source=source: market_data_support.publish_candle_events(
+                coin_id=coin_id,
+                timeframe=timeframe,
+                timestamp=timestamp,
+                created_count=created_count,
+                source=source,
+            )
+        )
         return latest_incoming
     return None
 
@@ -514,21 +532,14 @@ async def _sync_coin_history_async(
 
     if start <= latest_available:
         fetch_result = await carousel.fetch_history_window(coin, interval, start, latest_available)
-        latest_candle_timestamp = await _upsert_base_candles_async(
+        await _upsert_base_candles_async(
             uow,
             coin_id=int(coin.id),
             interval=interval,
             bars=fetch_result.bars,
+            source=history_mode,
         )
         total_created += len(fetch_result.bars)
-        if latest_candle_timestamp is not None:
-            market_data_support.publish_candle_events(
-                coin_id=int(coin.id),
-                timeframe=market_data_candles.interval_to_timeframe(interval),
-                timestamp=latest_candle_timestamp,
-                created_count=len(fetch_result.bars),
-                source=history_mode,
-            )
         await _prune_price_history_async(
             uow,
             coin_id=int(coin.id),
@@ -556,8 +567,6 @@ async def _sync_coin_history_async(
             coin.last_history_sync_at = now
             coin.next_history_sync_at = now + timedelta(hours=1)
             coin.last_history_sync_error = (fetch_result.error or "Market source carousel exhausted.")[:255]
-            await uow.commit()
-            await CoinRepository(db).refresh(coin)
             return {
                 "symbol": coin.symbol,
                 "created": total_created,
@@ -578,8 +587,6 @@ async def _sync_coin_history_async(
     coin.last_history_sync_at = now
     coin.next_history_sync_at = None
     coin.last_history_sync_error = None
-    await uow.commit()
-    await CoinRepository(db).refresh(coin)
 
     if history_mode == "backfill":
         loaded_points, total_points, _ = await _calculate_backfill_progress_async(
@@ -588,15 +595,23 @@ async def _sync_coin_history_async(
             candles=candles,
             reference_time=now,
         )
+        message_coin = _coin_message_proxy(coin)
         if last_progress_percent != 100.0:
-            publish_coin_history_progress_message(
+            uow.add_after_commit_action(
+                lambda coin=message_coin, loaded_points=loaded_points, total_points=total_points: publish_coin_history_progress_message(
+                    coin,
+                    progress_percent=100.0,
+                    loaded_points=loaded_points,
+                    total_points=total_points,
+                )
+            )
+        uow.add_after_commit_action(
+            lambda coin=message_coin, total_points=total_points: publish_coin_history_loaded_message(
                 coin,
-                progress_percent=100.0,
-                loaded_points=loaded_points,
                 total_points=total_points,
             )
-        publish_coin_history_loaded_message(coin, total_points=total_points)
-        publish_coin_analysis_messages(coin)
+        )
+        uow.add_after_commit_action(lambda coin=message_coin: publish_coin_analysis_messages(coin))
 
     return {"symbol": coin.symbol, "created": total_created, "status": "ok"}
 

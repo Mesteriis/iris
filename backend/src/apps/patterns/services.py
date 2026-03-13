@@ -24,8 +24,7 @@ class PatternAdminService:
         if row is None:
             return None
         row.enabled = enabled
-        await self._uow.commit()
-        await self._features.refresh(row)
+        await self._uow.flush()
         item = await self._queries.get_pattern_feature_read_by_slug(str(row.feature_slug))
         return (
             item
@@ -59,8 +58,7 @@ class PatternAdminService:
             row.lifecycle_state = normalized_state
         if cpu_cost is not None:
             row.cpu_cost = max(cpu_cost, 1)
-        await self._uow.commit()
-        await self._patterns.refresh(row)
+        await self._uow.flush()
         return await self._queries.get_pattern_read_by_slug(str(row.slug))
 
 

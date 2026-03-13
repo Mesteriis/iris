@@ -24,7 +24,6 @@ class PatternBootstrapService(PatternTaskBase):
             if coin is None:
                 return {"status": "error", "reason": "coin_not_found", "symbol": symbol.upper()}
             result = await self._bootstrap_coin(coin=coin, force=force)
-            await self._uow.commit()
             return {"status": "ok", "coins": 1, "items": [result]}
 
         coin_symbols = await MarketDataQueryService(self.session).list_coin_symbols_ready_for_latest_sync()
@@ -34,7 +33,6 @@ class PatternBootstrapService(PatternTaskBase):
             if coin is None:
                 continue
             items.append(await self._bootstrap_coin(coin=coin, force=force))
-            await self._uow.commit()
         return {
             "status": "ok",
             "coins": len(coin_symbols),

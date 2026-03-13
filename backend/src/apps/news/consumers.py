@@ -18,6 +18,7 @@ class NewsNormalizationConsumer:
             return
         async with AsyncUnitOfWork(session_factory=self._session_factory) as uow:
             await NewsNormalizationService(uow).normalize_item(item_id=item_id)
+            await uow.commit()
 
 
 class NewsCorrelationConsumer:
@@ -32,6 +33,7 @@ class NewsCorrelationConsumer:
             return
         async with AsyncUnitOfWork(session_factory=self._session_factory) as uow:
             await NewsCorrelationService(uow).correlate_item(item_id=item_id)
+            await uow.commit()
 
 
 __all__ = ["NewsCorrelationConsumer", "NewsNormalizationConsumer"]

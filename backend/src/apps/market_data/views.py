@@ -53,6 +53,7 @@ async def create_coin_endpoint(
             detail=f"Coin '{payload.symbol.upper()}' already exists.",
         )
     coin = await MarketDataService(db).create_coin(payload)
+    await db.commit()
     trigger = getattr(request.app.state, "taskiq_backfill_event", None)
     if trigger is not None:
         trigger.set()
@@ -68,6 +69,7 @@ async def delete_coin_endpoint(symbol: str, db: BaseAsyncUnitOfWork = DB_UOW) ->
             detail=f"Coin '{symbol.upper()}' was not found.",
         )
     await MarketDataService(db).delete_coin(str(coin.symbol))
+    await db.commit()
 
 
 @router.post("/coins/{symbol}/jobs/run", status_code=status.HTTP_202_ACCEPTED, tags=["coins"])
@@ -135,4 +137,5 @@ async def create_coin_history(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
+    await db.commit()
     return _price_history_response(item)

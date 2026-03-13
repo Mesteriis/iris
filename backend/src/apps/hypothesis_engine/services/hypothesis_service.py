@@ -75,10 +75,8 @@ class HypothesisService:
                 source_stream_id=event.stream_id,
             )
         )
-        await self._uow.commit()
-        publish_event(
-            AI_EVENT_HYPOTHESIS_CREATED,
-            {
+        self._uow.add_after_commit_action(
+            lambda payload={
                 "coin_id": int(hypothesis.coin_id),
                 "timeframe": int(hypothesis.timeframe),
                 "timestamp": ensure_utc(event.timestamp),
@@ -89,11 +87,10 @@ class HypothesisService:
                 "assets": list(hypothesis.statement_json.get("assets", [])),
                 "prompt": hypothesis.prompt_name,
                 "provider": hypothesis.provider,
-            },
+            }: publish_event(AI_EVENT_HYPOTHESIS_CREATED, payload)
         )
-        publish_event(
-            AI_EVENT_INSIGHT,
-            {
+        self._uow.add_after_commit_action(
+            lambda payload={
                 "coin_id": int(hypothesis.coin_id),
                 "timeframe": int(hypothesis.timeframe),
                 "timestamp": ensure_utc(event.timestamp),
@@ -101,6 +98,6 @@ class HypothesisService:
                 "text": str(hypothesis.statement_json.get("explain") or hypothesis.statement_json.get("summary") or ""),
                 "confidence": float(hypothesis.confidence),
                 "hypothesis_id": int(hypothesis.id),
-            },
+            }: publish_event(AI_EVENT_INSIGHT, payload)
         )
         return int(hypothesis.id)
