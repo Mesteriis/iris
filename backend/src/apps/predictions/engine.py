@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import logging
 from datetime import timedelta
-from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,8 +18,6 @@ from src.apps.predictions.support import (
     PredictionOutcome,
     clamp_prediction_value as _clamp,
 )
-from src.apps.predictions.services import PredictionCreationBatch, PredictionEvaluationBatch
-from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 from src.runtime.streams.publisher import publish_event
 
 
@@ -406,165 +402,14 @@ def _evaluate_pending_predictions_impl(
         "expired": expired,
     }
 
-
-class PredictionCompatibilityService:
-    def __init__(self, db: Session) -> None:
-        self._db = db
-
-    def _log(self, level: int, event: str, /, **fields: Any) -> None:
-        PERSISTENCE_LOGGER.log(
-            level,
-            event,
-            extra={
-                "persistence": {
-                    "event": event,
-                    "component_type": "compatibility_service",
-                    "domain": "predictions",
-                    "component": "PredictionCompatibilityService",
-                    **{key: sanitize_log_value(value) for key, value in fields.items()},
-                }
-            },
-        )
-
-    def create_market_predictions(
-        self,
-        *,
-        leader_coin_id: int,
-        prediction_event: str,
-        expected_move: str,
-        base_confidence: float,
-        emit_events: bool = True,
-    ) -> dict[str, object]:
-        self._log(
-            logging.DEBUG,
-            "compat.create_market_predictions.execute",
-            mode="write",
-            leader_coin_id=leader_coin_id,
-            prediction_event=prediction_event,
-            expected_move=expected_move,
-            base_confidence=base_confidence,
-            emit_events=emit_events,
-        )
-        result = _create_market_predictions_impl(
-            self._db,
-            leader_coin_id=leader_coin_id,
-            prediction_event=prediction_event,
-            expected_move=expected_move,
-            base_confidence=base_confidence,
-            emit_events=emit_events,
-        )
-        summary = PredictionCreationBatch(
-            status=str(result["status"]),
-            leader_coin_id=int(result["leader_coin_id"]),
-            created=int(result.get("created") or 0),
-            reason=str(result["reason"]) if result.get("reason") is not None else None,
-        ).to_summary()
-        self._log(
-            logging.INFO,
-            "compat.create_market_predictions.result",
-            mode="write",
-            leader_coin_id=leader_coin_id,
-            status=summary["status"],
-            created=summary.get("created"),
-            reason=summary.get("reason"),
-        )
-        return summary
-
-    def evaluate_pending_predictions(
-        self,
-        *,
-        limit: int = 200,
-        emit_events: bool = True,
-    ) -> dict[str, object]:
-        self._log(
-            logging.DEBUG,
-            "compat.evaluate_pending_predictions.execute",
-            mode="write",
-            limit=limit,
-            emit_events=emit_events,
-        )
-        result = _evaluate_pending_predictions_impl(
-            self._db,
-            limit=limit,
-            emit_events=emit_events,
-        )
-        summary = PredictionEvaluationBatch(
-            status=str(result["status"]),
-            evaluated=int(result.get("evaluated") or 0),
-            confirmed=int(result.get("confirmed") or 0),
-            failed=int(result.get("failed") or 0),
-            expired=int(result.get("expired") or 0),
-        ).to_summary()
-        self._log(
-            logging.INFO,
-            "compat.evaluate_pending_predictions.result",
-            mode="write",
-            limit=limit,
-            status=summary["status"],
-            evaluated=summary.get("evaluated"),
-            confirmed=summary.get("confirmed"),
-            failed=summary.get("failed"),
-            expired=summary.get("expired"),
-        )
-        return summary
-
-
-def create_market_predictions(
-    db: Session,
-    *,
-    leader_coin_id: int,
-    prediction_event: str,
-    expected_move: str,
-    base_confidence: float,
-    emit_events: bool = True,
-) -> dict[str, object]:
-    service = PredictionCompatibilityService(db)
-    service._log(
-        logging.WARNING,
-        "compat.create_market_predictions.deprecated",
-        mode="write",
-        leader_coin_id=leader_coin_id,
-        prediction_event=prediction_event,
-        expected_move=expected_move,
-        emit_events=emit_events,
-    )
-    return service.create_market_predictions(
-        leader_coin_id=leader_coin_id,
-        prediction_event=prediction_event,
-        expected_move=expected_move,
-        base_confidence=base_confidence,
-        emit_events=emit_events,
-    )
-
-
-def evaluate_pending_predictions(
-    db: Session,
-    *,
-    limit: int = 200,
-    emit_events: bool = True,
-) -> dict[str, object]:
-    service = PredictionCompatibilityService(db)
-    service._log(
-        logging.WARNING,
-        "compat.evaluate_pending_predictions.deprecated",
-        mode="write",
-        limit=limit,
-        emit_events=emit_events,
-    )
-    return service.evaluate_pending_predictions(limit=limit, emit_events=emit_events)
-
-
 __all__ = [
-    "PredictionCompatibilityService",
     "_apply_relation_feedback",
     "_apply_relation_feedback_async",
     "_create_market_predictions_impl",
     "_evaluate_prediction_window",
     "_evaluate_prediction_window_async",
     "_evaluate_pending_predictions_impl",
-    "create_market_predictions",
     "create_market_predictions_async",
-    "evaluate_pending_predictions",
     "evaluate_pending_predictions_async",
 ]
 

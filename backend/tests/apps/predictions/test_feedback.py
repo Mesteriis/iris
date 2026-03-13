@@ -4,7 +4,7 @@ import json
 
 from redis import Redis
 
-from src.apps.predictions.engine import evaluate_pending_predictions
+from src.apps.predictions.engine import _evaluate_pending_predictions_impl
 from src.runtime.streams.publisher import flush_publisher
 from src.apps.cross_market.models import CoinRelation
 from src.apps.market_data.domain import utc_now
@@ -54,7 +54,7 @@ def test_prediction_feedback_updates_relation_confidence_and_emits_event(db_sess
         expected_move="up",
     )
 
-    evaluate_pending_predictions(db_session, emit_events=True)
+    _evaluate_pending_predictions_impl(db_session, emit_events=True)
     assert flush_publisher(timeout=5.0)
 
     db_session.refresh(relation)

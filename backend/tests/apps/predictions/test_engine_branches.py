@@ -10,10 +10,10 @@ from src.apps.cross_market.models import CoinRelation
 from src.apps.predictions.engine import (
     _apply_relation_feedback,
     _apply_relation_feedback_async,
+    _create_market_predictions_impl,
     _evaluate_prediction_window,
     _evaluate_prediction_window_async,
-    create_market_predictions,
-    evaluate_pending_predictions,
+    _evaluate_pending_predictions_impl,
     evaluate_pending_predictions_async,
 )
 from src.apps.predictions.models import MarketPrediction, PredictionResult
@@ -53,7 +53,7 @@ def test_prediction_creation_and_window_branches(db_session) -> None:
     )
     db_session.commit()
 
-    first = create_market_predictions(
+    first = _create_market_predictions_impl(
         db_session,
         leader_coin_id=int(leader.id),
         prediction_event="leader_breakout",
@@ -61,7 +61,7 @@ def test_prediction_creation_and_window_branches(db_session) -> None:
         base_confidence=0.8,
         emit_events=False,
     )
-    second = create_market_predictions(
+    second = _create_market_predictions_impl(
         db_session,
         leader_coin_id=int(leader.id),
         prediction_event="leader_breakout",
@@ -69,7 +69,7 @@ def test_prediction_creation_and_window_branches(db_session) -> None:
         base_confidence=0.8,
         emit_events=False,
     )
-    missing = create_market_predictions(
+    missing = _create_market_predictions_impl(
         db_session,
         leader_coin_id=999999,
         prediction_event="leader_breakout",
@@ -134,7 +134,7 @@ def test_prediction_creation_defers_cache_until_after_commit(db_session, monkeyp
     monkeypatch.setattr(db_session, "commit", types.MethodType(_commit, db_session))
     monkeypatch.setattr("src.apps.predictions.engine.cache_prediction_snapshot", lambda **_kwargs: events.append("cache"))
 
-    result = create_market_predictions(
+    result = _create_market_predictions_impl(
         db_session,
         leader_coin_id=int(leader.id),
         prediction_event="leader_breakout",
@@ -187,7 +187,7 @@ def test_prediction_evaluation_handles_expired_existing_result_and_relation_feed
     )
     db_session.commit()
 
-    result = evaluate_pending_predictions(db_session, emit_events=False)
+    result = _evaluate_pending_predictions_impl(db_session, emit_events=False)
     refreshed = db_session.get(MarketPrediction, int(prediction.id))
     outcome = db_session.scalar(select(PredictionResult).where(PredictionResult.prediction_id == int(prediction.id)).limit(1))
     relation = db_session.scalar(select(CoinRelation).where(CoinRelation.leader_coin_id == int(leader.id), CoinRelation.follower_coin_id == int(follower.id)).limit(1))
@@ -263,7 +263,7 @@ def test_prediction_sync_failure_expiry_and_pending_branches(db_session, monkeyp
 
     published: list[str] = []
     monkeypatch.setattr("src.apps.predictions.engine.publish_event", lambda event_type, payload: published.append(event_type))
-    result = evaluate_pending_predictions(db_session, emit_events=True)
+    result = _evaluate_pending_predictions_impl(db_session, emit_events=True)
     db_session.expire_all()
 
     assert result["failed"] == 1
@@ -315,7 +315,7 @@ def test_prediction_evaluation_defers_cache_and_events_until_after_commit(db_ses
     monkeypatch.setattr("src.apps.predictions.engine.cache_prediction_snapshot", lambda **_kwargs: events.append("cache"))
     monkeypatch.setattr("src.apps.predictions.engine.publish_event", lambda *_args, **_kwargs: events.append("publish"))
 
-    result = evaluate_pending_predictions(db_session, emit_events=True)
+    result = _evaluate_pending_predictions_impl(db_session, emit_events=True)
 
     assert result["confirmed"] == 1
     assert events == ["commit", "cache", "publish"]

@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from sqlalchemy import select
 
-from src.apps.predictions.engine import create_market_predictions
+from src.apps.predictions.engine import _create_market_predictions_impl
 from src.apps.cross_market.models import CoinRelation
 from src.apps.predictions.models import MarketPrediction
 from src.apps.predictions.cache import read_cached_prediction
@@ -37,7 +37,7 @@ def test_prediction_memory_engine_creates_pending_predictions_and_cache(db_sessi
     )
     db_session.commit()
 
-    result = create_market_predictions(
+    result = _create_market_predictions_impl(
         db_session,
         leader_coin_id=int(leader.id),
         prediction_event="leader_breakout",

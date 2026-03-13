@@ -153,7 +153,7 @@ def test_cross_market_relation_and_sector_skip_paths(db_session, monkeypatch) ->
     captured: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr("src.apps.cross_market.engine.publish_event", lambda event_type, payload: captured.append((event_type, payload)))
     monkeypatch.setattr(
-        "src.apps.cross_market.engine.create_market_predictions",
+        "src.apps.cross_market.engine._create_market_predictions_impl",
         lambda *args, **kwargs: {"status": "ok", "created": 1},
     )
     set_market_metrics(

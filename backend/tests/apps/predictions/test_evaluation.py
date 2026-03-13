@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from src.apps.predictions.engine import evaluate_pending_predictions
+from src.apps.predictions.engine import _evaluate_pending_predictions_impl
 from src.apps.predictions.models import MarketPrediction
 from src.apps.predictions.models import PredictionResult
 from tests.cross_market_support import (
@@ -41,7 +41,7 @@ def test_prediction_evaluation_marks_prediction_confirmed(db_session) -> None:
         expected_move="up",
     )
 
-    result = evaluate_pending_predictions(db_session, emit_events=False)
+    result = _evaluate_pending_predictions_impl(db_session, emit_events=False)
 
     refreshed = db_session.get(MarketPrediction, int(prediction.id))
     outcome = db_session.scalar(
@@ -83,7 +83,7 @@ def test_prediction_evaluation_marks_prediction_failed(db_session) -> None:
         expected_move="up",
     )
 
-    result = evaluate_pending_predictions(db_session, emit_events=False)
+    result = _evaluate_pending_predictions_impl(db_session, emit_events=False)
 
     refreshed = db_session.get(MarketPrediction, int(prediction.id))
     outcome = db_session.scalar(

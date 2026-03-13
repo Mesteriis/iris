@@ -35,7 +35,7 @@ from src.apps.cross_market.support import (
     relation_timeframe as _relation_timeframe,
 )
 from src.apps.market_data.domain import ensure_utc, utc_now
-from src.apps.predictions.engine import create_market_predictions
+from src.apps.predictions.engine import _create_market_predictions_impl
 from src.core.db.persistence import PERSISTENCE_LOGGER, sanitize_log_value
 
 
@@ -528,7 +528,7 @@ def detect_market_leader(
         0.95,
     )
     direction = "up" if bullish else "down"
-    prediction_result = create_market_predictions(
+    prediction_result = _create_market_predictions_impl(
         db,
         leader_coin_id=coin_id,
         prediction_event="leader_breakout" if bullish else "leader_breakdown",

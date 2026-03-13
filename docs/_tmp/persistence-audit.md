@@ -216,7 +216,7 @@ Classification:
 
 #### `apps/predictions`
 
-Status: migrated on the async API surface, scheduled evaluation job and cross-market leader path; legacy sync helpers still remain for compatibility callers/tests
+Status: migrated on the async API surface, scheduled evaluation job and cross-market leader path; public sync selector/wrapper surface removed, with only internal sync engine impls left for residual compatibility/test callers
 
 - repositories now isolate prediction candidate selection, pending-window checks and explicit relation-feedback locks in [backend/src/apps/predictions/repositories.py](backend/src/apps/predictions/repositories.py)
 - read-only prediction list/detail flows now go through [backend/src/apps/predictions/query_services.py](backend/src/apps/predictions/query_services.py)
@@ -226,19 +226,17 @@ Status: migrated on the async API surface, scheduled evaluation job and cross-ma
 - cross-market leader detection now calls the same class-based prediction service instead of issuing direct prediction writes through a module-level async helper
 - creation now batches pending-window lookups by leader/target set, removing the old per-relation pending-check N+1 path from the active async flow
 - shared prediction constants/outcome helpers used by async services now live in [backend/src/apps/predictions/support.py](backend/src/apps/predictions/support.py), removing service-level imports from the legacy sync compatibility engine
-- legacy sync helpers in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) and [backend/src/apps/predictions/selectors.py](backend/src/apps/predictions/selectors.py) now emit structured deprecation logs, share a common prediction select builder and use the same summary/result contracts as the async service and query layers
-- legacy sync write helpers in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) now also emit structured execute/result logging for prediction creation and pending-evaluation runs, keeping residual sync transaction paths visible in persistence traces
-- legacy sync read helpers in [backend/src/apps/predictions/selectors.py](backend/src/apps/predictions/selectors.py) now also emit structured execute/result logging for prediction list reads instead of relying only on deprecation warnings
-- legacy sync prediction creation/evaluation in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) now defer cache writes, and evaluation event publication, until after the top-level compatibility `commit()`, reducing another gap versus the async service side-effect policy
+- internal sync prediction engine impls in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) still preserve the old transaction order for low-level tests and residual sync compatibility callers, including cache writes and evaluation event publication only after the top-level `commit()`
 - async prediction cache clients in [backend/src/apps/predictions/cache.py](backend/src/apps/predictions/cache.py) are now loop-scoped instead of process-global cached objects
 - the sync [backend/src/apps/predictions/selectors.py](backend/src/apps/predictions/selectors.py) layer has now been removed; active callers and tests read predictions only through async [backend/src/apps/predictions/query_services.py](backend/src/apps/predictions/query_services.py)
+- the public sync `create_market_predictions(...)` / `evaluate_pending_predictions(...)` wrappers have now also been removed from [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py); residual sync callers either use async [backend/src/apps/predictions/services.py](backend/src/apps/predictions/services.py) or explicit internal engine impls during the remaining compatibility cutover
 - remaining follow-up:
-  - legacy sync helpers in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) and [backend/src/apps/predictions/selectors.py](backend/src/apps/predictions/selectors.py) still exist for compatibility callers/tests and should be retired incrementally as the remaining sync-heavy domains migrate
+  - residual direct use of internal sync helpers in [backend/src/apps/predictions/engine.py](backend/src/apps/predictions/engine.py) should disappear once the remaining sync-heavy `cross_market` compatibility layer and low-level sync tests are retired
 
 Classification:
 
 - `OK` on the async/public API and scheduled runtime surface
-- `later migration` for residual sync helper callers kept behind the compatibility engine module
+- `later migration` for the last internal sync helper callers kept behind compatibility/test-only code
 
 #### `apps/signals`
 
@@ -416,7 +414,7 @@ Recommended rollout order:
 12. completed on the async/public API read plus signal-fusion/signal-history runtime surfaces: `apps/signals`
 13. completed on the async/public API and scheduled sync surface: `apps/portfolio`
 14. next: residual sync analytical helpers in `signals`
-15. later: compatibility helpers in `predictions`, `cross_market`, `patterns` and legacy sync `portfolio` engine/selectors
+15. later: compatibility helpers in `cross_market`, `patterns` and legacy sync `portfolio` engine/selectors
 
 ## Current Behavior To Preserve
 
