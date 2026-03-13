@@ -135,6 +135,7 @@ Status: migrated on the async API/application surface and scheduled entrypoints
 - query-service backfill/latest-sync selection batches latest-candle lookups, removing caller-side N+1 checks from the public async path
 - legacy Timescale adapters in [backend/src/apps/market_data/repos.py](backend/src/apps/market_data/repos.py) now degrade to structured warning logs plus direct/resampled candle fallback when continuous aggregate procedures or materialized views are unavailable, which keeps sync analytical callers/tests from failing hard on partial DB environments
 - async candle bulk reads in [backend/src/apps/market_data/repositories.py](backend/src/apps/market_data/repositories.py) now keep partial aggregate-view failures on a batched path and return structured partial results instead of silently degrading into per-coin fallback reads, preserving the anti-N+1 contract consumed by `cross_market`
+- sync and async candle resampling paths now fall back to in-process aggregation of base candle rows when Timescale `time_bucket`/`first`/`last` functions are unavailable, keeping read contracts stable on PostgreSQL-only test environments without reintroducing caller-side DB access
 - legacy sync adapters in [backend/src/apps/market_data/service_layer.py](backend/src/apps/market_data/service_layer.py) and [backend/src/apps/market_data/repos.py](backend/src/apps/market_data/repos.py) remain temporarily for sync-heavy analytical callers and Timescale-specific aggregate/resampling paths
 
 Classification:
@@ -176,6 +177,7 @@ Status: migrated on the async API/application, TaskIQ orchestration and runtime 
 - `decision_workers` now delegate context enrichment plus decision/final-signal generation to async `PatternSignalContextService` under UoW, removing the old sync `run_sync` decision path from [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py)
 - `PatternSignalContextService` now exposes `enrich_context_only(...)` from [backend/src/apps/patterns/task_services.py](backend/src/apps/patterns/task_services.py), so `signals` runtime callers can reuse async context enrichment without invoking the broader sync compatibility flow
 - legacy sync selectors in [backend/src/apps/patterns/selectors.py](backend/src/apps/patterns/selectors.py) now emit structured deprecation logs and reuse the same shared signal projection builders plus immutable read-model mapping logic as [backend/src/apps/patterns/query_services.py](backend/src/apps/patterns/query_services.py)
+- async and sync `list_coin_patterns` read paths now share the same explicit ordering profile from [backend/src/apps/patterns/query_builders.py](backend/src/apps/patterns/query_builders.py), preventing timestamp-tie instability between base pattern rows and derived cluster/hierarchy rows
 - async regime cache clients in [backend/src/apps/patterns/cache.py](backend/src/apps/patterns/cache.py) are now loop-scoped instead of process-global cached clients
 - async market-data candle repositories now expose range/series fetchers used by the pattern task services without pushing raw session access back into the task layer
 - remaining follow-up:

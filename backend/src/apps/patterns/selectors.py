@@ -16,6 +16,7 @@ from src.apps.patterns.domain.narrative import build_sector_narratives
 from src.apps.patterns.domain.regime import RegimeRead, compute_live_regimes, read_regime_details
 from src.apps.patterns.domain.registry import feature_enabled
 from src.apps.patterns.models import DiscoveredPattern, MarketCycle, PatternFeature, PatternRegistry, PatternStatistic
+from src.apps.patterns.query_builders import pattern_signal_ordering
 from src.apps.patterns.query_builders import signal_select
 from src.apps.patterns.read_models import (
     CoinRegimeReadModel,
@@ -447,7 +448,7 @@ class PatternCompatibilityQuery:
         rows = self._db.execute(
             _signal_select()
             .where(Coin.symbol == normalized_symbol, Signal.signal_type.like("pattern_%"))
-            .order_by(Signal.candle_timestamp.desc(), Signal.created_at.desc())
+            .order_by(*pattern_signal_ordering())
             .limit(max(limit, 1))
         ).all()
         return [_pattern_signal_payload(item) for item in _serialize_signal_rows(self._db, rows)]

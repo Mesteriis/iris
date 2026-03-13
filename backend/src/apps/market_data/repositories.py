@@ -129,6 +129,45 @@ class CandleRepository(AsyncRepository):
         ]
 
     @staticmethod
+    def _resample_candle_points(
+        points: Sequence[CandlePoint],
+        *,
+        target_timeframe: int,
+    ) -> list[CandlePoint]:
+        grouped: dict[datetime, dict[str, float | datetime | None]] = {}
+        for point in sorted(points, key=lambda value: value.timestamp):
+            bucket = align_timeframe_timestamp(point.timestamp, target_timeframe)
+            current = grouped.get(bucket)
+            if current is None:
+                grouped[bucket] = {
+                    "timestamp": bucket,
+                    "open": point.open,
+                    "high": point.high,
+                    "low": point.low,
+                    "close": point.close,
+                    "volume": point.volume,
+                }
+                continue
+            current["high"] = max(float(current["high"]), point.high)
+            current["low"] = min(float(current["low"]), point.low)
+            current["close"] = point.close
+            if point.volume is not None:
+                current["volume"] = (
+                    point.volume if current["volume"] is None else float(current["volume"]) + point.volume
+                )
+        return [
+            CandlePoint(
+                timestamp=ensure_utc(bucket),
+                open=float(values["open"]),
+                high=float(values["high"]),
+                low=float(values["low"]),
+                close=float(values["close"]),
+                volume=float(values["volume"]) if values["volume"] is not None else None,
+            )
+            for bucket, values in grouped.items()
+        ]
+
+    @staticmethod
     def _should_fallback_aggregate_error(error: SQLAlchemyError) -> bool:
         message = str(error).lower()
         return any(
@@ -267,8 +306,8 @@ class CandleRepository(AsyncRepository):
 
             source_timeframe = await self._get_lowest_available_timeframe(coin_id=coin_id, max_timeframe=timeframe)
             if source_timeframe is not None and source_timeframe < timeframe and timeframe % source_timeframe == 0:
-                resampled_rows = (
-                    await self.session.execute(
+                try:
+                    resampled_rows = await self._execute_aggregate_all(
                         text(
                             """
                             SELECT bucket, open, high, low, close, volume
@@ -297,8 +336,30 @@ class CandleRepository(AsyncRepository):
                             "limit": limit,
                         },
                     )
-                ).all()
-                points = self._rows_to_candle_points(resampled_rows, timestamp_field="bucket")
+                    points = self._rows_to_candle_points(resampled_rows, timestamp_field="bucket")
+                except SQLAlchemyError as error:
+                    if not self._should_fallback_aggregate_error(error):
+                        raise
+                    self._log_warning(
+                        "repo.fetch_market_data_candle_points.resample_fallback",
+                        mode="read",
+                        coin_id=coin_id,
+                        timeframe=timeframe,
+                        source_timeframe=source_timeframe,
+                        limit=limit,
+                        error=str(error),
+                    )
+                    source_rows = (
+                        await self.session.execute(
+                            select(Candle.timestamp, Candle.open, Candle.high, Candle.low, Candle.close, Candle.volume)
+                            .where(Candle.coin_id == coin_id, Candle.timeframe == source_timeframe)
+                            .order_by(Candle.timestamp.asc())
+                        )
+                    ).all()
+                    points = self._resample_candle_points(
+                        self._rows_to_candle_points(source_rows),
+                        target_timeframe=timeframe,
+                    )[-limit:]
                 self._log_debug(
                     "repo.fetch_market_data_candle_points.result",
                     mode="read",
@@ -524,8 +585,8 @@ class CandleRepository(AsyncRepository):
 
             source_timeframe = await self._get_lowest_available_timeframe(coin_id=coin_id, max_timeframe=timeframe)
             if source_timeframe is not None and source_timeframe < timeframe and timeframe % source_timeframe == 0:
-                resampled_rows = (
-                    await self.session.execute(
+                try:
+                    resampled_rows = await self._execute_aggregate_all(
                         text(
                             """
                             SELECT
@@ -552,8 +613,36 @@ class CandleRepository(AsyncRepository):
                             "window_end": ensure_utc(window_end),
                         },
                     )
-                ).all()
-                points = self._rows_to_candle_points(resampled_rows, timestamp_field="bucket")
+                    points = self._rows_to_candle_points(resampled_rows, timestamp_field="bucket")
+                except SQLAlchemyError as error:
+                    if not self._should_fallback_aggregate_error(error):
+                        raise
+                    self._log_warning(
+                        "repo.fetch_market_data_candle_points_between.resample_fallback",
+                        mode="read",
+                        coin_id=coin_id,
+                        timeframe=timeframe,
+                        source_timeframe=source_timeframe,
+                        window_start=window_start.isoformat(),
+                        window_end=window_end.isoformat(),
+                        error=str(error),
+                    )
+                    source_rows = (
+                        await self.session.execute(
+                            select(Candle.timestamp, Candle.open, Candle.high, Candle.low, Candle.close, Candle.volume)
+                            .where(
+                                Candle.coin_id == coin_id,
+                                Candle.timeframe == source_timeframe,
+                                Candle.timestamp >= ensure_utc(window_start),
+                                Candle.timestamp <= ensure_utc(window_end),
+                            )
+                            .order_by(Candle.timestamp.asc())
+                        )
+                    ).all()
+                    points = self._resample_candle_points(
+                        self._rows_to_candle_points(source_rows),
+                        target_timeframe=timeframe,
+                    )
                 self._log_debug(
                     "repo.fetch_market_data_candle_points_between.result",
                     mode="read",

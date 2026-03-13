@@ -70,7 +70,9 @@ class RedisEventPublisher:
         self._stop_event.set()
         self._queue.put(None)
         self._thread.join(timeout=2.0)
-        self._redis.close()
+        redis_close = getattr(self._redis, "close", None)
+        if callable(redis_close):
+            redis_close()
 
 
 _publisher: RedisEventPublisher | None = None
@@ -89,12 +91,15 @@ def publish_event(event_type: str, payload: dict[str, Any]) -> None:
 
 
 def flush_publisher(timeout: float = 5.0) -> bool:
-    return get_event_publisher().flush(timeout=timeout)
+    if _publisher is None:
+        return True
+    return _publisher.flush(timeout=timeout)
 
 
 def reset_event_publisher() -> None:
     global _publisher
     if _publisher is None:
         return
-    _publisher.close()
+    publisher = _publisher
     _publisher = None
+    publisher.close()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import delete, select
@@ -434,7 +435,7 @@ def test_cluster_hierarchy_engine_and_narrative_guard_paths(db_session, seeded_a
         coin_id: (row.market_cap, row.price_change_24h, row.volume_change_24h)
         for coin_id, row in metrics_rows.items()
     }
-    orphan_sector = Sector(name="orphan_sector", description="no coins")
+    orphan_sector = Sector(name=f"orphan_sector_{uuid4().hex[:8]}", description="no coins")
     db_session.add(orphan_sector)
     db_session.commit()
     try:

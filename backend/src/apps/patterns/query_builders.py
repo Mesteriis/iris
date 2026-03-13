@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, case, select
 
 from src.apps.cross_market.models import Sector
 from src.apps.indicators.models import CoinMetrics
@@ -45,4 +45,19 @@ def signal_select():
     )
 
 
-__all__ = ["signal_select"]
+def pattern_signal_ordering():
+    signal_kind_order = case(
+        (Signal.signal_type.like("pattern_hierarchy_%"), 2),
+        (Signal.signal_type.like("pattern_cluster_%"), 1),
+        else_=0,
+    )
+    return (
+        Signal.candle_timestamp.desc(),
+        signal_kind_order.asc(),
+        Signal.confidence.desc(),
+        Signal.created_at.desc(),
+        Signal.signal_type.asc(),
+    )
+
+
+__all__ = ["pattern_signal_ordering", "signal_select"]

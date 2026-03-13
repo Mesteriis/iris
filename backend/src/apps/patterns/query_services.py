@@ -15,6 +15,7 @@ from src.apps.market_data.repos import CandlePoint
 from src.apps.patterns.domain.regime import detect_market_regime, read_regime_details
 from src.apps.patterns.domain.utils import current_indicator_map
 from src.apps.patterns.models import DiscoveredPattern, MarketCycle, PatternFeature, PatternRegistry, PatternStatistic
+from src.apps.patterns.query_builders import pattern_signal_ordering as _pattern_signal_ordering
 from src.apps.patterns.query_builders import signal_select as _signal_select
 from src.apps.patterns.read_models import (
     CoinRegimeReadModel,
@@ -388,7 +389,7 @@ class PatternQueryService(AsyncQueryService):
             await self.session.execute(
                 _signal_select()
                 .where(Coin.symbol == normalized_symbol, Signal.signal_type.like("pattern_%"))
-                .order_by(Signal.candle_timestamp.desc(), Signal.created_at.desc())
+                .order_by(*_pattern_signal_ordering())
                 .limit(max(limit, 1))
             )
         ).all()

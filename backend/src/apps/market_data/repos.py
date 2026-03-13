@@ -66,6 +66,22 @@ def _should_fallback_aggregate_error(error: SQLAlchemyError) -> bool:
     )
 
 
+def _execute_aggregate_all(db: Session, statement, params: dict[str, object]) -> list[object]:
+    if isinstance(db, Session):
+        bind = db.get_bind()
+        with bind.connect() as connection:
+            return list(connection.execute(statement, params).all())
+    return list(db.execute(statement, params).all())
+
+
+def _execute_aggregate_first(db: Session, statement, params: dict[str, object]) -> object | None:
+    if isinstance(db, Session):
+        bind = db.get_bind()
+        with bind.connect() as connection:
+            return connection.execute(statement, params).first()
+    return db.execute(statement, params).first()
+
+
 @dataclass(slots=True, frozen=True)
 class CandlePoint:
     timestamp: datetime
@@ -115,6 +131,41 @@ def _rows_to_candle_points(rows: Sequence[object], *, timestamp_field: str = "ti
             volume=float(row.volume) if row.volume is not None else None,
         )
         for row in rows
+    ]
+
+
+def _resample_candle_points(points: Sequence[CandlePoint], *, target_timeframe: int) -> list[CandlePoint]:
+    grouped: dict[datetime, dict[str, float | datetime | None]] = {}
+    for point in sorted(points, key=lambda value: value.timestamp):
+        bucket = align_timeframe_timestamp(point.timestamp, target_timeframe)
+        current = grouped.get(bucket)
+        if current is None:
+            grouped[bucket] = {
+                "timestamp": bucket,
+                "open": point.open,
+                "high": point.high,
+                "low": point.low,
+                "close": point.close,
+                "volume": point.volume,
+            }
+            continue
+        current["high"] = max(float(current["high"]), point.high)
+        current["low"] = min(float(current["low"]), point.low)
+        current["close"] = point.close
+        if point.volume is not None:
+            current["volume"] = (
+                point.volume if current["volume"] is None else float(current["volume"]) + point.volume
+            )
+    return [
+        CandlePoint(
+            timestamp=ensure_utc(bucket),
+            open=float(values["open"]),
+            high=float(values["high"]),
+            low=float(values["low"]),
+            close=float(values["close"]),
+            volume=float(values["volume"]) if values["volume"] is not None else None,
+        )
+        for bucket, values in grouped.items()
     ]
 
 
@@ -170,7 +221,7 @@ def _fetch_view_candle_points(db: Session, coin_id: int, timeframe: int, limit: 
     if limit is not None:
         params["limit"] = limit
     try:
-        rows = db.execute(query, params).all()
+        rows = _execute_aggregate_all(db, query, params)
     except SQLAlchemyError as error:
         if not _should_fallback_aggregate_error(error):
             raise
@@ -194,7 +245,8 @@ def _fetch_view_candle_points_between(
 ) -> list[CandlePoint]:
     view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
     try:
-        rows = db.execute(
+        rows = _execute_aggregate_all(
+            db,
             text(
                 f"""
                 SELECT bucket, open, high, low, close, volume
@@ -206,7 +258,7 @@ def _fetch_view_candle_points_between(
                 """
             ),
             {"coin_id": coin_id, "start": ensure_utc(start), "end": ensure_utc(end)},
-        ).all()
+        )
     except SQLAlchemyError as error:
         if not _should_fallback_aggregate_error(error):
             raise
@@ -271,7 +323,22 @@ def _fetch_resampled_candle_points(
     }
     if limit is not None:
         params["limit"] = limit
-    rows = db.execute(query, params).all()
+    try:
+        rows = _execute_aggregate_all(db, query, params)
+    except SQLAlchemyError as error:
+        if not _should_fallback_aggregate_error(error):
+            raise
+        _aggregate_fallback_log(
+            "aggregate.resample_read.fallback",
+            coin_id=coin_id,
+            source_timeframe=source_timeframe,
+            target_timeframe=target_timeframe,
+            limit=limit,
+            error=str(error),
+        )
+        source_points = _fetch_direct_candle_points(db, coin_id, source_timeframe, None)
+        resampled = _resample_candle_points(source_points, target_timeframe=target_timeframe)
+        return resampled[-limit:] if limit is not None else resampled
     return _rows_to_candle_points(rows, timestamp_field="bucket")
 
 
@@ -283,33 +350,50 @@ def _fetch_resampled_candle_points_between(
     start: datetime,
     end: datetime,
 ) -> list[CandlePoint]:
-    rows = db.execute(
-        text(
-            f"""
-            SELECT
-                time_bucket(CAST(:bucket_interval AS INTERVAL), timestamp) AS bucket,
-                first(open, timestamp) AS open,
-                max(high) AS high,
-                min(low) AS low,
-                last(close, timestamp) AS close,
-                sum(volume) AS volume
-            FROM candles
-            WHERE coin_id = :coin_id
-              AND timeframe = :source_timeframe
-              AND timestamp >= :start
-              AND timestamp <= :end
-            GROUP BY bucket
-            ORDER BY bucket ASC
-            """
-        ),
-        {
-            "coin_id": coin_id,
-            "source_timeframe": source_timeframe,
-            "bucket_interval": timeframe_bucket_interval(target_timeframe),
-            "start": ensure_utc(start),
-            "end": ensure_utc(end),
-        },
-    ).all()
+    params = {
+        "coin_id": coin_id,
+        "source_timeframe": source_timeframe,
+        "bucket_interval": timeframe_bucket_interval(target_timeframe),
+        "start": ensure_utc(start),
+        "end": ensure_utc(end),
+    }
+    try:
+        rows = _execute_aggregate_all(
+            db,
+            text(
+                f"""
+                SELECT
+                    time_bucket(CAST(:bucket_interval AS INTERVAL), timestamp) AS bucket,
+                    first(open, timestamp) AS open,
+                    max(high) AS high,
+                    min(low) AS low,
+                    last(close, timestamp) AS close,
+                    sum(volume) AS volume
+                FROM candles
+                WHERE coin_id = :coin_id
+                  AND timeframe = :source_timeframe
+                  AND timestamp >= :start
+                  AND timestamp <= :end
+                GROUP BY bucket
+                ORDER BY bucket ASC
+                """
+            ),
+            params,
+        )
+    except SQLAlchemyError as error:
+        if not _should_fallback_aggregate_error(error):
+            raise
+        _aggregate_fallback_log(
+            "aggregate.resample_range_read.fallback",
+            coin_id=coin_id,
+            source_timeframe=source_timeframe,
+            target_timeframe=target_timeframe,
+            start=ensure_utc(start).isoformat(),
+            end=ensure_utc(end).isoformat(),
+            error=str(error),
+        )
+        source_points = _fetch_direct_candle_points_between(db, coin_id, source_timeframe, start, end)
+        return _resample_candle_points(source_points, target_timeframe=target_timeframe)
     return _rows_to_candle_points(rows, timestamp_field="bucket")
 
 
@@ -325,10 +409,11 @@ def get_latest_candle_timestamp(db: Session, coin_id: int, timeframe: int = BASE
     if timeframe in AGGREGATE_VIEW_BY_TIMEFRAME:
         view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
         try:
-            row = db.execute(
+            row = _execute_aggregate_first(
+                db,
                 text(f"SELECT MAX(bucket) AS bucket FROM {view_name} WHERE coin_id = :coin_id"),
                 {"coin_id": coin_id},
-            ).first()
+            )
         except SQLAlchemyError as error:
             if not _should_fallback_aggregate_error(error):
                 raise
@@ -460,10 +545,11 @@ def aggregate_has_rows(db: Session, coin_id: int, timeframe: int) -> bool:
 
     view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
     try:
-        row = db.execute(
+        row = _execute_aggregate_first(
+            db,
             text(f"SELECT 1 FROM {view_name} WHERE coin_id = :coin_id LIMIT 1"),
             {"coin_id": coin_id},
-        ).first()
+        )
     except SQLAlchemyError as error:
         if not _should_fallback_aggregate_error(error):
             raise

@@ -90,3 +90,17 @@ def test_event_publisher_run_handles_empty_queue(monkeypatch) -> None:
     event_publisher._stop_event.set()
     event_publisher._run()
     event_publisher.close()
+
+
+def test_flush_publisher_does_not_initialize_global_publisher() -> None:
+    publisher._publisher = None
+    assert publisher.flush_publisher(timeout=0.1) is True
+    assert publisher._publisher is None
+
+
+def test_event_publisher_close_tolerates_non_redis_stub(monkeypatch) -> None:
+    publisher._publisher = None
+    monkeypatch.setattr(publisher.Redis, "from_url", lambda *args, **kwargs: ("redis://test", True, object()))
+
+    event_publisher = publisher.RedisEventPublisher("redis://test", stream_name="iris:test:events")
+    event_publisher.close()

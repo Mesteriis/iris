@@ -345,3 +345,60 @@ def test_market_data_repos_timescale_fallback_logs_and_skips(monkeypatch) -> Non
     assert "aggregate.view_range_read.fallback" in events
     assert "aggregate.has_rows.fallback" in events
     assert "aggregate.refresh.skipped" in events
+
+
+def test_market_data_repos_resample_fallback_without_timescale(monkeypatch) -> None:
+    events: list[str] = []
+
+    def _log(level: int, message: str, *args, **kwargs) -> None:
+        del level, args, kwargs
+        events.append(message)
+
+    monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
+
+    source_points = [
+        CandlePoint(
+            timestamp=datetime(2026, 3, 12, 0, minute, tzinfo=timezone.utc),
+            open=100.0 + index,
+            high=101.0 + index,
+            low=99.0 + index,
+            close=100.5 + index,
+            volume=10.0,
+        )
+        for index, minute in enumerate((0, 15, 30, 45))
+    ]
+    monkeypatch.setattr(
+        "src.apps.market_data.repos._fetch_direct_candle_points",
+        lambda db, coin_id, timeframe, limit: source_points,
+    )
+    monkeypatch.setattr(
+        "src.apps.market_data.repos._fetch_direct_candle_points_between",
+        lambda db, coin_id, timeframe, start, end: source_points,
+    )
+
+    class FailingDb:
+        def execute(self, _stmt, _params=None):
+            raise ProgrammingError(
+                "SELECT",
+                {},
+                Exception("function time_bucket(interval, timestamp with time zone) does not exist"),
+            )
+
+    resampled = _fetch_resampled_candle_points(FailingDb(), 1, 15, 60, 2)
+    resampled_between = _fetch_resampled_candle_points_between(
+        FailingDb(),
+        1,
+        15,
+        60,
+        source_points[0].timestamp,
+        source_points[-1].timestamp,
+    )
+
+    assert len(resampled) == 1
+    assert resampled[0].timestamp == source_points[0].timestamp
+    assert resampled[0].open == source_points[0].open
+    assert resampled[0].close == source_points[-1].close
+    assert len(resampled_between) == 1
+    assert resampled_between[0].high == max(point.high for point in source_points)
+    assert "aggregate.resample_read.fallback" in events
+    assert "aggregate.resample_range_read.fallback" in events
