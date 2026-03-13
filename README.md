@@ -133,6 +133,7 @@ uv run --project backend --group dev pre-commit run --all-files --hook-stage man
 make openapi-export-full
 make openapi-export-ha
 make openapi-check
+make api-matrix-export
 ```
 
 This manual pipeline includes:
