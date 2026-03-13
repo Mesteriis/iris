@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.apps.market_structure.query_services import MarketStructureQueryService
 from src.apps.market_structure.services import MarketStructureService
 from src.core.db.uow import AsyncUnitOfWork
 from src.runtime.orchestration.broker import broker
@@ -23,7 +24,9 @@ async def poll_market_structure_source_job(source_id: int, limit: int = 1) -> di
                 "source_id": int(source_id),
             }
         async with AsyncUnitOfWork() as uow:
-            return await MarketStructureService(uow).poll_source(source_id=int(source_id), limit=int(limit))
+            result = await MarketStructureService(uow).poll_source(source_id=int(source_id), limit=int(limit))
+            await uow.commit()
+            return result
 
 
 @broker.task
@@ -35,7 +38,23 @@ async def poll_enabled_market_structure_sources_job(limit_per_source: int = 1) -
         if not acquired:
             return {"status": "skipped", "reason": "market_structure_enabled_poll_in_progress"}
         async with AsyncUnitOfWork() as uow:
-            return await MarketStructureService(uow).poll_enabled_sources(limit_per_source=int(limit_per_source))
+            source_ids = await MarketStructureQueryService(uow.session).list_enabled_source_ids()
+
+        items: list[dict[str, object]] = []
+        for source_id in source_ids:
+            async with AsyncUnitOfWork() as uow:
+                item = await MarketStructureService(uow).poll_source(
+                    source_id=int(source_id),
+                    limit=int(limit_per_source),
+                )
+                await uow.commit()
+                items.append(item)
+        return {
+            "status": "ok",
+            "sources": len(source_ids),
+            "items": items,
+            "created": sum(int(item.get("created", 0)) for item in items),
+        }
 
 
 @broker.task
@@ -47,4 +66,6 @@ async def refresh_market_structure_source_health_job() -> dict[str, object]:
         if not acquired:
             return {"status": "skipped", "reason": "market_structure_health_refresh_in_progress"}
         async with AsyncUnitOfWork() as uow:
-            return await MarketStructureService(uow).refresh_source_health(emit_events=True)
+            result = await MarketStructureService(uow).refresh_source_health(emit_events=True)
+            await uow.commit()
+            return result

@@ -357,6 +357,15 @@ class MarketStructureService:
         self._coins = MarketStructureCoinRepository(uow.session)
         self._snapshots = MarketStructureSnapshotRepository(uow.session)
 
+    def _defer_after_commit(self, action) -> None:
+        self._uow.add_after_commit_action(action)
+
+    def _queue_event(self, event_name: str, payload: dict[str, Any]) -> None:
+        event_payload = dict(payload)
+        self._defer_after_commit(
+            lambda event_name=event_name, event_payload=event_payload: publish_event(event_name, event_payload)
+        )
+
     async def list_plugins(self):
         return await self._queries.list_plugins()
 
@@ -375,7 +384,7 @@ class MarketStructureService:
     async def refresh_source_health(self, *, emit_events: bool = True) -> dict[str, object]:
         rows = await self._sources.list_all_for_update()
         now = utc_now()
-        changed_sources: list[tuple[MarketStructureSource, str | None]] = []
+        changed_sources = 0
         for source in rows:
             previous_health_status = source.health_status
             if self._sync_source_health_fields(source, now=now):
@@ -388,16 +397,13 @@ class MarketStructureService:
                     if emit_events
                     else None
                 )
-                changed_sources.append((source, alert_kind))
-        await self._uow.commit()
-        if emit_events:
-            for source, alert_kind in changed_sources:
-                await self._emit_source_health_event(source, now=now)
-                await self._emit_source_alert_event(source, alert_kind=alert_kind, now=now)
+                changed_sources += 1
+                if emit_events:
+                    await self._queue_source_health_dispatch(source, alert_kind=alert_kind, now=now)
         return {
             "status": "ok",
             "sources": len(rows),
-            "changed": len(changed_sources),
+            "changed": changed_sources,
         }
 
     async def create_source(self, payload: MarketStructureSourceCreate) -> MarketStructureSourceRead:
@@ -427,10 +433,9 @@ class MarketStructureService:
                 cursor_json={},
             )
         )
-        self._sync_source_health_fields(source, now=utc_now())
-        await self._uow.commit()
-        await self._sources.refresh(source)
-        await self._emit_source_health_event(source)
+        now = utc_now()
+        self._sync_source_health_fields(source, now=now)
+        await self._queue_source_health_dispatch(source, now=now)
         item = await self._queries.get_source_read_by_id(int(source.id))
         return MarketStructureSourceRead.model_validate(
             item if item is not None else market_structure_source_read_model_from_orm(source)
@@ -486,10 +491,7 @@ class MarketStructureService:
         self._sync_source_health_fields(source, now=now)
         alert_kind = self._apply_alert_transition(source, previous_health_status=previous_health_status, now=now)
 
-        await self._uow.commit()
-        await self._sources.refresh(source)
-        await self._emit_source_health_event(source, now=now)
-        await self._emit_source_alert_event(source, alert_kind=alert_kind, now=now)
+        await self._queue_source_health_dispatch(source, alert_kind=alert_kind, now=now)
         item = await self._queries.get_source_read_by_id(int(source.id))
         return MarketStructureSourceRead.model_validate(
             item if item is not None else market_structure_source_read_model_from_orm(source, now=now)
@@ -502,15 +504,8 @@ class MarketStructureService:
         event_context = await self._source_event_context(source)
         payload = self._source_health_event_payload(source, now=utc_now())
         await self._sources.delete(source)
-        await self._uow.commit()
         if event_context is not None:
-            publish_event(
-                MARKET_STRUCTURE_EVENT_SOURCE_DELETED,
-                {
-                    **event_context,
-                    **payload,
-                },
-            )
+            self._queue_event(MARKET_STRUCTURE_EVENT_SOURCE_DELETED, {**event_context, **payload})
         return True
 
     async def list_snapshots(
@@ -573,9 +568,7 @@ class MarketStructureService:
                 previous_health_status=previous_health_status,
                 now=source.last_polled_at,
             )
-            await self._uow.commit()
-            await self._emit_source_health_event(source, now=source.last_polled_at)
-            await self._emit_source_alert_event(source, alert_kind=alert_kind, now=source.last_polled_at)
+            await self._queue_source_health_dispatch(source, alert_kind=alert_kind, now=source.last_polled_at)
             return {
                 "status": "error",
                 "reason": "poll_failed",
@@ -597,10 +590,8 @@ class MarketStructureService:
         alert_kind = self._apply_alert_transition(
             source, previous_health_status=previous_health_status, now=source.last_polled_at
         )
-        await self._uow.commit()
-        self._publish_snapshot_events(persisted)
-        await self._emit_source_health_event(source, now=source.last_polled_at)
-        await self._emit_source_alert_event(source, alert_kind=alert_kind, now=source.last_polled_at)
+        self._queue_snapshot_events(persisted)
+        await self._queue_source_health_dispatch(source, alert_kind=alert_kind, now=source.last_polled_at)
         return {
             "status": "ok",
             "source_id": int(source.id),
@@ -673,10 +664,8 @@ class MarketStructureService:
         alert_kind = self._apply_alert_transition(
             source, previous_health_status=previous_health_status, now=source.last_polled_at
         )
-        await self._uow.commit()
-        self._publish_snapshot_events(persisted)
-        await self._emit_source_health_event(source, now=source.last_polled_at)
-        await self._emit_source_alert_event(source, alert_kind=alert_kind, now=source.last_polled_at)
+        self._queue_snapshot_events(persisted)
+        await self._queue_source_health_dispatch(source, alert_kind=alert_kind, now=source.last_polled_at)
         return {
             "status": "ok",
             "source_id": int(source.id),
@@ -857,40 +846,30 @@ class MarketStructureService:
             "severity": health.severity,
         }
 
-    async def _emit_source_health_event(self, source: MarketStructureSource, *, now=None) -> None:
+    async def _queue_source_health_dispatch(
+        self,
+        source: MarketStructureSource,
+        *,
+        alert_kind: str | None = None,
+        now=None,
+    ) -> None:
         emitted_at = ensure_utc(now or utc_now())
         context = await self._source_event_context(source)
         if context is None:
             return
-        publish_event(
+        self._queue_event(
             MARKET_STRUCTURE_EVENT_SOURCE_HEALTH_UPDATED,
             {
                 **context,
                 **self._source_health_event_payload(source, now=emitted_at),
             },
         )
-
-    async def _emit_source_alert_event(
-        self,
-        source: MarketStructureSource,
-        *,
-        alert_kind: str | None,
-        now=None,
-    ) -> None:
         if alert_kind is None:
             return
-        emitted_at = ensure_utc(now or utc_now())
-        context = await self._source_event_context(source)
-        if context is None:
-            return
-
-        payload = {
-            **context,
-            **self._source_alert_event_payload(source, alert_kind=alert_kind, now=emitted_at),
-        }
-        publish_event(MARKET_STRUCTURE_EVENT_SOURCE_ALERTED, payload)
+        payload = {**context, **self._source_alert_event_payload(source, alert_kind=alert_kind, now=emitted_at)}
+        self._queue_event(MARKET_STRUCTURE_EVENT_SOURCE_ALERTED, payload)
         if alert_kind == MARKET_STRUCTURE_ALERT_KIND_QUARANTINED:
-            publish_event(MARKET_STRUCTURE_EVENT_SOURCE_QUARANTINED, payload)
+            self._queue_event(MARKET_STRUCTURE_EVENT_SOURCE_QUARANTINED, payload)
 
     async def _resolve_coin(self, coin_symbol: str) -> Coin:
         coin = await self._coins.get_by_symbol(coin_symbol)
@@ -910,10 +889,9 @@ class MarketStructureService:
         timeframe = int(source.settings_json.get("timeframe") or 15)
         return await self._snapshots.upsert_many(coin=coin, timeframe=timeframe, source=source, snapshots=snapshots)
 
-    @staticmethod
-    def _publish_snapshot_events(result: MarketStructureSnapshotPersistResult) -> None:
+    def _queue_snapshot_events(self, result: MarketStructureSnapshotPersistResult) -> None:
         for item in result.events:
-            publish_event(
+            self._queue_event(
                 MARKET_STRUCTURE_EVENT_SNAPSHOT_INGESTED,
                 {
                     "coin_id": int(item.coin_id),
@@ -1075,8 +1053,6 @@ class MarketStructureSourceProvisioningService:
         credentials = dict(source.credentials_json or {})
         credentials["ingest_token"] = self._issue_ingest_token()
         source.credentials_json = credentials
-        await self._uow.commit()
-        await self._sources.refresh(source)
         item = await self._queries.get_webhook_registration_read_by_id(source_id, include_token=True)
         return _webhook_registration_schema_from_read_model(
             item

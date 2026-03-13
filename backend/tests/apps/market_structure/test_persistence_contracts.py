@@ -45,6 +45,7 @@ async def test_market_structure_query_returns_immutable_read_models(async_db_ses
         )
         sources = await query_service.list_sources()
         snapshots = await query_service.list_snapshots(coin_symbol="ETHUSD_EVT", venue="liqscope", limit=10)
+        await uow.commit()
 
     source = next(item for item in sources if item.id == created.id)
     assert len(snapshots) == 1
@@ -75,6 +76,7 @@ async def test_market_structure_query_returns_immutable_webhook_registration(asy
             int(registration.source.id),
             include_token=False,
         )
+        await uow.commit()
 
     assert item is not None
     assert item.token is None
@@ -111,9 +113,35 @@ async def test_market_structure_persistence_logs_cover_query_repo_and_uow(
             )
         )
         items = await MarketStructureQueryService(uow.session).list_sources()
+        await uow.commit()
 
     assert items
     assert "uow.begin" in events
     assert "repo.add_market_structure_source" in events
     assert "query.list_market_structure_sources" in events
     assert "uow.commit" in events
+
+
+@pytest.mark.asyncio
+async def test_market_structure_side_effects_run_only_after_uow_commit(
+    async_db_session, seeded_market, monkeypatch
+) -> None:
+    del seeded_market
+    published: list[str] = []
+    monkeypatch.setattr(
+        "src.apps.market_structure.services.publish_event",
+        lambda event_name, payload: published.append(event_name),
+    )
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        await MarketStructureService(uow).create_source(
+            MarketStructureSourceCreate(
+                plugin_name="manual_push",
+                display_name="Deferred Event Feed",
+                settings={"coin_symbol": "ETHUSD_EVT", "timeframe": 15, "venue": "liqscope"},
+            )
+        )
+        assert published == []
+        await uow.commit()
+
+    assert published == ["market_structure_source_health_updated"]

@@ -93,6 +93,7 @@ async def test_market_structure_service_polls_persists_and_publishes(
             )
         )
         result = await service.poll_source(source_id=source.id, limit=1)
+        await uow.commit()
 
     assert result["status"] == "ok"
     assert result["created"] == 1
@@ -195,6 +196,7 @@ async def test_market_structure_service_manual_ingest_update_and_delete(async_db
 
         assert await service.delete_source(created.id) is True
         assert await service.delete_source(created.id) is False
+        await uow.commit()
 
 
 @pytest.mark.asyncio
@@ -228,12 +230,13 @@ async def test_market_structure_service_refreshes_stale_health(async_db_session,
         source.last_snapshot_at = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
         source.last_error = None
         source.health_status = "healthy"
-        await async_db_session.commit()
+        await uow.commit()
 
         monkeypatch.setattr(
             "src.apps.market_structure.services.utc_now", lambda: datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
         )
         result = await service.refresh_source_health()
+        await uow.commit()
 
     assert result == {"status": "ok", "sources": 1, "changed": 1}
     refreshed = await async_db_session.get(MarketStructureSource, created.id)
@@ -290,6 +293,7 @@ async def test_market_structure_service_applies_backoff_quarantine_and_release(
         assert first_failure["consecutive_failures"] == 1
         assert first_failure["quarantined"] is False
         assert first_failure["backoff_until"] is not None
+        await uow.commit()
 
         backoff_skip = await service.poll_source(source_id=created.id, limit=1)
         assert backoff_skip["status"] == "skipped"
@@ -298,23 +302,25 @@ async def test_market_structure_service_applies_backoff_quarantine_and_release(
         source = await async_db_session.get(MarketStructureSource, created.id)
         assert source is not None
         source.backoff_until = datetime(2000, 1, 1, tzinfo=timezone.utc)
-        await async_db_session.commit()
+        await uow.commit()
 
         second_failure = await service.poll_source(source_id=created.id, limit=1)
         assert second_failure["status"] == "error"
         assert second_failure["consecutive_failures"] == 2
         assert second_failure["quarantined"] is False
+        await uow.commit()
 
         source = await async_db_session.get(MarketStructureSource, created.id)
         assert source is not None
         source.backoff_until = datetime(2000, 1, 1, tzinfo=timezone.utc)
-        await async_db_session.commit()
+        await uow.commit()
 
         third_failure = await service.poll_source(source_id=created.id, limit=1)
         assert third_failure["status"] == "error"
         assert third_failure["consecutive_failures"] == 3
         assert third_failure["quarantined"] is True
         assert third_failure["quarantine_reason"]
+        await uow.commit()
 
         quarantined = await async_db_session.get(MarketStructureSource, created.id)
         assert quarantined is not None
@@ -342,6 +348,7 @@ async def test_market_structure_service_applies_backoff_quarantine_and_release(
         assert released.backoff_until is None
         assert released.quarantined_at is None
         assert released.quarantine_reason is None
+        await uow.commit()
 
     alerted_events = [payload for event_type, payload in published if event_type == "market_structure_source_alerted"]
     assert [payload["alert_kind"] for payload in alerted_events] == ["error", "quarantined"]
@@ -378,6 +385,7 @@ async def test_market_structure_service_poll_enabled_sources_skips_manual(
         )
 
         result = await service.poll_enabled_sources(limit_per_source=1)
+        await uow.commit()
 
     assert result["status"] == "ok"
     assert result["sources"] == 2
@@ -514,3 +522,4 @@ async def test_market_structure_provisioning_service_builds_frontend_friendly_so
         )
         assert native_result["status"] == "ok"
         assert native_result["created"] == 1
+        await uow.commit()

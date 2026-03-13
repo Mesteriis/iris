@@ -54,6 +54,23 @@ class MarketStructureQueryService(AsyncQueryService):
         self._log_debug("query.list_market_structure_sources.result", mode="read", count=len(items))
         return items
 
+    async def list_enabled_source_ids(self) -> tuple[int, ...]:
+        self._log_debug("query.list_enabled_market_structure_source_ids", mode="read")
+        rows = (
+            (
+                await self.session.execute(
+                    select(MarketStructureSource.id)
+                    .where(MarketStructureSource.enabled.is_(True))
+                    .order_by(MarketStructureSource.updated_at.asc(), MarketStructureSource.id.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        items = tuple(int(value) for value in rows)
+        self._log_debug("query.list_enabled_market_structure_source_ids.result", mode="read", count=len(items))
+        return items
+
     async def get_source_read_by_id(self, source_id: int) -> MarketStructureSourceReadModel | None:
         self._log_debug("query.get_market_structure_source_read_by_id", mode="read", source_id=source_id)
         source = await self.session.get(MarketStructureSource, source_id)

@@ -117,8 +117,9 @@ Status: migrated on the API/application surface and scheduled entrypoints
 - read-only plugin/source/health/snapshot/webhook flows now go through [backend/src/apps/market_structure/query_services.py](backend/src/apps/market_structure/query_services.py)
 - immutable dataclass read models now live in [backend/src/apps/market_structure/read_models.py](backend/src/apps/market_structure/read_models.py)
 - views and tasks now depend on the shared async UoW instead of owning `AsyncSession` directly
-- source CRUD, polling, manual ingest, webhook ingest and provisioning flows now commit through the shared UoW and repositories instead of direct session commits
+- source CRUD, polling, manual ingest, webhook ingest and provisioning flows now commit through the shared async UoW from the caller layer instead of committing inside [backend/src/apps/market_structure/services.py](backend/src/apps/market_structure/services.py)
 - snapshot persistence stays on SQLAlchemy Core upsert, but is now isolated behind a repository and logged as an explicit bulk/Core write path
+- post-commit source health, alert, delete and snapshot events now queue through generic UoW after-commit hooks, keeping side effects strictly after transaction success without leaving `commit()` in the service layer
 
 Classification:
 
@@ -321,13 +322,13 @@ Recent cleanup:
 ### Transaction Boundary Drift
 
 Representative offenders:
-
-- [backend/src/apps/market_structure/services.py](backend/src/apps/market_structure/services.py)
+- no active async/public domain offenders remain after the `market_structure` cutover.
 
 Recently fixed:
 
 - analysis scheduler stream handling in [backend/src/runtime/streams/workers.py](backend/src/runtime/streams/workers.py) no longer commits through direct session ownership.
 - write-side helper functions in [backend/src/apps/market_data/services.py](backend/src/apps/market_data/services.py) now require a shared async UoW boundary instead of accepting bare `AsyncSession` / mixed write contracts.
+- [backend/src/apps/market_structure/services.py](backend/src/apps/market_structure/services.py) no longer owns `commit()` either; write callers now commit explicitly and side effects are queued via `BaseAsyncUnitOfWork.add_after_commit_action(...)`.
 
 Required action:
 
@@ -380,8 +381,8 @@ Recommended rollout order:
 12. completed on the async/public API plus signal-fusion/signal-history runtime and test-facing surfaces: `apps/signals`
 13. completed on the async/public API and scheduled sync surface: `apps/portfolio`
 14. completed: remove residual sync DB helpers from `apps/patterns/domain/*`
-15. next: residual direct-session service internals in `market_structure`
-16. later: remaining helper-only sync analytical modules outside `patterns` and leftover compatibility assertions in tests
+15. next: remaining helper-only sync analytical modules outside `patterns`
+16. later: leftover compatibility assertions in tests and final documentation cleanup
 
 ## Current Behavior To Preserve
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+import inspect
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from uuid import uuid4
 
@@ -15,10 +16,14 @@ class BaseAsyncUnitOfWork(AbstractAsyncContextManager["BaseAsyncUnitOfWork"]):
         self._session = session
         self._owns_session = owns_session
         self._uow_id = uuid4().hex[:8]
+        self._after_commit_actions: list[Callable[[], object]] = []
 
     @property
     def session(self) -> AsyncSession:
         return self._session
+
+    def add_after_commit_action(self, action: Callable[[], Awaitable[object] | object]) -> None:
+        self._after_commit_actions.append(action)
 
     async def __aenter__(self) -> BaseAsyncUnitOfWork:
         PERSISTENCE_LOGGER.debug(
@@ -33,6 +38,12 @@ class BaseAsyncUnitOfWork(AbstractAsyncContextManager["BaseAsyncUnitOfWork"]):
             extra={"persistence": {"event": "uow.commit", "uow_id": self._uow_id}},
         )
         await self._session.commit()
+        actions = self._after_commit_actions
+        self._after_commit_actions = []
+        for action in actions:
+            result = action()
+            if inspect.isawaitable(result):
+                await result
 
     async def rollback(self) -> None:
         PERSISTENCE_LOGGER.debug(
@@ -40,6 +51,7 @@ class BaseAsyncUnitOfWork(AbstractAsyncContextManager["BaseAsyncUnitOfWork"]):
             extra={"persistence": {"event": "uow.rollback", "uow_id": self._uow_id}},
         )
         await self._session.rollback()
+        self._after_commit_actions = []
 
     async def flush(self) -> None:
         PERSISTENCE_LOGGER.debug(
@@ -56,12 +68,14 @@ class BaseAsyncUnitOfWork(AbstractAsyncContextManager["BaseAsyncUnitOfWork"]):
                     extra={"persistence": {"event": "uow.rollback_uncommitted", "uow_id": self._uow_id}},
                 )
                 await self._session.rollback()
+                self._after_commit_actions = []
         else:
             PERSISTENCE_LOGGER.exception(
                 "uow.exit_error",
                 extra={"persistence": {"event": "uow.exit_error", "uow_id": self._uow_id}},
             )
             await self._session.rollback()
+            self._after_commit_actions = []
         if self._owns_session:
             await self._session.close()
 
