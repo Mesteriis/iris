@@ -7,8 +7,8 @@ import pytest
 from sqlalchemy import select
 from src.apps.anomalies.models import MarketAnomaly
 from src.apps.anomalies.tasks.anomaly_enrichment_tasks import anomaly_enrichment_job
+from src.apps.market_data.models import Coin
 from src.apps.market_data.repos import fetch_candle_points, upsert_base_candles
-from src.apps.market_data.service_layer import get_coin_by_symbol
 from src.apps.market_data.sources.base import MarketBar
 from src.apps.portfolio.models import PortfolioPosition
 from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
@@ -17,7 +17,7 @@ from src.runtime.streams.runner import run_worker_loop
 
 
 def _append_shock_bar(db, *, symbol: str, close_multiplier: float, volume_multiplier: float, source: str) -> tuple[int, object]:
-    coin = get_coin_by_symbol(db, symbol)
+    coin = db.scalar(select(Coin).where(Coin.symbol == symbol.upper(), Coin.deleted_at.is_(None)).limit(1))
     assert coin is not None
     candles = fetch_candle_points(db, int(coin.id), 15, 2)
     latest = candles[-1]

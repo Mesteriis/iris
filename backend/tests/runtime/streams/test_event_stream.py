@@ -12,9 +12,9 @@ from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.publisher import flush_publisher, publish_event
 from src.runtime.streams.runner import run_worker_loop
 from src.apps.market_data.models import Coin
+from src.apps.market_data.support import publish_candle_events
 from src.apps.patterns.domain.registry import sync_pattern_metadata
 from src.apps.signals.models import Signal
-from src.apps.market_data.service_layer import publish_candle_events
 
 
 def _run_topology_dispatcher() -> None:

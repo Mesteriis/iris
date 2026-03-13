@@ -186,7 +186,7 @@ async def test_market_data_async_services_history_helpers(async_db_session, seed
 
     published: list[tuple[int, str]] = []
     monkeypatch.setattr(
-        "src.apps.market_data.services.publish_candle_events",
+        "src.apps.market_data.support.publish_candle_events",
         lambda **kwargs: published.append((kwargs["created_count"], kwargs["source"])),
     )
 
@@ -351,7 +351,7 @@ async def test_market_data_async_services_sync_history_branches(async_db_session
     )
 
     events: list[tuple[str, object]] = []
-    monkeypatch.setattr("src.apps.market_data.services.utc_now", lambda: now)
+    monkeypatch.setattr("src.apps.market_data.services.market_data_domain.utc_now", lambda: now)
     monkeypatch.setattr(
         "src.apps.market_data.services._calculate_backfill_progress_async",
         lambda *args, **kwargs: __import__("asyncio").sleep(0, result=(0, 10, 0.0)),
@@ -373,7 +373,7 @@ async def test_market_data_async_services_sync_history_branches(async_db_session
         lambda coin: events.append(("analysis", coin.symbol)),
     )
     monkeypatch.setattr(
-        "src.apps.market_data.services.publish_candle_events",
+        "src.apps.market_data.support.publish_candle_events",
         lambda **kwargs: events.append(("candle", kwargs["created_count"])),
     )
 
@@ -607,10 +607,16 @@ async def test_market_data_async_services_sync_history_progress_update_and_lates
             fetch_calls.append((interval, start))
             return SimpleNamespace(bars=[bar], completed=True, error=None)
 
-    monkeypatch.setattr("src.apps.market_data.services.utc_now", lambda: now)
+    monkeypatch.setattr("src.apps.market_data.services.market_data_domain.utc_now", lambda: now)
     monkeypatch.setattr("src.apps.market_data.services._calculate_backfill_progress_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=next(progress_values)))
-    monkeypatch.setattr("src.apps.market_data.services.latest_completed_timestamp", lambda interval, reference: latest_available)
-    monkeypatch.setattr("src.apps.market_data.services.history_window_start", lambda latest, interval, retention: latest - timedelta(minutes=15))
+    monkeypatch.setattr(
+        "src.apps.market_data.services.market_data_domain.latest_completed_timestamp",
+        lambda interval, reference: latest_available,
+    )
+    monkeypatch.setattr(
+        "src.apps.market_data.services.market_data_domain.history_window_start",
+        lambda latest, interval, retention: latest - timedelta(minutes=15),
+    )
     monkeypatch.setattr("src.apps.market_data.services._prune_future_price_history_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=0))
     monkeypatch.setattr("src.apps.market_data.services._prune_price_history_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=0))
     monkeypatch.setattr("src.apps.market_data.services._get_latest_history_timestamp_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=None))
@@ -619,7 +625,7 @@ async def test_market_data_async_services_sync_history_progress_update_and_lates
     monkeypatch.setattr("src.apps.market_data.services.publish_coin_history_progress_message", lambda coin, **kwargs: events.append(("progress", kwargs["progress_percent"])))
     monkeypatch.setattr("src.apps.market_data.services.publish_coin_history_loaded_message", lambda coin, **kwargs: events.append(("loaded", kwargs["total_points"])))
     monkeypatch.setattr("src.apps.market_data.services.publish_coin_analysis_messages", lambda coin: events.append(("analysis", coin.symbol)))
-    monkeypatch.setattr("src.apps.market_data.services.publish_candle_events", lambda **kwargs: events.append(("candle", kwargs["created_count"])))
+    monkeypatch.setattr("src.apps.market_data.support.publish_candle_events", lambda **kwargs: events.append(("candle", kwargs["created_count"])))
 
     result = await _sync_coin_history_async(FakeDb(), coin, history_mode="backfill")
     assert result == {"symbol": "ASYNC_SYNC_EVT", "created": 1, "status": "ok"}

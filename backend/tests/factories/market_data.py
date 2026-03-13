@@ -6,9 +6,16 @@ from collections.abc import Sequence
 from polyfactory.factories.dataclass_factory import DataclassFactory
 from polyfactory.factories.pydantic_factory import ModelFactory
 from polyfactory.fields import Use
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
 
+from src.apps.indicators.models import CoinMetrics
+from src.apps.market_data.domain import utc_now
+from src.apps.market_data.models import Coin
 from src.apps.market_data.repos import CandlePoint
 from src.apps.market_data.schemas import CoinCreate, PriceHistoryCreate
+from src.apps.market_data.support import serialize_candles
 from tests.factories.base import fake
 
 
@@ -86,3 +93,51 @@ def build_candle_points(
         )
         previous_close = float(close)
     return series
+
+
+def persist_coin(db: Session, payload: CoinCreate) -> Coin:
+    symbol = payload.symbol.strip().upper()
+    candles = serialize_candles(payload.candles)
+    existing = db.scalar(select(Coin).where(Coin.symbol == symbol).limit(1))
+    if existing is None:
+        coin = Coin(
+            symbol=symbol,
+            name=payload.name.strip(),
+            asset_type=payload.asset_type.strip().lower(),
+            theme=payload.theme.strip().lower(),
+            sector_code=(payload.sector or payload.theme).strip().lower(),
+            source=payload.source.strip().lower(),
+            enabled=payload.enabled,
+            sort_order=payload.sort_order,
+            candles_config=candles,
+        )
+        db.add(coin)
+        db.flush()
+    else:
+        coin = existing
+        sync_settings_changed = (
+            coin.asset_type != payload.asset_type.strip().lower()
+            or coin.source != payload.source.strip().lower()
+            or coin.candles_config != candles
+        )
+        coin.name = payload.name.strip()
+        coin.asset_type = payload.asset_type.strip().lower()
+        coin.theme = payload.theme.strip().lower()
+        coin.sector_code = (payload.sector or payload.theme).strip().lower()
+        coin.source = payload.source.strip().lower()
+        coin.enabled = payload.enabled
+        coin.sort_order = payload.sort_order
+        coin.candles_config = candles
+        coin.deleted_at = None
+        if sync_settings_changed:
+            coin.history_backfill_completed_at = None
+            coin.last_history_sync_at = None
+            coin.next_history_sync_at = None
+            coin.last_history_sync_error = None
+
+    stmt = insert(CoinMetrics).values({"coin_id": int(coin.id), "updated_at": utc_now(), "indicator_version": 1})
+    stmt = stmt.on_conflict_do_nothing(index_elements=["coin_id"])
+    db.execute(stmt)
+    db.commit()
+    db.refresh(coin)
+    return coin

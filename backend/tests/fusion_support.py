@@ -10,11 +10,11 @@ from src.apps.patterns.models import PatternRegistry
 from src.apps.patterns.models import PatternStatistic
 from src.apps.signals.models import Signal
 from src.apps.market_data.schemas import CoinCreate
-from src.apps.market_data.service_layer import create_coin
+from tests.factories.market_data import persist_coin
 
 
 def create_test_coin(db: Session, *, symbol: str, name: str):
-    return create_coin(
+    return persist_coin(
         db,
         CoinCreate(
             symbol=symbol,

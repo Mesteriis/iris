@@ -21,7 +21,7 @@ from src.apps.market_data.repos import (
     timeframe_bucket_interval,
     timeframe_delta,
 )
-from src.apps.market_data.service_layer import get_base_candle_config
+from src.apps.market_data.support import get_base_candle_config
 from src.apps.signals.models import Signal
 from src.core.db.persistence import PERSISTENCE_LOGGER, AsyncRepository, sanitize_log_value
 

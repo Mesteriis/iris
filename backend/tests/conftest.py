@@ -45,7 +45,6 @@ from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Coin
 from src.apps.market_data.repos import upsert_base_candles
 from src.apps.market_data.schemas import CoinCreate
-from src.apps.market_data.service_layer import create_coin
 from src.apps.market_data.sources.base import MarketBar
 from src.apps.market_structure.models import MarketStructureSource
 from src.apps.news.models import NewsItem, NewsItemLink, NewsSource
@@ -61,7 +60,7 @@ from src.apps.predictions.models import MarketPrediction, PredictionResult
 from src.core.db.session import AsyncSessionLocal, SessionLocal
 from src.runtime.streams.publisher import flush_publisher, reset_event_publisher
 
-from tests.factories.market_data import CoinCreateFactory
+from tests.factories.market_data import CoinCreateFactory, persist_coin
 
 TEST_SYMBOLS = {
     "BTCUSD_EVT": ("BTCUSD", "Bitcoin Event Test"),
@@ -418,7 +417,7 @@ def ensure_control_plane_audit_seed() -> Iterator[None]:
 def seeded_market(db_session, fixture_candles):
     seeded: dict[str, dict[str, object]] = {}
     for target_symbol, (source_symbol, name) in TEST_SYMBOLS.items():
-        coin = create_coin(
+        coin = persist_coin(
             db_session,
             CoinCreateFactory.build(
                 symbol=target_symbol,

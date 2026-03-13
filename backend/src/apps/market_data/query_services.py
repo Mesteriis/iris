@@ -15,7 +15,7 @@ from src.apps.market_data.read_models import (
 )
 from src.apps.market_data.repos import interval_to_timeframe
 from src.apps.market_data.repositories import CandleRepository, latest_candle_pair_map
-from src.apps.market_data.service_layer import (
+from src.apps.market_data.support import (
     get_base_candle_config,
     get_interval_retention_bars,
     resolve_history_interval,
