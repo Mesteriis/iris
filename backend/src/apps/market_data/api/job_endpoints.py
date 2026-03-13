@@ -31,5 +31,5 @@ async def run_coin_job_endpoint(
         http_error = market_data_error_to_http(MarketDataCoinNotFoundError(symbol))
         assert http_error is not None
         raise http_error
-    operation = await dispatcher.dispatch_coin_history(symbol=coin.symbol, mode=mode, force=force)
-    return coin_job_accepted_read(operation=operation, symbol=coin.symbol, mode=mode, force=force)
+    dispatch_result = await dispatcher.dispatch_coin_history(symbol=coin.symbol, mode=mode, force=force)
+    return coin_job_accepted_read(dispatch_result=dispatch_result, symbol=coin.symbol, mode=mode, force=force)

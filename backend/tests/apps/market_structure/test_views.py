@@ -329,11 +329,11 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
     assert patch_response.json()["status"] == "disabled"
     assert patch_response.json()["settings"]["venue"] == "binance_main"
 
-    queued: dict[str, object] = {}
+    queued: list[dict[str, object]] = []
     from src.apps.market_structure.tasks import poll_market_structure_source_job
 
     async def fake_kiq(**kwargs):
-        queued.update(kwargs)
+        queued.append(dict(kwargs))
 
     monkeypatch.setattr(poll_market_structure_source_job, "kiq", fake_kiq)
 
@@ -344,14 +344,23 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
     assert queued_payload["operation_type"] == "market_structure.source.poll"
     assert queued_payload["source_id"] == source_id
     assert queued_payload["limit"] == 2
+    assert queued_payload["deduplicated"] is False
     assert isinstance(queued_payload["operation_id"], str) and queued_payload["operation_id"]
-    assert queued == {"source_id": source_id, "limit": 2, "operation_id": queued_payload["operation_id"]}
+    assert queued == [{"source_id": source_id, "limit": 2, "operation_id": queued_payload["operation_id"]}]
 
-    queued_health: dict[str, object] = {}
+    deduplicated_response = await client.post(f"/market-structure/sources/{source_id}/jobs/run?limit=2")
+    assert deduplicated_response.status_code == 202
+    deduplicated_payload = deduplicated_response.json()
+    assert deduplicated_payload["operation_id"] == queued_payload["operation_id"]
+    assert deduplicated_payload["deduplicated"] is True
+    assert deduplicated_payload["message"] == "An equivalent operation is already active."
+    assert queued == [{"source_id": source_id, "limit": 2, "operation_id": queued_payload["operation_id"]}]
+
+    queued_health: list[dict[str, object]] = []
     from src.apps.market_structure.tasks import refresh_market_structure_source_health_job
 
     async def fake_health_kiq(**kwargs):
-        queued_health.update(kwargs)
+        queued_health.append(dict(kwargs))
 
     monkeypatch.setattr(refresh_market_structure_source_health_job, "kiq", fake_health_kiq)
 
@@ -360,8 +369,17 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
     health_payload = health_job_response.json()
     assert health_payload["status"] == "accepted"
     assert health_payload["operation_type"] == "market_structure.health.refresh"
+    assert health_payload["deduplicated"] is False
     assert isinstance(health_payload["operation_id"], str) and health_payload["operation_id"]
-    assert queued_health == {"operation_id": health_payload["operation_id"]}
+    assert queued_health == [{"operation_id": health_payload["operation_id"]}]
+
+    deduplicated_health_response = await client.post("/market-structure/health/jobs/run")
+    assert deduplicated_health_response.status_code == 202
+    deduplicated_health_payload = deduplicated_health_response.json()
+    assert deduplicated_health_payload["operation_id"] == health_payload["operation_id"]
+    assert deduplicated_health_payload["deduplicated"] is True
+    assert deduplicated_health_payload["message"] == "An equivalent operation is already active."
+    assert queued_health == [{"operation_id": health_payload["operation_id"]}]
 
     manual_response = await client.post(
         "/market-structure/sources",

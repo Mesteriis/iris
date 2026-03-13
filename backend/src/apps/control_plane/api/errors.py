@@ -6,10 +6,29 @@ from src.apps.control_plane.exceptions import (
     EventRouteCompatibilityError,
     EventRouteConflict,
     EventRouteNotFound,
+    TopologyDraftConcurrencyConflict,
     TopologyDraftNotFound,
     TopologyDraftStateError,
 )
-from src.core.http.errors import ApiErrorFactory
+from src.core.http.errors import ApiError, ApiErrorDetail, ApiErrorFactory
+
+
+_ERROR_DESCRIPTIONS: dict[int, str] = {
+    status.HTTP_400_BAD_REQUEST: "Request validation or control-plane state policy failed.",
+    status.HTTP_403_FORBIDDEN: "Control-plane access policy rejected the request.",
+    status.HTTP_404_NOT_FOUND: "Requested control-plane resource was not found.",
+    status.HTTP_409_CONFLICT: "The requested mutation conflicts with the current control-plane state.",
+}
+
+
+def control_plane_error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
+    return {
+        int(status_code): {
+            "model": ApiError,
+            "description": _ERROR_DESCRIPTIONS[int(status_code)],
+        }
+        for status_code in status_codes
+    }
 
 
 def invalid_access_mode_error() -> HTTPException:
@@ -51,6 +70,25 @@ def control_plane_error_to_http(exc: Exception) -> HTTPException | None:
             code="validation_failed",
             message=str(exc),
         )
+    if isinstance(exc, TopologyDraftConcurrencyConflict):
+        return ApiErrorFactory.to_http_exception(
+            status_code=status.HTTP_409_CONFLICT,
+            code="concurrency_conflict",
+            message=str(exc),
+            details=[
+                ApiErrorDetail(field="resource_id", message="Draft identifier.", value=exc.draft_id),
+                ApiErrorDetail(
+                    field="expected_version",
+                    message="Draft base topology version.",
+                    value=exc.expected_version,
+                ),
+                ApiErrorDetail(
+                    field="current_version",
+                    message="Latest published topology version.",
+                    value=exc.current_version,
+                ),
+            ],
+        )
     if isinstance(exc, TopologyDraftStateError):
         return ApiErrorFactory.to_http_exception(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -74,6 +112,7 @@ def control_plane_error_to_http(exc: Exception) -> HTTPException | None:
 
 __all__ = [
     "control_mode_required_error",
+    "control_plane_error_responses",
     "control_plane_error_to_http",
     "control_token_invalid_error",
     "event_definition_not_found_error",

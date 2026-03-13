@@ -9,8 +9,7 @@ from src.apps.market_data.query_services import MarketDataQueryService
 from src.apps.market_data.services import MarketDataService
 from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 from src.core.http.deps import get_operation_store, get_trace_context
-from src.core.http.operation_store import OperationStore, dispatch_background_operation
-from src.core.http.operations import OperationStatusResponse
+from src.core.http.operation_store import OperationDispatchResult, OperationStore, dispatch_background_operation
 from src.core.http.tracing import TraceContext
 
 
@@ -36,13 +35,14 @@ class MarketDataJobDispatcher:
     operation_store: OperationStore
     trace_context: TraceContext
 
-    async def dispatch_coin_history(self, *, symbol: str, mode: str, force: bool) -> OperationStatusResponse:
+    async def dispatch_coin_history(self, *, symbol: str, mode: str, force: bool) -> OperationDispatchResult:
         from src.apps.market_data.tasks import run_coin_history_job
 
         return await dispatch_background_operation(
             store=self.operation_store,
             operation_type="market_data.coin_history.sync",
             trace_context=self.trace_context,
+            deduplication_key=f"symbol:{symbol}:mode:{mode}:force:{str(bool(force)).lower()}",
             dispatch=lambda operation_id: run_coin_history_job.kiq(
                 symbol=symbol,
                 mode=mode,

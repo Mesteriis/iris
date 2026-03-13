@@ -37,12 +37,12 @@ async def hypothesis_api_client(monkeypatch):
 async def test_hypothesis_prompt_endpoints(hypothesis_api_client, monkeypatch) -> None:
     _, client = hypothesis_api_client
 
-    queued: dict[str, object] = {}
+    queued: list[dict[str, object]] = []
 
     from src.apps.hypothesis_engine.tasks.hypothesis_tasks import evaluate_hypotheses_job
 
     async def fake_kiq(**kwargs) -> None:
-        queued.update(kwargs)
+        queued.append(dict(kwargs))
 
     monkeypatch.setattr(evaluate_hypotheses_job, "kiq", fake_kiq)
 
@@ -85,8 +85,17 @@ async def test_hypothesis_prompt_endpoints(hypothesis_api_client, monkeypatch) -
     payload = job_response.json()
     assert payload["status"] == "accepted"
     assert payload["operation_type"] == "hypothesis.evaluate"
+    assert payload["deduplicated"] is False
     assert isinstance(payload["operation_id"], str) and payload["operation_id"]
-    assert queued == {"operation_id": payload["operation_id"]}
+    assert queued == [{"operation_id": payload["operation_id"]}]
+
+    deduplicated_job_response = await client.post("/hypothesis/jobs/evaluate")
+    assert deduplicated_job_response.status_code == 202
+    deduplicated_payload = deduplicated_job_response.json()
+    assert deduplicated_payload["operation_id"] == payload["operation_id"]
+    assert deduplicated_payload["deduplicated"] is True
+    assert deduplicated_payload["message"] == "An equivalent operation is already active."
+    assert queued == [{"operation_id": payload["operation_id"]}]
 
 
 @pytest.mark.asyncio

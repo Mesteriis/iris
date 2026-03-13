@@ -37,6 +37,7 @@ from src.apps.control_plane.exceptions import (
     EventRouteCompatibilityError,
     EventRouteConflict,
     EventRouteNotFound,
+    TopologyDraftConcurrencyConflict,
     TopologyDraftNotFound,
     TopologyDraftStateError,
 )
@@ -470,8 +471,10 @@ class TopologyDraftService:
         latest_version = await self._versions.get_latest_published()
         latest_version_id = int(latest_version.id) if latest_version is not None else None
         if draft.base_version_id != latest_version_id:
-            raise TopologyDraftStateError(
-                f"Draft '{draft_id}' is stale and must be rebased on the latest published topology."
+            raise TopologyDraftConcurrencyConflict(
+                draft_id,
+                expected_version=int(draft.base_version.version_number) if draft.base_version is not None else None,
+                current_version=int(latest_version.version_number) if latest_version is not None else None,
             )
 
         changes = await self._changes.list_by_draft(int(draft.id))

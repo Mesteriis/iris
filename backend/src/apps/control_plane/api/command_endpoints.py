@@ -16,7 +16,7 @@ from src.apps.control_plane.api.contracts import (
     route_mutation_command_from_request,
 )
 from src.apps.control_plane.api.deps import ControlActorDep, DraftCommandDep, RouteCommandDep
-from src.apps.control_plane.api.errors import control_plane_error_to_http
+from src.apps.control_plane.api.errors import control_plane_error_responses, control_plane_error_to_http
 from src.apps.control_plane.api.presenters import (
     draft_lifecycle_read,
     route_read,
@@ -108,7 +108,11 @@ async def create_draft_change(
     )
 
 
-@router.post("/drafts/{draft_id}/apply", response_model=TopologyDraftLifecycleRead)
+@router.post(
+    "/drafts/{draft_id}/apply",
+    response_model=TopologyDraftLifecycleRead,
+    responses=control_plane_error_responses(400, 404, 409),
+)
 async def apply_draft(
     draft_id: int,
     actor: ControlActorDep,

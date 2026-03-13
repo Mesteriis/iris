@@ -9,8 +9,7 @@ from src.apps.news.query_services import NewsQueryService
 from src.apps.news.services import NewsService, TelegramSessionOnboardingService, TelegramSourceProvisioningService
 from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 from src.core.http.deps import get_operation_store, get_trace_context
-from src.core.http.operation_store import OperationStore, dispatch_background_operation
-from src.core.http.operations import OperationStatusResponse
+from src.core.http.operation_store import OperationDispatchResult, OperationStore, dispatch_background_operation
 from src.core.http.tracing import TraceContext
 
 
@@ -31,13 +30,14 @@ class NewsJobDispatcher:
     operation_store: OperationStore
     trace_context: TraceContext
 
-    async def dispatch_source_poll(self, *, source_id: int, limit: int) -> OperationStatusResponse:
+    async def dispatch_source_poll(self, *, source_id: int, limit: int) -> OperationDispatchResult:
         from src.apps.news.tasks import poll_news_source_job
 
         return await dispatch_background_operation(
             store=self.operation_store,
             operation_type="news.source.poll",
             trace_context=self.trace_context,
+            deduplication_key=f"source_id:{int(source_id)}:limit:{int(limit)}",
             dispatch=lambda operation_id: poll_news_source_job.kiq(
                 source_id=source_id,
                 limit=limit,

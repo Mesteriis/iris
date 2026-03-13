@@ -33,6 +33,20 @@ class TopologyDraftStateError(ControlPlaneError):
     pass
 
 
+class TopologyDraftConcurrencyConflict(TopologyDraftStateError):
+    def __init__(
+        self,
+        draft_id: int,
+        *,
+        expected_version: int | None,
+        current_version: int | None,
+    ) -> None:
+        self.draft_id = int(draft_id)
+        self.expected_version = expected_version
+        self.current_version = current_version
+        super().__init__(f"Draft '{self.draft_id}' is stale and must be rebased on the latest published topology.")
+
+
 __all__ = [
     "ControlPlaneError",
     "EventConsumerNotFound",
@@ -40,6 +54,7 @@ __all__ = [
     "EventRouteCompatibilityError",
     "EventRouteConflict",
     "EventRouteNotFound",
+    "TopologyDraftConcurrencyConflict",
     "TopologyDraftNotFound",
     "TopologyDraftStateError",
 ]

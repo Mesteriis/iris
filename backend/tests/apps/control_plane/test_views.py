@@ -280,6 +280,81 @@ async def test_control_plane_draft_apply_and_discard_endpoints(api_app_client, i
     assert discard_apply_response.json()["draft"]["status"] == "discarded"
 
 
+@pytest.mark.asyncio
+async def test_control_plane_apply_returns_concurrency_conflict_for_stale_draft(
+    api_app_client,
+    isolated_control_plane_state,
+) -> None:
+    _, client = api_app_client
+    headers = {
+        "X-IRIS-Actor": "ops",
+        "X-IRIS-Access-Mode": "control",
+        "X-IRIS-Reason": "stale-draft-test",
+    }
+
+    stale_draft_response = await client.post(
+        "/control-plane/drafts",
+        json={"name": "Stale draft", "access_mode": "control"},
+        headers=headers,
+    )
+    assert stale_draft_response.status_code == 201
+    stale_draft_id = int(stale_draft_response.json()["id"])
+
+    fresh_draft_response = await client.post(
+        "/control-plane/drafts",
+        json={"name": "Fresh draft", "access_mode": "control"},
+        headers=headers,
+    )
+    assert fresh_draft_response.status_code == 201
+    fresh_draft_id = int(fresh_draft_response.json()["id"])
+
+    route_key = build_route_key(
+        "market_regime_changed",
+        "portfolio_workers",
+        EventRouteScope.GLOBAL,
+        None,
+        "*",
+    )
+
+    stale_change_response = await client.post(
+        f"/control-plane/drafts/{stale_draft_id}/changes",
+        json={
+            "change_type": "route_status_changed",
+            "target_route_key": route_key,
+            "payload": {"status": "paused", "notes": "Paused by stale draft"},
+        },
+        headers=headers,
+    )
+    assert stale_change_response.status_code == 201
+
+    fresh_change_response = await client.post(
+        f"/control-plane/drafts/{fresh_draft_id}/changes",
+        json={
+            "change_type": "route_status_changed",
+            "target_route_key": route_key,
+            "payload": {"status": "muted", "notes": "Applied first to make the other draft stale"},
+        },
+        headers=headers,
+    )
+    assert fresh_change_response.status_code == 201
+
+    fresh_apply_response = await client.post(f"/control-plane/drafts/{fresh_draft_id}/apply", headers=headers)
+    assert fresh_apply_response.status_code == 200
+    assert fresh_apply_response.json()["published_version_number"] == 2
+
+    stale_apply_response = await client.post(f"/control-plane/drafts/{stale_draft_id}/apply", headers=headers)
+    assert stale_apply_response.status_code == 409
+    stale_payload = stale_apply_response.json()["detail"]
+    assert stale_payload["code"] == "concurrency_conflict"
+    assert "stale" in stale_payload["message"].lower()
+    details = {item["field"]: item["value"] for item in stale_payload["details"]}
+    assert details == {
+        "resource_id": stale_draft_id,
+        "expected_version": 1,
+        "current_version": 2,
+    }
+
+
 def test_control_plane_api_router_is_mode_aware_and_legacy_views_removed() -> None:
     full_router = build_control_plane_router(mode=LaunchMode.FULL, profile=DeploymentProfile.PLATFORM_FULL)
     full_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in full_router.routes}

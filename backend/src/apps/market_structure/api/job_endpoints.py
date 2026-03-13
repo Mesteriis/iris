@@ -34,8 +34,12 @@ async def run_market_structure_source_job(
 ) -> MarketStructureSourceJobAcceptedRead:
     if await query_service.get_source_read_by_id(source_id) is None:
         raise market_structure_source_not_found_error(source_id)
-    operation = await dispatcher.dispatch_source_poll(source_id=int(source_id), limit=int(limit))
-    return market_structure_source_job_accepted_read(operation=operation, source_id=source_id, limit=limit)
+    dispatch_result = await dispatcher.dispatch_source_poll(source_id=int(source_id), limit=int(limit))
+    return market_structure_source_job_accepted_read(
+        dispatch_result=dispatch_result,
+        source_id=source_id,
+        limit=limit,
+    )
 
 
 @router.post(
@@ -47,5 +51,5 @@ async def run_market_structure_source_job(
 async def run_market_structure_health_job(
     dispatcher: MarketStructureJobDispatcherDep,
 ) -> MarketStructureHealthJobAcceptedRead:
-    operation = await dispatcher.dispatch_health_refresh()
-    return market_structure_health_job_accepted_read(operation=operation)
+    dispatch_result = await dispatcher.dispatch_health_refresh()
+    return market_structure_health_job_accepted_read(dispatch_result=dispatch_result)

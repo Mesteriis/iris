@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.apps.market_data.api.contracts import CoinJobAcceptedRead, CoinRead, PriceHistoryRead
-from src.core.http.operations import OperationStatusResponse
+from src.core.http.operation_store import OperationDispatchResult
 
 
 def coin_read(item: Any) -> CoinRead:
@@ -58,16 +58,19 @@ def price_history_read(item: Any) -> PriceHistoryRead:
 
 def coin_job_accepted_read(
     *,
-    operation: OperationStatusResponse,
+    dispatch_result: OperationDispatchResult,
     symbol: str,
     mode: str,
     force: bool,
 ) -> CoinJobAcceptedRead:
+    operation = dispatch_result.operation
     return CoinJobAcceptedRead.model_validate(
         {
             "operation_id": operation.operation_id,
             "accepted_at": operation.accepted_at,
             "correlation_id": operation.correlation_id,
+            "deduplicated": dispatch_result.deduplicated,
+            "message": dispatch_result.message,
             "symbol": symbol,
             "mode": mode,
             "force": force,

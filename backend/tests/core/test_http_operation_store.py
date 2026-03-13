@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from redis.asyncio import Redis as AsyncRedis
 
-from src.core.http.operation_store import OperationStore, run_tracked_operation
+from src.core.http.operation_store import OperationStore, dispatch_background_operation, run_tracked_operation
 from src.core.http.operations import OperationStatus
 from src.core.http.tracing import TraceContext
 from src.core.settings import get_settings
@@ -77,5 +77,55 @@ async def test_run_tracked_operation_records_terminal_states() -> None:
         await client.aclose()
 
 
+@pytest.mark.asyncio
+async def test_dispatch_background_operation_deduplicates_active_jobs() -> None:
+    settings = get_settings()
+    client = AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+    store = OperationStore(client=client, ttl_seconds=60)
+    dispatched: list[str] = []
+    try:
+        first = await dispatch_background_operation(
+            store=store,
+            operation_type="test.job",
+            deduplication_key="resource:1",
+            dispatch=lambda operation_id: _record_dispatch(dispatched, operation_id),
+        )
+        second = await dispatch_background_operation(
+            store=store,
+            operation_type="test.job",
+            deduplication_key="resource:1",
+            dispatch=lambda operation_id: _record_dispatch(dispatched, operation_id),
+        )
+
+        assert first.deduplicated is False
+        assert second.deduplicated is True
+        assert second.message == "An equivalent operation is already active."
+        assert first.operation.operation_id == second.operation.operation_id
+        assert dispatched == [first.operation.operation_id]
+
+        await store.mark_failed(
+            first.operation.operation_id,
+            error_code="task_failed",
+            error_message="boom",
+            retryable=False,
+        )
+
+        third = await dispatch_background_operation(
+            store=store,
+            operation_type="test.job",
+            deduplication_key="resource:1",
+            dispatch=lambda operation_id: _record_dispatch(dispatched, operation_id),
+        )
+        assert third.deduplicated is False
+        assert third.operation.operation_id != first.operation.operation_id
+        assert dispatched == [first.operation.operation_id, third.operation.operation_id]
+    finally:
+        await client.aclose()
+
+
 async def _return_result(payload: dict[str, object]) -> dict[str, object]:
     return payload
+
+
+async def _record_dispatch(dispatched: list[str], operation_id: str) -> None:
+    dispatched.append(operation_id)

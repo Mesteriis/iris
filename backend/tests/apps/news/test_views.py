@@ -98,12 +98,12 @@ async def test_news_endpoints(api_app_client, db_session, monkeypatch) -> None:
     assert items[0]["normalization_status"] == "pending"
     assert items[0]["links"] == []
 
-    queued: dict[str, object] = {}
+    queued: list[dict[str, object]] = []
 
     from src.apps.news.tasks import poll_news_source_job
 
     async def fake_kiq(**kwargs):
-        queued.update(kwargs)
+        queued.append(dict(kwargs))
 
     monkeypatch.setattr(poll_news_source_job, "kiq", fake_kiq)
 
@@ -114,8 +114,17 @@ async def test_news_endpoints(api_app_client, db_session, monkeypatch) -> None:
     assert queued_payload["operation_type"] == "news.source.poll"
     assert queued_payload["source_id"] == source_id
     assert queued_payload["limit"] == 25
+    assert queued_payload["deduplicated"] is False
     assert isinstance(queued_payload["operation_id"], str) and queued_payload["operation_id"]
-    assert queued == {"source_id": source_id, "limit": 25, "operation_id": queued_payload["operation_id"]}
+    assert queued == [{"source_id": source_id, "limit": 25, "operation_id": queued_payload["operation_id"]}]
+
+    deduplicated_response = await client.post(f"/news/sources/{source_id}/jobs/run?limit=25")
+    assert deduplicated_response.status_code == 202
+    deduplicated_payload = deduplicated_response.json()
+    assert deduplicated_payload["operation_id"] == queued_payload["operation_id"]
+    assert deduplicated_payload["deduplicated"] is True
+    assert deduplicated_payload["message"] == "An equivalent operation is already active."
+    assert queued == [{"source_id": source_id, "limit": 25, "operation_id": queued_payload["operation_id"]}]
 
     missing_response = await client.post("/news/sources/999999/jobs/run")
     assert missing_response.status_code == 404

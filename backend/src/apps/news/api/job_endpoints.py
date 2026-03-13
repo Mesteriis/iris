@@ -25,5 +25,5 @@ async def run_news_source_job(
 ) -> NewsSourceJobAcceptedRead:
     if await query_service.get_source_read_by_id(source_id) is None:
         raise news_source_not_found_error(source_id)
-    operation = await dispatcher.dispatch_source_poll(source_id=int(source_id), limit=int(limit))
-    return news_source_job_accepted_read(operation=operation, source_id=source_id, limit=limit)
+    dispatch_result = await dispatcher.dispatch_source_poll(source_id=int(source_id), limit=int(limit))
+    return news_source_job_accepted_read(dispatch_result=dispatch_result, source_id=source_id, limit=limit)

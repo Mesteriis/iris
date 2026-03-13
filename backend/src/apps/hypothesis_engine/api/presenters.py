@@ -8,7 +8,7 @@ from src.apps.hypothesis_engine.api.contracts import (
     AIPromptRead,
     HypothesisEvaluationJobAcceptedRead,
 )
-from src.core.http.operations import OperationStatusResponse
+from src.core.http.operation_store import OperationDispatchResult
 
 
 def prompt_read(item: Any) -> AIPromptRead:
@@ -25,13 +25,16 @@ def hypothesis_eval_read(item: Any) -> AIHypothesisEvalRead:
 
 def hypothesis_evaluation_job_accepted_read(
     *,
-    operation: OperationStatusResponse,
+    dispatch_result: OperationDispatchResult,
 ) -> HypothesisEvaluationJobAcceptedRead:
+    operation = dispatch_result.operation
     return HypothesisEvaluationJobAcceptedRead.model_validate(
         {
             "operation_id": operation.operation_id,
             "accepted_at": operation.accepted_at,
             "correlation_id": operation.correlation_id,
+            "deduplicated": dispatch_result.deduplicated,
+            "message": dispatch_result.message,
         }
     )
 

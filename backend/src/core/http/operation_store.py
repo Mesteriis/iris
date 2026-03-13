@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from redis.asyncio import Redis as AsyncRedis
@@ -18,8 +19,33 @@ from src.core.settings import get_settings
 
 settings = get_settings()
 
+_ACTIVE_OPERATION_STATUSES = frozenset(
+    {
+        OperationStatus.ACCEPTED,
+        OperationStatus.QUEUED,
+        OperationStatus.RUNNING,
+    }
+)
+_TERMINAL_OPERATION_STATUSES = frozenset(
+    {
+        OperationStatus.DEDUPLICATED,
+        OperationStatus.SUCCEEDED,
+        OperationStatus.FAILED,
+        OperationStatus.CANCELLED,
+        OperationStatus.REJECTED,
+        OperationStatus.TIMED_OUT,
+    }
+)
+
 def get_async_operation_client() -> AsyncRedis:
     return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+
+
+@dataclass(frozen=True, slots=True)
+class OperationDispatchResult:
+    operation: OperationStatusResponse
+    deduplicated: bool = False
+    message: str | None = None
 
 
 class OperationStore:
@@ -40,11 +66,12 @@ class OperationStore:
         trace_context: TraceContext | None = None,
         requested_by: str | None = None,
         deduplication_key: str | None = None,
+        operation_id: str | None = None,
     ) -> OperationStatusResponse:
-        operation_id = uuid.uuid4().hex
+        next_operation_id = operation_id or uuid.uuid4().hex
         trace = trace_context or TraceContext()
         status = OperationStatusResponse(
-            operation_id=operation_id,
+            operation_id=next_operation_id,
             operation_type=operation_type,
             status=OperationStatus.ACCEPTED,
             accepted_at=_utc_now(),
@@ -54,15 +81,67 @@ class OperationStore:
             requested_by=requested_by,
             deduplication_key=deduplication_key,
         )
-        await self._write_status(status)
-        await self._append_event(
-            operation_id=operation_id,
-            operation_type=operation_type,
-            event="accepted",
-            status=OperationStatus.ACCEPTED,
-            message="Operation accepted.",
-        )
+        try:
+            await self._write_status(status)
+            await self._append_event(
+                operation_id=next_operation_id,
+                operation_type=operation_type,
+                event="accepted",
+                status=OperationStatus.ACCEPTED,
+                message="Operation accepted.",
+            )
+        except Exception:
+            if deduplication_key is not None:
+                await self._release_active_deduplication_key(
+                    operation_type=operation_type,
+                    deduplication_key=deduplication_key,
+                    operation_id=next_operation_id,
+                )
+            raise
         return status
+
+    async def create_or_reuse_active_operation(
+        self,
+        *,
+        operation_type: str,
+        trace_context: TraceContext | None = None,
+        requested_by: str | None = None,
+        deduplication_key: str | None = None,
+    ) -> OperationDispatchResult:
+        if deduplication_key is None:
+            return OperationDispatchResult(
+                operation=await self.create_operation(
+                    operation_type=operation_type,
+                    trace_context=trace_context,
+                    requested_by=requested_by,
+                )
+            )
+
+        for _ in range(3):
+            next_operation_id = uuid.uuid4().hex
+            claimed, existing = await self._claim_or_get_active_operation(
+                operation_type=operation_type,
+                deduplication_key=deduplication_key,
+                operation_id=next_operation_id,
+            )
+            if existing is not None:
+                return OperationDispatchResult(
+                    operation=existing,
+                    deduplicated=True,
+                    message="An equivalent operation is already active.",
+                )
+            if not claimed:
+                continue
+            return OperationDispatchResult(
+                operation=await self.create_operation(
+                    operation_type=operation_type,
+                    trace_context=trace_context,
+                    requested_by=requested_by,
+                    deduplication_key=deduplication_key,
+                    operation_id=next_operation_id,
+                )
+            )
+        raise RuntimeError(f"Could not acquire operation slot for '{operation_type}'.")
 
     async def mark_queued(self, operation_id: str, *, message: str | None = None) -> OperationStatusResponse:
         return await self._update_status(
@@ -203,6 +282,19 @@ class OperationStore:
             raise KeyError(f"Operation '{operation_id}' was not found.")
         next_status = current.model_copy(update={"status": status, **updates})
         await self._write_status(next_status)
+        if next_status.deduplication_key is not None:
+            if status in _ACTIVE_OPERATION_STATUSES:
+                await self._refresh_active_deduplication_key(
+                    operation_type=next_status.operation_type,
+                    deduplication_key=next_status.deduplication_key,
+                    operation_id=next_status.operation_id,
+                )
+            elif status in _TERMINAL_OPERATION_STATUSES:
+                await self._release_active_deduplication_key(
+                    operation_type=next_status.operation_type,
+                    deduplication_key=next_status.deduplication_key,
+                    operation_id=next_status.operation_id,
+                )
         await self._append_event(
             operation_id=next_status.operation_id,
             operation_type=next_status.operation_type,
@@ -263,8 +355,56 @@ class OperationStore:
     def _events_key(self, operation_id: str) -> str:
         return f"iris:http:operations:{operation_id}:events"
 
+    def _deduplication_slot_key(self, operation_type: str, deduplication_key: str) -> str:
+        return f"iris:http:operations:dedup:{operation_type}:{deduplication_key}"
+
     def _result_path(self, operation_id: str) -> str:
         return f"{self._api_prefix}/operations/{operation_id}/result"
+
+    async def _claim_or_get_active_operation(
+        self,
+        *,
+        operation_type: str,
+        deduplication_key: str,
+        operation_id: str,
+    ) -> tuple[bool, OperationStatusResponse | None]:
+        key = self._deduplication_slot_key(operation_type, deduplication_key)
+        claimed = await self._client.set(key, operation_id, ex=self._ttl_seconds, nx=True)
+        if claimed:
+            return True, None
+        active_operation_id = await self._client.get(key)
+        if active_operation_id is None:
+            return False, None
+        active_status = await self.get_status(active_operation_id)
+        if active_status is not None and active_status.status in _ACTIVE_OPERATION_STATUSES:
+            return False, active_status
+        await self._delete_key_if_matches(key=key, expected_value=active_operation_id)
+        return False, None
+
+    async def _refresh_active_deduplication_key(
+        self,
+        *,
+        operation_type: str,
+        deduplication_key: str,
+        operation_id: str,
+    ) -> None:
+        key = self._deduplication_slot_key(operation_type, deduplication_key)
+        if await self._client.get(key) == operation_id:
+            await self._client.expire(key, self._ttl_seconds)
+
+    async def _release_active_deduplication_key(
+        self,
+        *,
+        operation_type: str,
+        deduplication_key: str,
+        operation_id: str,
+    ) -> None:
+        key = self._deduplication_slot_key(operation_type, deduplication_key)
+        await self._delete_key_if_matches(key=key, expected_value=operation_id)
+
+    async def _delete_key_if_matches(self, *, key: str, expected_value: str) -> None:
+        if await self._client.get(key) == expected_value:
+            await self._client.delete(key)
 
 
 async def dispatch_background_operation(
@@ -273,8 +413,18 @@ async def dispatch_background_operation(
     operation_type: str,
     dispatch: Callable[[str], Awaitable[None]],
     trace_context: TraceContext | None = None,
-) -> OperationStatusResponse:
-    operation = await store.create_operation(operation_type=operation_type, trace_context=trace_context)
+    requested_by: str | None = None,
+    deduplication_key: str | None = None,
+) -> OperationDispatchResult:
+    dispatch_result = await store.create_or_reuse_active_operation(
+        operation_type=operation_type,
+        trace_context=trace_context,
+        requested_by=requested_by,
+        deduplication_key=deduplication_key,
+    )
+    operation = dispatch_result.operation
+    if dispatch_result.deduplicated:
+        return dispatch_result
     try:
         await dispatch(operation.operation_id)
     except Exception as exc:
@@ -285,7 +435,8 @@ async def dispatch_background_operation(
             retryable=True,
         )
         raise
-    return await store.mark_queued(operation.operation_id)
+    queued_operation = await store.mark_queued(operation.operation_id)
+    return OperationDispatchResult(operation=queued_operation)
 
 
 async def run_tracked_operation(
@@ -339,6 +490,7 @@ def _utc_now() -> datetime:
 
 
 __all__ = [
+    "OperationDispatchResult",
     "OperationStore",
     "dispatch_background_operation",
     "get_async_operation_client",

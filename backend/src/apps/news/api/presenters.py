@@ -9,7 +9,7 @@ from src.apps.news.api.contracts import (
     NewsSourceRead,
     TelegramBulkSubscribeRead,
 )
-from src.core.http.operations import OperationStatusResponse
+from src.core.http.operation_store import OperationDispatchResult
 from src.core.db.persistence import thaw_json_value
 
 
@@ -94,15 +94,18 @@ def telegram_bulk_subscribe_read(item: Any) -> TelegramBulkSubscribeRead:
 
 def news_source_job_accepted_read(
     *,
-    operation: OperationStatusResponse,
+    dispatch_result: OperationDispatchResult,
     source_id: int,
     limit: int,
 ) -> NewsSourceJobAcceptedRead:
+    operation = dispatch_result.operation
     return NewsSourceJobAcceptedRead.model_validate(
         {
             "operation_id": operation.operation_id,
             "accepted_at": operation.accepted_at,
             "correlation_id": operation.correlation_id,
+            "deduplicated": dispatch_result.deduplicated,
+            "message": dispatch_result.message,
             "source_id": int(source_id),
             "limit": int(limit),
         }

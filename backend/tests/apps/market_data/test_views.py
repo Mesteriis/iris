@@ -15,6 +15,7 @@ from src.apps.market_data.api.deps import MarketDataBackfillTrigger
 from src.apps.market_data.api.job_endpoints import run_coin_job_endpoint
 from src.apps.market_data.api.read_endpoints import read_coin_history
 from src.apps.market_data.api.router import build_router as build_market_data_router
+from src.core.http.operation_store import OperationDispatchResult
 from src.core.http.operations import OperationStatus, OperationStatusResponse
 from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 
@@ -24,12 +25,12 @@ from tests.factories.market_data import CoinCreateFactory, PriceHistoryCreateFac
 @pytest.mark.asyncio
 async def test_market_data_endpoints(api_app_client, seeded_market, monkeypatch) -> None:
     app, client = api_app_client
-    queued: dict[str, object] = {}
+    queued: list[dict[str, object]] = []
 
     from src.apps.market_data.tasks import run_coin_history_job
 
     async def fake_kiq(**kwargs):
-        queued.update(kwargs)
+        queued.append(dict(kwargs))
 
     monkeypatch.setattr(run_coin_history_job, "kiq", fake_kiq)
 
@@ -100,13 +101,31 @@ async def test_market_data_endpoints(api_app_client, seeded_market, monkeypatch)
     assert queued_payload["symbol"] == "BTCUSD_EVT"
     assert queued_payload["mode"] == "latest"
     assert queued_payload["force"] is False
+    assert queued_payload["deduplicated"] is False
     assert isinstance(queued_payload["operation_id"], str) and queued_payload["operation_id"]
-    assert queued == {
-        "symbol": "BTCUSD_EVT",
-        "mode": "latest",
-        "force": False,
-        "operation_id": queued_payload["operation_id"],
-    }
+    assert queued == [
+        {
+            "symbol": "BTCUSD_EVT",
+            "mode": "latest",
+            "force": False,
+            "operation_id": queued_payload["operation_id"],
+        }
+    ]
+
+    deduplicated_response = await client.post("/coins/BTCUSD_EVT/jobs/run?mode=latest&force=false")
+    assert deduplicated_response.status_code == 202
+    deduplicated_payload = deduplicated_response.json()
+    assert deduplicated_payload["operation_id"] == queued_payload["operation_id"]
+    assert deduplicated_payload["deduplicated"] is True
+    assert deduplicated_payload["message"] == "An equivalent operation is already active."
+    assert queued == [
+        {
+            "symbol": "BTCUSD_EVT",
+            "mode": "latest",
+            "force": False,
+            "operation_id": queued_payload["operation_id"],
+        }
+    ]
 
     assert (await client.post("/coins/MISSING_EVT/jobs/run")).status_code == 404
     assert (await client.get("/coins/MISSING_EVT/history")).status_code == 404
@@ -192,11 +211,15 @@ async def test_market_data_view_branches() -> None:
 
     async def fake_dispatch_coin_history(**kwargs):
         dispatcher_calls.update(kwargs)
-        return OperationStatusResponse(
-            operation_id="op-market-data",
-            operation_type="market_data.coin_history.sync",
-            status=OperationStatus.QUEUED,
-            accepted_at="2026-03-13T00:00:00Z",
+        return OperationDispatchResult(
+            operation=OperationStatusResponse(
+                operation_id="op-market-data",
+                operation_type="market_data.coin_history.sync",
+                status=OperationStatus.QUEUED,
+                accepted_at="2026-03-13T00:00:00Z",
+            ),
+            deduplicated=True,
+            message="An equivalent operation is already active.",
         )
 
     dispatcher = SimpleNamespace(dispatch_coin_history=fake_dispatch_coin_history)
@@ -244,6 +267,8 @@ async def test_market_data_view_branches() -> None:
     assert queued.status == "accepted"
     assert queued.operation_id == "op-market-data"
     assert queued.operation_type == "market_data.coin_history.sync"
+    assert queued.deduplicated is True
+    assert queued.message == "An equivalent operation is already active."
     assert dispatcher_calls == {"symbol": "BTCUSD_EVT", "mode": "latest", "force": False}
 
     query_service.get_coin_read_by_symbol = missing_coin
