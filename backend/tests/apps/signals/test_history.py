@@ -4,24 +4,24 @@ from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
-
 from src.apps.market_data.domain import ensure_utc
 from src.apps.market_data.repos import CandlePoint
-from src.apps.signals.history import (
+from src.apps.signals.history_support import (
     _candle_index_map,
     _close_timestamps,
     _drawdown_for_window,
     _evaluate_signal,
-    _fetch_signals,
     _index_at_or_after,
     _open_timestamp_from_signal,
     _return_for_index,
     _signal_direction,
 )
 from src.apps.signals.models import Signal, SignalHistory
+from src.apps.signals.repositories import SignalHistoryRepository
 from src.apps.signals.services import SignalHistoryRefreshResult, SignalHistoryService
 from src.core.db.persistence import PERSISTENCE_LOGGER
 from src.core.db.uow import SessionUnitOfWork
+
 from tests.cross_market_support import DEFAULT_START, seed_candles
 from tests.factories.seeds import SignalSeedFactory
 from tests.fusion_support import create_test_coin
@@ -286,9 +286,7 @@ async def test_refresh_signal_history_handles_missing_candles(async_db_session, 
 
     db_session.expire_all()
     history_row = db_session.scalar(
-        select(SignalHistory)
-        .where(SignalHistory.coin_id == int(coin.id), SignalHistory.timeframe == 60)
-        .limit(1)
+        select(SignalHistory).where(SignalHistory.coin_id == int(coin.id), SignalHistory.timeframe == 60).limit(1)
     )
     assert history_row is not None
     assert history_row.result_return is None
@@ -312,15 +310,21 @@ async def test_signal_history_service_handles_short_windows(async_db_session, db
     )
     db_session.commit()
 
-    fetched = _fetch_signals(
-        db_session,
+    fetched = await SignalHistoryRepository(async_db_session).list_signals_for_history(
         lookback_days=30,
         coin_id=int(coin.id),
         timeframe=60,
         limit_per_scope=1,
     )
     assert len(fetched) == 1
-    assert len(_fetch_signals(db_session, lookback_days=30, limit_per_scope=1)) >= 1
+    assert (
+        len(
+            await SignalHistoryRepository(async_db_session).list_signals_for_history(
+                lookback_days=30, limit_per_scope=1
+            )
+        )
+        >= 1
+    )
 
     result = await _refresh_history(
         async_db_session,
@@ -335,9 +339,7 @@ async def test_signal_history_service_handles_short_windows(async_db_session, db
 
     db_session.expire_all()
     history_row = db_session.scalar(
-        select(SignalHistory)
-        .where(SignalHistory.coin_id == int(coin.id), SignalHistory.timeframe == 60)
-        .limit(1)
+        select(SignalHistory).where(SignalHistory.coin_id == int(coin.id), SignalHistory.timeframe == 60).limit(1)
     )
     assert history_row is not None
     assert history_row.result_return is None

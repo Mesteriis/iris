@@ -5,21 +5,19 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
-
 from src.apps.patterns.domain.registry import sync_pattern_metadata
+from src.apps.patterns.domain.semantics import slug_from_signal_type
 from src.apps.patterns.models import PatternStatistic
-from src.apps.signals.fusion import (
+from src.apps.signals.fusion_support import (
     _decision_from_scores,
-    _fuse_signals,
-    _recent_signals,
     _regime_weight,
     _signal_archetype,
     _signal_regime,
-    _signal_success_rate,
 )
 from src.apps.signals.models import MarketDecision, Signal
 from src.apps.signals.services import SignalFusionService, SignalFusionSideEffectDispatcher
 from src.core.db.uow import SessionUnitOfWork
+
 from tests.cross_market_support import DEFAULT_START
 from tests.fusion_support import create_test_coin, replace_pattern_statistics, upsert_coin_metrics
 
@@ -44,7 +42,8 @@ async def _evaluate_market_decision(
         return result
 
 
-def test_fusion_helper_branches(db_session) -> None:
+@pytest.mark.asyncio
+async def test_fusion_helper_branches(async_db_session, db_session) -> None:
     sync_pattern_metadata(db_session)
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     timestamp = DEFAULT_START
@@ -109,21 +108,60 @@ def test_fusion_helper_branches(db_session) -> None:
     )
     db_session.commit()
 
-    recent = _recent_signals(db_session, coin_id=int(coin.id), timeframe=15)
-    assert len(recent) == 3
-    assert _signal_success_rate(db_session, recent[0], "bull_trend") >= 0.35
-    assert _signal_success_rate(db_session, SimpleNamespace(signal_type="pattern_cluster_breakout", timeframe=15), None) == 0.55
-    assert _signal_success_rate(db_session, SimpleNamespace(signal_type="custom_unknown", timeframe=15), None) == 0.55
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = SignalFusionService(uow)
+        recent = await service._recent_signals(coin_id=int(coin.id), timeframe=15)
+        assert len(recent) == 3
+        success_rates = await service._pattern_success_rates(signals=recent, timeframe=15, regime="bull_trend")
+        assert (
+            service._signal_success_rate(
+                signal=recent[0],
+                slug=slug_from_signal_type(str(recent[0].signal_type)),
+                regime="bull_trend",
+                success_rates=success_rates,
+            )
+            >= 0.35
+        )
+        assert (
+            service._signal_success_rate(
+                signal=SimpleNamespace(signal_type="pattern_cluster_breakout", confidence=0.5),
+                slug=None,
+                regime=None,
+                success_rates={},
+            )
+            == 0.58
+        )
+        assert (
+            service._signal_success_rate(
+                signal=SimpleNamespace(signal_type="custom_unknown", confidence=0.5),
+                slug=None,
+                regime=None,
+                success_rates={},
+            )
+            == 0.55
+        )
+        assert (
+            service._fuse_signals(
+                signals=[],
+                regime="bull_trend",
+                success_rates={},
+                bullish_alignment=1.0,
+                bearish_alignment=1.0,
+            )
+            is None
+        )
     assert _signal_archetype("pattern_bollinger_squeeze") == "breakout"
     assert _signal_archetype("pattern_head_shoulders") == "reversal"
     assert _signal_archetype("pattern_rsi_divergence") == "mean_reversion"
     assert _regime_weight(SimpleNamespace(signal_type="pattern_bull_flag", confidence=0.8), "bull_trend") > 1.0
     assert _regime_weight(SimpleNamespace(signal_type="pattern_head_shoulders", confidence=0.8), "bear_trend") > 1.0
-    assert _regime_weight(SimpleNamespace(signal_type="pattern_bollinger_squeeze", confidence=0.8), "high_volatility") > 1.0
+    assert (
+        _regime_weight(SimpleNamespace(signal_type="pattern_bollinger_squeeze", confidence=0.8), "high_volatility")
+        > 1.0
+    )
     assert _decision_from_scores(bullish_score=0.0, bearish_score=0.0, total_score=0.1)[0] == "WATCH"
     assert _decision_from_scores(bullish_score=1.0, bearish_score=0.95, total_score=2.1)[0] == "HOLD"
     assert _decision_from_scores(bullish_score=0.2, bearish_score=1.3, total_score=1.5)[0] == "SELL"
-    assert _fuse_signals(db_session, signals=[], regime="bull_trend") is None
 
 
 @pytest.mark.asyncio
@@ -209,46 +247,58 @@ async def test_evaluate_market_decision_handles_null_fusion_window(async_db_sess
 @pytest.mark.asyncio
 async def test_fusion_additional_regime_and_event_branches(async_db_session, db_session, monkeypatch) -> None:
     assert _signal_regime(None, 15) is None
-    assert _regime_weight(SimpleNamespace(signal_type="pattern_inverse_head_shoulders", confidence=0.8), "bull_trend") == 1.05
+    assert (
+        _regime_weight(SimpleNamespace(signal_type="pattern_inverse_head_shoulders", confidence=0.8), "bull_trend")
+        == 1.05
+    )
     assert _regime_weight(SimpleNamespace(signal_type="pattern_bull_flag", confidence=0.8), "bear_trend") == 0.8
     assert _regime_weight(SimpleNamespace(signal_type="pattern_bear_flag", confidence=0.8), "bear_trend") == 1.2
     assert _regime_weight(SimpleNamespace(signal_type="pattern_custom", confidence=0.8), "bear_trend") == 1.0
-    assert _regime_weight(SimpleNamespace(signal_type="pattern_rsi_divergence", confidence=0.8), "sideways_range") == 1.2
+    assert (
+        _regime_weight(SimpleNamespace(signal_type="pattern_rsi_divergence", confidence=0.8), "sideways_range") == 1.2
+    )
     assert _regime_weight(SimpleNamespace(signal_type="pattern_bull_flag", confidence=0.8), "sideways_range") == 0.85
     assert _regime_weight(SimpleNamespace(signal_type="pattern_custom", confidence=0.8), "sideways_range") == 1.0
-    assert _regime_weight(SimpleNamespace(signal_type="pattern_rsi_divergence", confidence=0.8), "high_volatility") == 0.9
+    assert (
+        _regime_weight(SimpleNamespace(signal_type="pattern_rsi_divergence", confidence=0.8), "high_volatility") == 0.9
+    )
     assert _regime_weight(SimpleNamespace(signal_type="pattern_custom", confidence=0.8), "high_volatility") == 1.0
-    assert _regime_weight(SimpleNamespace(signal_type="pattern_bollinger_squeeze", confidence=0.8), "low_volatility") == 0.9
+    assert (
+        _regime_weight(SimpleNamespace(signal_type="pattern_bollinger_squeeze", confidence=0.8), "low_volatility")
+        == 0.9
+    )
     assert _regime_weight(SimpleNamespace(signal_type="pattern_bull_flag", confidence=0.8), "low_volatility") == 1.05
     assert _regime_weight(SimpleNamespace(signal_type="pattern_custom", confidence=0.8), "low_volatility") == 1.0
 
-    monkeypatch.setattr("src.apps.signals.fusion.cross_market_alignment_weight", lambda *args, **kwargs: 1.0)
-    neutral_fused = _fuse_signals(
-        db_session,
-        signals=[
-            Signal(
-                coin_id=1,
-                timeframe=15,
-                signal_type="pattern_bull_flag",
-                confidence=0.8,
-                priority_score=1.0,
-                context_score=1.0,
-                regime_alignment=1.0,
-                candle_timestamp=DEFAULT_START,
-            ),
-            Signal(
-                coin_id=1,
-                timeframe=15,
-                signal_type="pattern_custom",
-                confidence=0.5,
-                priority_score=1.0,
-                context_score=1.0,
-                regime_alignment=1.0,
-                candle_timestamp=DEFAULT_START + timedelta(minutes=15),
-            ),
-        ],
-        regime="bull_trend",
-    )
+    async with SessionUnitOfWork(async_db_session) as uow:
+        neutral_fused = SignalFusionService(uow)._fuse_signals(
+            signals=[
+                Signal(
+                    coin_id=1,
+                    timeframe=15,
+                    signal_type="pattern_bull_flag",
+                    confidence=0.8,
+                    priority_score=1.0,
+                    context_score=1.0,
+                    regime_alignment=1.0,
+                    candle_timestamp=DEFAULT_START,
+                ),
+                Signal(
+                    coin_id=1,
+                    timeframe=15,
+                    signal_type="pattern_custom",
+                    confidence=0.5,
+                    priority_score=1.0,
+                    context_score=1.0,
+                    regime_alignment=1.0,
+                    candle_timestamp=DEFAULT_START + timedelta(minutes=15),
+                ),
+            ],
+            regime="bull_trend",
+            success_rates={("bull_flag", "all"): 0.72},
+            bullish_alignment=1.0,
+            bearish_alignment=1.0,
+        )
     assert neutral_fused is not None
     assert neutral_fused.signal_count == 2
     assert neutral_fused.bullish_score > 0
@@ -276,7 +326,9 @@ async def test_fusion_additional_regime_and_event_branches(async_db_session, db_
     db_session.commit()
 
     published: list[str] = []
-    monkeypatch.setattr("src.apps.signals.services.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr(
+        "src.apps.signals.services.publish_event", lambda event_type, payload: published.append(event_type)
+    )
     monkeypatch.setattr(SignalFusionService, "_enrich_context", _noop_enrich_context)
 
     result = await _evaluate_market_decision(
