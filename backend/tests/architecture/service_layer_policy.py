@@ -106,8 +106,10 @@ def collect_service_result_contract_violations() -> tuple[ArchitectureViolation,
             for child in node.body:
                 if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
-                if node.name.endswith("Service") and not child.name.startswith("_") and annotation_contains_name(
-                    child.returns, "dict"
+                if (
+                    node.name.endswith("Service")
+                    and not child.name.startswith("_")
+                    and annotation_contains_name(child.returns, "dict")
                 ):
                     violations.append(
                         ArchitectureViolation(
@@ -180,9 +182,7 @@ def collect_service_module_threshold_violations() -> tuple[ArchitectureViolation
         for node in service_classes:
             size = class_loc(node)
             if size > 250:
-                violations.append(
-                    ArchitectureViolation(path=rel_path, symbol=node.name, detail=f"class_loc={size}")
-                )
+                violations.append(ArchitectureViolation(path=rel_path, symbol=node.name, detail=f"class_loc={size}"))
 
     return tuple(sorted(set(violations)))
 
@@ -198,9 +198,7 @@ def collect_transport_leakage_violations() -> tuple[ArchitectureViolation, ...]:
                 or ".api." in module
                 or module.endswith(".schemas")
             ):
-                violations.extend(
-                    [ArchitectureViolation(path=rel_path, symbol=module, detail="import")]
-                )
+                violations.extend([ArchitectureViolation(path=rel_path, symbol=module, detail="import")])
     return tuple(sorted(set(violations)))
 
 
@@ -219,9 +217,7 @@ def collect_cross_domain_boundary_violations() -> tuple[ArchitectureViolation, .
             imported_domain = parts[2]
             imported_layer = parts[3]
             if imported_domain != domain and imported_layer in {"models", "repositories"}:
-                violations.append(
-                    ArchitectureViolation(path=rel_path, symbol=module, detail="import")
-                )
+                violations.append(ArchitectureViolation(path=rel_path, symbol=module, detail="import"))
     return tuple(sorted(set(violations)))
 
 

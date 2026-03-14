@@ -12,4 +12,3 @@ def test_cross_domain_boundary_policy() -> None:
         actual=collect_cross_domain_boundary_violations(),
         expected=EXPECTED_CROSS_DOMAIN_BOUNDARY_VIOLATIONS,
     )
-

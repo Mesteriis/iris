@@ -12,4 +12,3 @@ def test_service_result_contract_policy() -> None:
         actual=collect_service_result_contract_violations(),
         expected=EXPECTED_SERVICE_RESULT_CONTRACT_VIOLATIONS,
     )
-

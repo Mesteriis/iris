@@ -9,10 +9,10 @@
 - `reference module strategy`: done
 - `semantic/operational/performance contract scope`: done
 - `architecture CI implementation`: done
-- `reference module implementation`: pending
+- `reference module implementation`: done
 - `scorecard automation`: pending
 - `ADR package`: pending
-- `service hotspot clean rewrites`: pending
+- `service hotspot clean rewrites`: in progress
 
 ## Non-Negotiable Constraints
 
@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Canonical `signals` clean rewrite
+- [ ] Wave 2 hotspot cutovers
 
 ## Active Workstreams
 
@@ -49,15 +49,15 @@
 
 ### 2. Canonical Clean Rewrite: `signals`
 
-- [ ] split `backend/src/apps/signals/services.py` into `services/`
-- [ ] create `backend/src/apps/signals/engines/`
-- [ ] move fusion/history analytical logic to typed engine contracts
-- [ ] remove summary-shaped public service contracts
-- [ ] introduce explicit side-effect dispatcher boundary
-- [ ] add typed explainability contract
-- [ ] add engine tests without DB/runtime wiring
-- [ ] keep service tests focused on wiring, invariants and post-commit behavior
-- [ ] add a short ADR for the canonical module
+- [x] split `backend/src/apps/signals/services.py` into `services/`
+- [x] create `backend/src/apps/signals/engines/`
+- [x] move fusion/history analytical logic to typed engine contracts
+- [x] remove summary-shaped public service contracts
+- [x] introduce explicit side-effect dispatcher boundary
+- [x] add typed explainability contract
+- [x] add engine tests without DB/runtime wiring
+- [x] keep service tests focused on wiring, invariants and post-commit behavior
+- [x] add a short ADR for the canonical module
 
 ### 3. Direct Hotspot Cutovers
 
@@ -131,3 +131,6 @@
 
 - [x] Stage 1 complete on `2026-03-14`: architecture governance baseline added under `backend/tests/architecture/` and wired into CI via `.github/workflows/architecture-governance.yml`
 - [x] Stage 1 verification: `cd backend && uv run pytest tests/architecture`
+- [x] Stage 2 complete on `2026-03-14`: `signals` moved to canonical `services/` + `engines/` shape, `services.py` removed, typed explainability/result contracts landed, and the cross-domain market-data repository shortcut moved behind an explicit adapter
+- [x] Stage 2 verification: `cd backend && uv run pytest tests/apps/signals tests/architecture`
+- [x] Stage 2 lint gate: `cd backend && uv run ruff check src/apps/signals/engines src/apps/signals/integrations src/apps/signals/services tests/apps/signals/test_fusion_branches.py tests/apps/signals/test_fusion_engine.py tests/apps/signals/test_history.py tests/apps/signals/test_history_engine.py tests/cross_market_support.py src/apps/patterns/task_service_history.py tests/architecture`

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import asdict
 from datetime import timedelta
 
 from sqlalchemy import select
@@ -39,14 +40,13 @@ class PatternHistoryStatisticsMixin:
         timeframe: int | None = None,
         limit_per_scope: int | None = None,
     ) -> dict[str, object]:
-        return (
-            await SignalHistoryService(self._uow).refresh_history(
-                lookback_days=lookback_days,
-                coin_id=coin_id,
-                timeframe=timeframe,
-                limit_per_scope=limit_per_scope,
-            )
-        ).to_summary()
+        result = await SignalHistoryService(self._uow).refresh_history(
+            lookback_days=lookback_days,
+            coin_id=coin_id,
+            timeframe=timeframe,
+            limit_per_scope=limit_per_scope,
+        )
+        return dict(asdict(result))
 
     async def _refresh_pattern_statistics(self, *, emit_events: bool = True) -> dict[str, object]:
         from src.apps.patterns.domain.registry import PATTERN_CATALOG

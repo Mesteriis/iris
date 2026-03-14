@@ -42,7 +42,7 @@ Verification:
 
 ### Stage 2. Canonical Rewrite: `signals`
 
-Status: next
+Status: done
 
 Goal:
 
@@ -53,15 +53,20 @@ Goal:
 
 Planned deliverables:
 
-- [ ] service package split
-- [ ] engine contracts and explainability contracts
-- [ ] engine unit tests without DB/runtime wiring
-- [ ] service tests focused on wiring and post-commit behavior
-- [ ] short ADR for the canonical module
+- [x] service package split
+- [x] engine contracts and explainability contracts
+- [x] engine unit tests without DB/runtime wiring
+- [x] service tests focused on wiring and post-commit behavior
+- [x] short ADR for the canonical module
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/apps/signals tests/architecture`
+- [x] `cd backend && uv run ruff check src/apps/signals/engines src/apps/signals/integrations src/apps/signals/services tests/apps/signals/test_fusion_branches.py tests/apps/signals/test_fusion_engine.py tests/apps/signals/test_history.py tests/apps/signals/test_history_engine.py tests/cross_market_support.py src/apps/patterns/task_service_history.py tests/architecture`
 
 ### Stage 3. Wave 2 Hotspots
 
-Status: pending
+Status: next
 
 - [ ] `market_structure`
 - [ ] `control_plane`
@@ -82,4 +87,5 @@ Status: pending
 ## Execution Log
 
 - [x] Stage 1 complete: architecture governance baseline and CI gate landed.
-- [ ] Stage 2 not started in code yet.
+- [x] Stage 2 complete: canonical `signals` rewrite landed with dedicated `services/`, pure `engines/`, explicit adapters and typed result contracts.
+- [ ] Stage 3 not started in code yet.

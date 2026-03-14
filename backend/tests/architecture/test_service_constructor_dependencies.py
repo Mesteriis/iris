@@ -12,4 +12,3 @@ def test_service_constructor_dependency_policy() -> None:
         actual=collect_service_constructor_dependency_violations(),
         expected=EXPECTED_SERVICE_CONSTRUCTOR_DEPENDENCY_VIOLATIONS,
     )
-

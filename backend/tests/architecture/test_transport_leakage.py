@@ -12,4 +12,3 @@ def test_transport_leakage_policy() -> None:
         actual=collect_transport_leakage_violations(),
         expected=EXPECTED_TRANSPORT_LEAKAGE_VIOLATIONS,
     )
-

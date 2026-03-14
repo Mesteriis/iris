@@ -4,8 +4,8 @@ from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
-from src.apps.market_data.domain import ensure_utc
 from src.apps.market_data.candles import CandlePoint
+from src.apps.market_data.domain import ensure_utc
 from src.apps.signals.history_support import (
     _candle_index_map,
     _close_timestamps,
@@ -204,13 +204,13 @@ async def test_refresh_signal_history_returns_empty_when_no_signals(async_db_ses
         lookback_days=30,
         commit=False,
     )
-    assert result.to_summary() == {
-        "status": "ok",
-        "rows": 0,
-        "evaluated": 0,
-        "coin_id": 999_999,
-        "timeframe": 60,
-    }
+    assert result == SignalHistoryRefreshResult(
+        status="ok",
+        rows=0,
+        evaluated=0,
+        coin_id=999_999,
+        timeframe=60,
+    )
 
 
 @pytest.mark.asyncio

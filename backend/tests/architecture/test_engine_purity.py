@@ -12,4 +12,3 @@ def test_engine_purity_policy() -> None:
         actual=collect_engine_purity_violations(),
         expected=EXPECTED_ENGINE_PURITY_VIOLATIONS,
     )
-

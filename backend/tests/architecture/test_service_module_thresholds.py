@@ -12,4 +12,3 @@ def test_service_module_threshold_policy() -> None:
         actual=collect_service_module_threshold_violations(),
         expected=EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS,
     )
-

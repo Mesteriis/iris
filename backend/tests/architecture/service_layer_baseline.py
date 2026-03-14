@@ -155,21 +155,6 @@ EXPECTED_SERVICE_RESULT_CONTRACT_VIOLATIONS: tuple[ArchitectureViolation, ...] =
         symbol="PredictionEvaluationBatch.to_summary",
         detail="dict[str, object]",
     ),
-    ArchitectureViolation(
-        path="src/apps/signals/services.py",
-        symbol="SignalFusionBatchResult.to_summary",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/signals/services.py",
-        symbol="SignalFusionResult.to_summary",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/signals/services.py",
-        symbol="SignalHistoryRefreshResult.to_summary",
-        detail="dict[str, object]",
-    ),
 )
 
 EXPECTED_SERVICE_CONSTRUCTOR_DEPENDENCY_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
@@ -389,11 +374,6 @@ EXPECTED_CROSS_DOMAIN_BOUNDARY_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
         symbol="src.apps.market_data.repositories",
         detail="import",
     ),
-    ArchitectureViolation(
-        path="src/apps/signals/services.py",
-        symbol="src.apps.market_data.repositories",
-        detail="import",
-    ),
 )
 
 EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
@@ -507,15 +487,4 @@ EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS: tuple[ArchitectureViolation, ...] 
         symbol="__module__",
         detail="module_loc=438",
     ),
-    ArchitectureViolation(
-        path="src/apps/signals/services.py",
-        symbol="SignalFusionService",
-        detail="class_loc=494",
-    ),
-    ArchitectureViolation(
-        path="src/apps/signals/services.py",
-        symbol="__module__",
-        detail="module_loc=816",
-    ),
 )
-

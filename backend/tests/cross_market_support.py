@@ -27,6 +27,29 @@ from tests.market_data_support import upsert_base_candles
 from tests.portfolio_support import create_sector
 
 
+def _signal_fusion_payload(result) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "status": result.status,
+        "coin_id": result.coin_id,
+        "timeframe": result.timeframe,
+        "signal_count": result.signal_count,
+        "news_item_count": result.news_item_count,
+        "news_bullish_score": round(float(result.news_bullish_score), 4),
+        "news_bearish_score": round(float(result.news_bearish_score), 4),
+    }
+    if result.reason is not None:
+        payload["reason"] = result.reason
+    if result.decision_id is not None:
+        payload["id"] = result.decision_id
+    if result.decision is not None:
+        payload["decision"] = result.decision
+    if result.confidence is not None:
+        payload["confidence"] = float(result.confidence)
+    if result.regime is not None:
+        payload["regime"] = result.regime
+    return payload
+
+
 def generate_close_series(*, start_price: float, returns: list[float]) -> list[float]:
     closes = [start_price]
     for value in returns:
@@ -210,7 +233,7 @@ async def run_cross_market_relation_update(
                         "confidence": effect.confidence,
                     },
                 )
-    return result.to_summary()
+    return _signal_fusion_payload(result)
 
 
 async def run_cross_market_sector_refresh(
@@ -241,7 +264,7 @@ async def run_cross_market_sector_refresh(
                 "target_strength": effect.target_strength,
             },
         )
-    return result.to_summary()
+    return _signal_fusion_payload(result)
 
 
 async def run_cross_market_leader_detection(
@@ -279,7 +302,7 @@ async def run_cross_market_leader_detection(
                     "market_regime": effect.market_regime,
                 },
             )
-    return result.to_summary()
+    return _signal_fusion_payload(result)
 
 
 async def run_cross_market_process_event(
