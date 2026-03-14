@@ -372,6 +372,27 @@ Verification:
 - [x] `cd backend && uv run pytest tests/architecture`
 - [x] `cd backend && uv run ruff check tests/architecture/test_service_layer_runtime_policies_doc.py`
 
+### Stage 16. Governance Artifact D: performance budgets
+
+Status: done
+
+Goal:
+
+- define explicit performance budgets for heavy sync/job paths
+- tie hard budgets to real runtime locks or tracked-operation boundaries
+- keep the budget document present in architecture governance
+
+Planned deliverables:
+
+- [x] service-layer performance budget document with target/alert/hard thresholds
+- [x] budget matrix tied to real heavy job paths across domains
+- [x] architecture test proving the budget document exists
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/architecture`
+- [x] `cd backend && uv run ruff check tests/architecture/test_service_layer_performance_budgets_doc.py`
+
 ## Execution Log
 
 - [x] Stage 1 complete: architecture governance baseline and CI gate landed.
@@ -389,3 +410,4 @@ Verification:
 - [x] Stage 13 complete: a live service-layer scorecard is now generated from architecture policy scanners, exported as Markdown/JSON, and uploaded by CI as an artifact.
 - [x] Stage 14 complete: the service-layer ADR package now captures the core boundary decisions, is referenced from policy/reference code, and is checked by the architecture test suite.
 - [x] Stage 15 complete: runtime idempotency, retry and concurrency rules are now documented per domain for real job/consumer entry points and checked for presence by the architecture suite.
+- [x] Stage 16 complete: heavy service-layer job paths now have explicit target/alert/hard performance budgets tied to real runtime locks and tracked-operation boundaries.

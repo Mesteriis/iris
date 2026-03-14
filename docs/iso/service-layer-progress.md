@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Governance artifacts: performance budgets
+- [x] Planned governance artifacts complete
 
 ## Active Workstreams
 
@@ -85,7 +85,7 @@
 - [x] publish scorecard as CI artifact
 - [x] add ADRs for transaction boundary, engine IO boundary, transport shaping, async-class-first scope and post-commit side effects
 - [x] define per-domain idempotency/retry/concurrency rules where background orchestration exists
-- [ ] define per-domain performance budgets for heavy sync/job paths
+- [x] define per-domain performance budgets for heavy sync/job paths
 
 ## Cutover Order
 
@@ -181,3 +181,6 @@
 - [x] Stage 15 complete on `2026-03-14`: runtime idempotency/retry/concurrency semantics are now fixed in a per-domain matrix covering task locks, tracked operations and stream-consumer dedup boundaries
 - [x] Stage 15 verification: `cd backend && uv run pytest tests/architecture`
 - [x] Stage 15 lint gate: `cd backend && uv run ruff check tests/architecture/test_service_layer_runtime_policies_doc.py`
+- [x] Stage 16 complete on `2026-03-14`: heavy sync/job paths now have a documented performance budget matrix with target/alert/hard thresholds tied to real runtime locks and operation boundaries
+- [x] Stage 16 verification: `cd backend && uv run pytest tests/architecture`
+- [x] Stage 16 lint gate: `cd backend && uv run ruff check tests/architecture/test_service_layer_performance_budgets_doc.py`
