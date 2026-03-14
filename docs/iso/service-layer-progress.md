@@ -10,7 +10,7 @@
 - `semantic/operational/performance contract scope`: done
 - `architecture CI implementation`: done
 - `reference module implementation`: done
-- `scorecard automation`: pending
+- `scorecard automation`: done
 - `ADR package`: pending
 - `service hotspot clean rewrites`: done
 
@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Governance artifacts: scorecard automation and ADR package
+- [ ] Governance artifacts: ADR package
 
 ## Active Workstreams
 
@@ -81,8 +81,8 @@
 
 ### 4. Governance Artifacts
 
-- [ ] generate architecture scorecard from codebase facts
-- [ ] publish scorecard as CI artifact
+- [x] generate architecture scorecard from codebase facts
+- [x] publish scorecard as CI artifact
 - [ ] add ADRs for transaction boundary, engine IO boundary, transport shaping, async-class-first scope and post-commit side effects
 - [ ] define per-domain idempotency/retry/concurrency rules where background orchestration exists
 - [ ] define per-domain performance budgets for heavy sync/job paths
@@ -172,3 +172,6 @@
 - [x] Stage 12 complete on `2026-03-14`: `portfolio` no longer exposes payload summary helpers on public result contracts, pure rebalance calculation moved into `engines/`, balance/action orchestration moved to focused support modules, and `portfolio/services.py` no longer imports market-data/signals models or repositories directly
 - [x] Stage 12 verification: `cd backend && uv run pytest tests/apps/portfolio tests/architecture`
 - [x] Stage 12 lint gate: `cd backend && uv run ruff check src/apps/portfolio/action_support.py src/apps/portfolio/results.py src/apps/portfolio/serializers.py src/apps/portfolio/services.py src/apps/portfolio/sync_support.py src/apps/portfolio/tasks.py src/apps/portfolio/engines tests/apps/portfolio/test_rebalance_engine.py tests/apps/portfolio/test_services_selectors_cache.py tests/architecture/service_layer_baseline.py`
+- [x] Stage 13 complete on `2026-03-14`: service-layer scorecard generation now reuses the architecture policy scanners, exports Markdown/JSON snapshots, and the architecture workflow uploads them as CI artifacts
+- [x] Stage 13 verification: `cd backend && uv run pytest tests/architecture`
+- [x] Stage 13 artifact export: `cd backend && uv run python scripts/export_service_layer_scorecard.py --markdown-output /tmp/service-layer-scorecard.md --json-output /tmp/service-layer-scorecard.json`

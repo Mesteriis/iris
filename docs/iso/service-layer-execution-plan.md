@@ -304,6 +304,28 @@ Verification:
 - [x] `cd backend && uv run pytest tests/apps/portfolio tests/architecture`
 - [x] `cd backend && uv run ruff check src/apps/portfolio/action_support.py src/apps/portfolio/results.py src/apps/portfolio/serializers.py src/apps/portfolio/services.py src/apps/portfolio/sync_support.py src/apps/portfolio/tasks.py src/apps/portfolio/engines tests/apps/portfolio/test_rebalance_engine.py tests/apps/portfolio/test_services_selectors_cache.py tests/architecture/service_layer_baseline.py`
 
+### Stage 13. Governance Artifact A: service-layer scorecard
+
+Status: done
+
+Goal:
+
+- generate a live service-layer scorecard from codebase facts
+- publish the scorecard as a CI artifact
+- keep scorecard generation covered by architecture tests
+
+Planned deliverables:
+
+- [x] reusable scorecard builder aligned with service-layer policy scanners
+- [x] Markdown + JSON export script under `backend/scripts/`
+- [x] architecture workflow updated to generate and upload the artifact
+- [x] architecture tests cover scorecard generation/rendering
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/architecture`
+- [x] `cd backend && uv run python scripts/export_service_layer_scorecard.py --markdown-output /tmp/service-layer-scorecard.md --json-output /tmp/service-layer-scorecard.json`
+
 ## Execution Log
 
 - [x] Stage 1 complete: architecture governance baseline and CI gate landed.
@@ -318,3 +340,4 @@ Verification:
 - [x] Stage 10 complete: `news` now uses typed polling results, focused polling/onboarding/provisioning modules, and no longer keeps router/schema leaks in `news/services.py`.
 - [x] Stage 11 complete: `indicators` now keeps analytics test seams intact while snapshot/scheduler/results/support moved out of the hotspot, and the service file no longer imports market-data models or repositories directly.
 - [x] Stage 12 complete: `portfolio` now uses typed public result contracts plus serializer helpers, pure rebalance calculation lives in `engines/`, and the service file no longer mixes cross-domain imports with balance/action orchestration hotspots.
+- [x] Stage 13 complete: a live service-layer scorecard is now generated from architecture policy scanners, exported as Markdown/JSON, and uploaded by CI as an artifact.

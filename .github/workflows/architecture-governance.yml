@@ -32,3 +32,16 @@ jobs:
 
       - name: Run architecture governance tests
         run: cd backend && uv run pytest tests/architecture
+
+      - name: Generate service-layer scorecard
+        run: |
+          mkdir -p .artifacts
+          cd backend && uv run python scripts/export_service_layer_scorecard.py \
+            --markdown-output ../.artifacts/service-layer-scorecard.md \
+            --json-output ../.artifacts/service-layer-scorecard.json
+
+      - name: Upload architecture scorecard artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-layer-scorecard
+          path: .artifacts/service-layer-scorecard.*
