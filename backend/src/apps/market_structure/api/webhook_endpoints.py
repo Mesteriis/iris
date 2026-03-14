@@ -32,7 +32,7 @@ async def ingest_market_structure_snapshots(
     access: MarketStructureIngestAccessDep,
     commands: MarketStructureCommandDep,
 ) -> MarketStructureIngestResultRead:
-    async def action() -> dict[str, object]:
+    async def action():
         result = await commands.service.ingest_manual_snapshots(
             source_id=source_id,
             payload=payload,
@@ -41,7 +41,7 @@ async def ingest_market_structure_snapshots(
         http_error = market_structure_ingest_result_to_http(result, source_id=source_id)
         if http_error is not None:
             raise http_error
-        return dict(result)
+        return result
 
     return await execute_command(
         action=action,
@@ -64,7 +64,7 @@ async def ingest_market_structure_native_webhook_payload(
     access: MarketStructureIngestAccessDep,
     commands: MarketStructureCommandDep,
 ) -> MarketStructureIngestResultRead:
-    async def action() -> dict[str, object]:
+    async def action():
         result = await commands.service.ingest_native_webhook_payload(
             source_id=source_id,
             payload=dict(payload.root),
@@ -73,7 +73,7 @@ async def ingest_market_structure_native_webhook_payload(
         http_error = market_structure_ingest_result_to_http(result, source_id=source_id)
         if http_error is not None:
             raise http_error
-        return dict(result)
+        return result
 
     return await execute_command(
         action=action,

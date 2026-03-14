@@ -1,0 +1,282 @@
+from __future__ import annotations
+
+from src.apps.market_structure.constants import (
+    MARKET_STRUCTURE_PLUGIN_BINANCE_USDM,
+    MARKET_STRUCTURE_PLUGIN_BYBIT_DERIVATIVES,
+    MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
+)
+from src.apps.market_structure.contracts import (
+    MarketStructureOnboardingFieldRead,
+    MarketStructureOnboardingPresetRead,
+    MarketStructureOnboardingRead,
+)
+from src.core.http.router_policy import api_path
+
+
+def market_structure_onboarding_wizard_spec() -> MarketStructureOnboardingRead:
+    return MarketStructureOnboardingRead(
+        title="Market Structure Source Wizard",
+        presets=[
+            MarketStructureOnboardingPresetRead(
+                id="binance_usdm",
+                plugin_name=MARKET_STRUCTURE_PLUGIN_BINANCE_USDM,
+                title="Binance USD-M",
+                description="Create a public polling source for mark price, index price, funding and open interest from Binance USD-M Futures.",
+                endpoint=api_path("/market-structure/onboarding/sources/binance-usdm"),
+                method="POST",
+                fields=[
+                    MarketStructureOnboardingFieldRead(
+                        id="coin_symbol",
+                        label="Coin Symbol",
+                        type="text",
+                        required=True,
+                        description="Internal IRIS coin symbol, e.g. ETHUSD_EVT.",
+                    ),
+                    MarketStructureOnboardingFieldRead(
+                        id="timeframe",
+                        label="Timeframe",
+                        type="number",
+                        required=True,
+                        default=15,
+                    ),
+                    MarketStructureOnboardingFieldRead(
+                        id="display_name",
+                        label="Display Name",
+                        type="text",
+                        required=False,
+                    ),
+                    MarketStructureOnboardingFieldRead(
+                        id="market_symbol",
+                        label="Exchange Symbol",
+                        type="text",
+                        required=False,
+                        description="Optional. Defaults to inferred USDT perpetual symbol.",
+                    ),
+                ],
+                source_payload_example={
+                    "coin_symbol": "ETHUSD_EVT",
+                    "timeframe": 15,
+                    "display_name": "ETH Binance USD-M",
+                },
+            ),
+            MarketStructureOnboardingPresetRead(
+                id="bybit_derivatives",
+                plugin_name=MARKET_STRUCTURE_PLUGIN_BYBIT_DERIVATIVES,
+                title="Bybit Derivatives",
+                description="Create a public polling source for mark price, index price, funding and open interest from Bybit derivatives.",
+                endpoint=api_path("/market-structure/onboarding/sources/bybit-derivatives"),
+                method="POST",
+                fields=[
+                    MarketStructureOnboardingFieldRead(
+                        id="coin_symbol",
+                        label="Coin Symbol",
+                        type="text",
+                        required=True,
+                        description="Internal IRIS coin symbol, e.g. ETHUSD_EVT.",
+                    ),
+                    MarketStructureOnboardingFieldRead(
+                        id="timeframe",
+                        label="Timeframe",
+                        type="number",
+                        required=True,
+                        default=15,
+                    ),
+                    MarketStructureOnboardingFieldRead(
+                        id="display_name",
+                        label="Display Name",
+                        type="text",
+                        required=False,
+                    ),
+                    MarketStructureOnboardingFieldRead(
+                        id="market_symbol",
+                        label="Exchange Symbol",
+                        type="text",
+                        required=False,
+                    ),
+                    MarketStructureOnboardingFieldRead(
+                        id="category",
+                        label="Category",
+                        type="text",
+                        required=False,
+                        default="linear",
+                    ),
+                ],
+                source_payload_example={
+                    "coin_symbol": "ETHUSD_EVT",
+                    "timeframe": 15,
+                    "display_name": "ETH Bybit Derivatives",
+                    "category": "linear",
+                },
+            ),
+            MarketStructureOnboardingPresetRead(
+                id="manual_push",
+                plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
+                title="Manual Push Feed",
+                description="Create a source for external collectors that push liquidation or derivatives snapshots directly into IRIS.",
+                endpoint=api_path("/market-structure/onboarding/sources/manual-push"),
+                method="POST",
+                fields=[
+                    MarketStructureOnboardingFieldRead(
+                        id="coin_symbol",
+                        label="Coin Symbol",
+                        type="text",
+                        required=True,
+                    ),
+                    MarketStructureOnboardingFieldRead(
+                        id="timeframe",
+                        label="Timeframe",
+                        type="number",
+                        required=True,
+                        default=15,
+                    ),
+                    MarketStructureOnboardingFieldRead(
+                        id="venue",
+                        label="Venue",
+                        type="text",
+                        required=True,
+                        description="Logical source name, e.g. liqscope or liquidation_api.",
+                    ),
+                    MarketStructureOnboardingFieldRead(
+                        id="display_name",
+                        label="Display Name",
+                        type="text",
+                        required=False,
+                    ),
+                ],
+                source_payload_example={
+                    "coin_symbol": "ETHUSD_EVT",
+                    "timeframe": 15,
+                    "venue": "liqscope",
+                    "display_name": "ETH Liquidation Feed",
+                },
+            ),
+            MarketStructureOnboardingPresetRead(
+                id="liqscope_webhook",
+                plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
+                title="Liqscope Webhook",
+                description="Register a write-only manual push source for Liqscope-style liquidation collectors and return a webhook token.",
+                endpoint=api_path("/market-structure/onboarding/sources/liqscope-webhook"),
+                method="POST",
+                fields=[
+                    MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True),
+                    MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
+                    MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
+                ],
+                source_payload_example={
+                    "coin_symbol": "ETHUSD_EVT",
+                    "timeframe": 15,
+                    "display_name": "ETH Liqscope Webhook",
+                },
+            ),
+            MarketStructureOnboardingPresetRead(
+                id="liquidation_webhook",
+                plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
+                title="Liquidation Collector Webhook",
+                description="Register a token-protected webhook for generic liquidation collectors that post snapshots into IRIS.",
+                endpoint=api_path("/market-structure/onboarding/sources/liquidation-webhook"),
+                method="POST",
+                fields=[
+                    MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True),
+                    MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
+                    MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
+                    MarketStructureOnboardingFieldRead(id="venue", label="Venue", type="text", required=False, default="liquidations_api"),
+                ],
+                source_payload_example={
+                    "coin_symbol": "BTCUSD_EVT",
+                    "timeframe": 15,
+                    "venue": "liquidations_api",
+                    "display_name": "BTC Liquidation Webhook",
+                },
+            ),
+            MarketStructureOnboardingPresetRead(
+                id="derivatives_webhook",
+                plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
+                title="Derivatives Snapshot Webhook",
+                description="Register a token-protected webhook for external derivatives collectors that push funding, OI and liquidation snapshots.",
+                endpoint=api_path("/market-structure/onboarding/sources/derivatives-webhook"),
+                method="POST",
+                fields=[
+                    MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True),
+                    MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
+                    MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
+                    MarketStructureOnboardingFieldRead(id="venue", label="Venue", type="text", required=False, default="derivatives_webhook"),
+                ],
+                source_payload_example={
+                    "coin_symbol": "SOLUSD_EVT",
+                    "timeframe": 15,
+                    "venue": "derivatives_webhook",
+                    "display_name": "SOL Derivatives Webhook",
+                },
+            ),
+            MarketStructureOnboardingPresetRead(
+                id="coinglass_webhook",
+                plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
+                title="Coinglass Webhook",
+                description="Register a token-protected webhook for Coinglass-style liquidation collectors.",
+                endpoint=api_path("/market-structure/onboarding/sources/coinglass-webhook"),
+                method="POST",
+                fields=[
+                    MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True),
+                    MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
+                    MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
+                    MarketStructureOnboardingFieldRead(id="venue", label="Venue", type="text", required=False, default="coinglass"),
+                ],
+                source_payload_example={
+                    "coin_symbol": "ETHUSD_EVT",
+                    "timeframe": 15,
+                    "venue": "coinglass",
+                    "display_name": "ETH Coinglass Webhook",
+                },
+            ),
+            MarketStructureOnboardingPresetRead(
+                id="hyblock_webhook",
+                plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
+                title="Hyblock Webhook",
+                description="Register a token-protected webhook for Hyblock-style liquidation collectors.",
+                endpoint=api_path("/market-structure/onboarding/sources/hyblock-webhook"),
+                method="POST",
+                fields=[
+                    MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True),
+                    MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
+                    MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
+                    MarketStructureOnboardingFieldRead(id="venue", label="Venue", type="text", required=False, default="hyblock"),
+                ],
+                source_payload_example={
+                    "coin_symbol": "BTCUSD_EVT",
+                    "timeframe": 15,
+                    "venue": "hyblock",
+                    "display_name": "BTC Hyblock Webhook",
+                },
+            ),
+            MarketStructureOnboardingPresetRead(
+                id="coinalyze_webhook",
+                plugin_name=MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
+                title="Coinalyze Webhook",
+                description="Register a token-protected webhook for Coinalyze-style derivatives collectors.",
+                endpoint=api_path("/market-structure/onboarding/sources/coinalyze-webhook"),
+                method="POST",
+                fields=[
+                    MarketStructureOnboardingFieldRead(id="coin_symbol", label="Coin Symbol", type="text", required=True),
+                    MarketStructureOnboardingFieldRead(id="timeframe", label="Timeframe", type="number", required=True, default=15),
+                    MarketStructureOnboardingFieldRead(id="display_name", label="Display Name", type="text", required=False),
+                    MarketStructureOnboardingFieldRead(id="venue", label="Venue", type="text", required=False, default="coinalyze"),
+                ],
+                source_payload_example={
+                    "coin_symbol": "SOLUSD_EVT",
+                    "timeframe": 15,
+                    "venue": "coinalyze",
+                    "display_name": "SOL Coinalyze Webhook",
+                },
+            ),
+        ],
+        notes=[
+            "Frontend can create polling sources without constructing low-level plugin settings manually.",
+            "If exchange symbol is omitted, IRIS derives a default USDT perpetual symbol from the internal coin symbol.",
+            "Manual push feeds are intended for external collectors and webhooks that already aggregate liquidation or derivatives data.",
+            "Webhook onboarding presets create a manual_push source and return a source-level ingest token for external collectors.",
+            "Webhook tokens can be rotated from the frontend without editing raw credentials.",
+        ],
+    )
+
+
+__all__ = ["market_structure_onboarding_wizard_spec"]

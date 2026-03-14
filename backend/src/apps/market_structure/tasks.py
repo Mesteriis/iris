@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from src.apps.market_structure.query_services import MarketStructureQueryService
-from src.apps.market_structure.services import MarketStructureService
+from src.apps.market_structure.services import (
+    MarketStructureService,
+    serialize_market_structure_poll_source_result,
+    serialize_market_structure_refresh_result,
+)
 from src.core.db.uow import AsyncUnitOfWork
 from src.core.http.operation_store import OperationStore, run_tracked_operation
 from src.runtime.orchestration.broker import broker
@@ -32,7 +36,7 @@ async def poll_market_structure_source_job(
             async with AsyncUnitOfWork() as uow:
                 result = await MarketStructureService(uow).poll_source(source_id=int(source_id), limit=int(limit))
                 await uow.commit()
-                return result
+                return serialize_market_structure_poll_source_result(result)
 
     return await run_tracked_operation(
         store=OperationStore(),
@@ -60,7 +64,7 @@ async def poll_enabled_market_structure_sources_job(limit_per_source: int = 1) -
                     limit=int(limit_per_source),
                 )
                 await uow.commit()
-                items.append(item)
+                items.append(serialize_market_structure_poll_source_result(item))
         return {
             "status": "ok",
             "sources": len(source_ids),
@@ -83,7 +87,7 @@ async def refresh_market_structure_source_health_job(
             async with AsyncUnitOfWork() as uow:
                 result = await MarketStructureService(uow).refresh_source_health(emit_events=True)
                 await uow.commit()
-                return result
+                return serialize_market_structure_refresh_result(result)
 
     return await run_tracked_operation(
         store=OperationStore(),

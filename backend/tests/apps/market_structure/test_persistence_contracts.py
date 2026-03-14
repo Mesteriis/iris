@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
-
 from src.apps.market_structure.query_services import MarketStructureQueryService
 from src.apps.market_structure.schemas import (
     ManualMarketStructureIngestRequest,
@@ -36,7 +35,7 @@ async def test_market_structure_query_returns_immutable_read_models(async_db_ses
             payload=ManualMarketStructureIngestRequest(
                 snapshots=[
                     MarketStructureSnapshotCreate(
-                        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+                        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
                         open_interest=21000.0,
                         liquidations_long=3300.0,
                     )
@@ -129,7 +128,7 @@ async def test_market_structure_side_effects_run_only_after_uow_commit(
     del seeded_market
     published: list[str] = []
     monkeypatch.setattr(
-        "src.apps.market_structure.services.publish_event",
+        "src.apps.market_structure.services.side_effects.publish_event",
         lambda event_name, payload: published.append(event_name),
     )
 

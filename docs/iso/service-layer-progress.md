@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Wave 2D hotspot cutover: `market_structure`
+- [ ] Wave 2E hotspot cutover: `patterns/task_service_runtime`
 
 ## Active Workstreams
 
@@ -64,7 +64,7 @@
 - [x] Wave 2A: `predictions`
 - [x] Wave 2B: `cross_market`
 - [x] Wave 2C: `control_plane`
-- [ ] Wave 2D: `market_structure`
+- [x] Wave 2D: `market_structure`
 - [ ] Wave 2E: `patterns/task_service_runtime`
 - [ ] Wave 2F: `anomalies`
 - [ ] Wave 3: `market_data`, `news`, `indicators`, `portfolio`
@@ -148,3 +148,6 @@
 - [x] Stage 5 complete on `2026-03-14`: `control_plane` moved from a single `services.py` module to `services/` + `engines/`, route snapshot/draft diff logic became pure engine code, and inline control-event publication left the service body for an explicit dispatcher
 - [x] Stage 5 verification: `cd backend && uv run pytest tests/apps/control_plane tests/runtime/control_plane tests/architecture`
 - [x] Stage 5 lint gate: `cd backend && uv run ruff check src/apps/control_plane/__init__.py src/apps/control_plane/api/presenters.py src/apps/control_plane/engines src/apps/control_plane/query_services.py src/apps/control_plane/services tests/apps/control_plane/test_engines.py tests/apps/control_plane/test_services.py tests/architecture/service_layer_baseline.py`
+- [x] Stage 6 complete on `2026-03-14`: `market_structure` moved from a giant `services.py` module to `services/` + `engines/`, health/backoff/quarantine rules became pure engine code, typed polling/ingest results replaced `dict/status` contracts, and onboarding wizard transport shaping left the service layer for an API helper
+- [x] Stage 6 verification: `cd backend && uv run pytest tests/apps/market_structure tests/architecture`
+- [x] Stage 6 lint gate: `cd backend && uv run ruff check src/apps/market_structure/contracts.py src/apps/market_structure/schemas.py src/apps/market_structure/read_models.py src/apps/market_structure/tasks.py src/apps/market_structure/api/errors.py src/apps/market_structure/api/onboarding_endpoints.py src/apps/market_structure/api/onboarding_wizard.py src/apps/market_structure/api/presenters.py src/apps/market_structure/api/webhook_endpoints.py src/apps/market_structure/engines/__init__.py src/apps/market_structure/engines/health_engine.py src/apps/market_structure/services/__init__.py src/apps/market_structure/services/_shared.py src/apps/market_structure/services/market_structure_service.py src/apps/market_structure/services/polling_service.py src/apps/market_structure/services/provisioning_service.py src/apps/market_structure/services/results.py src/apps/market_structure/services/side_effects.py src/apps/market_structure/services/source_command_service.py tests/apps/market_structure/test_services.py tests/apps/market_structure/test_persistence_contracts.py tests/apps/market_structure/test_health_engine.py`

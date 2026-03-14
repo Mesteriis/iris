@@ -140,13 +140,32 @@ Verification:
 
 ### Stage 6. Wave 2D: `market_structure`
 
-Status: next
+Status: done
 
-- [ ] `market_structure`
+Goal:
+
+- split `backend/src/apps/market_structure/services.py` into `services/`
+- move health/backoff/quarantine state transitions into a pure engine
+- remove `dict/status` public service contracts from polling and ingest flows
+- keep onboarding transport shaping and TaskIQ payload shaping outside the service layer
+
+Planned deliverables:
+
+- [x] service package split with focused command/polling/provisioning services
+- [x] pure `health_engine` for stale/backoff/quarantine/alert transitions
+- [x] typed polling/ingest/health refresh result contracts
+- [x] explicit post-commit side-effect dispatcher
+- [x] onboarding wizard moved to API helper and service-layer transport leakage removed
+- [x] pure engine tests without DB/runtime wiring
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/apps/market_structure tests/architecture`
+- [x] `cd backend && uv run ruff check src/apps/market_structure/contracts.py src/apps/market_structure/schemas.py src/apps/market_structure/read_models.py src/apps/market_structure/tasks.py src/apps/market_structure/api/errors.py src/apps/market_structure/api/onboarding_endpoints.py src/apps/market_structure/api/onboarding_wizard.py src/apps/market_structure/api/presenters.py src/apps/market_structure/api/webhook_endpoints.py src/apps/market_structure/engines/__init__.py src/apps/market_structure/engines/health_engine.py src/apps/market_structure/services/__init__.py src/apps/market_structure/services/_shared.py src/apps/market_structure/services/market_structure_service.py src/apps/market_structure/services/polling_service.py src/apps/market_structure/services/provisioning_service.py src/apps/market_structure/services/results.py src/apps/market_structure/services/side_effects.py src/apps/market_structure/services/source_command_service.py tests/apps/market_structure/test_services.py tests/apps/market_structure/test_persistence_contracts.py tests/apps/market_structure/test_health_engine.py`
 
 ### Stage 7. Wave 2E: `patterns/task_service_runtime`
 
-Status: pending
+Status: next
 
 - [ ] `patterns/task_service_runtime`
 
@@ -172,4 +191,4 @@ Status: pending
 - [x] Stage 3 complete: `predictions` moved to service/engine/integration form and no longer exposes summary-shaped public result helpers.
 - [x] Stage 4 complete: `cross_market` moved to service/engine/integration form and no longer mixes orchestration with correlation/sector/leader computation.
 - [x] Stage 5 complete: `control_plane` now uses `services/` + `engines/`, read-side wrappers were removed in favor of query services, and post-commit control events moved behind an explicit dispatcher.
-- [ ] Stage 6 not started in code yet.
+- [x] Stage 6 complete: `market_structure` now uses `services/` + `engines/`, pure health/backoff/quarantine rules, typed poll/ingest results, and no longer mixes onboarding transport shaping into service code.

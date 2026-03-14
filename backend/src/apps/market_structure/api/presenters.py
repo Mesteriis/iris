@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any
 
 from src.apps.market_structure.api.contracts import (
@@ -13,8 +12,12 @@ from src.apps.market_structure.api.contracts import (
     MarketStructureSourceRead,
     MarketStructureWebhookRegistrationRead,
 )
-from src.core.http.operation_store import OperationDispatchResult
+from src.apps.market_structure.services.results import (
+    MarketStructureIngestResult,
+    serialize_market_structure_ingest_result,
+)
 from src.core.db.persistence import thaw_json_value
+from src.core.http.operation_store import OperationDispatchResult
 
 
 def market_structure_plugin_read(item: Any) -> MarketStructurePluginRead:
@@ -149,8 +152,8 @@ def market_structure_health_job_accepted_read(
     )
 
 
-def market_structure_ingest_result_read(result: Mapping[str, object]) -> MarketStructureIngestResultRead:
-    return MarketStructureIngestResultRead.model_validate(result)
+def market_structure_ingest_result_read(result: MarketStructureIngestResult) -> MarketStructureIngestResultRead:
+    return MarketStructureIngestResultRead.model_validate(serialize_market_structure_ingest_result(result))
 
 
 __all__ = [

@@ -41,31 +41,6 @@ EXPECTED_SERVICE_RESULT_CONTRACT_VIOLATIONS: tuple[ArchitectureViolation, ...] =
         detail="dict[str, int | str]",
     ),
     ArchitectureViolation(
-        path="src/apps/market_structure/services.py",
-        symbol="MarketStructureService.ingest_manual_snapshots",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/market_structure/services.py",
-        symbol="MarketStructureService.ingest_native_webhook_payload",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/market_structure/services.py",
-        symbol="MarketStructureService.poll_enabled_sources",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/market_structure/services.py",
-        symbol="MarketStructureService.poll_source",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/market_structure/services.py",
-        symbol="MarketStructureService.refresh_source_health",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
         path="src/apps/news/services.py",
         symbol="NewsService.poll_enabled_sources",
         detail="dict[str, object]",
@@ -131,16 +106,6 @@ EXPECTED_TRANSPORT_LEAKAGE_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
         detail="import",
     ),
     ArchitectureViolation(
-        path="src/apps/market_structure/services.py",
-        symbol="src.apps.market_structure.schemas",
-        detail="import",
-    ),
-    ArchitectureViolation(
-        path="src/apps/market_structure/services.py",
-        symbol="src.core.http.router_policy",
-        detail="import",
-    ),
-    ArchitectureViolation(
         path="src/apps/news/services.py",
         symbol="src.apps.news.schemas",
         detail="import",
@@ -161,11 +126,6 @@ EXPECTED_CROSS_DOMAIN_BOUNDARY_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
     ArchitectureViolation(
         path="src/apps/indicators/services.py",
         symbol="src.apps.market_data.repositories",
-        detail="import",
-    ),
-    ArchitectureViolation(
-        path="src/apps/market_structure/services.py",
-        symbol="src.apps.market_data.models",
         detail="import",
     ),
     ArchitectureViolation(
@@ -320,21 +280,6 @@ EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS: tuple[ArchitectureViolation, ...] 
         path="src/apps/market_data/services.py",
         symbol="__module__",
         detail="module_loc=619",
-    ),
-    ArchitectureViolation(
-        path="src/apps/market_structure/services.py",
-        symbol="MarketStructureService",
-        detail="class_loc=554",
-    ),
-    ArchitectureViolation(
-        path="src/apps/market_structure/services.py",
-        symbol="MarketStructureSourceProvisioningService",
-        detail="class_loc=498",
-    ),
-    ArchitectureViolation(
-        path="src/apps/market_structure/services.py",
-        symbol="__module__",
-        detail="module_loc=1406",
     ),
     ArchitectureViolation(
         path="src/apps/news/services.py",

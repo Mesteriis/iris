@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
-
 from src.apps.anomalies.models import MarketStructureSnapshot
+from src.apps.market_structure.api.onboarding_wizard import market_structure_onboarding_wizard_spec
+from src.apps.market_structure.exceptions import UnauthorizedMarketStructureIngestError
 from src.apps.market_structure.models import MarketStructureSource
 from src.apps.market_structure.query_services import MarketStructureQueryService
 from src.apps.market_structure.schemas import (
@@ -16,9 +17,8 @@ from src.apps.market_structure.schemas import (
     MarketStructureSourceUpdate,
 )
 from src.apps.market_structure.services import MarketStructureService, MarketStructureSourceProvisioningService
-from src.apps.market_structure.exceptions import UnauthorizedMarketStructureIngestError
-from src.core.http.router_policy import api_path
 from src.core.db.uow import SessionUnitOfWork
+from src.core.http.router_policy import api_path
 
 
 class _FakeResponse:
@@ -79,7 +79,8 @@ async def test_market_structure_service_polls_persists_and_publishes(
 ) -> None:
     published: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr(
-        "src.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload))
+        "src.apps.market_structure.services.side_effects.publish_event",
+        lambda name, payload: published.append((name, payload)),
     )
     monkeypatch.setattr("src.apps.market_structure.plugins.httpx.AsyncClient", _FakeAsyncClient)
 
@@ -96,8 +97,8 @@ async def test_market_structure_service_polls_persists_and_publishes(
         result = await service.poll_source(source_id=source.id, limit=1)
         await uow.commit()
 
-    assert result["status"] == "ok"
-    assert result["created"] == 1
+    assert result.status == "ok"
+    assert result.created == 1
 
     stored_source = await async_db_session.get(MarketStructureSource, source.id)
     assert stored_source is not None
@@ -161,7 +162,7 @@ async def test_market_structure_service_manual_ingest_update_and_delete(async_db
             payload=ManualMarketStructureIngestRequest(
                 snapshots=[
                     MarketStructureSnapshotCreate(
-                        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+                        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
                         funding_rate=0.0009,
                         open_interest=21000.0,
                         liquidations_long=3300.0,
@@ -171,12 +172,10 @@ async def test_market_structure_service_manual_ingest_update_and_delete(async_db
                 ]
             ),
         )
-        assert result == {
-            "status": "ok",
-            "source_id": created.id,
-            "plugin_name": "manual_push",
-            "created": 1,
-        }
+        assert result.status == "ok"
+        assert result.source_id == created.id
+        assert result.plugin_name == "manual_push"
+        assert result.created == 1
 
         snapshots = await query_service.list_snapshots(coin_symbol="ETHUSD_EVT", venue="liqscope", limit=10)
         assert len(snapshots) == 1
@@ -205,7 +204,8 @@ async def test_market_structure_service_refreshes_stale_health(async_db_session,
     del seeded_market
     published: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr(
-        "src.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload))
+        "src.apps.market_structure.services.side_effects.publish_event",
+        lambda name, payload: published.append((name, payload)),
     )
 
     async with SessionUnitOfWork(async_db_session) as uow:
@@ -226,20 +226,23 @@ async def test_market_structure_service_refreshes_stale_health(async_db_session,
         )
         source = await async_db_session.get(MarketStructureSource, created.id)
         assert source is not None
-        source.last_polled_at = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
-        source.last_success_at = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
-        source.last_snapshot_at = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+        source.last_polled_at = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
+        source.last_success_at = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
+        source.last_snapshot_at = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
         source.last_error = None
         source.health_status = "healthy"
         await uow.commit()
 
         monkeypatch.setattr(
-            "src.apps.market_structure.services.utc_now", lambda: datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+            "src.apps.market_structure.services.polling_service.utc_now",
+            lambda: datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
         )
         result = await service.refresh_source_health()
         await uow.commit()
 
-    assert result == {"status": "ok", "sources": 1, "changed": 1}
+    assert result.status == "ok"
+    assert result.sources == 1
+    assert result.changed == 1
     refreshed = await async_db_session.get(MarketStructureSource, created.id)
     assert refreshed is not None
     assert refreshed.health_status == "stale"
@@ -266,11 +269,12 @@ async def test_market_structure_service_applies_backoff_quarantine_and_release(
     del seeded_market
     published: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr(
-        "src.apps.market_structure.services.publish_event", lambda name, payload: published.append((name, payload))
+        "src.apps.market_structure.services.side_effects.publish_event",
+        lambda name, payload: published.append((name, payload)),
     )
     monkeypatch.setattr("src.apps.market_structure.plugins.httpx.AsyncClient", _BrokenAsyncClient)
     monkeypatch.setattr(
-        "src.apps.market_structure.services.get_settings",
+        "src.apps.market_structure.engines.health_engine.get_settings",
         lambda: SimpleNamespace(
             taskiq_market_structure_snapshot_poll_interval_seconds=180,
             taskiq_market_structure_failure_backoff_base_seconds=30,
@@ -290,37 +294,37 @@ async def test_market_structure_service_applies_backoff_quarantine_and_release(
         )
 
         first_failure = await service.poll_source(source_id=created.id, limit=1)
-        assert first_failure["status"] == "error"
-        assert first_failure["consecutive_failures"] == 1
-        assert first_failure["quarantined"] is False
-        assert first_failure["backoff_until"] is not None
+        assert first_failure.status == "error"
+        assert first_failure.consecutive_failures == 1
+        assert first_failure.quarantined is False
+        assert first_failure.backoff_until is not None
         await uow.commit()
 
         backoff_skip = await service.poll_source(source_id=created.id, limit=1)
-        assert backoff_skip["status"] == "skipped"
-        assert backoff_skip["reason"] == "source_backoff"
+        assert backoff_skip.status == "skipped"
+        assert backoff_skip.reason == "source_backoff"
 
         source = await async_db_session.get(MarketStructureSource, created.id)
         assert source is not None
-        source.backoff_until = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        source.backoff_until = datetime(2000, 1, 1, tzinfo=UTC)
         await uow.commit()
 
         second_failure = await service.poll_source(source_id=created.id, limit=1)
-        assert second_failure["status"] == "error"
-        assert second_failure["consecutive_failures"] == 2
-        assert second_failure["quarantined"] is False
+        assert second_failure.status == "error"
+        assert second_failure.consecutive_failures == 2
+        assert second_failure.quarantined is False
         await uow.commit()
 
         source = await async_db_session.get(MarketStructureSource, created.id)
         assert source is not None
-        source.backoff_until = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        source.backoff_until = datetime(2000, 1, 1, tzinfo=UTC)
         await uow.commit()
 
         third_failure = await service.poll_source(source_id=created.id, limit=1)
-        assert third_failure["status"] == "error"
-        assert third_failure["consecutive_failures"] == 3
-        assert third_failure["quarantined"] is True
-        assert third_failure["quarantine_reason"]
+        assert third_failure.status == "error"
+        assert third_failure.consecutive_failures == 3
+        assert third_failure.quarantined is True
+        assert third_failure.quarantine_reason
         await uow.commit()
 
         quarantined = await async_db_session.get(MarketStructureSource, created.id)
@@ -330,8 +334,8 @@ async def test_market_structure_service_applies_backoff_quarantine_and_release(
         assert quarantined.last_alert_kind == "quarantined"
 
         quarantined_skip = await service.poll_source(source_id=created.id, limit=1)
-        assert quarantined_skip["status"] == "skipped"
-        assert quarantined_skip["reason"] == "source_quarantined"
+        assert quarantined_skip.status == "skipped"
+        assert quarantined_skip.reason == "source_quarantined"
 
         released = await service.update_source(
             created.id,
@@ -388,12 +392,10 @@ async def test_market_structure_service_poll_enabled_sources_skips_manual(
         result = await service.poll_enabled_sources(limit_per_source=1)
         await uow.commit()
 
-    assert result["status"] == "ok"
-    assert result["sources"] == 2
-    assert any(item["status"] == "ok" for item in result["items"])
-    assert any(
-        item["reason"] == "plugin_requires_manual_ingest" for item in result["items"] if item["status"] == "skipped"
-    )
+    assert result.status == "ok"
+    assert result.sources == 2
+    assert any(item.status == "ok" for item in result.items)
+    assert any(item.reason == "plugin_requires_manual_ingest" for item in result.items if item.status == "skipped")
 
 
 @pytest.mark.asyncio
@@ -460,7 +462,7 @@ async def test_market_structure_provisioning_service_builds_frontend_friendly_so
         assert coinglass.venue == "coinglass"
         assert coinglass.native_payload_example["data"][0]["longLiquidationUsd"] == 5100.0
 
-        wizard = provisioning.wizard_spec()
+        wizard = market_structure_onboarding_wizard_spec()
         assert wizard.presets[0].endpoint == api_path("/market-structure/onboarding/sources/binance-usdm")
         assert any("low-level plugin settings" in note for note in wizard.notes)
         assert any("rotated from the frontend" in note for note in wizard.notes)
@@ -486,7 +488,7 @@ async def test_market_structure_provisioning_service_builds_frontend_friendly_so
                 payload=ManualMarketStructureIngestRequest(
                     snapshots=[
                         MarketStructureSnapshotCreate(
-                            timestamp=datetime(2026, 3, 12, 12, 5, tzinfo=timezone.utc),
+                            timestamp=datetime(2026, 3, 12, 12, 5, tzinfo=UTC),
                             funding_rate=0.0007,
                             open_interest=20500.0,
                         )
@@ -500,7 +502,7 @@ async def test_market_structure_provisioning_service_builds_frontend_friendly_so
             payload=ManualMarketStructureIngestRequest(
                 snapshots=[
                     MarketStructureSnapshotCreate(
-                        timestamp=datetime(2026, 3, 12, 12, 5, tzinfo=timezone.utc),
+                        timestamp=datetime(2026, 3, 12, 12, 5, tzinfo=UTC),
                         funding_rate=0.0007,
                         open_interest=20500.0,
                         liquidations_long=900.0,
@@ -508,19 +510,19 @@ async def test_market_structure_provisioning_service_builds_frontend_friendly_so
                 ]
             ),
         )
-        assert result["status"] == "ok"
-        assert result["created"] == 1
+        assert result.status == "ok"
+        assert result.created == 1
 
         native_result = await service.ingest_native_webhook_payload(
             source_id=webhook.source.id,
             ingest_token=rotated.token,
             payload={
-                "timestamp": datetime(2026, 3, 12, 12, 10, tzinfo=timezone.utc).isoformat(),
+                "timestamp": datetime(2026, 3, 12, 12, 10, tzinfo=UTC).isoformat(),
                 "price": 3160.0,
                 "open_interest": 20600.0,
                 "liquidations": {"long": 1200.0, "short": 90.0},
             },
         )
-        assert native_result["status"] == "ok"
-        assert native_result["created"] == 1
+        assert native_result.status == "ok"
+        assert native_result.created == 1
         await uow.commit()

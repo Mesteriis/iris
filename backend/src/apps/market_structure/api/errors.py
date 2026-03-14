@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-
 from fastapi import HTTPException, status
 
 from src.apps.market_structure.exceptions import (
@@ -10,6 +8,7 @@ from src.apps.market_structure.exceptions import (
     UnauthorizedMarketStructureIngestError,
     UnsupportedMarketStructurePluginError,
 )
+from src.apps.market_structure.services.results import MarketStructureIngestResult
 from src.core.http.errors import ApiError, ApiErrorFactory
 
 
@@ -47,7 +46,7 @@ def market_structure_source_not_found_error(source_id: int) -> HTTPException:
 def market_structure_error_to_http(exc: Exception) -> HTTPException | None:
     if isinstance(exc, MarketStructureSourceNotFoundError):
         return market_structure_source_not_found_error(exc.source_id)
-    if isinstance(exc, (InvalidMarketStructureSourceConfigurationError, UnsupportedMarketStructurePluginError)):
+    if isinstance(exc, InvalidMarketStructureSourceConfigurationError | UnsupportedMarketStructurePluginError):
         return ApiErrorFactory.to_http_exception(
             status_code=status.HTTP_400_BAD_REQUEST,
             code="validation_failed",
@@ -69,12 +68,12 @@ def market_structure_error_to_http(exc: Exception) -> HTTPException | None:
 
 
 def market_structure_ingest_result_to_http(
-    result: Mapping[str, object],
+    result: MarketStructureIngestResult,
     *,
     source_id: int,
 ) -> HTTPException | None:
-    result_status = str(result.get("status") or "").strip().lower()
-    reason = str(result.get("reason") or "").strip().lower()
+    result_status = str(result.status or "").strip().lower()
+    reason = str(result.reason or "").strip().lower()
     if result_status == "error":
         if reason == "source_not_found":
             return market_structure_source_not_found_error(source_id)

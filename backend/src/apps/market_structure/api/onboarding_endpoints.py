@@ -13,6 +13,7 @@ from src.apps.market_structure.api.contracts import (
 )
 from src.apps.market_structure.api.deps import MarketStructureProvisioningDep
 from src.apps.market_structure.api.errors import market_structure_error_responses, market_structure_error_to_http
+from src.apps.market_structure.api.onboarding_wizard import market_structure_onboarding_wizard_spec
 from src.apps.market_structure.api.presenters import (
     market_structure_source_read,
     market_structure_webhook_registration_read,
@@ -27,10 +28,8 @@ router = APIRouter(tags=["market-structure:onboarding"])
     response_model=MarketStructureOnboardingRead,
     summary="Read market structure onboarding wizard",
 )
-async def read_market_structure_onboarding_wizard(
-    provisioning: MarketStructureProvisioningDep,
-) -> MarketStructureOnboardingRead:
-    return provisioning.service.wizard_spec()
+async def read_market_structure_onboarding_wizard() -> MarketStructureOnboardingRead:
+    return market_structure_onboarding_wizard_spec()
 
 
 @router.post(

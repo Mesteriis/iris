@@ -4,77 +4,57 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.market_structure.constants import (
     MARKET_STRUCTURE_INGEST_TOKEN_HEADER,
     MARKET_STRUCTURE_INGEST_TOKEN_QUERY_PARAMETER,
-    MARKET_STRUCTURE_MANUAL_INGEST_MODE_WEBHOOK,
     MARKET_STRUCTURE_MANUAL_PROVIDER_COINALYZE,
     MARKET_STRUCTURE_MANUAL_PROVIDER_COINGLASS,
     MARKET_STRUCTURE_MANUAL_PROVIDER_DERIVATIVES_WEBHOOK,
     MARKET_STRUCTURE_MANUAL_PROVIDER_HYBLOCK,
     MARKET_STRUCTURE_MANUAL_PROVIDER_LIQSCOPE,
     MARKET_STRUCTURE_MANUAL_PROVIDER_LIQUIDATION_WEBHOOK,
-    MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH,
-    MARKET_STRUCTURE_HEALTH_STATUS_DISABLED,
-    MARKET_STRUCTURE_HEALTH_STATUS_ERROR,
-    MARKET_STRUCTURE_HEALTH_STATUS_HEALTHY,
-    MARKET_STRUCTURE_HEALTH_STATUS_IDLE,
-    MARKET_STRUCTURE_HEALTH_STATUS_QUARANTINED,
-    MARKET_STRUCTURE_HEALTH_STATUS_STALE,
-    MARKET_STRUCTURE_SOURCE_STATUS_ACTIVE,
-    MARKET_STRUCTURE_SOURCE_STATUS_DISABLED,
-    MARKET_STRUCTURE_SOURCE_STATUS_ERROR,
-    MARKET_STRUCTURE_SOURCE_STATUS_QUARANTINED,
+)
+from src.apps.market_structure.engines.health_engine import (
+    build_market_structure_source_health,
+)
+from src.apps.market_structure.engines.health_engine import (
+    market_structure_credential_fields_present as engine_market_structure_credential_fields_present,
+)
+from src.apps.market_structure.engines.health_engine import (
+    market_structure_source_ingest_mode as engine_market_structure_source_ingest_mode,
+)
+from src.apps.market_structure.engines.health_engine import (
+    market_structure_source_provider as engine_market_structure_source_provider,
+)
+from src.apps.market_structure.engines.health_engine import (
+    market_structure_source_status as engine_market_structure_source_status,
+)
+from src.apps.market_structure.engines.health_engine import (
+    market_structure_stale_after_seconds as engine_market_structure_stale_after_seconds,
 )
 from src.apps.market_structure.normalizers import get_market_structure_webhook_normalizer_class
-from src.apps.market_structure.plugins import get_market_structure_plugin
-from src.core.http.router_policy import api_path
 from src.core.db.persistence import freeze_json_value
-from src.core.settings import get_settings
+from src.core.http.router_policy import api_path
 
 
 def market_structure_source_status_from_orm(source) -> str:
-    if source.quarantined_at is not None:
-        return MARKET_STRUCTURE_SOURCE_STATUS_QUARANTINED
-    if not source.enabled:
-        return MARKET_STRUCTURE_SOURCE_STATUS_DISABLED
-    if source.last_error:
-        return MARKET_STRUCTURE_SOURCE_STATUS_ERROR
-    return MARKET_STRUCTURE_SOURCE_STATUS_ACTIVE
+    return engine_market_structure_source_status(source)
 
 
 def market_structure_credential_fields_present(credentials: dict[str, Any]) -> tuple[str, ...]:
-    return tuple(sorted(key for key, value in credentials.items() if value not in (None, "", [], {}, ())))
+    return tuple(engine_market_structure_credential_fields_present(credentials))
 
 
 def market_structure_source_provider_from_orm(source) -> str:
-    settings = dict(source.settings_json or {})
-    return str(settings.get("provider") or settings.get("venue") or MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH).strip().lower()
+    return engine_market_structure_source_provider(source)
 
 
 def market_structure_source_ingest_mode_from_orm(source) -> str:
-    settings = dict(source.settings_json or {})
-    explicit = str(settings.get("ingest_mode") or "").strip().lower()
-    if explicit:
-        return explicit
-    plugin_cls = get_market_structure_plugin(source.plugin_name)
-    if plugin_cls is not None and plugin_cls.descriptor.supports_polling:
-        return "polling"
-    return "manual"
+    return engine_market_structure_source_ingest_mode(source)
 
 
 def market_structure_stale_after_seconds_from_orm(source) -> int | None:
-    settings = get_settings()
-    timeframe_minutes = max(int((source.settings_json or {}).get("timeframe") or 15), 1)
-    timeframe_seconds = timeframe_minutes * 60
-    ingest_mode = market_structure_source_ingest_mode_from_orm(source)
-    if ingest_mode == MARKET_STRUCTURE_MANUAL_INGEST_MODE_WEBHOOK:
-        return max(timeframe_seconds * 6, 1800)
-    plugin_cls = get_market_structure_plugin(source.plugin_name)
-    if plugin_cls is not None and plugin_cls.descriptor.supports_polling:
-        return max(int(settings.taskiq_market_structure_snapshot_poll_interval_seconds) * 3, timeframe_seconds * 3)
-    return max(timeframe_seconds * 12, 3600)
+    return engine_market_structure_stale_after_seconds(source)
 
 
 @dataclass(slots=True, frozen=True)
@@ -197,75 +177,27 @@ def market_structure_plugin_read_model_from_descriptor(descriptor) -> MarketStru
 
 
 def build_market_structure_source_health_read_model(source, *, now=None) -> MarketStructureSourceHealthReadModel:
-    current_time = ensure_utc(now or utc_now())
-    last_activity_at = source.last_polled_at
-    last_success_at = source.last_success_at
-    last_snapshot_at = source.last_snapshot_at
-    stale_after_seconds = market_structure_stale_after_seconds_from_orm(source)
-    ingest_mode = market_structure_source_ingest_mode_from_orm(source)
-    backoff_until = ensure_utc(source.backoff_until) if source.backoff_until is not None else None
-    backoff_active = backoff_until is not None and backoff_until > current_time
-    consecutive_failures = int(source.consecutive_failures or 0)
-    quarantined = source.quarantined_at is not None
-    if quarantined:
-        status = MARKET_STRUCTURE_HEALTH_STATUS_QUARANTINED
-        severity = "critical"
-        stale = False
-        message = str(source.quarantine_reason or "Source was quarantined after repeated polling failures.")
-    elif not source.enabled:
-        status = MARKET_STRUCTURE_HEALTH_STATUS_DISABLED
-        severity = "info"
-        stale = False
-        message = "Source is disabled."
-    elif source.last_error:
-        status = MARKET_STRUCTURE_HEALTH_STATUS_ERROR
-        severity = "error"
-        stale = False
-        if backoff_active and backoff_until is not None:
-            retry_in_seconds = max(int((backoff_until - current_time).total_seconds()), 0)
-            message = f"{source.last_error}. Retry scheduled in {retry_in_seconds}s."
-        else:
-            message = str(source.last_error)
-    else:
-        reference_candidates = [value for value in (last_snapshot_at, last_success_at) if value is not None]
-        reference_time = max((ensure_utc(value) for value in reference_candidates), default=None)
-        if reference_time is None:
-            status = MARKET_STRUCTURE_HEALTH_STATUS_IDLE
-            severity = "info"
-            stale = False
-            message = "Waiting for first successful snapshot."
-        else:
-            age_seconds = max(int((current_time - ensure_utc(reference_time)).total_seconds()), 0)
-            if stale_after_seconds is not None and age_seconds > stale_after_seconds:
-                status = MARKET_STRUCTURE_HEALTH_STATUS_STALE
-                severity = "warning"
-                stale = True
-                message = f"Source is stale. Latest successful activity is {age_seconds}s old."
-            else:
-                status = MARKET_STRUCTURE_HEALTH_STATUS_HEALTHY
-                severity = "ok"
-                stale = False
-                message = "Source is healthy."
+    health = build_market_structure_source_health(source, now=now)
     return MarketStructureSourceHealthReadModel(
-        status=status,
-        severity=severity,
-        ingest_mode=ingest_mode,
-        stale=stale,
-        stale_after_seconds=stale_after_seconds,
-        last_activity_at=last_activity_at,
-        last_success_at=last_success_at,
-        last_snapshot_at=last_snapshot_at,
-        last_error=str(source.last_error) if source.last_error is not None else None,
-        health_changed_at=source.health_changed_at,
-        consecutive_failures=consecutive_failures,
-        backoff_until=backoff_until,
-        backoff_active=backoff_active,
-        quarantined=quarantined,
-        quarantined_at=source.quarantined_at,
-        quarantine_reason=str(source.quarantine_reason) if source.quarantine_reason is not None else None,
-        last_alerted_at=source.last_alerted_at,
-        last_alert_kind=str(source.last_alert_kind) if source.last_alert_kind is not None else None,
-        message=message,
+        status=health.status,
+        severity=health.severity,
+        ingest_mode=health.ingest_mode,
+        stale=health.stale,
+        stale_after_seconds=health.stale_after_seconds,
+        last_activity_at=health.last_activity_at,
+        last_success_at=health.last_success_at,
+        last_snapshot_at=health.last_snapshot_at,
+        last_error=health.last_error,
+        health_changed_at=health.health_changed_at,
+        consecutive_failures=int(health.consecutive_failures),
+        backoff_until=health.backoff_until,
+        backoff_active=health.backoff_active,
+        quarantined=health.quarantined,
+        quarantined_at=health.quarantined_at,
+        quarantine_reason=health.quarantine_reason,
+        last_alerted_at=health.last_alerted_at,
+        last_alert_kind=health.last_alert_kind,
+        message=health.message,
     )
 
 
