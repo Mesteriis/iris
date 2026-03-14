@@ -11,7 +11,7 @@
 - `architecture CI implementation`: done
 - `reference module implementation`: done
 - `scorecard automation`: done
-- `ADR package`: pending
+- `ADR package`: done
 - `service hotspot clean rewrites`: done
 
 ## Non-Negotiable Constraints
@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Governance artifacts: ADR package
+- [ ] Governance artifacts: idempotency/retry rules and performance budgets
 
 ## Active Workstreams
 
@@ -83,7 +83,7 @@
 
 - [x] generate architecture scorecard from codebase facts
 - [x] publish scorecard as CI artifact
-- [ ] add ADRs for transaction boundary, engine IO boundary, transport shaping, async-class-first scope and post-commit side effects
+- [x] add ADRs for transaction boundary, engine IO boundary, transport shaping, async-class-first scope and post-commit side effects
 - [ ] define per-domain idempotency/retry/concurrency rules where background orchestration exists
 - [ ] define per-domain performance budgets for heavy sync/job paths
 
@@ -175,3 +175,6 @@
 - [x] Stage 13 complete on `2026-03-14`: service-layer scorecard generation now reuses the architecture policy scanners, exports Markdown/JSON snapshots, and the architecture workflow uploads them as CI artifacts
 - [x] Stage 13 verification: `cd backend && uv run pytest tests/architecture`
 - [x] Stage 13 artifact export: `cd backend && uv run python scripts/export_service_layer_scorecard.py --markdown-output /tmp/service-layer-scorecard.md --json-output /tmp/service-layer-scorecard.json`
+- [x] Stage 14 complete on `2026-03-14`: ADRs now document caller-owned commit, engine IO boundary, transport shaping, async orchestration scope and post-commit side effects; architecture policy and the canonical `signals` package reference the ADR package, and CI checks that the ADR set exists
+- [x] Stage 14 verification: `cd backend && uv run pytest tests/architecture`
+- [x] Stage 14 lint gate: `cd backend && uv run ruff check tests/architecture/service_layer_policy.py tests/architecture/test_service_layer_adrs.py src/apps/signals/services/__init__.py`

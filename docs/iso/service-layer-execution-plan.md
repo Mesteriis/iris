@@ -326,6 +326,31 @@ Verification:
 - [x] `cd backend && uv run pytest tests/architecture`
 - [x] `cd backend && uv run python scripts/export_service_layer_scorecard.py --markdown-output /tmp/service-layer-scorecard.md --json-output /tmp/service-layer-scorecard.json`
 
+### Stage 14. Governance Artifact B: ADR package
+
+Status: done
+
+Goal:
+
+- add short ADRs for the most contested service-layer rules
+- link the ADR package back to architecture policy and the canonical reference module
+- keep ADR package presence visible in CI
+
+Planned deliverables:
+
+- [x] ADR for caller-owned commit boundary
+- [x] ADR for analytical engine IO boundary
+- [x] ADR for transport shaping outside services
+- [x] ADR for async-class-first orchestration vs pure analytical engines
+- [x] ADR for post-commit side effects
+- [x] architecture test proving ADR package exists
+- [x] explicit references from service-layer policy and canonical `signals` reference module
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/architecture`
+- [x] `cd backend && uv run ruff check tests/architecture/service_layer_policy.py tests/architecture/test_service_layer_adrs.py src/apps/signals/services/__init__.py`
+
 ## Execution Log
 
 - [x] Stage 1 complete: architecture governance baseline and CI gate landed.
@@ -341,3 +366,4 @@ Verification:
 - [x] Stage 11 complete: `indicators` now keeps analytics test seams intact while snapshot/scheduler/results/support moved out of the hotspot, and the service file no longer imports market-data models or repositories directly.
 - [x] Stage 12 complete: `portfolio` now uses typed public result contracts plus serializer helpers, pure rebalance calculation lives in `engines/`, and the service file no longer mixes cross-domain imports with balance/action orchestration hotspots.
 - [x] Stage 13 complete: a live service-layer scorecard is now generated from architecture policy scanners, exported as Markdown/JSON, and uploaded by CI as an artifact.
+- [x] Stage 14 complete: the service-layer ADR package now captures the core boundary decisions, is referenced from policy/reference code, and is checked by the architecture test suite.

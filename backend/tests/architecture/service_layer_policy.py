@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+"""
+Service-layer governance is anchored by the ADR package:
+
+- ADR 0010: caller owns commit boundary
+- ADR 0011: analytical engines never fetch
+- ADR 0012: services return domain contracts, not transport payloads
+- ADR 0013: async classes fit orchestration, pure functions fit analysis
+- ADR 0014: write-side side effects execute post-commit
+"""
+
 import ast
 from dataclasses import dataclass
 from functools import cache
@@ -104,7 +114,7 @@ def collect_service_result_contract_violations() -> tuple[ArchitectureViolation,
             if not isinstance(node, ast.ClassDef):
                 continue
             for child in node.body:
-                if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if not isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
                     continue
                 if (
                     node.name.endswith("Service")
@@ -138,7 +148,7 @@ def collect_service_constructor_dependency_violations() -> tuple[ArchitectureVio
             if not isinstance(node, ast.ClassDef) or not node.name.endswith("Service"):
                 continue
             for child in node.body:
-                if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) or child.name != "__init__":
+                if not isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef) or child.name != "__init__":
                     continue
                 violations.extend(
                     [
