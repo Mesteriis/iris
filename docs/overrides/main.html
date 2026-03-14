@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  <meta name="theme-color" content="#07121c" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="{% if page and page.title %}{{ page.title }} | {{ config.site_name }}{% else %}{{ config.site_name }}{% endif %}" />
+  <meta property="og:description" content="{{ config.site_description }}" />
+  <meta property="og:image" content="{{ config.site_url }}assets/img/preview.png" />
+  <meta property="og:image:alt" content="IRIS documentation preview" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{% if page and page.title %}{{ page.title }} | {{ config.site_name }}{% else %}{{ config.site_name }}{% endif %}" />
+  <meta name="twitter:description" content="{{ config.site_description }}" />
+  <meta name="twitter:image" content="{{ config.site_url }}assets/img/preview.png" />
+{% endblock %}

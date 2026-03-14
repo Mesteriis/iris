@@ -8,13 +8,27 @@ site_dir: site
 
 theme:
   name: material
+  custom_dir: docs/overrides
+  logo: assets/img/logo.png
+  favicon: assets/img/logo.png
+  font:
+    text: Manrope
+    code: JetBrains Mono
+  palette:
+    - scheme: slate
+      primary: black
+      accent: amber
   features:
     - navigation.tabs
     - navigation.sections
+    - navigation.expand
+    - navigation.footer
     - navigation.top
     - content.code.copy
     - search.highlight
     - search.suggest
+  icon:
+    repo: fontawesome/brands/github
 
 plugins:
   - search
@@ -26,6 +40,15 @@ markdown_extensions:
   - tables
   - toc:
       permalink: true
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Mesteriis/iris
+      name: GitHub repository
 
 nav:
   - Home: index.md

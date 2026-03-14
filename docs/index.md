@@ -1,64 +1,115 @@
-# IRIS Documentation
+---
+hide:
+  - toc
+---
 
-IRIS is an event-driven market intelligence platform built around one canonical market-data store plus deterministic analytics, governed HTTP/API surfaces, portfolio automation, and optional AI-assisted reasoning.
+<div class="iris-home">
+  <section class="iris-home__hero">
+    <div class="iris-home__copy">
+      <div class="iris-home__eyebrow">Event-Driven Market Intelligence</div>
+      <h1 class="iris-home__title">IRIS documentation that matches the live system.</h1>
+      <p class="iris-home__subtitle">
+        Architecture, governance, runtime boundaries, Home Assistant integration, AI planning, and generated HTTP artifacts are grouped around the current repository instead of the legacy wiki model.
+      </p>
+      <div class="iris-home__actions">
+        <a class="md-button md-button--primary" href="getting-started/">Get started</a>
+        <a class="md-button" href="architecture/">Read architecture</a>
+        <a class="md-button" href="_generated/">View generated API docs</a>
+      </div>
+      <div class="iris-home__chips">
+        <span class="iris-chip">FastAPI + Redis Streams</span>
+        <span class="iris-chip">TaskIQ worker runtime</span>
+        <span class="iris-chip">Home Assistant bridge</span>
+        <span class="iris-chip">Governed HTTP contracts</span>
+      </div>
+    </div>
+    <div class="iris-home__preview">
+      <div class="iris-home__logo-wrap">
+        <img class="iris-home__logo" src="assets/img/logo.png" alt="IRIS logo" />
+      </div>
+    </div>
+  </section>
 
-This documentation set is organized around the current repository structure rather than legacy wiki layouts.
+  <section class="iris-home__section">
+    <div class="iris-home__section-head">
+      <h2>Platform snapshot</h2>
+      <p>The docs site follows the same product language as the frontend: dark shell, glass panels, tide green highlights, and amber action accents.</p>
+    </div>
+    <div class="iris-stat-grid">
+      <div class="iris-stat">
+        <div class="iris-stat__label">Backend domains</div>
+        <div class="iris-stat__value">13</div>
+      </div>
+      <div class="iris-stat">
+        <div class="iris-stat__label">Accepted ADRs</div>
+        <div class="iris-stat__value">14</div>
+      </div>
+      <div class="iris-stat">
+        <div class="iris-stat__label">Primary doc classes</div>
+        <div class="iris-stat__value">6</div>
+      </div>
+      <div class="iris-stat">
+        <div class="iris-stat__label">API governance snapshots</div>
+        <div class="iris-stat__value">2</div>
+      </div>
+    </div>
+  </section>
 
-## Start Here
+  <section class="iris-home__section">
+    <div class="iris-home__section-head">
+      <h2>Start from the right place</h2>
+      <p>Use the navigation below according to intent, not by folder guesswork.</p>
+    </div>
+    <div class="iris-card-grid">
+      <article class="iris-card">
+        <div class="iris-card__eyebrow">Architecture</div>
+        <h3>Accepted system shape</h3>
+        <p>Runtime model, persistence boundaries, control plane, service-layer policy, and accepted ADRs.</p>
+        <a href="architecture/">Open architecture docs</a>
+      </article>
+      <article class="iris-card">
+        <div class="iris-card__eyebrow">Delivery</div>
+        <h3>Execution plans and audits</h3>
+        <p>Refactor rollout state, implementation audits, localization planning, and AI platform working docs.</p>
+        <a href="iso/">Open delivery docs</a>
+      </article>
+      <article class="iris-card">
+        <div class="iris-card__eyebrow">Generated</div>
+        <h3>Code-derived API truth</h3>
+        <p>Availability matrix and HTTP capability catalog exported from the live codebase and used in CI governance.</p>
+        <a href="_generated/">Open generated artifacts</a>
+      </article>
+      <article class="iris-card">
+        <div class="iris-card__eyebrow">Home Assistant</div>
+        <h3>Bridge and protocol surface</h3>
+        <p>Server-driven integration docs, backend plans, HACS integration planning, and protocol contracts.</p>
+        <a href="ha/">Open HA docs</a>
+      </article>
+      <article class="iris-card">
+        <div class="iris-card__eyebrow">Product</div>
+        <h3>Framing and review checklists</h3>
+        <p>Higher-level product value framing and endpoint review guidance that supports the architecture work.</p>
+        <a href="product/">Open product docs</a>
+      </article>
+      <article class="iris-card">
+        <div class="iris-card__eyebrow">OSS</div>
+        <h3>Repository model</h3>
+        <p>Contribution, security, licensing, and repository expectations for an external contributor path.</p>
+        <a href="open-source/">Open OSS guide</a>
+      </article>
+    </div>
+  </section>
 
-- [Getting Started](getting-started.md)
-- [Architecture Overview](architecture.md)
-- [ADR Index](architecture/adr/index.md)
-- [Open Source Guide](open-source.md)
-
-## Documentation Map
-
-| Class | Location | Role |
-|---|---|---|
-| Architecture and governance | `docs/architecture/` | Accepted architecture decisions, policy docs, engineering guardrails |
-| Execution plans and audits | `docs/iso/` | Working plans, refactor progress, implementation audits |
-| Product notes | `docs/product/` | Product framing and review checklists |
-| Home Assistant integration | `docs/ha/` | Protocol, integration architecture, backend and HACS plans |
-| Generated artifacts | `docs/_generated/` | Code-derived HTTP capability and availability snapshots |
-| Review snapshots | `docs/reviews/` | Time-bound reviews that may lag the live codebase |
-
-## Current Sources Of Truth
-
-When documents disagree, prefer them in this order:
-
-1. Generated artifacts in `docs/_generated/`
-2. Accepted ADRs and policy docs in `docs/architecture/`
-3. Current rollout docs in `docs/iso/`
-4. Historical reviews in `docs/reviews/`
-
-## Main Topics
-
-- [Architecture](architecture.md): runtime model, domains, control plane, persistence rules
-- [Delivery And Audits](iso/index.md): implementation plans and refactor tracking
-- [Home Assistant](ha/index.md): bridge protocol and integration design
-- [Generated Governance Artifacts](_generated/index.md): HTTP contract inventory exported from code
-- [Open Source](open-source.md): contribution, security, licensing, and repository expectations
-
-## Repository Scope
-
-The live backend currently includes:
-
-- `market_data`
-- `indicators`
-- `patterns`
-- `signals`
-- `predictions`
-- `cross_market`
-- `portfolio`
-- `anomalies`
-- `news`
-- `market_structure`
-- `control_plane`
-- `hypothesis_engine`
-- `system`
-
-The repository also includes:
-
-- a Vue 3 frontend dashboard
-- Home Assistant addon and custom-integration planning documents
-- CI-enforced HTTP and service-layer governance artifacts
+  <section class="iris-home__section">
+    <div class="iris-home__section-head">
+      <h2>Current sources of truth</h2>
+      <p>Not all markdown in the repository has the same authority.</p>
+    </div>
+    <ul class="iris-home__list">
+      <li><strong>Generated artifacts first:</strong> use <a href="_generated/">code-derived HTTP snapshots</a> when validating what the platform actually exposes.</li>
+      <li><strong>Accepted architecture second:</strong> use <a href="architecture/adr/">ADRs</a> and architecture policy docs for target boundaries and operating rules.</li>
+      <li><strong>Execution docs third:</strong> use <a href="iso/">delivery and audit docs</a> for rollout state, refactor campaigns, and principal implementation plans.</li>
+      <li><strong>Historical reviews last:</strong> use <a href="reviews/">review snapshots</a> as context, not as canonical contracts.</li>
+    </ul>
+  </section>
+</div>
