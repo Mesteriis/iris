@@ -1,0 +1,34 @@
+name: Architecture Governance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: architecture-governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy:
+    name: Service Layer Policy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install backend dependencies
+        run: uv sync --project backend --group dev
+
+      - name: Run architecture governance tests
+        run: cd backend && uv run pytest tests/architecture
