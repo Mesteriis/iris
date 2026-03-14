@@ -49,16 +49,6 @@ EXPECTED_TRANSPORT_LEAKAGE_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
 
 EXPECTED_CROSS_DOMAIN_BOUNDARY_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
     ArchitectureViolation(
-        path="src/apps/indicators/services.py",
-        symbol="src.apps.market_data.models",
-        detail="import",
-    ),
-    ArchitectureViolation(
-        path="src/apps/indicators/services.py",
-        symbol="src.apps.market_data.repositories",
-        detail="import",
-    ),
-    ArchitectureViolation(
         path="src/apps/patterns/task_service_base.py",
         symbol="src.apps.cross_market.models",
         detail="import",
@@ -171,16 +161,6 @@ EXPECTED_CROSS_DOMAIN_BOUNDARY_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
 )
 
 EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
-    ArchitectureViolation(
-        path="src/apps/indicators/services.py",
-        symbol="IndicatorAnalyticsService",
-        detail="class_loc=253",
-    ),
-    ArchitectureViolation(
-        path="src/apps/indicators/services.py",
-        symbol="__module__",
-        detail="module_loc=538",
-    ),
     ArchitectureViolation(
         path="src/apps/patterns/task_service_base.py",
         symbol="__module__",

@@ -260,7 +260,7 @@ Verification:
 
 ### Stage 11. Wave 3C: `indicators`
 
-Status: next
+Status: done
 
 Goal:
 
@@ -268,9 +268,22 @@ Goal:
 - split heavy indicator calculations from orchestration
 - reduce indicator hotspot size below architecture thresholds
 
+Planned deliverables:
+
+- [x] focused result/support modules for indicator analytics, snapshot capture and scheduler flows
+- [x] analytics service kept test-seam compatible while heavy helper implementation moved out of the hotspot
+- [x] feature snapshot and scheduler services moved out of `services.py`
+- [x] direct market-data model/repository imports removed from the service file
+- [x] indicators tests and architecture baseline aligned with final shape
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/apps/indicators/test_analytics_helpers.py tests/apps/indicators/test_flow_radar_snapshots_services.py tests/apps/indicators/test_persistence_contracts.py tests/architecture`
+- [x] `cd backend && uv run ruff check src/apps/indicators/results.py src/apps/indicators/service_support.py src/apps/indicators/feature_snapshot_service.py src/apps/indicators/analysis_scheduler_service.py src/apps/indicators/services.py src/apps/indicators/snapshots.py tests/apps/indicators/test_analytics_helpers.py tests/apps/indicators/test_flow_radar_snapshots_services.py tests/apps/indicators/test_persistence_contracts.py tests/architecture/service_layer_baseline.py`
+
 ### Stage 12. Wave 3D: `portfolio`
 
-Status: queued
+Status: next
 
 Goal:
 
@@ -290,3 +303,4 @@ Goal:
 - [x] Stage 8 complete: `anomalies` now uses typed service results, no longer imports anomaly transport schemas from the service layer, and delegates anomaly payload/enrichment shaping outside `anomaly_service.py`.
 - [x] Stage 9 complete: `market_data` now uses typed history sync results, task-boundary dict serialization, extracted write/history support outside `services.py`, and no longer carries market-data transport DTO imports in the service layer.
 - [x] Stage 10 complete: `news` now uses typed polling results, focused polling/onboarding/provisioning modules, and no longer keeps router/schema leaks in `news/services.py`.
+- [x] Stage 11 complete: `indicators` now keeps analytics test seams intact while snapshot/scheduler/results/support moved out of the hotspot, and the service file no longer imports market-data models or repositories directly.

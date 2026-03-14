@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Wave 3 hotspot cutover: `indicators`, `portfolio`
+- [ ] Wave 3 hotspot cutover: `portfolio`
 
 ## Active Workstreams
 
@@ -69,7 +69,7 @@
 - [x] Wave 2F: `anomalies`
 - [x] Wave 3A: `market_data`
 - [x] Wave 3B: `news`
-- [ ] Wave 3C: `indicators`
+- [x] Wave 3C: `indicators`
 - [ ] Wave 3D: `portfolio`
 
 Правило для каждой rewrite-задачи:
@@ -166,3 +166,6 @@
 - [x] Stage 10 complete on `2026-03-14`: `news` no longer keeps polling, telegram onboarding and telegram provisioning in one hotspot; public poll methods now return typed results, telegram wizard routing left the service layer, and `news/services.py` is reduced to a small facade over focused modules
 - [x] Stage 10 verification: `cd backend && uv run pytest tests/apps/news/test_services.py tests/apps/news/test_views.py tests/apps/news/test_pipeline.py tests/apps/news/test_persistence_contracts.py tests/architecture`
 - [x] Stage 10 lint gate: `cd backend && uv run ruff check src/apps/news/contracts.py src/apps/news/results.py src/apps/news/polling.py src/apps/news/telegram_onboarding.py src/apps/news/telegram_provisioning.py src/apps/news/services.py src/apps/news/schemas.py src/apps/news/tasks.py src/apps/news/api/onboarding_endpoints.py src/apps/news/api/onboarding_wizard.py tests/apps/news/test_services.py tests/architecture/service_layer_baseline.py`
+- [x] Stage 11 complete on `2026-03-14`: `indicators` no longer keeps analytics, snapshot capture and scheduling in one service hotspot; analytics stays test-seam compatible in `services.py`, while snapshot/scheduler/results/support moved to focused modules and direct market-data model/repository imports left the service file
+- [x] Stage 11 verification: `cd backend && uv run pytest tests/apps/indicators/test_analytics_helpers.py tests/apps/indicators/test_flow_radar_snapshots_services.py tests/apps/indicators/test_persistence_contracts.py tests/architecture`
+- [x] Stage 11 lint gate: `cd backend && uv run ruff check src/apps/indicators/results.py src/apps/indicators/service_support.py src/apps/indicators/feature_snapshot_service.py src/apps/indicators/analysis_scheduler_service.py src/apps/indicators/services.py src/apps/indicators/snapshots.py tests/apps/indicators/test_analytics_helpers.py tests/apps/indicators/test_flow_radar_snapshots_services.py tests/apps/indicators/test_persistence_contracts.py tests/architecture/service_layer_baseline.py`
