@@ -112,6 +112,7 @@ button {
 }
 
 .md-content__inner {
+  padding-top: 1rem;
   padding-bottom: 3rem;
 }
 
@@ -125,6 +126,7 @@ button {
 
 .md-sidebar--primary .md-sidebar__scrollwrap,
 .md-sidebar--secondary .md-sidebar__scrollwrap {
+  padding: 0.55rem 0.45rem;
   border: 1px solid var(--iris-stroke);
   border-radius: 1.2rem;
   box-shadow: var(--iris-shadow);
@@ -167,7 +169,8 @@ button {
 
 .iris-home {
   display: grid;
-  gap: 1.5rem;
+  gap: 1.75rem;
+  padding-top: 0.15rem;
 }
 
 .iris-home__hero {
@@ -295,6 +298,7 @@ button {
 .iris-home__section {
   display: grid;
   gap: 1rem;
+  padding-inline: 0.1rem;
 }
 
 .iris-home__section-head h2 {
