@@ -11,16 +11,6 @@ EXPECTED_SERVICE_RESULT_CONTRACT_VIOLATIONS: tuple[ArchitectureViolation, ...] =
         detail="tuple[str, dict[str, object]] | None",
     ),
     ArchitectureViolation(
-        path="src/apps/news/services.py",
-        symbol="NewsService.poll_enabled_sources",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/news/services.py",
-        symbol="NewsService.poll_source",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
         path="src/apps/patterns/task_service_bootstrap.py",
         symbol="PatternBootstrapService.bootstrap_scan",
         detail="dict[str, object]",
@@ -53,16 +43,6 @@ EXPECTED_TRANSPORT_LEAKAGE_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
     ArchitectureViolation(
         path="src/apps/hypothesis_engine/services/prompt_service.py",
         symbol="src.apps.hypothesis_engine.schemas",
-        detail="import",
-    ),
-    ArchitectureViolation(
-        path="src/apps/news/services.py",
-        symbol="src.apps.news.schemas",
-        detail="import",
-    ),
-    ArchitectureViolation(
-        path="src/apps/news/services.py",
-        symbol="src.core.http.router_policy",
         detail="import",
     ),
 )
@@ -200,11 +180,6 @@ EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS: tuple[ArchitectureViolation, ...] 
         path="src/apps/indicators/services.py",
         symbol="__module__",
         detail="module_loc=538",
-    ),
-    ArchitectureViolation(
-        path="src/apps/news/services.py",
-        symbol="__module__",
-        detail="module_loc=530",
     ),
     ArchitectureViolation(
         path="src/apps/patterns/task_service_base.py",

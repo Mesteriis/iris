@@ -16,7 +16,13 @@ from src.apps.news.api.contracts import (
     TelegramWizardRead,
 )
 from src.apps.news.api.deps import TelegramProvisioningDep, TelegramSessionOnboardingDep
-from src.apps.news.api.errors import news_error_responses, news_error_to_http, telegram_onboarding_error, telegram_request_code_error
+from src.apps.news.api.errors import (
+    news_error_responses,
+    news_error_to_http,
+    telegram_onboarding_error,
+    telegram_request_code_error,
+)
+from src.apps.news.api.onboarding_wizard import telegram_wizard_spec
 from src.apps.news.api.presenters import news_source_read, telegram_bulk_subscribe_read
 from src.apps.news.exceptions import TelegramOnboardingError
 from src.core.http.command_executor import execute_command
@@ -82,7 +88,8 @@ async def list_telegram_dialogs(
     summary="Read Telegram onboarding wizard",
 )
 async def read_telegram_wizard(provisioning: TelegramProvisioningDep) -> TelegramWizardRead:
-    return provisioning.service.wizard_spec()
+    del provisioning
+    return telegram_wizard_spec()
 
 
 @router.post(

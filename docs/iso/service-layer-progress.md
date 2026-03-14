@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Wave 3 hotspot cutover: `news`, `indicators`, `portfolio`
+- [ ] Wave 3 hotspot cutover: `indicators`, `portfolio`
 
 ## Active Workstreams
 
@@ -68,7 +68,7 @@
 - [x] Wave 2E: `patterns/task_service_runtime`
 - [x] Wave 2F: `anomalies`
 - [x] Wave 3A: `market_data`
-- [ ] Wave 3B: `news`
+- [x] Wave 3B: `news`
 - [ ] Wave 3C: `indicators`
 - [ ] Wave 3D: `portfolio`
 
@@ -163,3 +163,6 @@
 - [x] Stage 9 complete on `2026-03-14`: `market_data` now keeps public services typed, sync task payload shaping at the task boundary, and operational write/history helpers extracted out of `services.py` so the service module no longer mixes transport DTOs, dict contracts and giant write-side orchestration
 - [x] Stage 9 verification: `cd backend && uv run pytest tests/apps/market_data/test_services.py tests/apps/market_data/test_tasks.py tests/apps/market_data/test_persistence_contracts.py tests/architecture`
 - [x] Stage 9 lint gate: `cd backend && uv run ruff check src/apps/market_data/command_support.py src/apps/market_data/contracts.py src/apps/market_data/history_sync.py src/apps/market_data/results.py src/apps/market_data/services.py src/apps/market_data/tasks.py tests/apps/market_data/test_services.py tests/apps/market_data/test_tasks.py tests/apps/market_data/test_persistence_contracts.py tests/architecture/service_layer_baseline.py`
+- [x] Stage 10 complete on `2026-03-14`: `news` no longer keeps polling, telegram onboarding and telegram provisioning in one hotspot; public poll methods now return typed results, telegram wizard routing left the service layer, and `news/services.py` is reduced to a small facade over focused modules
+- [x] Stage 10 verification: `cd backend && uv run pytest tests/apps/news/test_services.py tests/apps/news/test_views.py tests/apps/news/test_pipeline.py tests/apps/news/test_persistence_contracts.py tests/architecture`
+- [x] Stage 10 lint gate: `cd backend && uv run ruff check src/apps/news/contracts.py src/apps/news/results.py src/apps/news/polling.py src/apps/news/telegram_onboarding.py src/apps/news/telegram_provisioning.py src/apps/news/services.py src/apps/news/schemas.py src/apps/news/tasks.py src/apps/news/api/onboarding_endpoints.py src/apps/news/api/onboarding_wizard.py tests/apps/news/test_services.py tests/architecture/service_layer_baseline.py`

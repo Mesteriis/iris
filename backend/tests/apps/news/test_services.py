@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from sqlalchemy import select
-
 import src.apps.news.plugins as news_plugins
+from sqlalchemy import select
+from src.apps.news.api.onboarding_wizard import telegram_wizard_spec
 from src.apps.news.exceptions import InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError
 from src.apps.news.models import NewsItem, NewsSource
-from src.apps.news.plugins import FetchedNewsItem, NewsFetchResult, NewsPluginDescriptor, NewsSourcePlugin, register_news_plugin
+from src.apps.news.plugins import (
+    FetchedNewsItem,
+    NewsFetchResult,
+    NewsPluginDescriptor,
+    NewsSourcePlugin,
+    register_news_plugin,
+)
 from src.apps.news.schemas import (
     NewsSourceCreate,
     NewsSourceUpdate,
@@ -23,8 +29,8 @@ from src.apps.news.schemas import (
     TelegramSourceFromDialogCreate,
 )
 from src.apps.news.services import NewsService, TelegramSessionOnboardingService, TelegramSourceProvisioningService
-from src.core.http.router_policy import api_path
 from src.core.db.uow import SessionUnitOfWork
+from src.core.http.router_policy import api_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,7 +60,7 @@ class FixtureNewsPlugin(NewsSourcePlugin):
     async def fetch_items(self, *, cursor: dict[str, Any], limit: int = 50) -> NewsFetchResult:
         after = int(cursor.get("after") or 0)
         selected = [row for row in self._rows if int(row.external_id) > after][:limit]
-        base_time = datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+        base_time = datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
         items = [
             FetchedNewsItem(
                 external_id=row.external_id,
@@ -90,7 +96,7 @@ async def test_news_service_polls_persists_and_publishes(async_db_session, monke
     published: list[tuple[str, dict[str, object]]] = []
 
     monkeypatch.setattr(
-        "src.apps.news.services.publish_event",
+        "src.apps.news.polling.publish_event",
         lambda event_name, payload: published.append((event_name, payload)),
     )
 
@@ -108,22 +114,18 @@ async def test_news_service_polls_persists_and_publishes(async_db_session, monke
         second_poll = await service.poll_source(source_id=source.id, limit=2)
         await uow.commit()
 
-    assert first_poll == {
-        "status": "ok",
-        "source_id": source.id,
-        "plugin_name": "fixture_news",
-        "fetched": 2,
-        "created": 2,
-        "cursor": {"after": 2},
-    }
-    assert second_poll == {
-        "status": "ok",
-        "source_id": source.id,
-        "plugin_name": "fixture_news",
-        "fetched": 1,
-        "created": 1,
-        "cursor": {"after": 3},
-    }
+    assert first_poll.status == "ok"
+    assert first_poll.source_id == source.id
+    assert first_poll.plugin_name == "fixture_news"
+    assert first_poll.fetched == 2
+    assert first_poll.created == 2
+    assert first_poll.cursor == {"after": 2}
+    assert second_poll.status == "ok"
+    assert second_poll.source_id == source.id
+    assert second_poll.plugin_name == "fixture_news"
+    assert second_poll.fetched == 1
+    assert second_poll.created == 1
+    assert second_poll.cursor == {"after": 3}
 
     stored_source = await async_db_session.get(NewsSource, source.id)
     assert stored_source is not None
@@ -424,7 +426,7 @@ async def test_telegram_source_provisioning_creates_single_and_bulk_sources(asyn
 
 
 def test_telegram_source_provisioning_wizard_spec() -> None:
-    wizard = TelegramSourceProvisioningService.wizard_spec()
+    wizard = telegram_wizard_spec()
 
     assert wizard.plugin_name == "telegram_user"
     assert "channel" in wizard.supported_dialog_types

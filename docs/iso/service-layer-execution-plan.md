@@ -237,7 +237,7 @@ Verification:
 
 ### Stage 10. Wave 3B: `news`
 
-Status: next
+Status: done
 
 Goal:
 
@@ -245,9 +245,22 @@ Goal:
 - replace dict-shaped poll results with typed service contracts
 - keep provider fetch/output shaping outside public service methods
 
+Planned deliverables:
+
+- [x] service-side news contracts outside `schemas.py`
+- [x] typed polling result contracts and task-boundary serializers
+- [x] polling, telegram onboarding and telegram provisioning moved to focused modules
+- [x] telegram wizard routing moved to API helper outside the service layer
+- [x] news tests and architecture baseline aligned with final contracts
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/apps/news/test_services.py tests/apps/news/test_views.py tests/apps/news/test_pipeline.py tests/apps/news/test_persistence_contracts.py tests/architecture`
+- [x] `cd backend && uv run ruff check src/apps/news/contracts.py src/apps/news/results.py src/apps/news/polling.py src/apps/news/telegram_onboarding.py src/apps/news/telegram_provisioning.py src/apps/news/services.py src/apps/news/schemas.py src/apps/news/tasks.py src/apps/news/api/onboarding_endpoints.py src/apps/news/api/onboarding_wizard.py tests/apps/news/test_services.py tests/architecture/service_layer_baseline.py`
+
 ### Stage 11. Wave 3C: `indicators`
 
-Status: queued
+Status: next
 
 Goal:
 
@@ -276,3 +289,4 @@ Goal:
 - [x] Stage 7 complete: `patterns/task_service_runtime` now uses pure realtime engines plus typed runtime results, direct cross-domain imports left the service file, and runtime workers consume attribute-based contracts instead of dict payloads.
 - [x] Stage 8 complete: `anomalies` now uses typed service results, no longer imports anomaly transport schemas from the service layer, and delegates anomaly payload/enrichment shaping outside `anomaly_service.py`.
 - [x] Stage 9 complete: `market_data` now uses typed history sync results, task-boundary dict serialization, extracted write/history support outside `services.py`, and no longer carries market-data transport DTO imports in the service layer.
+- [x] Stage 10 complete: `news` now uses typed polling results, focused polling/onboarding/provisioning modules, and no longer keeps router/schema leaks in `news/services.py`.
