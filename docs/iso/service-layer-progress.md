@@ -12,7 +12,7 @@
 - `reference module implementation`: done
 - `scorecard automation`: pending
 - `ADR package`: pending
-- `service hotspot clean rewrites`: in progress
+- `service hotspot clean rewrites`: done
 
 ## Non-Negotiable Constraints
 
@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Wave 3 hotspot cutover: `portfolio`
+- [ ] Governance artifacts: scorecard automation and ADR package
 
 ## Active Workstreams
 
@@ -70,7 +70,7 @@
 - [x] Wave 3A: `market_data`
 - [x] Wave 3B: `news`
 - [x] Wave 3C: `indicators`
-- [ ] Wave 3D: `portfolio`
+- [x] Wave 3D: `portfolio`
 
 Правило для каждой rewrite-задачи:
 
@@ -169,3 +169,6 @@
 - [x] Stage 11 complete on `2026-03-14`: `indicators` no longer keeps analytics, snapshot capture and scheduling in one service hotspot; analytics stays test-seam compatible in `services.py`, while snapshot/scheduler/results/support moved to focused modules and direct market-data model/repository imports left the service file
 - [x] Stage 11 verification: `cd backend && uv run pytest tests/apps/indicators/test_analytics_helpers.py tests/apps/indicators/test_flow_radar_snapshots_services.py tests/apps/indicators/test_persistence_contracts.py tests/architecture`
 - [x] Stage 11 lint gate: `cd backend && uv run ruff check src/apps/indicators/results.py src/apps/indicators/service_support.py src/apps/indicators/feature_snapshot_service.py src/apps/indicators/analysis_scheduler_service.py src/apps/indicators/services.py src/apps/indicators/snapshots.py tests/apps/indicators/test_analytics_helpers.py tests/apps/indicators/test_flow_radar_snapshots_services.py tests/apps/indicators/test_persistence_contracts.py tests/architecture/service_layer_baseline.py`
+- [x] Stage 12 complete on `2026-03-14`: `portfolio` no longer exposes payload summary helpers on public result contracts, pure rebalance calculation moved into `engines/`, balance/action orchestration moved to focused support modules, and `portfolio/services.py` no longer imports market-data/signals models or repositories directly
+- [x] Stage 12 verification: `cd backend && uv run pytest tests/apps/portfolio tests/architecture`
+- [x] Stage 12 lint gate: `cd backend && uv run ruff check src/apps/portfolio/action_support.py src/apps/portfolio/results.py src/apps/portfolio/serializers.py src/apps/portfolio/services.py src/apps/portfolio/sync_support.py src/apps/portfolio/tasks.py src/apps/portfolio/engines tests/apps/portfolio/test_rebalance_engine.py tests/apps/portfolio/test_services_selectors_cache.py tests/architecture/service_layer_baseline.py`

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.apps.portfolio.serializers import portfolio_sync_result_payload
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
 from src.core.db.uow import AsyncUnitOfWork
 from src.runtime.orchestration.broker import broker
@@ -18,4 +19,4 @@ async def portfolio_sync_job() -> dict[str, object]:
             result = await service.sync_exchange_balances(emit_events=True)
             await uow.commit()
         await PortfolioSideEffectDispatcher().apply_sync_result(result)
-        return result.to_payload()
+        return portfolio_sync_result_payload(result)

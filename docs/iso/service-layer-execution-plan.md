@@ -283,13 +283,26 @@ Verification:
 
 ### Stage 12. Wave 3D: `portfolio`
 
-Status: next
+Status: done
 
 Goal:
 
 - remove payload summary helpers from portfolio public contracts
 - remove direct market-data/signals model and repository imports from portfolio services
 - reduce portfolio hotspots below architecture thresholds
+
+Planned deliverables:
+
+- [x] focused result/serializer/support modules for portfolio sync and action flows
+- [x] pure rebalance calculation moved to `engines/` while `PortfolioService` kept wrapper compatibility for existing tests
+- [x] payload summary helpers removed from portfolio public result contracts
+- [x] direct market-data/signals model and repository imports removed from `portfolio/services.py`
+- [x] portfolio tests and architecture baseline aligned with final shape
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/apps/portfolio tests/architecture`
+- [x] `cd backend && uv run ruff check src/apps/portfolio/action_support.py src/apps/portfolio/results.py src/apps/portfolio/serializers.py src/apps/portfolio/services.py src/apps/portfolio/sync_support.py src/apps/portfolio/tasks.py src/apps/portfolio/engines tests/apps/portfolio/test_rebalance_engine.py tests/apps/portfolio/test_services_selectors_cache.py tests/architecture/service_layer_baseline.py`
 
 ## Execution Log
 
@@ -304,3 +317,4 @@ Goal:
 - [x] Stage 9 complete: `market_data` now uses typed history sync results, task-boundary dict serialization, extracted write/history support outside `services.py`, and no longer carries market-data transport DTO imports in the service layer.
 - [x] Stage 10 complete: `news` now uses typed polling results, focused polling/onboarding/provisioning modules, and no longer keeps router/schema leaks in `news/services.py`.
 - [x] Stage 11 complete: `indicators` now keeps analytics test seams intact while snapshot/scheduler/results/support moved out of the hotspot, and the service file no longer imports market-data models or repositories directly.
+- [x] Stage 12 complete: `portfolio` now uses typed public result contracts plus serializer helpers, pure rebalance calculation lives in `engines/`, and the service file no longer mixes cross-domain imports with balance/action orchestration hotspots.

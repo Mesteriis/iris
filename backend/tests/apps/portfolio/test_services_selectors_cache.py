@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 
 import pytest
 from sqlalchemy import delete, select
-
 from src.apps.indicators.models import CoinMetrics
 from src.apps.portfolio import cache, tasks
 from src.apps.portfolio.cache import (
@@ -21,6 +20,9 @@ from src.apps.portfolio.cache import (
 )
 from src.apps.portfolio.models import ExchangeAccount, PortfolioPosition, PortfolioState
 from src.apps.portfolio.query_services import PortfolioQueryService
+from src.apps.portfolio.read_models import PortfolioStateReadModel
+from src.apps.portfolio.results import PortfolioSyncItem, PortfolioSyncResult
+from src.apps.portfolio.serializers import portfolio_sync_result_payload
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
 from src.core.db.uow import SessionUnitOfWork
 
@@ -372,9 +374,24 @@ async def test_portfolio_async_query_service_service_and_task_wrapper(
     skipped = await tasks.portfolio_sync_job()
     assert skipped == {"status": "skipped", "reason": "portfolio_sync_in_progress"}
 
-    class _Result:
-        def to_payload(self) -> dict[str, object]:
-            return {"status": "ok", "accounts": 1, "balances": 2, "items": []}
+    result = PortfolioSyncResult(
+        status="ok",
+        accounts=1,
+        items=(
+            PortfolioSyncItem(exchange_account_id=1, symbol="BTCUSD_EVT", balance=1.0, value_usd=100.0),
+            PortfolioSyncItem(exchange_account_id=1, symbol="ETHUSD_EVT", balance=2.0, value_usd=200.0),
+        ),
+        cached_rows=(),
+        state=PortfolioStateReadModel(
+            total_capital=1000.0,
+            allocated_capital=300.0,
+            available_capital=700.0,
+            updated_at="2026-03-14T00:00:00+00:00",
+            open_positions=2,
+            max_positions=8,
+        ),
+        pending_events=(),
+    )
 
     class _UowContext:
         async def __aenter__(self):
@@ -398,18 +415,18 @@ async def test_portfolio_async_query_service_service_and_task_wrapper(
 
         async def sync_exchange_balances(self, *, emit_events: bool):
             events.append(f"sync:{self._uow.session}:{emit_events}")
-            return _Result()
+            return result
 
     class _PortfolioSideEffectDispatcher:
         async def apply_sync_result(self, result) -> None:
-            events.append(f"side_effects:{result.to_payload()['status']}")
+            events.append(f"side_effects:{result.status}")
 
     monkeypatch.setattr(tasks, "async_redis_task_lock", lambda *args, **kwargs: _lock(True))
     monkeypatch.setattr(tasks, "AsyncUnitOfWork", lambda: _UowContext())
     monkeypatch.setattr(tasks, "PortfolioService", _PortfolioService)
     monkeypatch.setattr(tasks, "PortfolioSideEffectDispatcher", _PortfolioSideEffectDispatcher)
     executed = await tasks.portfolio_sync_job()
-    assert executed == {"status": "ok", "accounts": 1, "balances": 2, "items": []}
+    assert executed == portfolio_sync_result_payload(result)
     assert events[1:6] == [
         "lock:True",
         "uow_enter",
