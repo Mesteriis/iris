@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Governance artifacts: idempotency/retry rules and performance budgets
+- [ ] Governance artifacts: performance budgets
 
 ## Active Workstreams
 
@@ -84,7 +84,7 @@
 - [x] generate architecture scorecard from codebase facts
 - [x] publish scorecard as CI artifact
 - [x] add ADRs for transaction boundary, engine IO boundary, transport shaping, async-class-first scope and post-commit side effects
-- [ ] define per-domain idempotency/retry/concurrency rules where background orchestration exists
+- [x] define per-domain idempotency/retry/concurrency rules where background orchestration exists
 - [ ] define per-domain performance budgets for heavy sync/job paths
 
 ## Cutover Order
@@ -178,3 +178,6 @@
 - [x] Stage 14 complete on `2026-03-14`: ADRs now document caller-owned commit, engine IO boundary, transport shaping, async orchestration scope and post-commit side effects; architecture policy and the canonical `signals` package reference the ADR package, and CI checks that the ADR set exists
 - [x] Stage 14 verification: `cd backend && uv run pytest tests/architecture`
 - [x] Stage 14 lint gate: `cd backend && uv run ruff check tests/architecture/service_layer_policy.py tests/architecture/test_service_layer_adrs.py src/apps/signals/services/__init__.py`
+- [x] Stage 15 complete on `2026-03-14`: runtime idempotency/retry/concurrency semantics are now fixed in a per-domain matrix covering task locks, tracked operations and stream-consumer dedup boundaries
+- [x] Stage 15 verification: `cd backend && uv run pytest tests/architecture`
+- [x] Stage 15 lint gate: `cd backend && uv run ruff check tests/architecture/test_service_layer_runtime_policies_doc.py`

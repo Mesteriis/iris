@@ -351,6 +351,27 @@ Verification:
 - [x] `cd backend && uv run pytest tests/architecture`
 - [x] `cd backend && uv run ruff check tests/architecture/service_layer_policy.py tests/architecture/test_service_layer_adrs.py src/apps/signals/services/__init__.py`
 
+### Stage 15. Governance Artifact C: runtime idempotency/retry/concurrency rules
+
+Status: done
+
+Goal:
+
+- define per-domain runtime rules for background orchestration
+- document idempotency, retry and concurrency semantics on real task/consumer paths
+- keep the runtime matrix present in architecture governance
+
+Planned deliverables:
+
+- [x] service-layer runtime policy document with per-domain matrix
+- [x] explicit global rules for locks, deduplication and retries
+- [x] architecture test proving the runtime policy document exists
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/architecture`
+- [x] `cd backend && uv run ruff check tests/architecture/test_service_layer_runtime_policies_doc.py`
+
 ## Execution Log
 
 - [x] Stage 1 complete: architecture governance baseline and CI gate landed.
@@ -367,3 +388,4 @@ Verification:
 - [x] Stage 12 complete: `portfolio` now uses typed public result contracts plus serializer helpers, pure rebalance calculation lives in `engines/`, and the service file no longer mixes cross-domain imports with balance/action orchestration hotspots.
 - [x] Stage 13 complete: a live service-layer scorecard is now generated from architecture policy scanners, exported as Markdown/JSON, and uploaded by CI as an artifact.
 - [x] Stage 14 complete: the service-layer ADR package now captures the core boundary decisions, is referenced from policy/reference code, and is checked by the architecture test suite.
+- [x] Stage 15 complete: runtime idempotency, retry and concurrency rules are now documented per domain for real job/consumer entry points and checked for presence by the architecture suite.
