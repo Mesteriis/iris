@@ -213,4 +213,4 @@ Initial rollout completed in this refactor pass:
   - centralized transaction ownership in services/tasks/views/consumers
   - persistence logging hooks
 
-Remaining domains are tracked in [docs/persistence-audit.md](docs/persistence-audit.md).
+Remaining domains are tracked in [docs/iso/persistence-audit.md](persistence-audit.md).

@@ -21,3 +21,5 @@ frontend/node_modules/
 postgres_data/
 redis_data/
 backend/.qoder/
+site/
+.aiassistant/

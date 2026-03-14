@@ -1,0 +1,47 @@
+# ADR 0003: Control Plane for Event Routing
+
+## Status
+
+**Accepted**
+
+## Context
+
+В event-driven системах routing событий часто захардкожен:
+
+- consumer groups
+- topic subscriptions
+- handler mapping
+
+Это усложняет:
+
+- экспериментирование
+- staged rollout
+- shadow routing
+- runtime topology changes
+
+## Decision
+
+IRIS вводит control plane для управления маршрутизацией событий.
+
+**Основные сущности:**
+
+- event_definitions
+- event_consumers
+- event_routes
+- topology_config_versions
+- topology_drafts
+
+Runtime dispatcher читает активную topology snapshot и направляет события соответствующим consumers.
+
+## Consequences
+
+**Плюсы:**
+
+- гибкое управление routing
+- возможность shadow processing
+- безопасные изменения topology
+
+**Минусы:**
+
+- дополнительная сложность runtime
+- требуется контроль версии topology

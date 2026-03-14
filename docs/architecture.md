@@ -17,6 +17,17 @@ IRIS is an event-driven market intelligence service. The current codebase includ
 - optional hypothesis engine
 - Home Assistant integration
 
+## Canonical References
+
+Use these documents as the current architecture entrypoints:
+
+- [Repository README](https://github.com/Mesteriis/iris/blob/main/README.md)
+- [ADR index](architecture/adr/index.md)
+- [Service Layer Runtime Policies](architecture/service-layer-runtime-policies.md)
+- [Service Layer Performance Budgets](architecture/service-layer-performance-budgets.md)
+- [Generated HTTP availability matrix](_generated/http-availability-matrix.md)
+- [Generated HTTP capability catalog](_generated/http-capability-catalog.md)
+
 ## Backend runtime
 
 The backend owns three concerns inside one service:
@@ -172,8 +183,8 @@ Database access is being standardized around explicit persistence boundaries:
 
 Supporting docs:
 
-- [docs/persistence-audit.md](docs/persistence-audit.md)
-- [docs/persistence-standard.md](docs/persistence-standard.md)
+- [docs/iso/persistence-audit.md](iso/persistence-audit.md)
+- [docs/iso/persistence-standard.md](iso/persistence-standard.md)
 
 Current implementation coverage:
 

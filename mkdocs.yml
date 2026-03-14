@@ -1,0 +1,87 @@
+site_name: IRIS
+site_description: Event-driven market intelligence platform documentation
+site_url: https://mesteriis.github.io/iris/
+repo_url: https://github.com/Mesteriis/iris
+repo_name: Mesteriis/iris
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+    - search.suggest
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Open Source: open-source.md
+  - Architecture:
+      - Overview: architecture.md
+      - ADRs:
+          - Index: architecture/adr/index.md
+          - ADR 0001: architecture/adr/0001-event-driven-runtime.md
+          - ADR 0002: architecture/adr/0002-persistence-architecture.md
+          - ADR 0003: architecture/adr/0003-control-plane-event-routing.md
+          - ADR 0004: architecture/adr/0004-signal-fusion-layer.md
+          - ADR 0005: architecture/adr/0005-analytical-snapshot-api-semantics.md
+          - ADR 0006: architecture/adr/0006-portfolio-engine-separation.md
+          - ADR 0007: architecture/adr/0007-cross-market-intelligence.md
+          - ADR 0008: architecture/adr/0008-research-vs-production-runtime.md
+          - ADR 0009: architecture/adr/0009-signals-service-engine-split.md
+          - ADR 0010: architecture/adr/0010-caller-owns-commit-boundary.md
+          - ADR 0011: architecture/adr/0011-analytical-engines-never-fetch.md
+          - ADR 0012: architecture/adr/0012-services-return-domain-contracts.md
+          - ADR 0013: architecture/adr/0013-async-classes-for-orchestration-pure-functions-for-analysis.md
+          - ADR 0014: architecture/adr/0014-post-commit-side-effects-only.md
+      - Complexity Guardrails: architecture/complexity-guardrails.md
+      - Principal Engineering Checklist: architecture/principal-engineering-checklist.md
+      - Service Layer Runtime Policies: architecture/service-layer-runtime-policies.md
+      - Service Layer Performance Budgets: architecture/service-layer-performance-budgets.md
+  - Delivery And Audits:
+      - Overview: iso/index.md
+      - Persistence Standard: iso/persistence-standard.md
+      - Persistence Audit: iso/persistence-audit.md
+      - HTTP API Progress: iso/http-api-progress.md
+      - HTTP Endpoint Refactor Audit: iso/http-endpoint-refactor-audit.md
+      - Service Layer Execution Plan: iso/service-layer-execution-plan.md
+      - Service Layer Progress: iso/service-layer-progress.md
+      - Service Layer Refactor Audit: iso/service-layer-refactor-audit.md
+      - Backend Business Localization Plan: iso/backend-business-localization-plan.md
+      - Lazy Investor AI Plan: iso/lazy-investor-ai-plan.md
+  - Product:
+      - Overview: product/index.md
+      - IRIS Value: product/iris-value.md
+      - HTTP Endpoint Review Checklist: product/http-endpoint-review-checklist.md
+      - Market Rate Limits: market-rate-limits.md
+  - Home Assistant:
+      - Overview: ha/index.md
+      - Protocol Specification: ha/ha-02-protocol-spec.md
+      - Integration Architecture: ha/adr-0001-ha-integration-architecture.md
+      - Backend Plan: ha/ha-03-backend-plan.md
+      - HACS Integration Plan: ha/ha-04-hacs-integration-plan.md
+      - Task Backlog: ha/ha-05-tasks.md
+  - Generated:
+      - Overview: _generated/index.md
+      - HTTP Availability Matrix: _generated/http-availability-matrix.md
+      - HTTP Capability Catalog: _generated/http-capability-catalog.md
+  - Reviews:
+      - Overview: reviews/index.md
+      - Backend Business Architecture Review: reviews/backend-business-architecture-review.md
+      - Backend Technical Review: reviews/backend-technical-review.md
+      - Deep Research Report: reviews/deep-research-report (1).md
