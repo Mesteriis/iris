@@ -11,16 +11,6 @@ EXPECTED_SERVICE_RESULT_CONTRACT_VIOLATIONS: tuple[ArchitectureViolation, ...] =
         detail="tuple[str, dict[str, object]] | None",
     ),
     ArchitectureViolation(
-        path="src/apps/market_data/services.py",
-        symbol="MarketDataHistorySyncService.sync_coin_history_backfill",
-        detail="dict[str, int | str]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/market_data/services.py",
-        symbol="MarketDataHistorySyncService.sync_coin_latest_history",
-        detail="dict[str, int | str]",
-    ),
-    ArchitectureViolation(
         path="src/apps/news/services.py",
         symbol="NewsService.poll_enabled_sources",
         detail="dict[str, object]",
@@ -63,11 +53,6 @@ EXPECTED_TRANSPORT_LEAKAGE_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
     ArchitectureViolation(
         path="src/apps/hypothesis_engine/services/prompt_service.py",
         symbol="src.apps.hypothesis_engine.schemas",
-        detail="import",
-    ),
-    ArchitectureViolation(
-        path="src/apps/market_data/services.py",
-        symbol="src.apps.market_data.schemas",
         detail="import",
     ),
     ArchitectureViolation(
@@ -215,11 +200,6 @@ EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS: tuple[ArchitectureViolation, ...] 
         path="src/apps/indicators/services.py",
         symbol="__module__",
         detail="module_loc=538",
-    ),
-    ArchitectureViolation(
-        path="src/apps/market_data/services.py",
-        symbol="__module__",
-        detail="module_loc=619",
     ),
     ArchitectureViolation(
         path="src/apps/news/services.py",

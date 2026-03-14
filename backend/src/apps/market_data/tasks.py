@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from src.apps.market_data.query_services import MarketDataQueryService
+from src.apps.market_data.results import MarketDataHistorySyncResult
 from src.apps.market_data.services import MarketDataHistorySyncService, MarketDataService
 from src.apps.patterns.tasks import patterns_bootstrap_scan
 from src.core.db.uow import AsyncUnitOfWork, BaseAsyncUnitOfWork
@@ -35,6 +38,24 @@ async def _enqueue_patterns_bootstrap(*, symbol: str, force: bool = False) -> di
     }
 
 
+def _serialize_history_sync_result(
+    result: MarketDataHistorySyncResult | Mapping[str, object],
+) -> dict[str, object]:
+    if isinstance(result, Mapping):
+        return dict(result)
+
+    payload: dict[str, object] = {
+        "status": result.status,
+        "symbol": result.symbol,
+        "created": result.created,
+    }
+    if result.reason is not None:
+        payload["reason"] = result.reason
+    if result.retry_at is not None:
+        payload["retry_at"] = result.retry_at
+    return payload
+
+
 async def _sync_coin_backfill_item(
     uow: BaseAsyncUnitOfWork,
     coin,
@@ -50,9 +71,10 @@ async def _sync_coin_backfill_item(
                 "status": "skipped",
                 "reason": "coin_history_in_progress",
             }
-        result = await MarketDataHistorySyncService(uow).sync_coin_history_backfill(symbol=symbol, force=force)
+        service_result = await MarketDataHistorySyncService(uow).sync_coin_history_backfill(symbol=symbol, force=force)
         await uow.commit()
-        if result.get("status") == "ok":
+        result = _serialize_history_sync_result(service_result)
+        if result["status"] == "ok":
             result["patterns_bootstrap"] = await _enqueue_patterns_bootstrap(symbol=str(result["symbol"]), force=force)
         return result
 
@@ -72,9 +94,9 @@ async def _sync_coin_latest_item(
                 "status": "skipped",
                 "reason": "coin_history_in_progress",
             }
-        result = await MarketDataHistorySyncService(uow).sync_coin_latest_history(symbol=symbol, force=force)
+        service_result = await MarketDataHistorySyncService(uow).sync_coin_latest_history(symbol=symbol, force=force)
         await uow.commit()
-        return result
+        return _serialize_history_sync_result(service_result)
 
 
 async def _run_history_backfill(*, symbol: str | None = None) -> dict[str, object]:

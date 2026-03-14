@@ -10,6 +10,7 @@ from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.models import Coin
 from src.apps.market_data.query_services import MarketDataQueryService
 from src.apps.market_data.repositories import CoinRepository
+from src.apps.market_data.results import MarketDataHistorySyncResult
 from src.apps.market_data.services import (
     MarketDataHistorySyncService,
     MarketDataService,
@@ -95,7 +96,12 @@ async def _sync_watched_assets(async_db_session) -> list[str]:
         return items
 
 
-async def _sync_coin_history_backfill(async_db_session, coin: Coin, *, force: bool = False) -> dict[str, int | str]:
+async def _sync_coin_history_backfill(
+    async_db_session,
+    coin: Coin,
+    *,
+    force: bool = False,
+) -> MarketDataHistorySyncResult:
     coin_identity = sa_inspect(coin).identity
     coin_id = int(coin_identity[0]) if coin_identity is not None else int(coin.id)
     managed_coin = await async_db_session.get(Coin, coin_id)
@@ -106,7 +112,12 @@ async def _sync_coin_history_backfill(async_db_session, coin: Coin, *, force: bo
         return result
 
 
-async def _sync_coin_latest_history(async_db_session, coin: Coin, *, force: bool = False) -> dict[str, int | str]:
+async def _sync_coin_latest_history(
+    async_db_session,
+    coin: Coin,
+    *,
+    force: bool = False,
+) -> MarketDataHistorySyncResult:
     coin_identity = sa_inspect(coin).identity
     coin_id = int(coin_identity[0]) if coin_identity is not None else int(coin.id)
     managed_coin = await async_db_session.get(Coin, coin_id)
@@ -160,7 +171,7 @@ async def test_market_data_async_services_create_query_delete_and_refresh(async_
         def connect(self):
             return AsyncEngineContext()
 
-    monkeypatch.setattr("src.apps.market_data.services.async_engine", AsyncEngine())
+    monkeypatch.setattr("src.apps.market_data.history_sync.async_engine", AsyncEngine())
 
     now = datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
     await _refresh_continuous_aggregate_range_async(timeframe=17, window_start=now, window_end=now)
@@ -328,7 +339,7 @@ async def test_market_data_async_services_sync_queries_and_watched_assets(async_
     assert "XRPUSD_EVT" in await MarketDataQueryService(async_db_session).list_coin_symbols_ready_for_latest_sync()
 
     monkeypatch.setattr(
-        "src.apps.market_data.services.WATCHED_ASSETS",
+        "src.apps.market_data.command_support.WATCHED_ASSETS",
         [
             {
                 "symbol": "DOGEUSD_EVT",
@@ -416,18 +427,18 @@ async def test_market_data_async_services_sync_history_branches(async_db_session
     backoff = await _sync_coin_history_backfill(async_db_session, coin)
     coin = await _get_coin(async_db_session, "MATICUSD_EVT")
     assert coin is not None
-    assert backoff["status"] == "backoff"
+    assert backoff.status == "backoff"
     assert coin.next_history_sync_at == now + timedelta(hours=1)
     assert coin.last_history_sync_error == "source_backoff"
 
     coin.next_history_sync_at = now + timedelta(hours=2)
     await async_db_session.commit()
     deferred = await _sync_coin_history_backfill(async_db_session, coin)
-    assert deferred["status"] == "deferred"
+    assert deferred.status == "deferred"
 
     coin.enabled = False
     await async_db_session.commit()
-    assert (await _sync_coin_history_backfill(async_db_session, coin))["status"] == "skipped"
+    assert (await _sync_coin_history_backfill(async_db_session, coin)).status == "skipped"
     coin.enabled = True
     coin.next_history_sync_at = now + timedelta(hours=2)
     await async_db_session.commit()
@@ -445,19 +456,19 @@ async def test_market_data_async_services_sync_history_branches(async_db_session
     forced = await _sync_coin_history_backfill(async_db_session, coin, force=True)
     coin = await _get_coin(async_db_session, "MATICUSD_EVT")
     assert coin is not None
-    assert forced["status"] == "ok"
+    assert forced.status == "ok"
     assert coin.history_backfill_completed_at == now
     assert ("loaded", 10) in events
     assert ("analysis", "MATICUSD_EVT") in events
 
     pending = await _create_coin(async_db_session, CoinCreateFactory.build(symbol="LINKUSD_EVT", name="Link Event Test"))
-    assert (await _sync_coin_latest_history(async_db_session, pending))["status"] == "pending_backfill"
+    assert (await _sync_coin_latest_history(async_db_session, pending)).status == "pending_backfill"
 
     coin.history_backfill_completed_at = now
     await async_db_session.commit()
     monkeypatch.setattr("src.apps.market_data.services._get_latest_history_timestamp_async", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=latest_available))
     latest_result = await _sync_coin_latest_history(async_db_session, coin, force=False)
-    assert latest_result["status"] == "ok"
+    assert latest_result.status == "ok"
 
 
 @pytest.mark.asyncio
@@ -515,7 +526,7 @@ async def test_market_data_async_services_additional_edge_branches(async_db_sess
     await async_db_session.commit()
 
     monkeypatch.setattr(
-        "src.apps.market_data.services.WATCHED_ASSETS",
+        "src.apps.market_data.command_support.WATCHED_ASSETS",
         [
             {
                 "symbol": "WATCH_EVT",
@@ -542,7 +553,7 @@ async def test_market_data_async_services_additional_edge_branches(async_db_sess
     watch_coin.last_history_sync_error = "preserve"
     await async_db_session.commit()
     monkeypatch.setattr(
-        "src.apps.market_data.services.WATCHED_ASSETS",
+        "src.apps.market_data.command_support.WATCHED_ASSETS",
         [
             {
                 "symbol": "WATCH_EVT",
@@ -673,7 +684,9 @@ async def test_market_data_async_services_sync_history_progress_update_and_lates
     backfill_uow = FakeUow()
     result = await _sync_coin_history_async(backfill_uow, coin, history_mode="backfill")
     await backfill_uow.commit()
-    assert result == {"symbol": "ASYNC_SYNC_EVT", "created": 1, "status": "ok"}
+    assert result.status == "ok"
+    assert result.symbol == "ASYNC_SYNC_EVT"
+    assert result.created == 1
     assert events == [("progress", 10.0), ("progress", 50.0), ("progress", 100.0), ("loaded", 10), ("analysis", "ASYNC_SYNC_EVT")]
 
     coin.history_backfill_completed_at = now
@@ -681,6 +694,6 @@ async def test_market_data_async_services_sync_history_progress_update_and_lates
     latest_uow = FakeUow()
     latest_result = await _sync_coin_history_async(latest_uow, coin, history_mode="latest", force=True)
     await latest_uow.commit()
-    assert latest_result["status"] == "ok"
+    assert latest_result.status == "ok"
     assert fetch_calls[-1] == ("15m", latest_available)
     assert events == []

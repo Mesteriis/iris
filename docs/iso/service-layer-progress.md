@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Wave 3 hotspot cutover: `market_data`, `news`, `indicators`, `portfolio`
+- [ ] Wave 3 hotspot cutover: `news`, `indicators`, `portfolio`
 
 ## Active Workstreams
 
@@ -67,7 +67,10 @@
 - [x] Wave 2D: `market_structure`
 - [x] Wave 2E: `patterns/task_service_runtime`
 - [x] Wave 2F: `anomalies`
-- [ ] Wave 3: `market_data`, `news`, `indicators`, `portfolio`
+- [x] Wave 3A: `market_data`
+- [ ] Wave 3B: `news`
+- [ ] Wave 3C: `indicators`
+- [ ] Wave 3D: `portfolio`
 
 Правило для каждой rewrite-задачи:
 
@@ -157,3 +160,6 @@
 - [x] Stage 8 complete on `2026-03-14`: `anomalies` moved off dict-shaped service contracts, anomaly domain contracts left `schemas.py`, and anomaly payload/enrichment shaping left `anomaly_service.py` for dedicated engine/support modules
 - [x] Stage 8 verification: `cd backend && uv run pytest tests/apps/anomalies/test_payload_engine.py tests/apps/anomalies/test_persistence_contracts.py tests/architecture`
 - [x] Stage 8 lint gate: `cd backend && uv run ruff check src/apps/anomalies/contracts.py src/apps/anomalies/schemas.py src/apps/anomalies/engines src/apps/anomalies/results.py src/apps/anomalies/detection_runner.py src/apps/anomalies/services/anomaly_service.py src/apps/anomalies/tasks/anomaly_enrichment_tasks.py tests/apps/anomalies/test_payload_engine.py tests/apps/anomalies/test_persistence_contracts.py tests/architecture/service_layer_baseline.py`
+- [x] Stage 9 complete on `2026-03-14`: `market_data` now keeps public services typed, sync task payload shaping at the task boundary, and operational write/history helpers extracted out of `services.py` so the service module no longer mixes transport DTOs, dict contracts and giant write-side orchestration
+- [x] Stage 9 verification: `cd backend && uv run pytest tests/apps/market_data/test_services.py tests/apps/market_data/test_tasks.py tests/apps/market_data/test_persistence_contracts.py tests/architecture`
+- [x] Stage 9 lint gate: `cd backend && uv run ruff check src/apps/market_data/command_support.py src/apps/market_data/contracts.py src/apps/market_data/history_sync.py src/apps/market_data/results.py src/apps/market_data/services.py src/apps/market_data/tasks.py tests/apps/market_data/test_services.py tests/apps/market_data/test_tasks.py tests/apps/market_data/test_persistence_contracts.py tests/architecture/service_layer_baseline.py`

@@ -211,14 +211,59 @@ Verification:
 - [x] `cd backend && uv run pytest tests/apps/anomalies/test_payload_engine.py tests/apps/anomalies/test_persistence_contracts.py tests/architecture`
 - [x] `cd backend && uv run ruff check src/apps/anomalies/contracts.py src/apps/anomalies/schemas.py src/apps/anomalies/engines src/apps/anomalies/results.py src/apps/anomalies/detection_runner.py src/apps/anomalies/services/anomaly_service.py src/apps/anomalies/tasks/anomaly_enrichment_tasks.py tests/apps/anomalies/test_payload_engine.py tests/apps/anomalies/test_persistence_contracts.py tests/architecture/service_layer_baseline.py`
 
-### Stage 9. Wave 3 Hotspots
+### Stage 9. Wave 3A: `market_data`
+
+Status: done
+
+Goal:
+
+- remove `dict/status` public contracts from history sync services
+- remove transport DTO imports from `backend/src/apps/market_data/services.py`
+- split bulky write/history helper orchestration out of `services.py`
+- keep task payloads stable by shaping dict results only at the task boundary
+
+Planned deliverables:
+
+- [x] service-side market-data contracts outside `schemas.py`
+- [x] typed history sync result contract
+- [x] extracted write-side command support and history sync helpers outside `services.py`
+- [x] task serializers adapted to preserve external dict payloads
+- [x] service tests and architecture baseline aligned with final contracts
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/apps/market_data/test_services.py tests/apps/market_data/test_tasks.py tests/apps/market_data/test_persistence_contracts.py tests/architecture`
+- [x] `cd backend && uv run ruff check src/apps/market_data/command_support.py src/apps/market_data/contracts.py src/apps/market_data/history_sync.py src/apps/market_data/results.py src/apps/market_data/services.py src/apps/market_data/tasks.py tests/apps/market_data/test_services.py tests/apps/market_data/test_tasks.py tests/apps/market_data/test_persistence_contracts.py tests/architecture/service_layer_baseline.py`
+
+### Stage 10. Wave 3B: `news`
 
 Status: next
 
-- [ ] `market_data`
-- [ ] `news`
-- [ ] `indicators`
-- [ ] `portfolio`
+Goal:
+
+- remove remaining provider/router/schema leaks from the news service layer
+- replace dict-shaped poll results with typed service contracts
+- keep provider fetch/output shaping outside public service methods
+
+### Stage 11. Wave 3C: `indicators`
+
+Status: queued
+
+Goal:
+
+- remove cross-domain market-data model/repository access from indicator services
+- split heavy indicator calculations from orchestration
+- reduce indicator hotspot size below architecture thresholds
+
+### Stage 12. Wave 3D: `portfolio`
+
+Status: queued
+
+Goal:
+
+- remove payload summary helpers from portfolio public contracts
+- remove direct market-data/signals model and repository imports from portfolio services
+- reduce portfolio hotspots below architecture thresholds
 
 ## Execution Log
 
@@ -230,3 +275,4 @@ Status: next
 - [x] Stage 6 complete: `market_structure` now uses `services/` + `engines/`, pure health/backoff/quarantine rules, typed poll/ingest results, and no longer mixes onboarding transport shaping into service code.
 - [x] Stage 7 complete: `patterns/task_service_runtime` now uses pure realtime engines plus typed runtime results, direct cross-domain imports left the service file, and runtime workers consume attribute-based contracts instead of dict payloads.
 - [x] Stage 8 complete: `anomalies` now uses typed service results, no longer imports anomaly transport schemas from the service layer, and delegates anomaly payload/enrichment shaping outside `anomaly_service.py`.
+- [x] Stage 9 complete: `market_data` now uses typed history sync results, task-boundary dict serialization, extracted write/history support outside `services.py`, and no longer carries market-data transport DTO imports in the service layer.
