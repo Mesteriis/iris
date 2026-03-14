@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Wave 2F hotspot cutover: `anomalies`
+- [ ] Wave 3 hotspot cutover: `market_data`, `news`, `indicators`, `portfolio`
 
 ## Active Workstreams
 
@@ -66,7 +66,7 @@
 - [x] Wave 2C: `control_plane`
 - [x] Wave 2D: `market_structure`
 - [x] Wave 2E: `patterns/task_service_runtime`
-- [ ] Wave 2F: `anomalies`
+- [x] Wave 2F: `anomalies`
 - [ ] Wave 3: `market_data`, `news`, `indicators`, `portfolio`
 
 Правило для каждой rewrite-задачи:
@@ -154,3 +154,6 @@
 - [x] Stage 7 complete on `2026-03-14`: `patterns/task_service_runtime` now delegates cluster, hierarchy and cycle calculations to pure runtime engines/support modules, public realtime methods return typed results, and runtime workers consume attribute-based contracts instead of dict payloads
 - [x] Stage 7 verification: `cd backend && uv run pytest tests/apps/patterns/test_realtime_engine.py tests/apps/patterns/test_services_async.py tests/runtime/streams/test_workers.py tests/architecture`
 - [x] Stage 7 lint gate: `cd backend && uv run ruff check src/apps/patterns/query_services.py src/apps/patterns/repositories.py src/apps/patterns/runtime_results.py src/apps/patterns/runtime_steps.py src/apps/patterns/runtime_support.py src/apps/patterns/task_service_runtime.py src/runtime/streams/workers.py tests/apps/patterns/test_realtime_engine.py tests/apps/patterns/test_services_async.py tests/runtime/streams/test_workers.py tests/architecture/service_layer_baseline.py`
+- [x] Stage 8 complete on `2026-03-14`: `anomalies` moved off dict-shaped service contracts, anomaly domain contracts left `schemas.py`, and anomaly payload/enrichment shaping left `anomaly_service.py` for dedicated engine/support modules
+- [x] Stage 8 verification: `cd backend && uv run pytest tests/apps/anomalies/test_payload_engine.py tests/apps/anomalies/test_persistence_contracts.py tests/architecture`
+- [x] Stage 8 lint gate: `cd backend && uv run ruff check src/apps/anomalies/contracts.py src/apps/anomalies/schemas.py src/apps/anomalies/engines src/apps/anomalies/results.py src/apps/anomalies/detection_runner.py src/apps/anomalies/services/anomaly_service.py src/apps/anomalies/tasks/anomaly_enrichment_tasks.py tests/apps/anomalies/test_payload_engine.py tests/apps/anomalies/test_persistence_contracts.py tests/architecture/service_layer_baseline.py`

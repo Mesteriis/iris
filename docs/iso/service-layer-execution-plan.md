@@ -189,13 +189,31 @@ Verification:
 
 ### Stage 8. Wave 2F: `anomalies`
 
-Status: next
+Status: done
 
-- [ ] `anomalies`
+Goal:
+
+- remove dict-shaped anomaly service contracts for detection and enrichment flows
+- remove `schemas` transport leakage from the service layer
+- move anomaly payload/enrichment shaping out of `anomaly_service.py`
+- reduce the anomaly service hotspot below module/class thresholds
+
+Planned deliverables:
+
+- [x] anomaly domain contracts moved out of `schemas.py`
+- [x] typed anomaly service results for detection batches and enrichment
+- [x] pure payload/enrichment engine helpers plus extracted detection runner
+- [x] task boundary serializers adapted to preserve external dict payloads
+- [x] pure anomaly engine tests and persistence contract tests aligned with final contracts
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/apps/anomalies/test_payload_engine.py tests/apps/anomalies/test_persistence_contracts.py tests/architecture`
+- [x] `cd backend && uv run ruff check src/apps/anomalies/contracts.py src/apps/anomalies/schemas.py src/apps/anomalies/engines src/apps/anomalies/results.py src/apps/anomalies/detection_runner.py src/apps/anomalies/services/anomaly_service.py src/apps/anomalies/tasks/anomaly_enrichment_tasks.py tests/apps/anomalies/test_payload_engine.py tests/apps/anomalies/test_persistence_contracts.py tests/architecture/service_layer_baseline.py`
 
 ### Stage 9. Wave 3 Hotspots
 
-Status: pending
+Status: next
 
 - [ ] `market_data`
 - [ ] `news`
@@ -211,3 +229,4 @@ Status: pending
 - [x] Stage 5 complete: `control_plane` now uses `services/` + `engines/`, read-side wrappers were removed in favor of query services, and post-commit control events moved behind an explicit dispatcher.
 - [x] Stage 6 complete: `market_structure` now uses `services/` + `engines/`, pure health/backoff/quarantine rules, typed poll/ingest results, and no longer mixes onboarding transport shaping into service code.
 - [x] Stage 7 complete: `patterns/task_service_runtime` now uses pure realtime engines plus typed runtime results, direct cross-domain imports left the service file, and runtime workers consume attribute-based contracts instead of dict payloads.
+- [x] Stage 8 complete: `anomalies` now uses typed service results, no longer imports anomaly transport schemas from the service layer, and delegates anomaly payload/enrichment shaping outside `anomaly_service.py`.

@@ -17,6 +17,11 @@ from src.core.db.persistence import PERSISTENCE_LOGGER
 from src.core.db.uow import SessionUnitOfWork
 
 
+@pytest.fixture(autouse=True)
+def isolated_event_stream() -> None:
+    yield
+
+
 def _make_draft(
     *,
     coin_id: int,
@@ -103,7 +108,7 @@ async def test_anomaly_service_commits_enrichment_updates(async_db_session, seed
         result = await AnomalyService(uow).enrich_anomaly(int(anomaly.id))
         enriched = await AnomalyQueryService(uow.session).get_read_by_id(int(anomaly.id))
 
-    assert result["status"] == "ok"
+    assert result.status == "ok"
     assert enriched is not None
     assert enriched.status == "active"
     assert enriched.payload_json["context"]["portfolio_relevant"] is True
@@ -189,7 +194,7 @@ async def test_anomaly_persistence_logs_cover_query_repo_and_uow(async_db_sessio
         result = await AnomalyService(uow).enrich_anomaly(int(anomaly.id))
         items = await AnomalyQueryService(uow.session).list_active_anomalies(limit=5)
 
-    assert result["status"] == "ok"
+    assert result.status == "ok"
     assert items
     assert "uow.begin" in events
     assert "repo.create_anomaly" in events

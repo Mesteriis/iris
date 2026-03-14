@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from src.apps.anomalies.results import AnomalyDetectionBatchResult, AnomalyEnrichmentResult
 from src.apps.anomalies.services import AnomalyService
 from src.apps.market_data.domain import ensure_utc
 from src.core.db.uow import AsyncUnitOfWork
@@ -11,6 +12,29 @@ from src.runtime.orchestration.locks import async_redis_task_lock
 ANOMALY_ENRICHMENT_LOCK_TIMEOUT_SECONDS = 300
 SECTOR_SCAN_LOCK_TIMEOUT_SECONDS = 300
 MARKET_STRUCTURE_SCAN_LOCK_TIMEOUT_SECONDS = 300
+
+
+def _serialize_enrichment_result(result: AnomalyEnrichmentResult) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "status": result.status,
+        "anomaly_id": int(result.anomaly_id),
+        "portfolio_relevant": result.portfolio_relevant,
+        "market_wide": result.market_wide,
+    }
+    if result.reason is not None:
+        payload["reason"] = result.reason
+    return payload
+
+
+def _serialize_detection_result(result: AnomalyDetectionBatchResult) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "status": result.status,
+        "created": int(result.created),
+        "items": list(result.items),
+    }
+    if result.reason is not None:
+        payload["reason"] = result.reason
+    return payload
 
 
 @analytics_broker.task
@@ -25,7 +49,7 @@ async def anomaly_enrichment_job(anomaly_id: int) -> dict[str, object]:
             service = AnomalyService(uow)
             result = await service.enrich_anomaly(int(anomaly_id))
             await uow.commit()
-            return result
+            return _serialize_enrichment_result(result)
 
 
 @analytics_broker.task
@@ -57,7 +81,7 @@ async def sector_anomaly_scan(
                 trigger_anomaly_id=trigger_anomaly_id,
             )
             await uow.commit()
-            return result
+            return _serialize_detection_result(result)
 
 
 @analytics_broker.task
@@ -89,4 +113,4 @@ async def market_structure_anomaly_scan(
                 trigger_anomaly_id=trigger_anomaly_id,
             )
             await uow.commit()
-            return result
+            return _serialize_detection_result(result)

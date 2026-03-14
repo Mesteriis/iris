@@ -6,26 +6,6 @@ EXPECTED_ENGINE_PURITY_VIOLATIONS: tuple[ArchitectureViolation, ...] = ()
 
 EXPECTED_SERVICE_RESULT_CONTRACT_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
     ArchitectureViolation(
-        path="src/apps/anomalies/services/anomaly_service.py",
-        symbol="AnomalyService.enrich_anomaly",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/anomalies/services/anomaly_service.py",
-        symbol="AnomalyService.process_candle_closed",
-        detail="list[dict[str, object]]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/anomalies/services/anomaly_service.py",
-        symbol="AnomalyService.scan_market_structure",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/anomalies/services/anomaly_service.py",
-        symbol="AnomalyService.scan_sector_synchrony",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
         path="src/apps/hypothesis_engine/services/weight_update_service.py",
         symbol="WeightUpdateService.apply_to_evaluation",
         detail="tuple[str, dict[str, object]] | None",
@@ -80,11 +60,6 @@ EXPECTED_SERVICE_RESULT_CONTRACT_VIOLATIONS: tuple[ArchitectureViolation, ...] =
 EXPECTED_SERVICE_CONSTRUCTOR_DEPENDENCY_VIOLATIONS: tuple[ArchitectureViolation, ...] = ()
 
 EXPECTED_TRANSPORT_LEAKAGE_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
-    ArchitectureViolation(
-        path="src/apps/anomalies/services/anomaly_service.py",
-        symbol="src.apps.anomalies.schemas",
-        detail="import",
-    ),
     ArchitectureViolation(
         path="src/apps/hypothesis_engine/services/prompt_service.py",
         symbol="src.apps.hypothesis_engine.schemas",
@@ -231,16 +206,6 @@ EXPECTED_CROSS_DOMAIN_BOUNDARY_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
 )
 
 EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
-    ArchitectureViolation(
-        path="src/apps/anomalies/services/anomaly_service.py",
-        symbol="AnomalyService",
-        detail="class_loc=369",
-    ),
-    ArchitectureViolation(
-        path="src/apps/anomalies/services/anomaly_service.py",
-        symbol="__module__",
-        detail="module_loc=412",
-    ),
     ArchitectureViolation(
         path="src/apps/indicators/services.py",
         symbol="IndicatorAnalyticsService",
