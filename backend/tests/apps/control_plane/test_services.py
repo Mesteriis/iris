@@ -18,19 +18,15 @@ from src.apps.control_plane.enums import (
     TopologyDraftChangeType,
 )
 from src.apps.control_plane.exceptions import EventRouteCompatibilityError
-from src.apps.control_plane.models import EventRoute, EventRouteAuditLog, TopologyConfigVersion
-from src.apps.control_plane.services import (
-    EventRegistryService,
-    RouteManagementService,
-    TopologyDraftService,
-    TopologyService,
-)
+from src.apps.control_plane.models import EventRoute, EventRouteAuditLog, TopologyConfigVersion, TopologyDraft
+from src.apps.control_plane.query_services import EventRegistryQueryService, TopologyQueryService
+from src.apps.control_plane.services import RouteManagementService, TopologyDraftService
 from src.core.db.uow import SessionUnitOfWork
 
 
 @pytest.mark.asyncio
 async def test_event_registry_lists_compatible_consumers(async_db_session, isolated_control_plane_state) -> None:
-    service = EventRegistryService(async_db_session)
+    service = EventRegistryQueryService(async_db_session)
 
     consumers = await service.list_compatible_consumers("news_item_normalized")
 
@@ -140,7 +136,7 @@ async def test_route_status_change_persists_and_audits(async_db_session, isolate
 
 @pytest.mark.asyncio
 async def test_topology_draft_preview_accumulates_changes(async_db_session, isolated_control_plane_state) -> None:
-    topology_service = TopologyService(async_db_session)
+    topology_service = TopologyQueryService(async_db_session)
     route_key = build_route_key(
         "market_regime_changed",
         "portfolio_workers",
@@ -188,7 +184,7 @@ async def test_topology_draft_preview_accumulates_changes(async_db_session, isol
         diff = await draft_service.preview_diff(int(draft.id))
     snapshot = await topology_service.build_snapshot()
 
-    assert snapshot["version_number"] == 1
+    assert snapshot.version_number == 1
     assert {item.change_type for item in diff} == {
         TopologyDraftChangeType.ROUTE_STATUS_CHANGED,
         TopologyDraftChangeType.ROUTE_CREATED,
@@ -214,7 +210,7 @@ async def test_topology_draft_apply_publishes_new_version_and_route_changes(
     published_events: list[tuple[str, dict[str, object]]] = []
 
     monkeypatch.setattr(
-        "src.apps.control_plane.services.publish_control_event",
+        "src.apps.control_plane.services.side_effects.publish_control_event",
         lambda event_type, payload: published_events.append((event_type, dict(payload))),
     )
 
@@ -253,13 +249,12 @@ async def test_topology_draft_apply_publishes_new_version_and_route_changes(
                 created_by="ops",
             ),
         )
-        applied_draft, version = await draft_service.apply_draft(int(draft.id), actor=AuditActor(actor="ops"))
+        lifecycle = await draft_service.apply_draft(int(draft.id), actor=AuditActor(actor="ops"))
         draft_id = int(draft.id)
-        version_id = int(version.id)
-        version_number = int(version.version_number)
+        version_number = int(lifecycle.published_version_number or 0)
         await uow.commit()
 
-    persisted_draft = await async_db_session.get(type(applied_draft), draft_id)
+    persisted_draft = await async_db_session.get(TopologyDraft, draft_id)
     assert persisted_draft is not None
     assert persisted_draft.status == "applied"
     assert version_number == 2
@@ -286,6 +281,7 @@ async def test_topology_draft_apply_publishes_new_version_and_route_changes(
             select(TopologyConfigVersion).where(TopologyConfigVersion.version_number == version_number).limit(1)
         )
     ).scalar_one()
+    version_id = int(stored_version.id)
     assert int(stored_version.id) == version_id
     assert stored_version.snapshot_json["version_number"] == version_number
     assert any(route["route_key"] == created_route_key for route in stored_version.snapshot_json["routes"])
@@ -350,7 +346,7 @@ async def test_topology_draft_discard_marks_state_and_audits(async_db_session, i
         draft_id = int(draft.id)
         await uow.commit()
 
-    persisted_draft = await async_db_session.get(type(discarded), draft_id)
+    persisted_draft = await async_db_session.get(TopologyDraft, draft_id)
     assert persisted_draft is not None
     assert persisted_draft.status == "discarded"
     persisted_route = (
@@ -505,13 +501,12 @@ async def test_topology_draft_apply_supports_route_update_and_delete(
                 created_by="ops",
             ),
         )
-        applied_draft, version = await draft_service.apply_draft(int(draft.id), actor=AuditActor(actor="ops"))
+        lifecycle = await draft_service.apply_draft(int(draft.id), actor=AuditActor(actor="ops"))
         draft_id = int(draft.id)
-        version_id = int(version.id)
-        version_number = int(version.version_number)
+        version_number = int(lifecycle.published_version_number or 0)
         await uow.commit()
 
-    persisted_draft = await async_db_session.get(type(applied_draft), draft_id)
+    persisted_draft = await async_db_session.get(TopologyDraft, draft_id)
     assert persisted_draft is not None
     assert persisted_draft.status == "applied"
     assert version_number == 2
@@ -555,7 +550,11 @@ async def test_topology_draft_apply_supports_route_update_and_delete(
         .scalars()
         .all()
     )
+    stored_version = (
+        await async_db_session.execute(
+            select(TopologyConfigVersion).where(TopologyConfigVersion.version_number == version_number).limit(1)
+        )
+    ).scalar_one()
+    version_id = int(stored_version.id)
     assert {row.action for row in audit_rows} == {"updated", "deleted"}
-    assert {int(row.topology_version_id) for row in audit_rows if row.topology_version_id is not None} == {
-        version_id
-    }
+    assert {int(row.topology_version_id) for row in audit_rows if row.topology_version_id is not None} == {version_id}

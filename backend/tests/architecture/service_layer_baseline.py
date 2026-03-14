@@ -26,21 +26,6 @@ EXPECTED_SERVICE_RESULT_CONTRACT_VIOLATIONS: tuple[ArchitectureViolation, ...] =
         detail="dict[str, object]",
     ),
     ArchitectureViolation(
-        path="src/apps/control_plane/services.py",
-        symbol="TopologyObservabilityService.build_overview",
-        detail="dict[str, Any]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/control_plane/services.py",
-        symbol="TopologyService.build_graph",
-        detail="dict[str, Any]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/control_plane/services.py",
-        symbol="TopologyService.build_snapshot",
-        detail="dict[str, Any]",
-    ),
-    ArchitectureViolation(
         path="src/apps/hypothesis_engine/services/weight_update_service.py",
         symbol="WeightUpdateService.apply_to_evaluation",
         detail="tuple[str, dict[str, object]] | None",
@@ -127,28 +112,7 @@ EXPECTED_SERVICE_RESULT_CONTRACT_VIOLATIONS: tuple[ArchitectureViolation, ...] =
     ),
 )
 
-EXPECTED_SERVICE_CONSTRUCTOR_DEPENDENCY_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
-    ArchitectureViolation(
-        path="src/apps/control_plane/services.py",
-        symbol="AuditLogService.__init__",
-        detail="session: AsyncSession",
-    ),
-    ArchitectureViolation(
-        path="src/apps/control_plane/services.py",
-        symbol="EventRegistryService.__init__",
-        detail="session: AsyncSession",
-    ),
-    ArchitectureViolation(
-        path="src/apps/control_plane/services.py",
-        symbol="TopologyObservabilityService.__init__",
-        detail="session: AsyncSession",
-    ),
-    ArchitectureViolation(
-        path="src/apps/control_plane/services.py",
-        symbol="TopologyService.__init__",
-        detail="session: AsyncSession",
-    ),
-)
+EXPECTED_SERVICE_CONSTRUCTOR_DEPENDENCY_VIOLATIONS: tuple[ArchitectureViolation, ...] = ()
 
 EXPECTED_TRANSPORT_LEAKAGE_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
     ArchitectureViolation(
@@ -341,21 +305,6 @@ EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS: tuple[ArchitectureViolation, ...] 
         path="src/apps/anomalies/services/anomaly_service.py",
         symbol="__module__",
         detail="module_loc=412",
-    ),
-    ArchitectureViolation(
-        path="src/apps/control_plane/services.py",
-        symbol="TopologyDraftService",
-        detail="class_loc=333",
-    ),
-    ArchitectureViolation(
-        path="src/apps/control_plane/services.py",
-        symbol="__module__",
-        detail="module_loc=763",
-    ),
-    ArchitectureViolation(
-        path="src/apps/control_plane/services.py",
-        symbol="__module__",
-        detail="service_class_count=6",
     ),
     ArchitectureViolation(
         path="src/apps/indicators/services.py",

@@ -6,16 +6,11 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.control_plane.contracts import (
-    RouteFilters,
-    RouteMutationCommand,
-    RouteShadow,
-    RouteThrottle,
     TopologyDiffItem,
 )
+from src.apps.control_plane.engines import preview_topology_diff, route_to_snapshot
 from src.apps.control_plane.enums import (
-    EventRouteScope,
     EventRouteStatus,
-    TopologyDraftChangeType,
     TopologyDraftStatus,
 )
 from src.apps.control_plane.exceptions import TopologyDraftNotFound, TopologyDraftStateError
@@ -59,21 +54,7 @@ from src.core.settings import get_settings
 
 
 def route_snapshot_payload_from_read_model(route: EventRouteReadModel) -> dict[str, Any]:
-    return {
-        "route_key": route.route_key,
-        "event_type": route.event_type,
-        "consumer_key": route.consumer_key,
-        "status": route.status.value,
-        "scope_type": route.scope_type.value,
-        "scope_value": route.scope_value,
-        "environment": route.environment,
-        "filters": route.filters.to_json(),
-        "throttle": route.throttle.to_json(),
-        "shadow": route.shadow.to_json(),
-        "notes": route.notes,
-        "priority": int(route.priority),
-        "system_managed": bool(route.system_managed),
-    }
+    return route_to_snapshot(route)
 
 
 def topology_snapshot_payload(snapshot: TopologySnapshotReadModel) -> dict[str, Any]:
@@ -188,59 +169,6 @@ def observability_overview_payload(overview: ObservabilityOverviewReadModel) -> 
             for consumer in overview.consumers
         ],
     }
-
-
-def _payload_scope_type(value: Any) -> EventRouteScope:
-    if value is None:
-        return EventRouteScope.GLOBAL
-    return EventRouteScope(str(value))
-
-
-def _coerce_filters(payload: dict[str, Any]) -> RouteFilters:
-    return RouteFilters.from_json(payload)
-
-
-def _coerce_throttle(payload: dict[str, Any]) -> RouteThrottle:
-    return RouteThrottle.from_json(payload)
-
-
-def _coerce_shadow(payload: dict[str, Any]) -> RouteShadow:
-    return RouteShadow.from_json(payload)
-
-
-def _command_to_route_snapshot(command: RouteMutationCommand) -> dict[str, Any]:
-    return {
-        "route_key": command.route_key,
-        "event_type": command.event_type,
-        "consumer_key": command.consumer_key,
-        "status": command.status.value,
-        "scope_type": command.scope_type.value,
-        "scope_value": command.scope_value,
-        "environment": command.environment,
-        "filters": command.filters.to_json(),
-        "throttle": command.throttle.to_json(),
-        "shadow": command.shadow.to_json(),
-        "notes": command.notes,
-        "priority": int(command.priority),
-        "system_managed": bool(command.system_managed),
-    }
-
-
-def _command_from_payload(payload: dict[str, Any]) -> RouteMutationCommand:
-    return RouteMutationCommand(
-        event_type=str(payload["event_type"]),
-        consumer_key=str(payload["consumer_key"]),
-        status=EventRouteStatus(str(payload.get("status", EventRouteStatus.ACTIVE.value))),
-        scope_type=_payload_scope_type(payload.get("scope_type")),
-        scope_value=str(payload["scope_value"]) if payload.get("scope_value") is not None else None,
-        environment=str(payload.get("environment", "*")),
-        filters=_coerce_filters(dict(payload.get("filters") or {})),
-        throttle=_coerce_throttle(dict(payload.get("throttle") or {})),
-        shadow=_coerce_shadow(dict(payload.get("shadow") or {})),
-        notes=str(payload["notes"]) if payload.get("notes") is not None else None,
-        priority=int(payload.get("priority", 100)),
-        system_managed=bool(payload.get("system_managed", False)),
-    )
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
@@ -512,68 +440,16 @@ class TopologyDraftQueryService(AsyncQueryService):
             raise TopologyDraftStateError(f"Draft '{draft_id}' is not editable.")
 
         live_routes = tuple(route_read_model_from_orm(route) for route in await self._routes.list_all())
-        route_map = {route.route_key: route_snapshot_payload_from_read_model(route) for route in live_routes}
-        diff_items: list[TopologyDiffItem] = []
-
-        for change in await self.list_changes(draft_id):
-            change_type = change.change_type
-            payload = dict(change.payload_json or {})
-            target_route_key = change.target_route_key
-            if change_type == TopologyDraftChangeType.ROUTE_CREATED:
-                command = _command_from_payload(payload)
-                after = _command_to_route_snapshot(command)
-                route_map[command.route_key] = after
-                diff_items.append(
-                    TopologyDiffItem(
-                        change_type=change_type,
-                        route_key=command.route_key,
-                        before=freeze_json_value({}),
-                        after=freeze_json_value(after),
-                    )
-                )
-                continue
-
-            if target_route_key is None:
-                continue
-            before = dict(route_map.get(target_route_key, {}))
-            after = dict(before)
-            if change_type == TopologyDraftChangeType.ROUTE_DELETED:
-                route_map.pop(target_route_key, None)
-                diff_items.append(
-                    TopologyDiffItem(
-                        change_type=change_type,
-                        route_key=target_route_key,
-                        before=freeze_json_value(before),
-                        after=freeze_json_value({}),
-                    )
-                )
-                continue
-            if change_type == TopologyDraftChangeType.ROUTE_STATUS_CHANGED:
-                after["status"] = str(payload["status"])
-                if payload.get("notes") is not None:
-                    after["notes"] = str(payload["notes"])
-                route_key = target_route_key
-            elif change_type == TopologyDraftChangeType.ROUTE_UPDATED:
-                merged_payload = dict(after)
-                merged_payload.update(payload)
-                command = _command_from_payload(merged_payload)
-                after = _command_to_route_snapshot(command)
-                route_key = command.route_key
-            else:
-                route_key = target_route_key
-            if route_key != target_route_key:
-                route_map.pop(target_route_key, None)
-            route_map[route_key] = after
-            diff_items.append(
-                TopologyDiffItem(
-                    change_type=change_type,
-                    route_key=route_key,
-                    before=freeze_json_value(before),
-                    after=freeze_json_value(after),
-                )
+        preview_items = preview_topology_diff(live_routes=live_routes, changes=await self.list_changes(draft_id))
+        items = tuple(
+            TopologyDiffItem(
+                change_type=item.change_type,
+                route_key=item.route_key,
+                before=freeze_json_value(item.before),
+                after=freeze_json_value(item.after),
             )
-
-        items = tuple(diff_items)
+            for item in preview_items
+        )
         self._log_debug("query.preview_topology_draft_diff.result", mode="read", draft_id=draft_id, count=len(items))
         return items
 

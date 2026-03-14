@@ -21,6 +21,7 @@ from src.apps.control_plane.query_services import (
     topology_graph_payload,
     topology_snapshot_payload,
 )
+from src.apps.control_plane.services import TopologyDraftLifecycleResult
 from src.core.db.persistence import thaw_json_value
 
 
@@ -158,12 +159,11 @@ def topology_diff_item_read(item: Any) -> TopologyDiffItemRead:
     )
 
 
-def draft_lifecycle_read(result: tuple[Any, Any] | Any) -> TopologyDraftLifecycleRead:
-    if isinstance(result, tuple):
-        draft, version = result
+def draft_lifecycle_read(result: TopologyDraftLifecycleResult | Any) -> TopologyDraftLifecycleRead:
+    if isinstance(result, TopologyDraftLifecycleResult):
         return TopologyDraftLifecycleRead(
-            draft=topology_draft_read(draft),
-            published_version_number=int(version.version_number),
+            draft=topology_draft_read(result.draft),
+            published_version_number=result.published_version_number,
         )
     return TopologyDraftLifecycleRead(draft=topology_draft_read(result), published_version_number=None)
 

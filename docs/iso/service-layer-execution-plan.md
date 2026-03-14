@@ -116,13 +116,31 @@ Verification:
 
 ### Stage 5. Wave 2C: `control_plane`
 
-Status: next
+Status: done
 
-- [ ] `control_plane`
+Goal:
+
+- split `backend/src/apps/control_plane/services.py` into `services/`
+- move route snapshot shaping and topology draft diff preview into pure engines
+- remove read-side service wrappers that leaked `AsyncSession` and dict-shaped payloads
+- replace inline control-event/cache payload publication with an explicit dispatcher boundary
+
+Planned deliverables:
+
+- [x] service package split with focused command-service modules
+- [x] route snapshot and topology diff engines
+- [x] explicit control-plane side-effect dispatcher
+- [x] shared route mutation writer for command/draft write paths
+- [x] pure engine tests without DB/runtime wiring
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/apps/control_plane tests/runtime/control_plane tests/architecture`
+- [x] `cd backend && uv run ruff check src/apps/control_plane/__init__.py src/apps/control_plane/api/presenters.py src/apps/control_plane/engines src/apps/control_plane/query_services.py src/apps/control_plane/services tests/apps/control_plane/test_engines.py tests/apps/control_plane/test_services.py tests/architecture/service_layer_baseline.py`
 
 ### Stage 6. Wave 2D: `market_structure`
 
-Status: pending
+Status: next
 
 - [ ] `market_structure`
 
@@ -153,4 +171,5 @@ Status: pending
 - [x] Stage 2 complete: canonical `signals` rewrite landed with dedicated `services/`, pure `engines/`, explicit adapters and typed result contracts.
 - [x] Stage 3 complete: `predictions` moved to service/engine/integration form and no longer exposes summary-shaped public result helpers.
 - [x] Stage 4 complete: `cross_market` moved to service/engine/integration form and no longer mixes orchestration with correlation/sector/leader computation.
-- [ ] Stage 5 not started in code yet.
+- [x] Stage 5 complete: `control_plane` now uses `services/` + `engines/`, read-side wrappers were removed in favor of query services, and post-commit control events moved behind an explicit dispatcher.
+- [ ] Stage 6 not started in code yet.

@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Wave 2C hotspot cutover: `control_plane`
+- [ ] Wave 2D hotspot cutover: `market_structure`
 
 ## Active Workstreams
 
@@ -63,7 +63,7 @@
 
 - [x] Wave 2A: `predictions`
 - [x] Wave 2B: `cross_market`
-- [ ] Wave 2C: `control_plane`
+- [x] Wave 2C: `control_plane`
 - [ ] Wave 2D: `market_structure`
 - [ ] Wave 2E: `patterns/task_service_runtime`
 - [ ] Wave 2F: `anomalies`
@@ -145,3 +145,6 @@
 - [x] Stage 4 complete on `2026-03-14`: `cross_market` moved to `services/` + `engines/` + `integrations/`, correlation/sector/leader computations were separated from orchestration, public service contracts became typed results, and the direct market-data repository shortcut left the service layer
 - [x] Stage 4 verification: `cd backend && uv run pytest tests/apps/cross_market tests/runtime/streams/test_workers.py tests/architecture`
 - [x] Stage 4 lint gate: `cd backend && uv run ruff check src/apps/cross_market/engines src/apps/cross_market/integrations src/apps/cross_market/services src/apps/cross_market/support.py src/apps/signals/services/__init__.py src/apps/signals/services/fusion_helpers.py src/apps/signals/services/fusion_service.py tests/apps/cross_market tests/cross_market_support.py tests/architecture/service_layer_baseline.py`
+- [x] Stage 5 complete on `2026-03-14`: `control_plane` moved from a single `services.py` module to `services/` + `engines/`, route snapshot/draft diff logic became pure engine code, and inline control-event publication left the service body for an explicit dispatcher
+- [x] Stage 5 verification: `cd backend && uv run pytest tests/apps/control_plane tests/runtime/control_plane tests/architecture`
+- [x] Stage 5 lint gate: `cd backend && uv run ruff check src/apps/control_plane/__init__.py src/apps/control_plane/api/presenters.py src/apps/control_plane/engines src/apps/control_plane/query_services.py src/apps/control_plane/services tests/apps/control_plane/test_engines.py tests/apps/control_plane/test_services.py tests/architecture/service_layer_baseline.py`
