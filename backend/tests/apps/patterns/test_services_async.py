@@ -5,19 +5,23 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
-
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics
-from src.apps.patterns.models import PatternFeature
-from src.apps.patterns.models import MarketCycle
+from src.apps.patterns.models import MarketCycle, PatternFeature
 from src.apps.patterns.query_builders import signal_select as _signal_select
 from src.apps.patterns.query_services import PatternQueryService
 from src.apps.patterns.services import PatternAdminService
 from src.apps.patterns.task_services import PatternMarketStructureService, PatternRealtimeService
 from src.apps.signals.models import Signal
 from src.core.db.uow import SessionUnitOfWork
+
 from tests.fusion_support import create_test_coin, insert_signals
 from tests.patterns_support import seed_pattern_api_state
+
+
+@pytest.fixture(autouse=True)
+def isolated_event_stream() -> None:
+    yield
 
 
 @pytest.mark.asyncio
@@ -410,9 +414,9 @@ async def test_pattern_realtime_service_handles_pattern_and_regime_runtime_paths
             regime="bull_trend",
             lookback=200,
         )
-        assert detection["status"] == "ok"
-        assert isinstance(detection["new_signal_types"], tuple)
-        if bool(detection.get("requires_commit")):
+        assert detection.status == "ok"
+        assert isinstance(detection.new_signal_types, tuple)
+        if detection.requires_commit:
             await uow.commit()
 
     async with SessionUnitOfWork(async_db_session) as uow:
@@ -424,9 +428,9 @@ async def test_pattern_realtime_service_handles_pattern_and_regime_runtime_paths
             regime_confidence=0.81,
         )
         assert regime_state is not None
-        assert regime_state["status"] == "ok"
-        assert regime_state["regime"] == "bull_trend"
-        assert "next_cycle" in regime_state
+        assert regime_state.status == "ok"
+        assert regime_state.regime == "bull_trend"
+        assert regime_state.next_cycle is not None
         await uow.commit()
 
 
@@ -508,16 +512,16 @@ async def test_pattern_realtime_service_covers_cluster_and_hierarchy_paths(
         )
         await uow.commit()
 
-    assert cluster_result["status"] == "ok"
-    assert cluster_result["created"] != 0
-    assert hierarchy_result["status"] == "ok"
-    assert hierarchy_result["created"] != 0
-    assert bearish_cluster["status"] == "ok"
-    assert bearish_cluster["created"] != 0
-    assert bearish_hierarchy["status"] == "ok"
-    assert bearish_hierarchy["created"] != 0
-    assert no_patterns_cluster["reason"] == "pattern_signals_not_found"
-    assert no_patterns_hierarchy["reason"] == "pattern_signals_not_found"
+    assert cluster_result.status == "ok"
+    assert cluster_result.created != 0
+    assert hierarchy_result.status == "ok"
+    assert hierarchy_result.created != 0
+    assert bearish_cluster.status == "ok"
+    assert bearish_cluster.created != 0
+    assert bearish_hierarchy.status == "ok"
+    assert bearish_hierarchy.created != 0
+    assert no_patterns_cluster.reason == "pattern_signals_not_found"
+    assert no_patterns_hierarchy.reason == "pattern_signals_not_found"
 
     btc_signals = {
         row.signal_type
@@ -569,15 +573,19 @@ async def test_pattern_realtime_service_covers_cluster_and_hierarchy_paths(
             candle_timestamp=timestamp,
         )
 
-    assert disabled_hierarchy["reason"] == "pattern_hierarchy_disabled"
-    assert disabled_clusters["reason"] == "pattern_clusters_disabled"
+    assert disabled_hierarchy.reason == "pattern_hierarchy_disabled"
+    assert disabled_clusters.reason == "pattern_clusters_disabled"
 
 
 @pytest.mark.asyncio
-async def test_pattern_services_cover_market_cycle_paths(async_db_session, db_session) -> None:
+async def test_pattern_services_cover_market_cycle_paths(async_db_session, db_session, monkeypatch) -> None:
     seeded_api_state = seed_pattern_api_state(db_session)
     btc = seeded_api_state["btc"]
     timestamp = seeded_api_state["signal_timestamp"]
+    monkeypatch.setattr(
+        "src.apps.patterns.task_service_base.read_cached_regime_async",
+        lambda **kwargs: __import__("asyncio").sleep(0, result=None),
+    )
 
     missing_coin = create_test_coin(db_session, symbol="MISSING_EVT", name="Missing Metrics")
     missing_metrics = db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(missing_coin.id)))
@@ -591,7 +599,7 @@ async def test_pattern_services_cover_market_cycle_paths(async_db_session, db_se
             timeframe=15,
         )
 
-    assert missing_result["reason"] == "coin_metrics_not_found"
+    assert missing_result.reason == "coin_metrics_not_found"
 
     btc_metrics = db_session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(btc.id)))
     assert btc_metrics is not None
@@ -633,8 +641,8 @@ async def test_pattern_services_cover_market_cycle_paths(async_db_session, db_se
         )
         await uow.commit()
 
-    assert updated_cycle["status"] == "ok"
-    assert updated_cycle["cycle_phase"] == "MARKUP"
+    assert updated_cycle.status == "ok"
+    assert updated_cycle.cycle_phase == "MARKUP"
     stored_cycle = await async_db_session.get(MarketCycle, (int(btc.id), 15))
     assert stored_cycle is not None
     assert stored_cycle.cycle_phase == "MARKUP"

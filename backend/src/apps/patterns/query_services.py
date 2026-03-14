@@ -9,11 +9,16 @@ from sqlalchemy.orm import selectinload
 
 from src.apps.cross_market.models import Sector, SectorMetric
 from src.apps.indicators.models import CoinMetrics
+from src.apps.market_data.candles import CandlePoint
 from src.apps.market_data.domain import ensure_utc
 from src.apps.market_data.models import Candle, Coin
-from src.apps.market_data.candles import CandlePoint
 from src.apps.patterns.domain.regime import detect_market_regime, read_regime_details
 from src.apps.patterns.domain.utils import current_indicator_map
+from src.apps.patterns.engines.contracts import (
+    PatternCoinMetricsSnapshot,
+    PatternRuntimeSignalSnapshot,
+    PatternSectorMetricSnapshot,
+)
 from src.apps.patterns.models import DiscoveredPattern, MarketCycle, PatternFeature, PatternRegistry, PatternStatistic
 from src.apps.patterns.query_builders import pattern_signal_ordering as _pattern_signal_ordering
 from src.apps.patterns.query_builders import signal_select as _signal_select
@@ -177,6 +182,152 @@ class PatternQueryService(AsyncQueryService):
         mean_close = sum(closes) / len(closes)
         volatility = (sum((value - mean_close) ** 2 for value in closes) / len(closes)) ** 0.5 if closes else 0.0
         return change, (volatility / current if current else 0.0)
+
+    async def list_signal_types_at_timestamp(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        timestamp: object,
+    ) -> tuple[str, ...]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(Signal.signal_type).where(
+                        Signal.coin_id == int(coin_id),
+                        Signal.timeframe == int(timeframe),
+                        Signal.candle_timestamp == timestamp,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return tuple(_signal_type_name(value) for value in rows)
+
+    async def list_runtime_signal_snapshots_at_timestamp(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        timestamp: object,
+    ) -> tuple[PatternRuntimeSignalSnapshot, ...]:
+        rows = (
+            await self.session.execute(
+                select(Signal.signal_type, Signal.confidence).where(
+                    Signal.coin_id == int(coin_id),
+                    Signal.timeframe == int(timeframe),
+                    Signal.candle_timestamp == timestamp,
+                    Signal.signal_type.like("pattern_%"),
+                )
+            )
+        ).all()
+        return tuple(
+            PatternRuntimeSignalSnapshot(
+                signal_type=_signal_type_name(row.signal_type),
+                confidence=float(row.confidence or 0.0),
+            )
+            for row in rows
+        )
+
+    async def list_runtime_signal_snapshots_between(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        window_start: object,
+        window_end: object,
+    ) -> tuple[PatternRuntimeSignalSnapshot, ...]:
+        rows = (
+            await self.session.execute(
+                select(Signal.signal_type, Signal.confidence).where(
+                    Signal.coin_id == int(coin_id),
+                    Signal.timeframe == int(timeframe),
+                    Signal.candle_timestamp >= window_start,
+                    Signal.candle_timestamp <= window_end,
+                    Signal.signal_type.like("pattern_%"),
+                )
+            )
+        ).all()
+        return tuple(
+            PatternRuntimeSignalSnapshot(
+                signal_type=_signal_type_name(row.signal_type),
+                confidence=float(row.confidence or 0.0),
+            )
+            for row in rows
+        )
+
+    async def count_pattern_signals(self, *, coin_id: int, timeframe: int) -> int:
+        return int(
+            (
+                await self.session.execute(
+                    select(func.count())
+                    .select_from(Signal)
+                    .where(
+                        Signal.coin_id == int(coin_id),
+                        Signal.timeframe == int(timeframe),
+                        Signal.signal_type.like("pattern_%"),
+                        ~Signal.signal_type.like("pattern_cluster_%"),
+                        ~Signal.signal_type.like("pattern_hierarchy_%"),
+                    )
+                )
+            ).scalar_one()
+            or 0
+        )
+
+    async def count_cluster_signals(self, *, coin_id: int, timeframe: int) -> int:
+        return int(
+            (
+                await self.session.execute(
+                    select(func.count())
+                    .select_from(Signal)
+                    .where(
+                        Signal.coin_id == int(coin_id),
+                        Signal.timeframe == int(timeframe),
+                        Signal.signal_type.like("pattern_cluster_%"),
+                    )
+                )
+            ).scalar_one()
+            or 0
+        )
+
+    async def get_coin_metrics_snapshot(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int | None = None,
+    ) -> PatternCoinMetricsSnapshot | None:
+        row = await self.session.scalar(select(CoinMetrics).where(CoinMetrics.coin_id == int(coin_id)).limit(1))
+        if row is None:
+            return None
+        resolved_regime = None
+        if timeframe is not None:
+            details = read_regime_details(row.market_regime_details, int(timeframe))
+            resolved_regime = details.regime if details is not None else row.market_regime
+        return PatternCoinMetricsSnapshot(
+            trend_score=int(row.trend_score) if row.trend_score is not None else None,
+            market_regime=str(row.market_regime) if row.market_regime is not None else None,
+            resolved_regime=str(resolved_regime) if resolved_regime is not None else None,
+            volatility=float(row.volatility) if row.volatility is not None else None,
+            price_current=float(row.price_current) if row.price_current is not None else None,
+        )
+
+    async def get_sector_metric_snapshot(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+    ) -> PatternSectorMetricSnapshot | None:
+        coin = await self.session.scalar(select(Coin).where(Coin.id == int(coin_id), Coin.deleted_at.is_(None)).limit(1))
+        if coin is None or coin.sector_id is None:
+            return None
+        row = await self.session.get(SectorMetric, (int(coin.sector_id), int(timeframe)))
+        if row is None:
+            return None
+        return PatternSectorMetricSnapshot(
+            sector_strength=float(row.sector_strength) if row.sector_strength is not None else None,
+            capital_flow=float(row.capital_flow) if row.capital_flow is not None else None,
+        )
 
     async def build_sector_narratives(self) -> tuple[SectorNarrativeReadModel, ...]:
         metrics = (
@@ -543,3 +694,10 @@ class PatternQueryService(AsyncQueryService):
 
 
 __all__ = ["PatternQueryService"]
+
+
+def _signal_type_name(value: object) -> str:
+    enum_value = getattr(value, "value", None)
+    if isinstance(enum_value, str):
+        return enum_value
+    return str(value)

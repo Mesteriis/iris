@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apps.patterns.models import PatternFeature, PatternRegistry
+from src.apps.patterns.models import MarketCycle, PatternFeature, PatternRegistry
+from src.apps.signals.models import Signal
 from src.core.db.persistence import AsyncRepository
 
 
@@ -39,4 +43,75 @@ class PatternRegistryRepository(AsyncRepository):
         await self.session.refresh(pattern)
 
 
-__all__ = ["PatternFeatureRepository", "PatternRegistryRepository"]
+class PatternSignalRepository(AsyncRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, domain="patterns", repository_name="PatternSignalRepository")
+
+    async def insert_new(self, *, rows: list[dict[str, object]]) -> int:
+        self._log_debug("repo.insert_pattern_signals", mode="write", bulk=True, count=len(rows))
+        if not rows:
+            return 0
+        stmt = insert(Signal).values(rows)
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=["coin_id", "timeframe", "candle_timestamp", "signal_type"],
+        )
+        result = await self.session.execute(stmt)
+        return int(result.rowcount or 0)
+
+
+class PatternMarketCycleRepository(AsyncRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, domain="patterns", repository_name="PatternMarketCycleRepository")
+
+    async def get(self, *, coin_id: int, timeframe: int) -> MarketCycle | None:
+        self._log_debug(
+            "repo.get_pattern_market_cycle",
+            mode="read",
+            coin_id=int(coin_id),
+            timeframe=int(timeframe),
+        )
+        row = await self.session.get(MarketCycle, (int(coin_id), int(timeframe)))
+        self._log_debug("repo.get_pattern_market_cycle.result", mode="read", found=row is not None)
+        return row
+
+    async def upsert(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        cycle_phase: str,
+        confidence: float,
+        detected_at: datetime,
+    ) -> None:
+        self._log_debug(
+            "repo.upsert_pattern_market_cycle",
+            mode="write",
+            coin_id=int(coin_id),
+            timeframe=int(timeframe),
+        )
+        stmt = insert(MarketCycle).values(
+            {
+                "coin_id": int(coin_id),
+                "timeframe": int(timeframe),
+                "cycle_phase": str(cycle_phase),
+                "confidence": float(confidence),
+                "detected_at": detected_at,
+            }
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["coin_id", "timeframe"],
+            set_={
+                "cycle_phase": stmt.excluded.cycle_phase,
+                "confidence": stmt.excluded.confidence,
+                "detected_at": stmt.excluded.detected_at,
+            },
+        )
+        await self.session.execute(stmt)
+
+
+__all__ = [
+    "PatternFeatureRepository",
+    "PatternMarketCycleRepository",
+    "PatternRegistryRepository",
+    "PatternSignalRepository",
+]

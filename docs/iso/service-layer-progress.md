@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Wave 2E hotspot cutover: `patterns/task_service_runtime`
+- [ ] Wave 2F hotspot cutover: `anomalies`
 
 ## Active Workstreams
 
@@ -65,7 +65,7 @@
 - [x] Wave 2B: `cross_market`
 - [x] Wave 2C: `control_plane`
 - [x] Wave 2D: `market_structure`
-- [ ] Wave 2E: `patterns/task_service_runtime`
+- [x] Wave 2E: `patterns/task_service_runtime`
 - [ ] Wave 2F: `anomalies`
 - [ ] Wave 3: `market_data`, `news`, `indicators`, `portfolio`
 
@@ -151,3 +151,6 @@
 - [x] Stage 6 complete on `2026-03-14`: `market_structure` moved from a giant `services.py` module to `services/` + `engines/`, health/backoff/quarantine rules became pure engine code, typed polling/ingest results replaced `dict/status` contracts, and onboarding wizard transport shaping left the service layer for an API helper
 - [x] Stage 6 verification: `cd backend && uv run pytest tests/apps/market_structure tests/architecture`
 - [x] Stage 6 lint gate: `cd backend && uv run ruff check src/apps/market_structure/contracts.py src/apps/market_structure/schemas.py src/apps/market_structure/read_models.py src/apps/market_structure/tasks.py src/apps/market_structure/api/errors.py src/apps/market_structure/api/onboarding_endpoints.py src/apps/market_structure/api/onboarding_wizard.py src/apps/market_structure/api/presenters.py src/apps/market_structure/api/webhook_endpoints.py src/apps/market_structure/engines/__init__.py src/apps/market_structure/engines/health_engine.py src/apps/market_structure/services/__init__.py src/apps/market_structure/services/_shared.py src/apps/market_structure/services/market_structure_service.py src/apps/market_structure/services/polling_service.py src/apps/market_structure/services/provisioning_service.py src/apps/market_structure/services/results.py src/apps/market_structure/services/side_effects.py src/apps/market_structure/services/source_command_service.py tests/apps/market_structure/test_services.py tests/apps/market_structure/test_persistence_contracts.py tests/apps/market_structure/test_health_engine.py`
+- [x] Stage 7 complete on `2026-03-14`: `patterns/task_service_runtime` now delegates cluster, hierarchy and cycle calculations to pure runtime engines/support modules, public realtime methods return typed results, and runtime workers consume attribute-based contracts instead of dict payloads
+- [x] Stage 7 verification: `cd backend && uv run pytest tests/apps/patterns/test_realtime_engine.py tests/apps/patterns/test_services_async.py tests/runtime/streams/test_workers.py tests/architecture`
+- [x] Stage 7 lint gate: `cd backend && uv run ruff check src/apps/patterns/query_services.py src/apps/patterns/repositories.py src/apps/patterns/runtime_results.py src/apps/patterns/runtime_steps.py src/apps/patterns/runtime_support.py src/apps/patterns/task_service_runtime.py src/runtime/streams/workers.py tests/apps/patterns/test_realtime_engine.py tests/apps/patterns/test_services_async.py tests/runtime/streams/test_workers.py tests/architecture/service_layer_baseline.py`

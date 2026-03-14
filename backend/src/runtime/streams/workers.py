@@ -10,6 +10,7 @@ from src.apps.hypothesis_engine.consumers import HypothesisConsumer
 from src.apps.indicators.services import AnalysisSchedulerService, FeatureSnapshotService, IndicatorAnalyticsService
 from src.apps.news.consumers import NewsCorrelationConsumer, NewsNormalizationConsumer
 from src.apps.patterns.cache import cache_regime_snapshot_async, read_cached_regime_async
+from src.apps.patterns.runtime_results import PatternRegimeRefreshResult
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
 from src.apps.signals.services import SignalFusionService, SignalFusionSideEffectDispatcher, SignalHistoryService
 from src.core.db.uow import AsyncUnitOfWork
@@ -106,10 +107,10 @@ async def _run_pattern_detection(event: IrisEvent) -> list[str]:
             lookback=200,
         )
         await uow.commit()
-    return [str(item) for item in result.get("new_signal_types", ())]
+    return [str(item) for item in result.new_signal_types]
 
 
-async def _run_regime_refresh(event: IrisEvent) -> dict[str, object] | None:
+async def _run_regime_refresh(event: IrisEvent) -> PatternRegimeRefreshResult | None:
     async with AsyncUnitOfWork() as uow:
         result = await _pattern_realtime_service_factory(uow).refresh_regime_state(
             coin_id=event.coin_id,
@@ -242,8 +243,8 @@ async def _handle_regime_event(event: IrisEvent) -> None:
     cycle_result = await _run_regime_refresh(event)
     if cycle_result is None:
         return
-    regime = cycle_result["regime"]
-    regime_confidence = float(cycle_result["regime_confidence"])
+    regime = cycle_result.regime
+    regime_confidence = float(cycle_result.regime_confidence)
     if regime is not None:
         await cache_regime_snapshot_async(
             coin_id=event.coin_id,
@@ -251,8 +252,8 @@ async def _handle_regime_event(event: IrisEvent) -> None:
             regime=regime,
             confidence=regime_confidence,
         )
-    next_cycle = cycle_result["next_cycle"]
-    previous_cycle = cycle_result["previous_cycle"]
+    next_cycle = cycle_result.next_cycle
+    previous_cycle = cycle_result.previous_cycle
     if regime != (previous_regime.regime if previous_regime is not None else None):
         publish_event(
             "market_regime_changed",

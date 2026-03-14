@@ -4,6 +4,12 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
+from src.apps.patterns.runtime_results import (
+    PatternIncrementalDetectionStepResult,
+    PatternIncrementalSignalsResult,
+    PatternRegimeRefreshResult,
+    PatternSignalDerivationResult,
+)
 from src.runtime.control_plane.worker import build_delivery_stream_name
 from src.runtime.streams import workers
 from src.runtime.streams.types import (
@@ -22,6 +28,11 @@ from src.runtime.streams.types import (
     REGIME_WORKER_GROUP,
     IrisEvent,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolated_event_stream() -> None:
+    yield
 
 
 def _event(
@@ -67,18 +78,33 @@ async def test_pattern_runtime_helper_functions(monkeypatch) -> None:
 
         async def detect_incremental_signals(self, **kwargs):
             calls.append(("detect", (kwargs["coin_id"], kwargs["timeframe"])))
-            return {"status": "ok", "requires_commit": True, "new_signal_types": ("pattern_breakout",)}
+            return PatternIncrementalSignalsResult(
+                status="ok",
+                coin_id=kwargs["coin_id"],
+                timeframe=kwargs["timeframe"],
+                new_signal_types=("pattern_breakout",),
+                requires_commit=True,
+                detection=PatternIncrementalDetectionStepResult(
+                    status="ok",
+                    coin_id=kwargs["coin_id"],
+                    timeframe=kwargs["timeframe"],
+                    detections=1,
+                    created=1,
+                ),
+                clusters=PatternSignalDerivationResult(status="ok", created=0),
+                hierarchy=PatternSignalDerivationResult(status="ok", created=0),
+            )
 
         async def refresh_regime_state(self, **kwargs):
             calls.append(("regime", (kwargs["coin_id"], kwargs["timeframe"])))
-            return {
-                "status": "ok",
-                "requires_commit": True,
-                "regime": kwargs["regime"],
-                "regime_confidence": kwargs["regime_confidence"],
-                "next_cycle": "distribution",
-                "previous_cycle": "accumulation",
-            }
+            return PatternRegimeRefreshResult(
+                status="ok",
+                requires_commit=True,
+                regime=kwargs["regime"],
+                regime_confidence=kwargs["regime_confidence"],
+                next_cycle="distribution",
+                previous_cycle="accumulation",
+            )
 
     monkeypatch.setattr(workers, "AsyncUnitOfWork", FakeUow)
     monkeypatch.setattr(
@@ -101,7 +127,7 @@ async def test_pattern_runtime_helper_functions(monkeypatch) -> None:
 
     assert result == ["pattern_breakout"]
     assert regime is not None
-    assert regime["next_cycle"] == "distribution"
+    assert regime.next_cycle == "distribution"
     assert ("detect", (7, 15)) in calls
     assert ("regime", (7, 15)) in calls
     assert ("commit", "pattern-db") in calls
@@ -477,12 +503,14 @@ async def test_analysis_scheduler_and_regime_handlers(monkeypatch) -> None:
     assert published == []
 
     async def changed_cycle(_event_obj):
-        return {
-            "regime": "bear_trend",
-            "regime_confidence": 0.66,
-            "next_cycle": "distribution",
-            "previous_cycle": "accumulation",
-        }
+        return PatternRegimeRefreshResult(
+            status="ok",
+            requires_commit=True,
+            regime="bear_trend",
+            regime_confidence=0.66,
+            next_cycle="distribution",
+            previous_cycle="accumulation",
+        )
 
     monkeypatch.setattr(workers, "_run_regime_refresh", changed_cycle)
     await workers._handle_regime_event(
@@ -494,12 +522,14 @@ async def test_analysis_scheduler_and_regime_handlers(monkeypatch) -> None:
     published.clear()
 
     async def same_cycle_without_regime(_event_obj):
-        return {
-            "regime": None,
-            "regime_confidence": 0.0,
-            "next_cycle": "distribution",
-            "previous_cycle": "distribution",
-        }
+        return PatternRegimeRefreshResult(
+            status="ok",
+            requires_commit=True,
+            regime=None,
+            regime_confidence=0.0,
+            next_cycle="distribution",
+            previous_cycle="distribution",
+        )
 
     monkeypatch.setattr(
         workers, "read_cached_regime_async", lambda **kwargs: __import__("asyncio").sleep(0, result=None)

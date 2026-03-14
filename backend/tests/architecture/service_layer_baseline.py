@@ -56,16 +56,6 @@ EXPECTED_SERVICE_RESULT_CONTRACT_VIOLATIONS: tuple[ArchitectureViolation, ...] =
         detail="dict[str, object]",
     ),
     ArchitectureViolation(
-        path="src/apps/patterns/task_service_runtime.py",
-        symbol="PatternRealtimeService.detect_incremental_signals",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/patterns/task_service_runtime.py",
-        symbol="PatternRealtimeService.refresh_regime_state",
-        detail="dict[str, object] | None",
-    ),
-    ArchitectureViolation(
         path="src/apps/portfolio/services.py",
         symbol="PortfolioActionEvaluationResult.to_payload",
         detail="dict[str, object]",
@@ -224,21 +214,6 @@ EXPECTED_CROSS_DOMAIN_BOUNDARY_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
         detail="import",
     ),
     ArchitectureViolation(
-        path="src/apps/patterns/task_service_runtime.py",
-        symbol="src.apps.cross_market.models",
-        detail="import",
-    ),
-    ArchitectureViolation(
-        path="src/apps/patterns/task_service_runtime.py",
-        symbol="src.apps.indicators.models",
-        detail="import",
-    ),
-    ArchitectureViolation(
-        path="src/apps/patterns/task_service_runtime.py",
-        symbol="src.apps.signals.models",
-        detail="import",
-    ),
-    ArchitectureViolation(
         path="src/apps/portfolio/services.py",
         symbol="src.apps.market_data.models",
         detail="import",
@@ -300,16 +275,6 @@ EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS: tuple[ArchitectureViolation, ...] 
         path="src/apps/patterns/task_service_market.py",
         symbol="__module__",
         detail="module_loc=454",
-    ),
-    ArchitectureViolation(
-        path="src/apps/patterns/task_service_runtime.py",
-        symbol="PatternRealtimeService",
-        detail="class_loc=503",
-    ),
-    ArchitectureViolation(
-        path="src/apps/patterns/task_service_runtime.py",
-        symbol="__module__",
-        detail="module_loc=533",
     ),
     ArchitectureViolation(
         path="src/apps/portfolio/services.py",

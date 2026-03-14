@@ -165,13 +165,31 @@ Verification:
 
 ### Stage 7. Wave 2E: `patterns/task_service_runtime`
 
-Status: next
+Status: done
 
-- [ ] `patterns/task_service_runtime`
+Goal:
+
+- split incremental runtime orchestration from pure pattern cluster/hierarchy/cycle calculations
+- remove `dict/status` public realtime service contracts
+- remove direct cross-domain model imports from `task_service_runtime.py`
+- reduce the runtime hotspot below service-layer module/class thresholds
+
+Planned deliverables:
+
+- [x] pure realtime engine contracts and calculation helpers under `backend/src/apps/patterns/engines/`
+- [x] typed runtime result contracts for detection and regime refresh
+- [x] query/repository helpers for signal snapshots, metrics snapshots and cycle writes
+- [x] worker consumers updated to attribute-based result handling
+- [x] pure engine tests and runtime service tests aligned with final contracts
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/apps/patterns/test_realtime_engine.py tests/apps/patterns/test_services_async.py tests/runtime/streams/test_workers.py tests/architecture`
+- [x] `cd backend && uv run ruff check src/apps/patterns/query_services.py src/apps/patterns/repositories.py src/apps/patterns/runtime_results.py src/apps/patterns/runtime_steps.py src/apps/patterns/runtime_support.py src/apps/patterns/task_service_runtime.py src/runtime/streams/workers.py tests/apps/patterns/test_realtime_engine.py tests/apps/patterns/test_services_async.py tests/runtime/streams/test_workers.py tests/architecture/service_layer_baseline.py`
 
 ### Stage 8. Wave 2F: `anomalies`
 
-Status: pending
+Status: next
 
 - [ ] `anomalies`
 
@@ -192,3 +210,4 @@ Status: pending
 - [x] Stage 4 complete: `cross_market` moved to service/engine/integration form and no longer mixes orchestration with correlation/sector/leader computation.
 - [x] Stage 5 complete: `control_plane` now uses `services/` + `engines/`, read-side wrappers were removed in favor of query services, and post-commit control events moved behind an explicit dispatcher.
 - [x] Stage 6 complete: `market_structure` now uses `services/` + `engines/`, pure health/backoff/quarantine rules, typed poll/ingest results, and no longer mixes onboarding transport shaping into service code.
+- [x] Stage 7 complete: `patterns/task_service_runtime` now uses pure realtime engines plus typed runtime results, direct cross-domain imports left the service file, and runtime workers consume attribute-based contracts instead of dict payloads.
