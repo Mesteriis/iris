@@ -72,10 +72,7 @@ async def test_cross_market_worker_updates_relations_and_detects_market_leader(
         sector_name="smart_contract",
     )
     leader_returns = [
-        0.01 if index % 12 in {1, 2, 3}
-        else -0.007 if index % 12 in {8, 9}
-        else 0.002
-        for index in range(220)
+        0.01 if index % 12 in {1, 2, 3} else -0.007 if index % 12 in {8, 9} else 0.002 for index in range(220)
     ]
     leader_closes = generate_close_series(start_price=110.0, returns=leader_returns)
     follower_closes = correlated_close_series(
@@ -133,6 +130,7 @@ async def test_cross_market_worker_updates_relations_and_detects_market_leader(
 
         client = Redis.from_url(settings.redis_url, decode_responses=True)
         try:
+
             def _pipeline_ready() -> bool:
                 event_types = []
                 for _, fields in client.xrange(settings.event_stream_name, "-", "+"):

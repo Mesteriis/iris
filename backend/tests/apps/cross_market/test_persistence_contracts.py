@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
 import importlib.util
+from dataclasses import FrozenInstanceError
 
 import pytest
 from sqlalchemy import select
@@ -115,10 +115,7 @@ async def test_cross_market_service_batches_leader_candle_reads(async_db_session
         sector_name="smart_contract",
     )
     leader_returns = [
-        0.01 if index % 12 in {1, 2, 3}
-        else -0.006 if index % 12 in {8, 9}
-        else 0.0015
-        for index in range(220)
+        0.01 if index % 12 in {1, 2, 3} else -0.006 if index % 12 in {8, 9} else 0.0015 for index in range(220)
     ]
     leader_closes = generate_close_series(start_price=110.0, returns=leader_returns)
     follower_closes = correlated_close_series(leader_returns=leader_returns, lag_bars=4, start_price=62.0)
@@ -156,7 +153,10 @@ async def test_cross_market_service_batches_leader_candle_reads(async_db_session
 
     async with SessionUnitOfWork(async_db_session) as uow:
         service = CrossMarketService(uow)
-        monkeypatch.setattr("src.apps.cross_market.services.cache_correlation_snapshot_async", lambda **_: __import__("asyncio").sleep(0))
+        monkeypatch.setattr(
+            "src.apps.cross_market.services.cache_correlation_snapshot_async",
+            lambda **_: __import__("asyncio").sleep(0),
+        )
         single_calls: list[int] = []
         batch_calls: list[tuple[int, ...]] = []
         original_fetch_points = service._candles.fetch_points
@@ -183,14 +183,18 @@ async def test_cross_market_service_batches_leader_candle_reads(async_db_session
         await uow.commit()
 
     relations = (
-        await async_db_session.execute(
-            select(CoinRelation)
-            .where(CoinRelation.follower_coin_id == int(follower.id))
-            .order_by(CoinRelation.confidence.desc(), CoinRelation.correlation.desc())
+        (
+            await async_db_session.execute(
+                select(CoinRelation)
+                .where(CoinRelation.follower_coin_id == int(follower.id))
+                .order_by(CoinRelation.confidence.desc(), CoinRelation.correlation.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
-    assert result["relations"]["status"] == "ok"
+    assert result.relations.status == "ok"
     assert len(relations) >= 1
     assert single_calls == [int(follower.id)]
     assert len(batch_calls) == 1
@@ -199,7 +203,9 @@ async def test_cross_market_service_batches_leader_candle_reads(async_db_session
 
 
 @pytest.mark.asyncio
-async def test_cross_market_persistence_logs_cover_query_repo_service_and_uow(async_db_session, db_session, monkeypatch) -> None:
+async def test_cross_market_persistence_logs_cover_query_repo_service_and_uow(
+    async_db_session, db_session, monkeypatch
+) -> None:
     leader = create_cross_market_coin(
         db_session,
         symbol="BTCUSD_EVT",
@@ -213,10 +219,7 @@ async def test_cross_market_persistence_logs_cover_query_repo_service_and_uow(as
         sector_name="smart_contract",
     )
     leader_returns = [
-        0.008 if index % 10 in {1, 2, 3}
-        else -0.005 if index % 10 in {7, 8}
-        else 0.001
-        for index in range(220)
+        0.008 if index % 10 in {1, 2, 3} else -0.005 if index % 10 in {7, 8} else 0.001 for index in range(220)
     ]
     seed_candles(
         db_session,
@@ -261,7 +264,9 @@ async def test_cross_market_persistence_logs_cover_query_repo_service_and_uow(as
 
     monkeypatch.setattr(PERSISTENCE_LOGGER, "debug", _debug)
     monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
-    monkeypatch.setattr("src.apps.cross_market.services.cache_correlation_snapshot_async", lambda **_: __import__("asyncio").sleep(0))
+    monkeypatch.setattr(
+        "src.apps.cross_market.services.cache_correlation_snapshot_async", lambda **_: __import__("asyncio").sleep(0)
+    )
 
     async with SessionUnitOfWork(async_db_session) as uow:
         result = await CrossMarketService(uow).process_event(
@@ -273,7 +278,7 @@ async def test_cross_market_persistence_logs_cover_query_repo_service_and_uow(as
         )
         await uow.commit()
 
-    assert result["relations"]["status"] == "ok"
+    assert result.relations.status == "ok"
     assert "uow.begin" in events
     assert "service.process_cross_market_event" in events
     assert "query.get_cross_market_relation_context" in events

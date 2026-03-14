@@ -41,26 +41,6 @@ EXPECTED_SERVICE_RESULT_CONTRACT_VIOLATIONS: tuple[ArchitectureViolation, ...] =
         detail="dict[str, Any]",
     ),
     ArchitectureViolation(
-        path="src/apps/cross_market/services.py",
-        symbol="CrossMarketLeaderDetectionResult.to_summary",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/cross_market/services.py",
-        symbol="CrossMarketRelationUpdateResult.to_summary",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/cross_market/services.py",
-        symbol="CrossMarketSectorMomentumResult.to_summary",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/cross_market/services.py",
-        symbol="CrossMarketService.process_event",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
         path="src/apps/hypothesis_engine/services/weight_update_service.py",
         symbol="WeightUpdateService.apply_to_evaluation",
         detail="tuple[str, dict[str, object]] | None",
@@ -209,11 +189,6 @@ EXPECTED_TRANSPORT_LEAKAGE_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
 )
 
 EXPECTED_CROSS_DOMAIN_BOUNDARY_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
-    ArchitectureViolation(
-        path="src/apps/cross_market/services.py",
-        symbol="src.apps.market_data.repositories",
-        detail="import",
-    ),
     ArchitectureViolation(
         path="src/apps/indicators/services.py",
         symbol="src.apps.market_data.models",
@@ -381,16 +356,6 @@ EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS: tuple[ArchitectureViolation, ...] 
         path="src/apps/control_plane/services.py",
         symbol="__module__",
         detail="service_class_count=6",
-    ),
-    ArchitectureViolation(
-        path="src/apps/cross_market/services.py",
-        symbol="CrossMarketService",
-        detail="class_loc=440",
-    ),
-    ArchitectureViolation(
-        path="src/apps/cross_market/services.py",
-        symbol="__module__",
-        detail="module_loc=610",
     ),
     ArchitectureViolation(
         path="src/apps/indicators/services.py",

@@ -50,6 +50,75 @@ def _signal_fusion_payload(result) -> dict[str, object]:
     return payload
 
 
+def _prediction_batch_payload(result: PredictionCreationBatch | None) -> dict[str, object] | None:
+    if result is None:
+        return None
+    payload: dict[str, object] = {
+        "status": result.status,
+        "created": int(result.created),
+        "leader_coin_id": int(result.leader_coin_id),
+    }
+    if result.reason is not None:
+        payload["reason"] = result.reason
+    return payload
+
+
+def _cross_market_relation_payload(result) -> dict[str, object]:
+    payload: dict[str, object] = {"status": result.status}
+    if result.follower_coin_id is not None:
+        payload["follower_coin_id"] = int(result.follower_coin_id)
+    if result.updated or result.status == "ok":
+        payload["updated"] = int(result.updated)
+    if result.published or result.status == "ok":
+        payload["published"] = int(result.published)
+    if result.leader_coin_id is not None:
+        payload["leader_coin_id"] = int(result.leader_coin_id)
+    if result.confidence is not None:
+        payload["confidence"] = float(result.confidence)
+    if result.reason is not None:
+        payload["reason"] = result.reason
+    return payload
+
+
+def _cross_market_sector_payload(result) -> dict[str, object]:
+    payload: dict[str, object] = {"status": result.status}
+    if result.updated or result.status == "ok":
+        payload["updated"] = int(result.updated)
+    if result.timeframe is not None:
+        payload["timeframe"] = int(result.timeframe)
+    if result.reason is not None:
+        payload["reason"] = result.reason
+    return payload
+
+
+def _cross_market_leader_payload(result) -> dict[str, object]:
+    payload: dict[str, object] = {"status": result.status}
+    if result.coin_id is not None:
+        payload["coin_id"] = int(result.coin_id)
+    if result.leader_coin_id is not None:
+        payload["leader_coin_id"] = int(result.leader_coin_id)
+    if result.direction is not None:
+        payload["direction"] = result.direction
+    if result.confidence is not None:
+        payload["confidence"] = float(result.confidence)
+    if result.predictions is not None:
+        predictions = _prediction_batch_payload(result.predictions)
+        if predictions is not None:
+            payload["predictions"] = predictions
+    if result.reason is not None:
+        payload["reason"] = result.reason
+    return payload
+
+
+def _cross_market_process_payload(result) -> dict[str, object]:
+    return {
+        "status": result.status,
+        "relations": _cross_market_relation_payload(result.relations),
+        "sectors": _cross_market_sector_payload(result.sectors),
+        "leader": _cross_market_leader_payload(result.leader),
+    }
+
+
 def generate_close_series(*, start_price: float, returns: list[float]) -> list[float]:
     closes = [start_price]
     for value in returns:
@@ -233,7 +302,7 @@ async def run_cross_market_relation_update(
                         "confidence": effect.confidence,
                     },
                 )
-    return _signal_fusion_payload(result)
+    return _cross_market_relation_payload(result)
 
 
 async def run_cross_market_sector_refresh(
@@ -264,7 +333,7 @@ async def run_cross_market_sector_refresh(
                 "target_strength": effect.target_strength,
             },
         )
-    return _signal_fusion_payload(result)
+    return _cross_market_sector_payload(result)
 
 
 async def run_cross_market_leader_detection(
@@ -302,7 +371,7 @@ async def run_cross_market_leader_detection(
                     "market_regime": effect.market_regime,
                 },
             )
-    return _signal_fusion_payload(result)
+    return _cross_market_leader_payload(result)
 
 
 async def run_cross_market_process_event(
@@ -315,13 +384,16 @@ async def run_cross_market_process_event(
     emit_events: bool = True,
 ) -> dict[str, object]:
     async with SessionUnitOfWork(async_db_session) as uow:
-        return await CrossMarketService(uow).process_event(
+        result = await CrossMarketService(uow).process_event(
             coin_id=coin_id,
             timeframe=timeframe,
             event_type=event_type,
             payload=payload,
             emit_events=emit_events,
         )
+        if result.status == "ok":
+            await uow.commit()
+    return _cross_market_process_payload(result)
 
 
 async def run_prediction_creation(

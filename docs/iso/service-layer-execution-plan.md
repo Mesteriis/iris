@@ -91,13 +91,32 @@ Verification:
 
 ### Stage 4. Wave 2B: `cross_market`
 
-Status: next
+Status: done
 
-- [ ] `cross_market`
+Goal:
+
+- split `backend/src/apps/cross_market/services.py` into `services/`
+- move correlation, sector momentum and leader-threshold calculations into pure engines
+- remove summary-shaped public service contracts
+- remove direct market-data repository access from the service layer
+
+Planned deliverables:
+
+- [x] service package split
+- [x] relation/sector/leader engines
+- [x] explicit market-data adapter
+- [x] typed process/result contracts without `to_summary()`
+- [x] explicit cross-market side-effect dispatcher boundary
+- [x] pure engine tests without DB/runtime wiring
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/apps/cross_market tests/runtime/streams/test_workers.py tests/architecture`
+- [x] `cd backend && uv run ruff check src/apps/cross_market/engines src/apps/cross_market/integrations src/apps/cross_market/services src/apps/cross_market/support.py src/apps/signals/services/__init__.py src/apps/signals/services/fusion_helpers.py src/apps/signals/services/fusion_service.py tests/apps/cross_market tests/cross_market_support.py tests/architecture/service_layer_baseline.py`
 
 ### Stage 5. Wave 2C: `control_plane`
 
-Status: pending
+Status: next
 
 - [ ] `control_plane`
 
@@ -133,4 +152,5 @@ Status: pending
 - [x] Stage 1 complete: architecture governance baseline and CI gate landed.
 - [x] Stage 2 complete: canonical `signals` rewrite landed with dedicated `services/`, pure `engines/`, explicit adapters and typed result contracts.
 - [x] Stage 3 complete: `predictions` moved to service/engine/integration form and no longer exposes summary-shaped public result helpers.
-- [ ] Stage 4 not started in code yet.
+- [x] Stage 4 complete: `cross_market` moved to service/engine/integration form and no longer mixes orchestration with correlation/sector/leader computation.
+- [ ] Stage 5 not started in code yet.

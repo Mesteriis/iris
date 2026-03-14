@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import pytest
-
 from src.apps.cross_market.models import SectorMetric
+
 from tests.cross_market_support import create_cross_market_coin, run_cross_market_sector_refresh, set_market_metrics
 
 

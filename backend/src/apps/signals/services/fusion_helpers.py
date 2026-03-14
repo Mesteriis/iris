@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from src.apps.signals.fusion_support import _clamp
 from src.core.db.uow import BaseAsyncUnitOfWork
 
 if TYPE_CHECKING:
+    from src.apps.signals.repositories import SignalFusionRepository
     from src.apps.signals.services.fusion_service import SignalFusionService
     from src.apps.signals.services.results import SignalFusionBatchResult, SignalFusionResult
 
@@ -79,3 +81,48 @@ def skipped_fusion_batch_result(
         items=(),
         reason=reason,
     )
+
+
+async def cross_market_alignment_weight(
+    *,
+    signals: SignalFusionRepository,
+    coin_id: int,
+    timeframe: int,
+    directional_bias: float,
+) -> float:
+    if directional_bias == 0:
+        return 1.0
+
+    from src.apps.signals import services as signals_services_module
+
+    relations = await signals.list_alignment_relations(follower_coin_id=int(coin_id), limit=3)
+    if not relations:
+        return 1.0
+    leader_decisions = await signals.list_latest_leader_decisions(
+        leader_coin_ids=[int(item.leader_coin_id) for item in relations],
+        timeframe=int(timeframe),
+    )
+    weight = 1.0
+    for relation in relations:
+        cached = await signals_services_module.read_cached_correlation_async(
+            leader_coin_id=int(relation.leader_coin_id),
+            follower_coin_id=int(relation.follower_coin_id),
+        )
+        decision, decision_confidence = leader_decisions.get(int(relation.leader_coin_id), (None, 0.0))
+        if decision is None:
+            continue
+        relation_strength = float(cached.confidence if cached is not None else relation.confidence) * float(
+            cached.correlation if cached is not None else relation.correlation
+        )
+        delta = min(relation_strength * max(float(decision_confidence), 0.3), 0.22)
+        if (directional_bias > 0 and decision == "BUY") or (directional_bias < 0 and decision == "SELL"):
+            weight += delta
+        elif decision in {"BUY", "SELL"}:
+            weight -= delta * 0.8
+    sector_trend = await signals.get_sector_trend(coin_id=int(coin_id), timeframe=int(timeframe))
+    if sector_trend is not None:
+        if (directional_bias > 0 and sector_trend == "bullish") or (directional_bias < 0 and sector_trend == "bearish"):
+            weight += 0.05
+        elif sector_trend in {"bullish", "bearish"}:
+            weight -= 0.04
+    return _clamp(weight, 0.75, 1.35)

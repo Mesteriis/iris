@@ -51,8 +51,14 @@ def test_cross_market_cache_round_trip_and_service_exports(monkeypatch, settings
 
     get_correlation_cache_client.cache_clear()
     get_async_correlation_cache_client.cache_clear()
-    monkeypatch.setattr(correlation_cache_module.Redis, "from_url", staticmethod(lambda url, decode_responses: (url, decode_responses)))
-    monkeypatch.setattr(correlation_cache_module.AsyncRedis, "from_url", staticmethod(lambda url, decode_responses: (url, decode_responses)))
+    monkeypatch.setattr(
+        correlation_cache_module.Redis, "from_url", staticmethod(lambda url, decode_responses: (url, decode_responses))
+    )
+    monkeypatch.setattr(
+        correlation_cache_module.AsyncRedis,
+        "from_url",
+        staticmethod(lambda url, decode_responses: (url, decode_responses)),
+    )
     assert get_correlation_cache_client() == (settings.redis_url, True)
     assert get_async_correlation_cache_client() == (settings.redis_url, True)
     get_correlation_cache_client.cache_clear()

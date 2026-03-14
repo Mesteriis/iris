@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Wave 2B hotspot cutover: `cross_market`
+- [ ] Wave 2C hotspot cutover: `control_plane`
 
 ## Active Workstreams
 
@@ -62,7 +62,7 @@
 ### 3. Direct Hotspot Cutovers
 
 - [x] Wave 2A: `predictions`
-- [ ] Wave 2B: `cross_market`
+- [x] Wave 2B: `cross_market`
 - [ ] Wave 2C: `control_plane`
 - [ ] Wave 2D: `market_structure`
 - [ ] Wave 2E: `patterns/task_service_runtime`
@@ -142,3 +142,6 @@
 - [x] Stage 3 complete on `2026-03-14`: `predictions` moved from a single `services.py` module to `services/` + `engines/` + `integrations/`, prediction window evaluation became a pure engine contract, and `to_summary()` helpers were removed from public service results
 - [x] Stage 3 verification: `cd backend && uv run pytest tests/apps/predictions tests/architecture`
 - [x] Stage 3 lint gate: `cd backend && uv run ruff check src/apps/predictions/engines/__init__.py src/apps/predictions/engines/contracts.py src/apps/predictions/engines/window_engine.py src/apps/predictions/integrations/market_data.py src/apps/predictions/services/__init__.py src/apps/predictions/services/results.py src/apps/predictions/services/side_effects.py src/apps/predictions/services/prediction_service.py src/apps/predictions/tasks.py src/apps/cross_market/services.py tests/apps/predictions/test_window_engine.py tests/architecture/service_layer_baseline.py`
+- [x] Stage 4 complete on `2026-03-14`: `cross_market` moved to `services/` + `engines/` + `integrations/`, correlation/sector/leader computations were separated from orchestration, public service contracts became typed results, and the direct market-data repository shortcut left the service layer
+- [x] Stage 4 verification: `cd backend && uv run pytest tests/apps/cross_market tests/runtime/streams/test_workers.py tests/architecture`
+- [x] Stage 4 lint gate: `cd backend && uv run ruff check src/apps/cross_market/engines src/apps/cross_market/integrations src/apps/cross_market/services src/apps/cross_market/support.py src/apps/signals/services/__init__.py src/apps/signals/services/fusion_helpers.py src/apps/signals/services/fusion_service.py tests/apps/cross_market tests/cross_market_support.py tests/architecture/service_layer_baseline.py`

@@ -4,14 +4,18 @@ from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
-
 from src.apps.cross_market.models import CoinRelation, SectorMetric
 from src.apps.cross_market.query_services import CrossMarketQueryService
-from src.apps.cross_market.services import CrossMarketRelationUpdateResult, CrossMarketSectorMomentumResult, CrossMarketService
+from src.apps.cross_market.services import (
+    CrossMarketRelationUpdateResult,
+    CrossMarketSectorMomentumResult,
+    CrossMarketService,
+)
 from src.apps.cross_market.support import best_lagged_correlation, pearson
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.candles import CandlePoint
 from src.apps.signals.models import MarketDecision
+
 from tests.cross_market_support import (
     DEFAULT_START,
     compute_cross_market_alignment_weight,
@@ -111,24 +115,33 @@ async def test_cross_market_helper_math_and_alignment_branches(async_db_session,
         return None
 
     monkeypatch.setattr("src.apps.signals.services.read_cached_correlation_async", _no_cached_correlation)
-    assert await compute_cross_market_alignment_weight(
-        async_db_session,
-        coin_id=int(follower.id),
-        timeframe=60,
-        directional_bias=0,
-    ) == 1.0
-    assert await compute_cross_market_alignment_weight(
-        async_db_session,
-        coin_id=int(follower.id),
-        timeframe=60,
-        directional_bias=1,
-    ) > 1.0
-    assert await compute_cross_market_alignment_weight(
-        async_db_session,
-        coin_id=int(follower.id),
-        timeframe=60,
-        directional_bias=-1,
-    ) < 1.0
+    assert (
+        await compute_cross_market_alignment_weight(
+            async_db_session,
+            coin_id=int(follower.id),
+            timeframe=60,
+            directional_bias=0,
+        )
+        == 1.0
+    )
+    assert (
+        await compute_cross_market_alignment_weight(
+            async_db_session,
+            coin_id=int(follower.id),
+            timeframe=60,
+            directional_bias=1,
+        )
+        > 1.0
+    )
+    assert (
+        await compute_cross_market_alignment_weight(
+            async_db_session,
+            coin_id=int(follower.id),
+            timeframe=60,
+            directional_bias=-1,
+        )
+        < 1.0
+    )
 
     decision = await get_cross_market_leader_decision(
         async_db_session,
@@ -199,7 +212,9 @@ async def test_cross_market_relation_and_sector_skip_paths(async_db_session, db_
     assert relations_result["reason"] == "relations_not_found"
 
     captured: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("tests.cross_market_support.publish_event", lambda event_type, payload: captured.append((event_type, payload)))
+    monkeypatch.setattr(
+        "tests.cross_market_support.publish_event", lambda event_type, payload: captured.append((event_type, payload))
+    )
     set_market_metrics(
         db_session,
         coin_id=int(follower.id),
@@ -295,7 +310,9 @@ async def test_sector_rotation_and_process_dispatch(async_db_session, db_session
         volume_change_24h=80.0,
     )
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("tests.cross_market_support.publish_event", lambda event_type, payload: published.append((event_type, payload)))
+    monkeypatch.setattr(
+        "tests.cross_market_support.publish_event", lambda event_type, payload: published.append((event_type, payload))
+    )
     second = await run_cross_market_sector_refresh(
         async_db_session,
         timeframe=isolated_timeframe,
@@ -404,10 +421,7 @@ async def test_cross_market_candidate_publish_and_fallback_branches(async_db_ses
         market_cap=3_000_000_000.0,
     )
     leader_returns = [
-        0.009 if index % 11 in {1, 2, 3}
-        else -0.006 if index % 11 in {7, 8}
-        else 0.0015
-        for index in range(220)
+        0.009 if index % 11 in {1, 2, 3} else -0.006 if index % 11 in {7, 8} else 0.0015 for index in range(220)
     ]
     follower_closes = correlated_close_series(leader_returns=leader_returns, lag_bars=4, start_price=60.0)
     seed_candles(
@@ -438,7 +452,9 @@ async def test_cross_market_candidate_publish_and_fallback_branches(async_db_ses
     assert any(candidate.coin_id == int(same_sector_short.id) for candidate in context.candidates)
 
     published: list[str] = []
-    monkeypatch.setattr("tests.cross_market_support.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr(
+        "tests.cross_market_support.publish_event", lambda event_type, payload: published.append(event_type)
+    )
     first = await run_cross_market_relation_update(
         async_db_session,
         follower_coin_id=int(follower.id),
@@ -670,12 +686,16 @@ async def test_cross_market_decision_and_alignment_fallback_branches(async_db_se
         )
     )
     db_session.commit()
-    assert 0.75 <= await compute_cross_market_alignment_weight(
-        async_db_session,
-        coin_id=int(follower_without_sector.id),
-        timeframe=240,
-        directional_bias=1,
-    ) <= 1.35
+    assert (
+        0.75
+        <= await compute_cross_market_alignment_weight(
+            async_db_session,
+            coin_id=int(follower_without_sector.id),
+            timeframe=240,
+            directional_bias=1,
+        )
+        <= 1.35
+    )
 
     follower_with_sideways_sector = create_cross_market_coin(
         db_session,
@@ -708,12 +728,16 @@ async def test_cross_market_decision_and_alignment_fallback_branches(async_db_se
         ]
     )
     db_session.commit()
-    assert 0.75 <= await compute_cross_market_alignment_weight(
-        async_db_session,
-        coin_id=int(follower_with_sideways_sector.id),
-        timeframe=240,
-        directional_bias=1,
-    ) <= 1.35
+    assert (
+        0.75
+        <= await compute_cross_market_alignment_weight(
+            async_db_session,
+            coin_id=int(follower_with_sideways_sector.id),
+            timeframe=240,
+            directional_bias=1,
+        )
+        <= 1.35
+    )
 
     follower_without_sector_metric = create_cross_market_coin(
         db_session,
@@ -732,9 +756,13 @@ async def test_cross_market_decision_and_alignment_fallback_branches(async_db_se
         )
     )
     db_session.commit()
-    assert 0.75 <= await compute_cross_market_alignment_weight(
-        async_db_session,
-        coin_id=int(follower_without_sector_metric.id),
-        timeframe=240,
-        directional_bias=1,
-    ) <= 1.35
+    assert (
+        0.75
+        <= await compute_cross_market_alignment_weight(
+            async_db_session,
+            coin_id=int(follower_without_sector_metric.id),
+            timeframe=240,
+            directional_bias=1,
+        )
+        <= 1.35
+    )

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import select
-
-from src.apps.cross_market.models import CoinRelation
 from src.apps.cross_market.cache import read_cached_correlation
+from src.apps.cross_market.models import CoinRelation
+
 from tests.cross_market_support import (
     DEFAULT_START,
     correlated_close_series,
@@ -37,10 +37,7 @@ async def test_correlation_detection_finds_lagged_market_leader(async_db_session
         sector_name="payments",
     )
     leader_returns = [
-        0.009 if index % 11 in {1, 2, 3}
-        else -0.006 if index % 11 in {7, 8}
-        else 0.0015
-        for index in range(220)
+        0.009 if index % 11 in {1, 2, 3} else -0.006 if index % 11 in {7, 8} else 0.0015 for index in range(220)
     ]
     leader_closes = generate_close_series(start_price=100.0, returns=leader_returns)
     follower_closes = correlated_close_series(

@@ -1,3 +1,4 @@
+from src.apps.cross_market.cache import read_cached_correlation, read_cached_correlation_async
 from src.apps.signals.services.fusion_service import SignalFusionService
 from src.apps.signals.services.history_service import SignalHistoryService
 from src.apps.signals.services.results import (
@@ -18,4 +19,6 @@ __all__ = [
     "SignalFusionSideEffectDispatcher",
     "SignalHistoryRefreshResult",
     "SignalHistoryService",
+    "read_cached_correlation",
+    "read_cached_correlation_async",
 ]

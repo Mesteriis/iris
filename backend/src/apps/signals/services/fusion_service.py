@@ -6,6 +6,7 @@ from src.apps.signals.fusion_support import FUSION_NEWS_TIMEFRAMES, MATERIAL_CON
 from src.apps.signals.models import MarketDecision
 from src.apps.signals.repositories import SignalFusionRepository
 from src.apps.signals.services.fusion_helpers import (
+    cross_market_alignment_weight,
     enrich_signal_context,
     skipped_fusion_batch_result,
     skipped_fusion_result,
@@ -243,6 +244,20 @@ class SignalFusionService(PersistenceComponent):
             coin_id=coin_id,
             timeframe=timeframe,
             candle_timestamp=candle_timestamp,
+        )
+
+    async def _cross_market_alignment_weight(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        directional_bias: float,
+    ) -> float:
+        return await cross_market_alignment_weight(
+            signals=self._signals,
+            coin_id=coin_id,
+            timeframe=timeframe,
+            directional_bias=directional_bias,
         )
 
 
