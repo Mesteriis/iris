@@ -20,4 +20,10 @@ async def prediction_evaluation_job() -> dict[str, object]:
             result = await PredictionService(uow).evaluate_pending_predictions(emit_events=True)
             await uow.commit()
         await PredictionSideEffectDispatcher().apply_evaluation(result)
-        return result.to_summary()
+        return {
+            "status": result.status,
+            "evaluated": int(result.evaluated),
+            "confirmed": int(result.confirmed),
+            "failed": int(result.failed),
+            "expired": int(result.expired),
+        }

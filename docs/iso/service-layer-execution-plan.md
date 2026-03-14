@@ -8,6 +8,7 @@
 ## Execution Rules
 
 - one stage = one focused commit
+- wave stages are split into per-domain cutovers when a single wave contains multiple hotspots
 - each stage updates this tracker and the shared progress board
 - stage commits include only files directly related to that stage
 - no interim compatibility rewrites inside service layer
@@ -64,18 +65,61 @@ Verification:
 - [x] `cd backend && uv run pytest tests/apps/signals tests/architecture`
 - [x] `cd backend && uv run ruff check src/apps/signals/engines src/apps/signals/integrations src/apps/signals/services tests/apps/signals/test_fusion_branches.py tests/apps/signals/test_fusion_engine.py tests/apps/signals/test_history.py tests/apps/signals/test_history_engine.py tests/cross_market_support.py src/apps/patterns/task_service_history.py tests/architecture`
 
-### Stage 3. Wave 2 Hotspots
+### Stage 3. Wave 2A: `predictions`
+
+Status: done
+
+Goal:
+
+- split `backend/src/apps/predictions/services.py` into `services/`
+- introduce a pure prediction-window engine under `backend/src/apps/predictions/engines/`
+- remove summary-shaped public prediction service contracts
+- remove direct cross-domain market-data access from the service body
+
+Planned deliverables:
+
+- [x] service package split
+- [x] prediction window engine contracts and pure evaluation function
+- [x] explicit market-data adapter
+- [x] task consumer updated to shape transport payload outside services
+- [x] engine unit tests without DB/runtime wiring
+
+Verification:
+
+- [x] `cd backend && uv run pytest tests/apps/predictions tests/architecture`
+- [x] `cd backend && uv run ruff check src/apps/predictions/engines/__init__.py src/apps/predictions/engines/contracts.py src/apps/predictions/engines/window_engine.py src/apps/predictions/integrations/market_data.py src/apps/predictions/services/__init__.py src/apps/predictions/services/results.py src/apps/predictions/services/side_effects.py src/apps/predictions/services/prediction_service.py src/apps/predictions/tasks.py src/apps/cross_market/services.py tests/apps/predictions/test_window_engine.py tests/architecture/service_layer_baseline.py`
+
+### Stage 4. Wave 2B: `cross_market`
 
 Status: next
 
-- [ ] `market_structure`
-- [ ] `control_plane`
 - [ ] `cross_market`
-- [ ] `predictions`
+
+### Stage 5. Wave 2C: `control_plane`
+
+Status: pending
+
+- [ ] `control_plane`
+
+### Stage 6. Wave 2D: `market_structure`
+
+Status: pending
+
+- [ ] `market_structure`
+
+### Stage 7. Wave 2E: `patterns/task_service_runtime`
+
+Status: pending
+
 - [ ] `patterns/task_service_runtime`
+
+### Stage 8. Wave 2F: `anomalies`
+
+Status: pending
+
 - [ ] `anomalies`
 
-### Stage 4. Wave 3 Hotspots
+### Stage 9. Wave 3 Hotspots
 
 Status: pending
 
@@ -88,4 +132,5 @@ Status: pending
 
 - [x] Stage 1 complete: architecture governance baseline and CI gate landed.
 - [x] Stage 2 complete: canonical `signals` rewrite landed with dedicated `services/`, pure `engines/`, explicit adapters and typed result contracts.
-- [ ] Stage 3 not started in code yet.
+- [x] Stage 3 complete: `predictions` moved to service/engine/integration form and no longer exposes summary-shaped public result helpers.
+- [ ] Stage 4 not started in code yet.

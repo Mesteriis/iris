@@ -33,7 +33,7 @@
 
 ## Current Block
 
-- [ ] Wave 2 hotspot cutovers
+- [ ] Wave 2B hotspot cutover: `cross_market`
 
 ## Active Workstreams
 
@@ -61,7 +61,12 @@
 
 ### 3. Direct Hotspot Cutovers
 
-- [ ] Wave 2: `market_structure`, `control_plane`, `cross_market`, `predictions`, `patterns/task_service_runtime`, `anomalies`
+- [x] Wave 2A: `predictions`
+- [ ] Wave 2B: `cross_market`
+- [ ] Wave 2C: `control_plane`
+- [ ] Wave 2D: `market_structure`
+- [ ] Wave 2E: `patterns/task_service_runtime`
+- [ ] Wave 2F: `anomalies`
 - [ ] Wave 3: `market_data`, `news`, `indicators`, `portfolio`
 
 Правило для каждой rewrite-задачи:
@@ -134,3 +139,6 @@
 - [x] Stage 2 complete on `2026-03-14`: `signals` moved to canonical `services/` + `engines/` shape, `services.py` removed, typed explainability/result contracts landed, and the cross-domain market-data repository shortcut moved behind an explicit adapter
 - [x] Stage 2 verification: `cd backend && uv run pytest tests/apps/signals tests/architecture`
 - [x] Stage 2 lint gate: `cd backend && uv run ruff check src/apps/signals/engines src/apps/signals/integrations src/apps/signals/services tests/apps/signals/test_fusion_branches.py tests/apps/signals/test_fusion_engine.py tests/apps/signals/test_history.py tests/apps/signals/test_history_engine.py tests/cross_market_support.py src/apps/patterns/task_service_history.py tests/architecture`
+- [x] Stage 3 complete on `2026-03-14`: `predictions` moved from a single `services.py` module to `services/` + `engines/` + `integrations/`, prediction window evaluation became a pure engine contract, and `to_summary()` helpers were removed from public service results
+- [x] Stage 3 verification: `cd backend && uv run pytest tests/apps/predictions tests/architecture`
+- [x] Stage 3 lint gate: `cd backend && uv run ruff check src/apps/predictions/engines/__init__.py src/apps/predictions/engines/contracts.py src/apps/predictions/engines/window_engine.py src/apps/predictions/integrations/market_data.py src/apps/predictions/services/__init__.py src/apps/predictions/services/results.py src/apps/predictions/services/side_effects.py src/apps/predictions/services/prediction_service.py src/apps/predictions/tasks.py src/apps/cross_market/services.py tests/apps/predictions/test_window_engine.py tests/architecture/service_layer_baseline.py`

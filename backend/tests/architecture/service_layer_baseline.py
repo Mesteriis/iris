@@ -145,16 +145,6 @@ EXPECTED_SERVICE_RESULT_CONTRACT_VIOLATIONS: tuple[ArchitectureViolation, ...] =
         symbol="PortfolioSyncResult.to_payload",
         detail="dict[str, object]",
     ),
-    ArchitectureViolation(
-        path="src/apps/predictions/services.py",
-        symbol="PredictionCreationBatch.to_summary",
-        detail="dict[str, object]",
-    ),
-    ArchitectureViolation(
-        path="src/apps/predictions/services.py",
-        symbol="PredictionEvaluationBatch.to_summary",
-        detail="dict[str, object]",
-    ),
 )
 
 EXPECTED_SERVICE_CONSTRUCTOR_DEPENDENCY_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
@@ -364,16 +354,6 @@ EXPECTED_CROSS_DOMAIN_BOUNDARY_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
         symbol="src.apps.signals.models",
         detail="import",
     ),
-    ArchitectureViolation(
-        path="src/apps/predictions/services.py",
-        symbol="src.apps.cross_market.models",
-        detail="import",
-    ),
-    ArchitectureViolation(
-        path="src/apps/predictions/services.py",
-        symbol="src.apps.market_data.repositories",
-        detail="import",
-    ),
 )
 
 EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS: tuple[ArchitectureViolation, ...] = (
@@ -410,7 +390,7 @@ EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS: tuple[ArchitectureViolation, ...] 
     ArchitectureViolation(
         path="src/apps/cross_market/services.py",
         symbol="__module__",
-        detail="module_loc=599",
+        detail="module_loc=610",
     ),
     ArchitectureViolation(
         path="src/apps/indicators/services.py",
@@ -481,10 +461,5 @@ EXPECTED_SERVICE_MODULE_THRESHOLD_VIOLATIONS: tuple[ArchitectureViolation, ...] 
         path="src/apps/portfolio/services.py",
         symbol="__module__",
         detail="module_loc=699",
-    ),
-    ArchitectureViolation(
-        path="src/apps/predictions/services.py",
-        symbol="__module__",
-        detail="module_loc=438",
     ),
 )

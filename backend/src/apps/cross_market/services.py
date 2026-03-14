@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Mapping
 
 from src.apps.cross_market.cache import (
     cache_correlation_snapshot,
@@ -18,8 +18,14 @@ from src.apps.cross_market.support import (
     RELATION_LOOKBACK,
     RELATION_MIN_CORRELATION,
     RELATION_MIN_POINTS,
+)
+from src.apps.cross_market.support import (
     best_lagged_correlation as _best_lagged_correlation,
+)
+from src.apps.cross_market.support import (
     clamp_relation_value as _clamp,
+)
+from src.apps.cross_market.support import (
     relation_timeframe as _relation_timeframe,
 )
 from src.apps.market_data.domain import utc_now
@@ -136,7 +142,12 @@ class CrossMarketLeaderDetectionResult:
             payload["confidence"] = float(self.confidence)
         if self.predictions is not None:
             payload["predictions"] = (
-                self.predictions.to_summary()
+                {
+                    "status": self.predictions.status,
+                    "created": int(self.predictions.created),
+                    "leader_coin_id": int(self.predictions.leader_coin_id),
+                    **({"reason": self.predictions.reason} if self.predictions.reason is not None else {}),
+                }
                 if isinstance(self.predictions, PredictionCreationBatch)
                 else dict(self.predictions)
             )
@@ -588,12 +599,12 @@ class CrossMarketService(PersistenceComponent):
 
 
 __all__ = [
-    "CrossMarketService",
     "CrossMarketLeaderDetectionResult",
     "CrossMarketRelationUpdateResult",
     "CrossMarketSectorMomentumResult",
+    "CrossMarketService",
     "cache_correlation_snapshot",
     "cache_correlation_snapshot_async",
-    "read_cached_correlation_async",
     "read_cached_correlation",
+    "read_cached_correlation_async",
 ]

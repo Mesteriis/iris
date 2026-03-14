@@ -1,140 +1,22 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Mapping
 
-from src.apps.cross_market.models import CoinRelation
 from src.apps.market_data.domain import ensure_utc, utc_now
-from src.apps.market_data.repositories import CandleRepository
-from src.apps.predictions.cache import (
-    PredictionCacheEntry,
-    cache_prediction_snapshot,
-    cache_prediction_snapshot_async,
-    read_cached_prediction,
-    read_cached_prediction_async,
-)
+from src.apps.predictions.engines import PredictionWindowInput, evaluate_prediction_window
+from src.apps.predictions.integrations.market_data import PredictionMarketDataAdapter
 from src.apps.predictions.models import MarketPrediction, PredictionResult
 from src.apps.predictions.repositories import PredictionRelationRepository, PredictionRepository
-from src.apps.predictions.support import (
-    PREDICTION_MAX_FOLLOWERS,
-    PredictionOutcome,
-    clamp_prediction_value as _clamp,
+from src.apps.predictions.services.results import (
+    PredictionCacheSnapshot,
+    PredictionCreationBatch,
+    PredictionEvaluationBatch,
+    PredictionPublishedEvent,
 )
-from src.core.db.persistence import PERSISTENCE_LOGGER, PersistenceComponent, freeze_json_value
+from src.apps.predictions.support import PREDICTION_MAX_FOLLOWERS, PredictionOutcome
+from src.apps.predictions.support import clamp_prediction_value as _clamp
+from src.core.db.persistence import PersistenceComponent, freeze_json_value
 from src.core.db.uow import BaseAsyncUnitOfWork
-from src.runtime.streams.publisher import publish_event
-
-_PREDICTION_MOVE_THRESHOLD = 0.015
-
-
-@dataclass(slots=True, frozen=True)
-class PredictionCacheSnapshot:
-    prediction_id: int
-    prediction_type: str
-    leader_coin_id: int
-    target_coin_id: int
-    prediction_event: str
-    expected_move: str
-    lag_hours: int
-    confidence: float
-    created_at: datetime | None
-    evaluation_time: datetime | None
-    status: str
-
-    @classmethod
-    def from_prediction(cls, prediction: MarketPrediction) -> PredictionCacheSnapshot:
-        return cls(
-            prediction_id=int(prediction.id),
-            prediction_type=prediction.prediction_type,
-            leader_coin_id=int(prediction.leader_coin_id),
-            target_coin_id=int(prediction.target_coin_id),
-            prediction_event=prediction.prediction_event,
-            expected_move=prediction.expected_move,
-            lag_hours=int(prediction.lag_hours),
-            confidence=float(prediction.confidence),
-            created_at=prediction.created_at,
-            evaluation_time=prediction.evaluation_time,
-            status=prediction.status,
-        )
-
-    @classmethod
-    def from_cache_entry(cls, entry: PredictionCacheEntry) -> PredictionCacheSnapshot:
-        return cls(
-            prediction_id=int(entry.id),
-            prediction_type=entry.prediction_type,
-            leader_coin_id=int(entry.leader_coin_id),
-            target_coin_id=int(entry.target_coin_id),
-            prediction_event=entry.prediction_event,
-            expected_move=entry.expected_move,
-            lag_hours=int(entry.lag_hours),
-            confidence=float(entry.confidence),
-            created_at=entry.created_at,
-            evaluation_time=entry.evaluation_time,
-            status=entry.status,
-        )
-
-    def as_cache_kwargs(self) -> dict[str, Any]:
-        return {
-            "prediction_id": self.prediction_id,
-            "prediction_type": self.prediction_type,
-            "leader_coin_id": self.leader_coin_id,
-            "target_coin_id": self.target_coin_id,
-            "prediction_event": self.prediction_event,
-            "expected_move": self.expected_move,
-            "lag_hours": self.lag_hours,
-            "confidence": self.confidence,
-            "created_at": self.created_at,
-            "evaluation_time": self.evaluation_time,
-            "status": self.status,
-        }
-
-
-@dataclass(slots=True, frozen=True)
-class PredictionPublishedEvent:
-    event_type: str
-    payload: Mapping[str, Any]
-
-
-@dataclass(slots=True, frozen=True)
-class PredictionCreationBatch:
-    status: str
-    leader_coin_id: int
-    created: int = 0
-    reason: str | None = None
-    cache_snapshots: tuple[PredictionCacheSnapshot, ...] = ()
-
-    def to_summary(self, *, include_cache_snapshots: bool = False) -> dict[str, object]:
-        payload: dict[str, object] = {
-            "status": self.status,
-            "created": int(self.created),
-            "leader_coin_id": int(self.leader_coin_id),
-        }
-        if self.reason is not None:
-            payload["reason"] = self.reason
-        if include_cache_snapshots:
-            payload["cache_snapshots"] = tuple(snapshot.as_cache_kwargs() for snapshot in self.cache_snapshots)
-        return payload
-
-
-@dataclass(slots=True, frozen=True)
-class PredictionEvaluationBatch:
-    status: str
-    evaluated: int
-    confirmed: int
-    failed: int
-    expired: int
-    cache_snapshots: tuple[PredictionCacheSnapshot, ...] = ()
-    events: tuple[PredictionPublishedEvent, ...] = ()
-
-    def to_summary(self) -> dict[str, object]:
-        return {
-            "status": self.status,
-            "evaluated": int(self.evaluated),
-            "confirmed": int(self.confirmed),
-            "failed": int(self.failed),
-            "expired": int(self.expired),
-        }
 
 
 class PredictionService(PersistenceComponent):
@@ -144,7 +26,7 @@ class PredictionService(PersistenceComponent):
         *,
         predictions: PredictionRepository | None = None,
         relations: PredictionRelationRepository | None = None,
-        candles: CandleRepository | None = None,
+        market_data: PredictionMarketDataAdapter | None = None,
     ) -> None:
         super().__init__(
             uow.session,
@@ -152,10 +34,9 @@ class PredictionService(PersistenceComponent):
             domain="predictions",
             component_name="PredictionService",
         )
-        self._uow = uow
         self._predictions = predictions or PredictionRepository(uow.session)
         self._relations = relations or PredictionRelationRepository(uow.session)
-        self._candles = candles or CandleRepository(uow.session)
+        self._market_data = market_data or PredictionMarketDataAdapter(uow)
 
     async def create_market_predictions(
         self,
@@ -330,45 +211,26 @@ class PredictionService(PersistenceComponent):
     ) -> PredictionOutcome | None:
         start = ensure_utc(prediction.created_at)
         deadline = ensure_utc(prediction.evaluation_time)
-        end = min(now, deadline)
-        candles = await self._candles.fetch_points_between(
+        candles = await self._market_data.fetch_prediction_window(
             coin_id=int(prediction.target_coin_id),
-            timeframe=15,
             window_start=start,
-            window_end=end,
+            window_end=min(now, deadline),
         )
-        if len(candles) < 2:
-            return None
-        entry_price = float(candles[0].close)
-        closes = [float(item.close) for item in candles]
-        highs = [float(item.high) for item in candles]
-        lows = [float(item.low) for item in candles]
-        max_move = (max(highs) - entry_price) / entry_price if entry_price else 0.0
-        min_move = (min(lows) - entry_price) / entry_price if entry_price else 0.0
-        last_move = (closes[-1] - entry_price) / entry_price if entry_price else 0.0
-        if prediction.expected_move == "up":
-            if max_move >= _PREDICTION_MOVE_THRESHOLD:
-                return PredictionOutcome(status="confirmed", actual_move=max_move, success=True, profit=max_move)
-            if now >= deadline and last_move <= -_PREDICTION_MOVE_THRESHOLD:
-                return PredictionOutcome(status="failed", actual_move=last_move, success=False, profit=last_move)
-            if now >= deadline:
-                return PredictionOutcome(status="expired", actual_move=last_move, success=False, profit=last_move)
-        else:
-            bearish_move = abs(min_move)
-            if bearish_move >= _PREDICTION_MOVE_THRESHOLD:
-                return PredictionOutcome(status="confirmed", actual_move=min_move, success=True, profit=bearish_move)
-            if now >= deadline and last_move >= _PREDICTION_MOVE_THRESHOLD:
-                return PredictionOutcome(status="failed", actual_move=last_move, success=False, profit=-last_move)
-            if now >= deadline:
-                return PredictionOutcome(status="expired", actual_move=last_move, success=False, profit=-max(last_move, 0.0))
-        return None
+        return evaluate_prediction_window(
+            PredictionWindowInput(
+                expected_move=prediction.expected_move,
+                deadline=deadline,
+                now=now,
+                candles=candles,
+            )
+        )
 
     async def _apply_relation_feedback(
         self,
         prediction: MarketPrediction,
         *,
         success: bool,
-    ) -> CoinRelation | None:
+    ) -> object | None:
         relation = await self._relations.get_for_update(
             leader_coin_id=int(prediction.leader_coin_id),
             target_coin_id=int(prediction.target_coin_id),
@@ -387,52 +249,4 @@ class PredictionService(PersistenceComponent):
         return relation
 
 
-class PredictionSideEffectDispatcher:
-    async def apply_creation(self, result: PredictionCreationBatch) -> None:
-        PERSISTENCE_LOGGER.debug(
-            "prediction.side_effects.apply_creation",
-            extra={
-                "persistence": {
-                    "event": "prediction.side_effects.apply_creation",
-                    "component_type": "service",
-                    "domain": "predictions",
-                    "component": "PredictionSideEffectDispatcher",
-                    "count": len(result.cache_snapshots),
-                }
-            },
-        )
-        for snapshot in result.cache_snapshots:
-            await cache_prediction_snapshot_async(**snapshot.as_cache_kwargs())
-
-    async def apply_evaluation(self, result: PredictionEvaluationBatch) -> None:
-        PERSISTENCE_LOGGER.debug(
-            "prediction.side_effects.apply_evaluation",
-            extra={
-                "persistence": {
-                    "event": "prediction.side_effects.apply_evaluation",
-                    "component_type": "service",
-                    "domain": "predictions",
-                    "component": "PredictionSideEffectDispatcher",
-                    "cache_snapshot_count": len(result.cache_snapshots),
-                    "event_count": len(result.events),
-                }
-            },
-        )
-        for snapshot in result.cache_snapshots:
-            await cache_prediction_snapshot_async(**snapshot.as_cache_kwargs())
-        for event in result.events:
-            publish_event(event.event_type, dict(event.payload))
-
-
-__all__ = [
-    "PredictionCacheSnapshot",
-    "PredictionCreationBatch",
-    "PredictionEvaluationBatch",
-    "PredictionPublishedEvent",
-    "PredictionService",
-    "PredictionSideEffectDispatcher",
-    "cache_prediction_snapshot",
-    "cache_prediction_snapshot_async",
-    "read_cached_prediction",
-    "read_cached_prediction_async",
-]
+__all__ = ["PredictionService"]
