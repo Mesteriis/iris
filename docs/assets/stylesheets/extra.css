@@ -111,6 +111,14 @@ button {
   margin-top: 0;
 }
 
+.md-main__inner:has(.iris-home) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.md-main__inner:has(.iris-home) .md-sidebar--primary {
+  display: none;
+}
+
 .md-content__inner {
   padding-top: 1rem;
   padding-bottom: 3rem;
