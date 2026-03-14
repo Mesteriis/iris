@@ -4,6 +4,8 @@
 
 Этот документ больше не является абстрактным vision doc.
 
+По состоянию на 2026-03-14 rollout из этого плана доведён до platform-grade состояния в коде и зафиксирован нормативными артефактами.
+
 Его задача: зафиксировать, как AI-layer должен встраиваться в **уже принятую** архитектурную модель IRIS:
 
 - service/engine split;
@@ -14,12 +16,22 @@
 
 Это bridge-документ между текущим `hypothesis_engine` и будущим `core.ai` / product AI capabilities.
 
-Дальше из него должны родиться уже нормативные артефакты:
+Нормативные артефакты rollout:
 
 - `docs/architecture/adr/0015-ai-platform-layer.md`
 - `docs/architecture/ai-runtime-policies.md`
 - `docs/architecture/ai-performance-budgets.md`
-- короткий rollout/audit doc под execution work.
+
+Что уже реализовано:
+
+- shared `core.ai` platform layer;
+- migration `hypothesis_generate` на capability-aware executor;
+- `notification_humanize`;
+- `brief_generate` как analytical snapshot surface;
+- `explain_generate` как bounded explanation capability;
+- AI operator/admin surfaces в existing `control-plane`;
+- capability-aware router/worker/scheduler gating;
+- prompt/task/provider separation и enforced prompt policy.
 
 ## Цель
 
@@ -824,51 +836,51 @@ Prompt management должно быть capability-aware и task-aware.
 
 ### Stage 1. Governance and foundations
 
-- [ ] закрепить AI-layer как часть текущей architecture family, а не отдельную конституцию;
-- [ ] подготовить ADR + runtime policy + performance budgets package;
-- [ ] определить compact capability taxonomy;
-- [ ] определить capability/task/prompt/provider model;
-- [ ] определить context transport policy и format selection matrix;
-- [ ] определить degraded-mode policy.
+- [x] закрепить AI-layer как часть текущей architecture family, а не отдельную конституцию;
+- [x] подготовить ADR + runtime policy + performance budgets package;
+- [x] определить compact capability taxonomy;
+- [x] определить capability/task/prompt/provider model;
+- [x] определить context transport policy и format selection matrix;
+- [x] определить degraded-mode policy.
 
 ### Stage 2. `core.ai` foundation
 
-- [ ] ввести typed provider registry в `core.ai`;
-- [ ] добавить `auth_token`, `auth_header`, `auth_scheme`;
-- [ ] добавить provider routing по capability;
-- [ ] добавить context serializer/renderer для `json`, `compact_json`, `toon`, `csv`;
-- [ ] добавить strict output validator;
-- [ ] добавить typed telemetry envelope.
+- [x] ввести typed provider registry в `core.ai`;
+- [x] добавить `auth_token`, `auth_header`, `auth_scheme`;
+- [x] добавить provider routing по capability;
+- [x] добавить context serializer/renderer для `json`, `compact_json`, `toon`, `csv`;
+- [x] добавить strict output validator;
+- [x] добавить typed telemetry envelope.
 
 ### Stage 3. Hypothesis migration
 
-- [ ] перенести providers из `apps/hypothesis_engine` в `core.ai`;
-- [ ] перевести `ReasoningService` на `AIExecutor.execute(capability="hypothesis_generate", ...)`;
-- [ ] разрезать prompt semantics и infra routing;
-- [ ] заменить boolean flag на capability-aware router/worker/scheduler gating;
-- [ ] сохранить read surfaces даже при отсутствии generation capability;
-- [ ] явно отделить `hypothesis_generate` от `hypothesis_evaluation`.
+- [x] перенести providers из `apps/hypothesis_engine` в `core.ai`;
+- [x] перевести `ReasoningService` на `AIExecutor.execute(capability="hypothesis_generate", ...)`;
+- [x] разрезать prompt semantics и infra routing;
+- [x] заменить boolean flag на capability-aware router/worker/scheduler gating;
+- [x] сохранить read surfaces даже при отсутствии generation capability;
+- [x] явно отделить `hypothesis_generate` от `hypothesis_evaluation`.
 
 ### Stage 4. Notification humanization
 
-- [ ] добавить `notification_humanize`;
-- [ ] определить typed notification artifact;
-- [ ] определить event scope, throttling и degraded strategy;
-- [ ] изолировать execution на dedicated worker lanes.
+- [x] добавить `notification_humanize`;
+- [x] определить typed notification artifact;
+- [x] определить event scope, throttling и degraded strategy;
+- [x] изолировать execution на dedicated worker lanes.
 
 ### Stage 5. Briefs
 
-- [ ] добавить `brief_generate`;
-- [ ] спроектировать deterministic context bundles;
-- [ ] определить preferred transport formats для brief contexts, включая `toon` / `csv` там, где это оправдано;
-- [ ] сделать generation tracked async operation;
-- [ ] сделать stored/cached brief read surface с freshness metadata;
-- [ ] не смешивать brief storage lifecycle с hypothesis/notification storage.
+- [x] добавить `brief_generate`;
+- [x] спроектировать deterministic context bundles;
+- [x] определить preferred transport formats для brief contexts, включая `toon` / `csv` там, где это оправдано;
+- [x] сделать generation tracked async operation;
+- [x] сделать stored/cached brief read surface с freshness metadata;
+- [x] не смешивать brief storage lifecycle с hypothesis/notification storage.
 
 ### Stage 6. Optional product-layer expansion
 
-- [ ] вернуться к вопросу отдельного `apps/lazy_investor` только если уже есть минимум две новые устойчивые capability;
-- [ ] не делать большой rename без явной product/ownership причины.
+- [x] зафиксировать, что отдельный `apps/lazy_investor` не вводится на текущем этапе и требует отдельного product/ownership решения;
+- [x] не делать большой rename без явной product/ownership причины.
 
 ## Что сознательно не делаем прямо сейчас
 

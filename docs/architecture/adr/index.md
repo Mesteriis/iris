@@ -20,6 +20,7 @@
 | 0012 | [Services Return Domain Contracts](0012-services-return-domain-contracts.md) | Сервисы возвращают typed domain contracts |
 | 0013 | [Async Classes for Orchestration](0013-async-classes-for-orchestration-pure-functions-for-analysis.md) | Async классы для orchestration, pure функции для аналитики |
 | 0014 | [Side Effects Execute Post-Commit](0014-post-commit-side-effects-only.md) | Side effects выполняются только после коммита |
+| 0015 | [Shared AI Platform Layer](0015-ai-platform-layer.md) | Общий AI platform layer с capability-aware provider registry и shared executor |
 
 ## Что такое ADR?
 
