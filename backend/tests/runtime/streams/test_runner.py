@@ -100,7 +100,7 @@ def test_spawn_and_stop_event_worker_processes(monkeypatch) -> None:
 
     fake_context = FakeContext()
     monkeypatch.setattr(runner.multiprocessing, "get_context", lambda mode: fake_context)
-    monkeypatch.setattr(runner, "EVENT_WORKER_GROUPS", ("indicator_workers", "pattern_workers"))
+    monkeypatch.setattr(runner, "get_event_worker_groups", lambda: ("indicator_workers", "pattern_workers"))
 
     stop_event, processes = runner.spawn_event_worker_processes()
 

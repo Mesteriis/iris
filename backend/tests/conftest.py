@@ -30,6 +30,7 @@ from src.core.settings import get_settings
 get_settings.cache_clear()
 
 from src.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
+from src.apps.briefs.models import AIBrief
 from src.apps.control_plane.models import (
     EventConsumer,
     EventDefinition,
@@ -40,6 +41,7 @@ from src.apps.control_plane.models import (
     TopologyDraftChange,
 )
 from src.apps.cross_market.models import CoinRelation, SectorMetric
+from src.apps.explanations.models import AIExplanation
 from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AIPrompt, AIWeight
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Coin
@@ -47,6 +49,7 @@ from src.apps.market_data.schemas import CoinCreate
 from src.apps.market_data.sources.base import MarketBar
 from src.apps.market_structure.models import MarketStructureSource
 from src.apps.news.models import NewsItem, NewsItemLink, NewsSource
+from src.apps.notifications.models import AINotification
 from src.apps.patterns.models import PatternFeature, PatternRegistry, PatternStatistic
 from src.apps.portfolio.models import (
     ExchangeAccount,
@@ -229,6 +232,45 @@ def cleanup_pattern_state() -> Iterator[None]:
         db.execute(delete(PatternStatistic))
         db.execute(delete(PatternRegistry))
         db.execute(delete(PatternFeature))
+        db.commit()
+        db.close()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_notification_state() -> Iterator[None]:
+    db = SessionLocal()
+    try:
+        db.execute(delete(AINotification))
+        db.commit()
+        yield
+    finally:
+        db.execute(delete(AINotification))
+        db.commit()
+        db.close()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_brief_state() -> Iterator[None]:
+    db = SessionLocal()
+    try:
+        db.execute(delete(AIBrief))
+        db.commit()
+        yield
+    finally:
+        db.execute(delete(AIBrief))
+        db.commit()
+        db.close()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_explanation_state() -> Iterator[None]:
+    db = SessionLocal()
+    try:
+        db.execute(delete(AIExplanation))
+        db.commit()
+        yield
+    finally:
+        db.execute(delete(AIExplanation))
         db.commit()
         db.close()
 

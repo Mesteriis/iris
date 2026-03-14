@@ -59,7 +59,6 @@ def test_bootstrap_app_builds_config_runs_migrations_and_enters_deferred_lifespa
 
 
 def test_openapi_operation_ids_and_tags_follow_http_governance(monkeypatch) -> None:
-    monkeypatch.setattr(bootstrap_app_module.settings, "enable_hypothesis_engine", True, raising=False)
     app = bootstrap_app_module.create_app()
     schema = app.openapi()
     operations: list[dict[str, object]] = []
@@ -83,13 +82,13 @@ def test_openapi_operation_ids_and_tags_follow_http_governance(monkeypatch) -> N
 
     assert operations
     assert "control_plane_read_event_registry" in operation_ids
+    assert "control_plane_read_ai_providers" in operation_ids
     assert "market_data_create_coin" in operation_ids
     assert "hypothesis_run_evaluation_job" in operation_ids
     assert "system_read_operation_status" in operation_ids
 
 
 def test_ha_addon_openapi_excludes_mode_limited_routes(monkeypatch) -> None:
-    monkeypatch.setattr(bootstrap_app_module.settings, "enable_hypothesis_engine", True, raising=False)
     monkeypatch.setattr(bootstrap_app_module.settings, "api_launch_mode", "ha_addon", raising=False)
     monkeypatch.setattr(bootstrap_app_module.settings, "api_deployment_profile", "", raising=False)
     app = bootstrap_app_module.create_app()
@@ -103,7 +102,8 @@ def test_ha_addon_openapi_excludes_mode_limited_routes(monkeypatch) -> None:
     assert "/api/v1/operations/{operation_id}" in paths
     assert "post" not in paths["/api/v1/control-plane/routes"]
     assert "get" in paths["/api/v1/control-plane/routes"]
-    assert "/api/v1/hypothesis/prompts" in paths
+    assert "/api/v1/control-plane/ai/prompts" not in paths
+    assert "/api/v1/hypothesis/prompts" not in paths
     assert "/api/v1/market-structure/sources" in paths
     assert "/api/v1/system/status" in paths
 
@@ -111,7 +111,6 @@ def test_ha_addon_openapi_excludes_mode_limited_routes(monkeypatch) -> None:
 def test_openapi_snapshot_helper_writes_mode_aware_schema(tmp_path) -> None:
     settings = bootstrap_app_module.settings.model_copy(
         update={
-            "enable_hypothesis_engine": True,
             "api_launch_mode": "ha_addon",
             "api_deployment_profile": "",
         }
@@ -120,7 +119,8 @@ def test_openapi_snapshot_helper_writes_mode_aware_schema(tmp_path) -> None:
     paths = set(schema["paths"].keys())
 
     assert "/api/v1/hypothesis/jobs/evaluate" not in paths
-    assert "/api/v1/hypothesis/prompts" in paths
+    assert "/api/v1/control-plane/ai/prompts" not in paths
+    assert "/api/v1/hypothesis/prompts" not in paths
 
     output_path = openapi_module.write_openapi_schema(
         settings=settings,
@@ -130,7 +130,7 @@ def test_openapi_snapshot_helper_writes_mode_aware_schema(tmp_path) -> None:
 
     assert output_path.name == "openapi-ha-addon.json"
     assert '"openapi"' in dumped
-    assert '"/api/v1/hypothesis/prompts"' in dumped
+    assert '"/api/v1/control-plane/ai/prompts"' not in dumped
 
     matches, diff = openapi_module.check_openapi_schema(settings=settings, snapshot=output_path)
     assert matches is True
@@ -140,7 +140,6 @@ def test_openapi_snapshot_helper_writes_mode_aware_schema(tmp_path) -> None:
 def test_openapi_snapshot_helper_reports_diff(tmp_path) -> None:
     settings = bootstrap_app_module.settings.model_copy(
         update={
-            "enable_hypothesis_engine": True,
             "api_launch_mode": "full",
             "api_deployment_profile": "platform_full",
         }

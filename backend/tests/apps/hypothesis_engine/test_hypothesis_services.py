@@ -22,7 +22,7 @@ async def test_prompt_loader_uses_db_cache_and_invalidation(async_db_session, re
         version=3,
         is_active=True,
         template="signal prompt v3",
-        vars_json={"provider": "heuristic"},
+        vars_json={"horizon_min": 180, "style_profile": "concise"},
     )
     async_db_session.add(prompt)
     await async_db_session.commit()

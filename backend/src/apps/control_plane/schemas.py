@@ -12,6 +12,7 @@ from src.apps.control_plane.enums import (
     TopologyDraftChangeType,
     TopologyDraftStatus,
 )
+from src.core.ai.contracts import AICapability, AIContextFormat, AIHealthState, AIProviderKind
 
 
 class RouteFiltersPayload(BaseModel):
@@ -301,3 +302,53 @@ class ObservabilityOverviewRead(BaseModel):
     dead_consumer_count: int
     routes: list[RouteObservabilityRead]
     consumers: list[ConsumerObservabilityRead]
+
+
+class AIProviderOperatorRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    kind: AIProviderKind
+    enabled: bool
+    priority: int
+    base_url: str
+    endpoint: str
+    model: str
+    auth_configured: bool
+    capabilities: list[AICapability]
+    selected_as_primary_for: list[AICapability]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    max_context_tokens: int | None = None
+    max_output_tokens: int | None = None
+
+
+class AICapabilityOperatorRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    capability: AICapability
+    enabled: bool
+    health_state: AIHealthState
+    provider_available: bool
+    allow_degraded_fallback: bool
+    preferred_context_format: AIContextFormat
+    allowed_context_formats: list[AIContextFormat]
+    configured_providers: list[str]
+    primary_provider: str | None = None
+
+
+class AIPromptOperatorRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int | None = None
+    name: str
+    capability: AICapability | None = None
+    task: str
+    version: int
+    editable: bool
+    source: str
+    is_active: bool
+    template: str
+    vars_json: dict[str, Any] = Field(default_factory=dict)
+    schema_contract: dict[str, Any] | str | None = None
+    style_profile: str | None = None
+    updated_at: datetime | None = None

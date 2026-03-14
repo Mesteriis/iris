@@ -9,6 +9,7 @@ from src.runtime.streams.types import (
     INDICATOR_WORKER_GROUP,
     NEWS_CORRELATION_WORKER_GROUP,
     NEWS_NORMALIZATION_WORKER_GROUP,
+    NOTIFICATION_WORKER_GROUP,
     PATTERN_WORKER_GROUP,
     PORTFOLIO_WORKER_GROUP,
     REGIME_WORKER_GROUP,
@@ -45,6 +46,14 @@ WORKER_EVENT_TYPES: dict[str, set[str]] = {
         "portfolio_position_changed",
     },
     HYPOTHESIS_WORKER_GROUP: {
+        "signal_created",
+        "anomaly_detected",
+        "decision_generated",
+        "market_regime_changed",
+        "portfolio_position_changed",
+        "portfolio_balance_updated",
+    },
+    NOTIFICATION_WORKER_GROUP: {
         "signal_created",
         "anomaly_detected",
         "decision_generated",

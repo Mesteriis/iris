@@ -16,6 +16,9 @@ from src.apps.control_plane.enums import (
 from src.apps.control_plane.exceptions import TopologyDraftNotFound, TopologyDraftStateError
 from src.apps.control_plane.metrics import ControlPlaneMetricsStore
 from src.apps.control_plane.read_models import (
+    AICapabilityOperatorReadModel,
+    AIPromptOperatorReadModel,
+    AIProviderOperatorReadModel,
     CompatibleConsumerReadModel,
     ConsumerObservabilityReadModel,
     EventConsumerReadModel,
@@ -48,7 +51,13 @@ from src.apps.control_plane.repositories import (
     TopologyDraftRepository,
     TopologyVersionRepository,
 )
+from src.apps.hypothesis_engine.query_services import HypothesisQueryService
 from src.apps.market_data.domain import utc_now
+from src.core.ai.capabilities import get_capability_policy
+from src.core.ai.contracts import AICapability
+from src.core.ai.health import capability_health_state
+from src.core.ai.prompt_policy import get_prompt_task_policy, list_builtin_prompt_definitions, prompt_style_profile
+from src.core.ai.settings import build_provider_configs
 from src.core.db.persistence import AsyncQueryService, freeze_json_value
 from src.core.settings import get_settings
 
@@ -581,7 +590,190 @@ class TopologyObservabilityQueryService(AsyncQueryService):
         )
 
 
+class AIOperatorQueryService(AsyncQueryService):
+    def __init__(self, session: AsyncSession, *, settings=None) -> None:
+        super().__init__(session, domain="control_plane", service_name="AIOperatorQueryService")
+        self._settings = settings or get_settings()
+        self._hypothesis_queries = HypothesisQueryService(session)
+
+    async def list_ai_providers(self) -> tuple[AIProviderOperatorReadModel, ...]:
+        self._log_debug("query.list_ai_providers", mode="admin")
+        providers = build_provider_configs(self._settings)
+        primary_by_capability = {
+            capability: next(
+                (
+                    provider.name
+                    for provider in providers
+                    if provider.enabled and capability in provider.capabilities
+                ),
+                None,
+            )
+            for capability in AICapability
+        }
+        items = tuple(
+            AIProviderOperatorReadModel(
+                name=provider.name,
+                kind=provider.kind,
+                enabled=bool(provider.enabled),
+                priority=int(provider.priority),
+                base_url=provider.base_url,
+                endpoint=provider.endpoint,
+                model=provider.model,
+                auth_configured=bool(provider.auth_token) or provider.kind.value == "local_http",
+                capabilities=tuple(provider.capabilities),
+                selected_as_primary_for=tuple(
+                    capability
+                    for capability, primary in primary_by_capability.items()
+                    if primary == provider.name
+                ),
+                metadata=freeze_json_value(dict(provider.metadata)),
+                max_context_tokens=provider.max_context_tokens,
+                max_output_tokens=provider.max_output_tokens,
+            )
+            for provider in providers
+        )
+        self._log_debug("query.list_ai_providers.result", mode="admin", count=len(items))
+        return items
+
+    async def list_ai_capabilities(self) -> tuple[AICapabilityOperatorReadModel, ...]:
+        self._log_debug("query.list_ai_capabilities", mode="admin")
+        providers = build_provider_configs(self._settings)
+        items = tuple(
+            self._build_capability_record(capability, providers=providers)
+            for capability in AICapability
+        )
+        self._log_debug("query.list_ai_capabilities.result", mode="admin", count=len(items))
+        return items
+
+    async def list_ai_prompts(
+        self,
+        *,
+        name: str | None = None,
+        capability: AICapability | None = None,
+        task: str | None = None,
+        editable: bool | None = None,
+    ) -> tuple[AIPromptOperatorReadModel, ...]:
+        self._log_debug(
+            "query.list_ai_prompts",
+            mode="admin",
+            name=name,
+            capability=capability.value if capability is not None else None,
+            task=task,
+            editable=editable,
+        )
+        db_prompts = await self._hypothesis_queries.list_prompts(name=name)
+        active_db_names = {item.name for item in db_prompts if item.is_active}
+        items = [self._build_db_prompt_record(prompt) for prompt in db_prompts]
+        for prompt in list_builtin_prompt_definitions():
+            if prompt.source == "fallback" and prompt.name in active_db_names:
+                continue
+            items.append(self._build_builtin_prompt_record(prompt))
+        filtered = tuple(
+            item
+            for item in items
+            if self._prompt_matches(
+                item,
+                name=name,
+                capability=capability,
+                task=task,
+                editable=editable,
+            )
+        )
+        ordered = tuple(
+            sorted(
+                filtered,
+                key=lambda item: (
+                    item.capability.value if item.capability is not None else "~",
+                    item.name,
+                    -int(item.version),
+                    item.source,
+                ),
+            )
+        )
+        self._log_debug("query.list_ai_prompts.result", mode="admin", count=len(ordered))
+        return ordered
+
+    def _build_capability_record(
+        self,
+        capability: AICapability,
+        *,
+        providers,
+    ) -> AICapabilityOperatorReadModel:
+        policy = get_capability_policy(capability, settings=self._settings)
+        configured_providers = tuple(
+            provider.name
+            for provider in providers
+            if provider.enabled and capability in provider.capabilities
+        )
+        return AICapabilityOperatorReadModel(
+            capability=capability,
+            enabled=bool(policy.enabled),
+            health_state=capability_health_state(capability, settings=self._settings),
+            provider_available=bool(configured_providers) and bool(policy.enabled),
+            allow_degraded_fallback=bool(policy.allow_degraded_fallback),
+            preferred_context_format=policy.preferred_context_format,
+            allowed_context_formats=tuple(policy.allowed_context_formats),
+            configured_providers=configured_providers,
+            primary_provider=configured_providers[0] if configured_providers else None,
+        )
+
+    def _build_db_prompt_record(self, prompt) -> AIPromptOperatorReadModel:
+        policy = get_prompt_task_policy(prompt.task)
+        return AIPromptOperatorReadModel(
+            id=int(prompt.id),
+            name=prompt.name,
+            capability=None if policy is None else policy.capability,
+            task=prompt.task,
+            version=int(prompt.version),
+            editable=False if policy is None else bool(policy.editable),
+            source="db",
+            is_active=bool(prompt.is_active),
+            template=prompt.template,
+            vars_json=prompt.vars_json,
+            schema_contract=None if policy is None else freeze_json_value(policy.schema_contract),
+            style_profile=prompt_style_profile(dict(prompt.vars_json or {})),
+            updated_at=prompt.updated_at,
+        )
+
+    def _build_builtin_prompt_record(self, prompt) -> AIPromptOperatorReadModel:
+        return AIPromptOperatorReadModel(
+            id=None,
+            name=prompt.name,
+            capability=prompt.capability,
+            task=prompt.task,
+            version=int(prompt.version),
+            editable=bool(prompt.editable),
+            source=prompt.source,
+            is_active=True,
+            template=prompt.template,
+            vars_json=freeze_json_value(dict(prompt.vars_json)),
+            schema_contract=freeze_json_value(prompt.schema_contract),
+            style_profile=prompt.style_profile,
+            updated_at=None,
+        )
+
+    def _prompt_matches(
+        self,
+        prompt: AIPromptOperatorReadModel,
+        *,
+        name: str | None,
+        capability: AICapability | None,
+        task: str | None,
+        editable: bool | None,
+    ) -> bool:
+        if name is not None and prompt.name != name:
+            return False
+        if capability is not None and prompt.capability is not capability:
+            return False
+        if task is not None and prompt.task != task:
+            return False
+        if editable is not None and bool(prompt.editable) is not bool(editable):
+            return False
+        return True
+
+
 __all__ = [
+    "AIOperatorQueryService",
     "AuditLogQueryService",
     "EventRegistryQueryService",
     "RouteQueryService",

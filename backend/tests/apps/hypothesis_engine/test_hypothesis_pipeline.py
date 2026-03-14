@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import multiprocessing
 
 import pytest
@@ -29,9 +30,28 @@ async def test_signal_created_pipeline_persists_and_publishes_hypothesis(
     seeded_market,
     settings,
     wait_until,
+    monkeypatch,
 ) -> None:
     coin_id = int(seeded_market["ETHUSD_EVT"]["coin_id"])
     event_timestamp = seeded_market["ETHUSD_EVT"]["latest_timestamp"]
+    monkeypatch.setenv(
+        "IRIS_AI_PROVIDERS",
+        json.dumps(
+            [
+                {
+                    "name": "local_test",
+                    "kind": "local_http",
+                    "enabled": True,
+                    "base_url": "http://127.0.0.1:9",
+                    "endpoint": "/api/generate",
+                    "model": "llama-test",
+                    "timeout_seconds": 0.05,
+                    "priority": 100,
+                    "capabilities": ["hypothesis_generate"],
+                }
+            ]
+        ),
+    )
 
     ctx = multiprocessing.get_context("spawn")
     dispatcher = ctx.Process(

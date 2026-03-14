@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from src.apps.hypothesis_engine.tasks import hypothesis_tasks
 from src.apps.market_data import services as market_data_services
 from src.apps.market_data import tasks as market_data_tasks
 from src.apps.market_structure import tasks as market_structure_tasks
@@ -14,7 +15,7 @@ from src.apps.news import tasks as news_tasks
 from src.apps.patterns import tasks as pattern_tasks
 from src.apps.portfolio import tasks as portfolio_tasks
 from src.apps.predictions import tasks as prediction_tasks
-from src.apps.hypothesis_engine.tasks import hypothesis_tasks
+from src.core.ai import hypothesis_evaluation_surfaces_enabled
 from src.core.settings import get_settings
 from src.runtime.orchestration.dispatcher import enqueue_task
 
@@ -216,7 +217,7 @@ async def schedule_hypothesis_evaluation(stop_event: asyncio.Event) -> None:
         return
 
     interval = settings.taskiq_hypothesis_eval_interval_seconds
-    if interval <= 0 or not settings.enable_hypothesis_engine:
+    if interval <= 0 or not hypothesis_evaluation_surfaces_enabled(settings):
         await stop_event.wait()
         return
 
@@ -281,7 +282,7 @@ def start_scheduler(
         asyncio.create_task(schedule_prediction_evaluation(finish_event)),
         asyncio.create_task(schedule_news_poll(finish_event)),
     ]
-    if settings.enable_hypothesis_engine:
+    if hypothesis_evaluation_surfaces_enabled(settings):
         hypothesis_task = asyncio.create_task(schedule_hypothesis_evaluation(finish_event))
         tasks.append(hypothesis_task)
         app.state.taskiq_hypothesis_evaluation_task = hypothesis_task
@@ -302,7 +303,7 @@ def start_scheduler(
         app.state.taskiq_news_poll_task,
         *remaining,
     ) = tasks
-    if settings.enable_hypothesis_engine:
+    if hypothesis_evaluation_surfaces_enabled(settings):
         (
             _hypothesis_task,
             app.state.taskiq_market_structure_snapshot_poll_task,

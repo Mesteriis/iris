@@ -51,6 +51,7 @@ class AuthPolicy(StrEnum):
 
 
 AUDIENCE_OVERRIDES: dict[tuple[str, str], ContractAudience] = {
+    ("briefs", "read"): ContractAudience.OPERATOR_CONTROL,
     ("control-plane", "read"): ContractAudience.OPERATOR_CONTROL,
     ("control-plane", "commands"): ContractAudience.OPERATOR_CONTROL,
     ("hypothesis", "read"): ContractAudience.OPERATOR_CONTROL,
@@ -157,8 +158,8 @@ def render_http_capability_catalog(*, settings: Settings) -> str:
         "| Operation ID | Method | Path | Domain | Category | Audience | Execution | Idempotency | Operation Resource | Auth | `full` | `local` | `ha_addon` |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
-    for capability in build_http_capability_catalog(settings=settings):
-        rows.append(
+    rows.extend(
+        [
             "| `{operation_id}` | `{method}` | `{path}` | `{domain}` | `{category}` | `{audience}` | `{execution}` | `{idempotency}` | {operation_resource} | `{auth}` | {full} | {local} | {ha} |".format(
                 operation_id=capability.operation_id,
                 method=capability.method,
@@ -174,7 +175,9 @@ def render_http_capability_catalog(*, settings: Settings) -> str:
                 local=_yes_no(capability.local),
                 ha=_yes_no(capability.ha_addon),
             )
-        )
+            for capability in build_http_capability_catalog(settings=settings)
+        ]
+    )
     rows.append("")
     return "\n".join(rows)
 

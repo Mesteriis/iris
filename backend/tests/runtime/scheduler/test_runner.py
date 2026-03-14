@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-
 from src.runtime import scheduler as scheduler_pkg
 from src.runtime.scheduler import runner
 
@@ -16,7 +15,7 @@ async def _fast_sleep(_seconds: float) -> None:
 
 @pytest.mark.asyncio
 async def test_schedule_history_backfills_bootstrap_and_due(monkeypatch) -> None:
-    now = datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
     due_values = iter([now - timedelta(seconds=1)])
     calls: list[object] = []
     stop_event = asyncio.Event()
@@ -46,7 +45,7 @@ async def test_schedule_history_backfills_bootstrap_and_due(monkeypatch) -> None
 
 @pytest.mark.asyncio
 async def test_schedule_history_backfills_trigger_and_empty_queue(monkeypatch) -> None:
-    now = datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
     calls: list[object] = []
     stop_event = asyncio.Event()
     trigger_event = asyncio.Event()
@@ -115,7 +114,7 @@ async def test_schedule_history_backfills_returns_immediately_when_stopped(monke
 
 @pytest.mark.asyncio
 async def test_schedule_history_backfills_continues_when_due_is_unknown(monkeypatch) -> None:
-    now = datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
     due_values = iter([None, now - timedelta(seconds=1)])
     calls: list[object] = []
     stop_event = asyncio.Event()
@@ -180,7 +179,6 @@ async def test_periodic_schedulers_return_immediately_when_stopped(monkeypatch, 
 
     monkeypatch.setattr(runner.asyncio, "sleep", _fast_sleep)
     monkeypatch.setattr(runner, "enqueue_task", lambda task: asyncio.sleep(0, result=calls.append(task)))
-    monkeypatch.setattr(runner.settings, "enable_hypothesis_engine", True, raising=False)
 
     await function(stop_event)
 
@@ -210,7 +208,6 @@ async def test_periodic_schedulers_wait_when_disabled(monkeypatch, function: str
 
     monkeypatch.setattr(runner.asyncio, "sleep", _fast_sleep)
     monkeypatch.setattr(runner.settings, setting_name, 0)
-    monkeypatch.setattr(runner.settings, "enable_hypothesis_engine", True, raising=False)
 
     async def fake_enqueue(task: object) -> None:
         calls.append(task)
@@ -272,7 +269,6 @@ async def test_periodic_schedulers_enqueue_one_cycle(monkeypatch, function, sett
     monkeypatch.setattr(runner.asyncio, "sleep", _fast_sleep)
     monkeypatch.setattr(runner.asyncio, "wait_for", fake_wait_for)
     monkeypatch.setattr(runner.settings, setting_name, 1)
-    monkeypatch.setattr(runner.settings, "enable_hypothesis_engine", True, raising=False)
     monkeypatch.setattr(runner, "enqueue_task", fake_enqueue)
 
     await function(stop_event)
@@ -290,7 +286,6 @@ def test_start_scheduler_assigns_created_tasks(monkeypatch) -> None:
         return task
 
     monkeypatch.setattr(runner.asyncio, "create_task", fake_create_task)
-    monkeypatch.setattr(runner.settings, "enable_hypothesis_engine", True, raising=False)
 
     app = SimpleNamespace(state=SimpleNamespace())
     finish_event = asyncio.Event()

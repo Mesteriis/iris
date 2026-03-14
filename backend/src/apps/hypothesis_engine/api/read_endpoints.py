@@ -2,19 +2,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
-from src.apps.hypothesis_engine.api.contracts import AIHypothesisEvalRead, AIHypothesisRead, AIPromptRead
+from src.apps.hypothesis_engine.api.contracts import AIHypothesisEvalRead, AIHypothesisRead
 from src.apps.hypothesis_engine.api.deps import HypothesisQueryDep
-from src.apps.hypothesis_engine.api.presenters import hypothesis_eval_read, hypothesis_read, prompt_read
+from src.apps.hypothesis_engine.api.presenters import hypothesis_eval_read, hypothesis_read
 
 router = APIRouter(tags=["hypothesis:read"])
-
-
-@router.get("/prompts", response_model=list[AIPromptRead], summary="List AI prompts")
-async def read_ai_prompts(
-    service: HypothesisQueryDep,
-    name: str | None = Query(default=None),
-) -> list[AIPromptRead]:
-    return [prompt_read(item) for item in await service.list_prompts(name=name)]
 
 
 @router.get("/hypotheses", response_model=list[AIHypothesisRead], summary="List hypotheses")

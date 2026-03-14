@@ -9,6 +9,7 @@ from src.apps.cross_market.services import CrossMarketService
 from src.apps.hypothesis_engine.consumers import HypothesisConsumer
 from src.apps.indicators.services import AnalysisSchedulerService, FeatureSnapshotService, IndicatorAnalyticsService
 from src.apps.news.consumers import NewsCorrelationConsumer, NewsNormalizationConsumer
+from src.apps.notifications.consumers import NotificationConsumer
 from src.apps.patterns.cache import cache_regime_snapshot_async, read_cached_regime_async
 from src.apps.patterns.runtime_results import PatternRegimeRefreshResult
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
@@ -24,12 +25,12 @@ from src.runtime.streams.types import (
     ANOMALY_WORKER_GROUP,
     CROSS_MARKET_WORKER_GROUP,
     DECISION_WORKER_GROUP,
-    EVENT_WORKER_GROUPS,
     FUSION_WORKER_GROUP,
     HYPOTHESIS_WORKER_GROUP,
     INDICATOR_WORKER_GROUP,
     NEWS_CORRELATION_WORKER_GROUP,
     NEWS_NORMALIZATION_WORKER_GROUP,
+    NOTIFICATION_WORKER_GROUP,
     PATTERN_WORKER_GROUP,
     PORTFOLIO_WORKER_GROUP,
     REGIME_WORKER_GROUP,
@@ -42,6 +43,7 @@ _ANOMALY_SECTOR_CONSUMER = SectorAnomalyConsumer()
 _NEWS_NORMALIZATION_CONSUMER = NewsNormalizationConsumer()
 _NEWS_CORRELATION_CONSUMER = NewsCorrelationConsumer()
 _HYPOTHESIS_CONSUMER = HypothesisConsumer()
+_NOTIFICATION_CONSUMER = NotificationConsumer()
 _CONTROL_PLANE_METRICS = ControlPlaneMetricsStore()
 _PATTERN_INTERESTED_EVENT_TYPES = frozenset({"analysis_requested", "indicator_updated", "candle_closed"})
 _REGIME_INTERESTED_EVENT_TYPES = frozenset({"indicator_updated"})
@@ -377,6 +379,10 @@ async def _handle_hypothesis_event(event: IrisEvent) -> None:
     await _HYPOTHESIS_CONSUMER.handle_event(event)
 
 
+async def _handle_notification_event(event: IrisEvent) -> None:
+    await _NOTIFICATION_CONSUMER.handle_event(event)
+
+
 def create_worker(group_name: str, consumer_name: str | None = None) -> EventConsumer:
     settings = get_settings()
     effective_consumer_name = consumer_name or default_consumer_name(group_name)
@@ -460,5 +466,12 @@ def create_worker(group_name: str, consumer_name: str | None = None) -> EventCon
     if group_name == HYPOTHESIS_WORKER_GROUP:
         return EventConsumer(
             config, handler=_handle_hypothesis_event, interested_event_types=None, metrics_store=_CONTROL_PLANE_METRICS
+        )
+    if group_name == NOTIFICATION_WORKER_GROUP:
+        return EventConsumer(
+            config,
+            handler=_handle_notification_event,
+            interested_event_types=None,
+            metrics_store=_CONTROL_PLANE_METRICS,
         )
     raise ValueError(f"Unsupported event worker group '{group_name}'.")

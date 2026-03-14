@@ -38,6 +38,10 @@ class HypothesisService:
             "coin_id": int(event.coin_id),
             "timeframe": effective_timeframe,
             "timestamp": ensure_utc(event.timestamp).isoformat(),
+            "stream_id": event.stream_id,
+            "event_id": event.event_id,
+            "causation_id": event.causation_id,
+            "correlation_id": event.correlation_id,
             "payload": dict(event.payload),
             "symbol": coin.symbol,
             "sector": coin.sector_code,
@@ -66,6 +70,19 @@ class HypothesisService:
                     "trigger_timestamp": ensure_utc(event.timestamp).isoformat(),
                     "source_event_type": event.event_type,
                     "source_payload": dict(event.payload),
+                    "ai_execution": {
+                        "requested_provider": reasoning.get("requested_provider"),
+                        "requested_language": reasoning.get("requested_language"),
+                        "effective_language": reasoning.get("effective_language"),
+                        "context_format": reasoning.get("context_format"),
+                        "context_record_count": reasoning.get("context_record_count"),
+                        "context_bytes": reasoning.get("context_bytes"),
+                        "context_token_estimate": reasoning.get("context_token_estimate"),
+                        "fallback_used": reasoning.get("fallback_used"),
+                        "degraded_strategy": reasoning.get("degraded_strategy"),
+                        "latency_ms": reasoning.get("latency_ms"),
+                        "validation_status": reasoning.get("validation_status"),
+                    },
                 },
                 provider=reasoning["provider"],
                 model=reasoning["model"],
@@ -75,29 +92,28 @@ class HypothesisService:
                 source_stream_id=event.stream_id,
             )
         )
-        self._uow.add_after_commit_action(
-            lambda payload={
-                "coin_id": int(hypothesis.coin_id),
-                "timeframe": int(hypothesis.timeframe),
-                "timestamp": ensure_utc(event.timestamp),
-                "hypothesis_id": int(hypothesis.id),
-                "type": hypothesis.hypothesis_type,
-                "horizon_min": int(hypothesis.horizon_min),
-                "confidence": float(hypothesis.confidence),
-                "assets": list(hypothesis.statement_json.get("assets", [])),
-                "prompt": hypothesis.prompt_name,
-                "provider": hypothesis.provider,
-            }: publish_event(AI_EVENT_HYPOTHESIS_CREATED, payload)
-        )
-        self._uow.add_after_commit_action(
-            lambda payload={
-                "coin_id": int(hypothesis.coin_id),
-                "timeframe": int(hypothesis.timeframe),
-                "timestamp": ensure_utc(event.timestamp),
-                "kind": str(hypothesis.statement_json.get("kind") or "explain"),
-                "text": str(hypothesis.statement_json.get("explain") or hypothesis.statement_json.get("summary") or ""),
-                "confidence": float(hypothesis.confidence),
-                "hypothesis_id": int(hypothesis.id),
-            }: publish_event(AI_EVENT_INSIGHT, payload)
-        )
+        event_timestamp = ensure_utc(event.timestamp)
+        created_payload = {
+            "coin_id": int(hypothesis.coin_id),
+            "timeframe": int(hypothesis.timeframe),
+            "timestamp": event_timestamp,
+            "hypothesis_id": int(hypothesis.id),
+            "type": hypothesis.hypothesis_type,
+            "horizon_min": int(hypothesis.horizon_min),
+            "confidence": float(hypothesis.confidence),
+            "assets": list(hypothesis.statement_json.get("assets", [])),
+            "prompt": hypothesis.prompt_name,
+            "provider": hypothesis.provider,
+        }
+        insight_payload = {
+            "coin_id": int(hypothesis.coin_id),
+            "timeframe": int(hypothesis.timeframe),
+            "timestamp": event_timestamp,
+            "kind": str(hypothesis.statement_json.get("kind") or "explain"),
+            "text": str(hypothesis.statement_json.get("explain") or hypothesis.statement_json.get("summary") or ""),
+            "confidence": float(hypothesis.confidence),
+            "hypothesis_id": int(hypothesis.id),
+        }
+        self._uow.add_after_commit_action(lambda payload=created_payload: publish_event(AI_EVENT_HYPOTHESIS_CREATED, payload))
+        self._uow.add_after_commit_action(lambda payload=insight_payload: publish_event(AI_EVENT_INSIGHT, payload))
         return int(hypothesis.id)

@@ -9,7 +9,6 @@ from src.apps.hypothesis_engine.constants import (
     DEFAULT_TARGET_MOVE,
     EVENT_PROMPT_NAMES,
     PROMPT_TASK_HYPOTHESIS_GENERATION,
-    PROVIDER_HEURISTIC,
 )
 
 HYPOTHESIS_OUTPUT_SCHEMA: dict[str, Any] = {
@@ -34,12 +33,11 @@ _DEFAULT_TEMPLATE = (
 )
 
 
-def _fallback_vars(provider: str = PROVIDER_HEURISTIC) -> dict[str, Any]:
+def _fallback_vars() -> dict[str, Any]:
     return {
-        "provider": provider,
-        "model": "rule-based",
         "horizon_min": DEFAULT_HYPOTHESIS_HORIZON_MIN,
         "target_move": DEFAULT_TARGET_MOVE,
+        "style_profile": "default",
     }
 
 

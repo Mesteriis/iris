@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Any
 
 
 @dataclass(slots=True, frozen=True)
@@ -387,6 +388,28 @@ def strategy_read_model_from_mapping(mapping: Mapping[str, Any]) -> StrategyRead
     )
 
 
+def signal_payload(item: SignalReadModel) -> dict[str, Any]:
+    return {
+        "id": int(item.id),
+        "coin_id": int(item.coin_id),
+        "symbol": str(item.symbol),
+        "name": str(item.name),
+        "sector": item.sector,
+        "timeframe": int(item.timeframe),
+        "signal_type": str(item.signal_type),
+        "confidence": float(item.confidence),
+        "priority_score": float(item.priority_score),
+        "context_score": float(item.context_score),
+        "regime_alignment": float(item.regime_alignment),
+        "candle_timestamp": item.candle_timestamp,
+        "created_at": item.created_at,
+        "market_regime": item.market_regime,
+        "cycle_phase": item.cycle_phase,
+        "cycle_confidence": float(item.cycle_confidence) if item.cycle_confidence is not None else None,
+        "cluster_membership": [str(value) for value in item.cluster_membership],
+    }
+
+
 def investment_decision_payload(item: InvestmentDecisionReadModel) -> dict[str, Any]:
     return {
         "id": int(item.id),
@@ -578,6 +601,7 @@ __all__ = [
     "StrategyPerformanceReadModel",
     "StrategyReadModel",
     "StrategyRuleReadModel",
+    "signal_payload",
     "backtest_summary_payload",
     "backtest_summary_read_model_from_mapping",
     "coin_backtests_payload",

@@ -11,6 +11,9 @@ from src.apps.control_plane.contracts import (
     RouteThrottle,
 )
 from src.apps.control_plane.schemas import (
+    AICapabilityOperatorRead,
+    AIPromptOperatorRead,
+    AIProviderOperatorRead,
     CompatibleConsumerRead,
     EventConsumerRead,
     EventDefinitionRead,
@@ -66,6 +69,9 @@ def draft_change_command_from_request(payload: TopologyDraftChangeWrite, *, acto
 
 
 __all__ = [
+    "AICapabilityOperatorRead",
+    "AIPromptOperatorRead",
+    "AIProviderOperatorRead",
     "AuditActor",
     "CompatibleConsumerRead",
     "EventConsumerRead",

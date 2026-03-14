@@ -54,6 +54,7 @@ from src.apps.control_plane.models import (
     TopologyDraftChange,
 )
 from src.apps.control_plane.query_services import (
+    AIOperatorQueryService,
     AuditLogQueryService,
     EventRegistryQueryService,
     RouteQueryService,
@@ -84,6 +85,7 @@ from src.apps.control_plane.services import (
 
 __all__ = [
     "AuditActor",
+    "AIOperatorQueryService",
     "AuditLogQueryService",
     "AuditLogService",
     "ControlPlaneError",

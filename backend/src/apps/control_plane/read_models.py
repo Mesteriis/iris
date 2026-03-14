@@ -12,6 +12,7 @@ from src.apps.control_plane.enums import (
     TopologyDraftChangeType,
     TopologyDraftStatus,
 )
+from src.core.ai.contracts import AICapability, AIContextFormat, AIHealthState, AIProviderKind
 from src.core.db.persistence import freeze_json_value
 
 
@@ -224,6 +225,53 @@ class ObservabilityOverviewReadModel:
     dead_consumer_count: int
     routes: tuple[RouteObservabilityReadModel, ...]
     consumers: tuple[ConsumerObservabilityReadModel, ...]
+
+
+@dataclass(slots=True, frozen=True)
+class AIProviderOperatorReadModel:
+    name: str
+    kind: AIProviderKind
+    enabled: bool
+    priority: int
+    base_url: str
+    endpoint: str
+    model: str
+    auth_configured: bool
+    capabilities: tuple[AICapability, ...]
+    selected_as_primary_for: tuple[AICapability, ...]
+    metadata: Any
+    max_context_tokens: int | None
+    max_output_tokens: int | None
+
+
+@dataclass(slots=True, frozen=True)
+class AICapabilityOperatorReadModel:
+    capability: AICapability
+    enabled: bool
+    health_state: AIHealthState
+    provider_available: bool
+    allow_degraded_fallback: bool
+    preferred_context_format: AIContextFormat
+    allowed_context_formats: tuple[AIContextFormat, ...]
+    configured_providers: tuple[str, ...]
+    primary_provider: str | None
+
+
+@dataclass(slots=True, frozen=True)
+class AIPromptOperatorReadModel:
+    id: int | None
+    name: str
+    capability: AICapability | None
+    task: str
+    version: int
+    editable: bool
+    source: str
+    is_active: bool
+    template: str
+    vars_json: Any
+    schema_contract: Any
+    style_profile: str | None
+    updated_at: datetime | None
 
 
 def event_definition_read_model_from_orm(row) -> EventDefinitionReadModel:

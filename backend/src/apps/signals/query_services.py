@@ -1,25 +1,21 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import timedelta
-from typing import Any, Sequence
+from typing import Any
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.apps.indicators.models import CoinMetrics
-from src.apps.market_data.repositories import CoinRepository
 from src.apps.market_data.models import Coin
+from src.apps.market_data.repositories import CoinRepository
 from src.apps.patterns.domain.regime import read_regime_details
 from src.apps.patterns.query_builders import signal_select as _signal_select
 from src.apps.signals.backtest_support import BacktestPoint, serialize_backtest_group
 from src.apps.signals.cache import read_cached_market_decision_async
-from src.apps.signals.query_builders import (
-    latest_decisions_subquery as _latest_decisions_subquery,
-    latest_final_signals_subquery as _latest_final_signals_subquery,
-    latest_market_decisions_subquery as _latest_market_decisions_subquery,
-)
 from src.apps.signals.models import (
     FinalSignal,
     InvestmentDecision,
@@ -30,13 +26,20 @@ from src.apps.signals.models import (
     Strategy,
     StrategyPerformance,
 )
+from src.apps.signals.query_builders import (
+    latest_decisions_subquery as _latest_decisions_subquery,
+)
+from src.apps.signals.query_builders import (
+    latest_final_signals_subquery as _latest_final_signals_subquery,
+)
+from src.apps.signals.query_builders import (
+    latest_market_decisions_subquery as _latest_market_decisions_subquery,
+)
 from src.apps.signals.read_models import (
     BacktestSummaryReadModel,
     CoinBacktestsReadModel,
     CoinDecisionItemReadModel,
     CoinDecisionReadModel,
-    coin_decision_item_read_model_from_mapping,
-    coin_final_signal_item_read_model_from_mapping,
     CoinFinalSignalItemReadModel,
     CoinFinalSignalReadModel,
     CoinMarketDecisionItemReadModel,
@@ -49,6 +52,8 @@ from src.apps.signals.read_models import (
     StrategyReadModel,
     StrategyRuleReadModel,
     backtest_summary_read_model_from_mapping,
+    coin_decision_item_read_model_from_mapping,
+    coin_final_signal_item_read_model_from_mapping,
     final_signal_read_model_from_mapping,
     investment_decision_read_model_from_mapping,
     market_decision_read_model_from_mapping,
@@ -60,7 +65,7 @@ PREFERRED_TIMEFRAMES = (1440, 240, 60, 15)
 
 
 def _canonical_decision(items: Sequence[object]) -> str | None:
-    items_by_timeframe = {int(getattr(item, "timeframe")): str(getattr(item, "decision")) for item in items}
+    items_by_timeframe = {int(item.timeframe): str(item.decision) for item in items}
     for current_timeframe in PREFERRED_TIMEFRAMES:
         if current_timeframe in items_by_timeframe:
             return items_by_timeframe[current_timeframe]
@@ -176,6 +181,23 @@ class SignalQueryService(AsyncQueryService):
         self._log_debug("query.list_top_signals.result", mode="read", count=len(items))
         return items
 
+    async def get_signal_by_id(self, signal_id: int) -> SignalReadModel | None:
+        self._log_debug("query.get_signal_by_id", mode="read", signal_id=signal_id, loading_profile="cluster_projection")
+        rows = (
+            await self.session.execute(
+                _signal_select()
+                .where(Signal.id == int(signal_id))
+                .order_by(Signal.candle_timestamp.desc(), Signal.created_at.desc())
+                .limit(1)
+            )
+        ).all()
+        items = await _serialize_signal_rows_async(self.session, rows)
+        if not items:
+            self._log_debug("query.get_signal_by_id.result", mode="read", signal_id=signal_id, found=False)
+            return None
+        self._log_debug("query.get_signal_by_id.result", mode="read", signal_id=signal_id, found=True)
+        return items[0]
+
     async def list_decisions(
         self,
         *,
@@ -249,6 +271,34 @@ class SignalQueryService(AsyncQueryService):
         items = tuple(investment_decision_read_model_from_mapping(row._mapping) for row in rows)
         self._log_debug("query.list_top_decisions.result", mode="read", count=len(items))
         return items
+
+    async def get_decision_by_id(self, decision_id: int) -> InvestmentDecisionReadModel | None:
+        self._log_debug("query.get_decision_by_id", mode="read", decision_id=decision_id, loading_profile="projection")
+        row = await self.session.execute(
+            select(
+                InvestmentDecision.id,
+                InvestmentDecision.coin_id,
+                Coin.symbol,
+                Coin.name,
+                Coin.sector_code.label("sector"),
+                InvestmentDecision.timeframe,
+                InvestmentDecision.decision,
+                InvestmentDecision.confidence,
+                InvestmentDecision.score,
+                InvestmentDecision.reason,
+                InvestmentDecision.created_at,
+            )
+            .join(Coin, Coin.id == InvestmentDecision.coin_id)
+            .where(InvestmentDecision.id == int(decision_id), Coin.deleted_at.is_(None))
+            .limit(1)
+        )
+        result = row.first()
+        if result is None:
+            self._log_debug("query.get_decision_by_id.result", mode="read", decision_id=decision_id, found=False)
+            return None
+        item = investment_decision_read_model_from_mapping(result._mapping)
+        self._log_debug("query.get_decision_by_id.result", mode="read", decision_id=decision_id, found=True)
+        return item
 
     async def get_coin_decision(self, symbol: str) -> CoinDecisionReadModel | None:
         normalized_symbol = symbol.strip().upper()

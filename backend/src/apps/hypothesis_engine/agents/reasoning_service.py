@@ -9,32 +9,64 @@ from src.apps.hypothesis_engine.constants import (
     EVENT_PROMPT_NAMES,
     PROVIDER_HEURISTIC,
 )
+from src.apps.hypothesis_engine.contracts import HypothesisGenerationOutput
 from src.apps.hypothesis_engine.prompts import HYPOTHESIS_OUTPUT_SCHEMA, PromptLoader
-from src.apps.hypothesis_engine.providers import create_provider
+from src.apps.hypothesis_engine.providers.heuristic import HeuristicProvider
+from src.core.ai import (
+    AICapability,
+    AIExecutionRequest,
+    AIExecutor,
+    CallableDegradedStrategy,
+    PydanticOutputValidator,
+    get_capability_policy,
+)
 
 
 class ReasoningService:
-    def __init__(self, prompt_loader: PromptLoader) -> None:
+    def __init__(self, prompt_loader: PromptLoader, *, executor: AIExecutor | None = None) -> None:
         self._loader = prompt_loader
+        self._executor = executor or AIExecutor()
 
     async def generate(self, ctx: dict[str, Any]) -> dict[str, Any]:
         event_type = str(ctx.get("event_type") or "")
         prompt_name = str(ctx.get("prompt_name") or EVENT_PROMPT_NAMES.get(event_type, DEFAULT_PROMPT_NAME))
         prompt = await self._loader.load(prompt_name)
-        provider_name = str(prompt.vars_json.get("provider") or PROVIDER_HEURISTIC)
-        provider_config = dict(prompt.vars_json)
-        merged_ctx = {
-            **prompt.vars_json,
-            **ctx,
-        }
-        provider = create_provider(provider_name, model=str(provider_config.get("model") or ""), config=provider_config)
-        try:
-            response = await provider.json_chat(prompt.template, vars=merged_ctx, schema=HYPOTHESIS_OUTPUT_SCHEMA)
-        except Exception:
-            fallback = create_provider(PROVIDER_HEURISTIC, model="rule-based", config=prompt.vars_json)
-            response = await fallback.json_chat(prompt.template, vars=merged_ctx, schema=HYPOTHESIS_OUTPUT_SCHEMA)
-            provider_name = PROVIDER_HEURISTIC
-            provider = fallback
+        merged_ctx = {**prompt.vars_json, **ctx}
+        policy = get_capability_policy(AICapability.HYPOTHESIS_GENERATE)
+        validator = PydanticOutputValidator(
+            contract_name="hypothesis.output.v1",
+            schema_contract=HYPOTHESIS_OUTPUT_SCHEMA,
+            model=HypothesisGenerationOutput,
+        )
+        degraded_strategy = CallableDegradedStrategy(
+            name=PROVIDER_HEURISTIC,
+            handler=self._run_heuristic,
+        )
+        result = await self._executor.execute(
+            AIExecutionRequest(
+                capability=AICapability.HYPOTHESIS_GENERATE,
+                task=str(prompt.task),
+                prompt_name=prompt.name,
+                prompt_version=int(prompt.version),
+                prompt_template=prompt.template,
+                context=merged_ctx,
+                validator=validator,
+                prompt_vars=dict(prompt.vars_json),
+                requested_language=self._resolve_requested_language(ctx),
+                requested_provider=self._resolve_requested_provider(ctx),
+                preferred_context_format=policy.preferred_context_format,
+                allowed_context_formats=policy.allowed_context_formats,
+                degraded_strategy=degraded_strategy,
+                allow_degraded_fallback=policy.allow_degraded_fallback,
+                source_event_type=event_type or None,
+                source_event_id=self._string_or_none(ctx.get("event_id")),
+                source_stream_id=self._string_or_none(ctx.get("stream_id")),
+                causation_id=self._string_or_none(ctx.get("causation_id")),
+                correlation_id=self._string_or_none(ctx.get("correlation_id")),
+            )
+        )
+        response = result.payload
+        metadata = result.metadata
 
         assets = [str(asset) for asset in response.get("assets", []) if str(asset).strip()]
         if not assets and ctx.get("symbol") is not None:
@@ -49,8 +81,52 @@ class ReasoningService:
             "assets": assets,
             "explain": str(response.get("explain") or response.get("summary") or "No explanation provided."),
             "kind": str(response.get("kind") or "explain"),
-            "provider": provider_name,
-            "model": provider.model,
-            "prompt_name": prompt.name,
-            "prompt_version": int(prompt.version),
+            "provider": str(metadata.actual_provider or PROVIDER_HEURISTIC),
+            "requested_provider": metadata.requested_provider,
+            "model": metadata.model,
+            "requested_language": metadata.requested_language,
+            "effective_language": metadata.effective_language,
+            "context_format": metadata.context_format.value,
+            "context_record_count": metadata.context_record_count,
+            "context_bytes": metadata.context_bytes,
+            "context_token_estimate": metadata.context_token_estimate,
+            "fallback_used": metadata.fallback_used,
+            "degraded_strategy": metadata.degraded_strategy,
+            "latency_ms": metadata.latency_ms,
+            "validation_status": metadata.validation_status.value,
+            "prompt_name": metadata.prompt_name,
+            "prompt_version": int(metadata.prompt_version),
         }
+
+    async def _run_heuristic(
+        self,
+        capability: AICapability,
+        task: str,
+        context: dict[str, Any],
+        requested_language: str | None,
+        effective_language: str,
+    ) -> dict[str, Any]:
+        del capability, task, requested_language, effective_language
+        return await HeuristicProvider(model="rule-based").json_chat(
+            "Return deterministic JSON only.",
+            vars=context,
+            schema=HYPOTHESIS_OUTPUT_SCHEMA,
+        )
+
+    def _resolve_requested_language(self, ctx: dict[str, Any]) -> str | None:
+        for key in ("language", "locale"):
+            value = ctx.get(key)
+            if value is not None and str(value).strip():
+                return str(value).strip().lower()
+        return None
+
+    def _resolve_requested_provider(self, ctx: dict[str, Any]) -> str | None:
+        value = ctx.get("requested_provider")
+        if value is None or not str(value).strip():
+            return None
+        return str(value).strip()
+
+    def _string_or_none(self, value: object) -> str | None:
+        if value is None or not str(value).strip():
+            return None
+        return str(value).strip()

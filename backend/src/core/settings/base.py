@@ -1,13 +1,23 @@
+import json
+from enum import Enum
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
+class AppLanguage(str, Enum):
+    RU = "ru"
+    EN = "en"
+    ES = "es"
+    UA = "ua"
+
+
 class Settings(BaseSettings):
     app_name: str = "IRIS"
     app_env: str = "development"
+    language: AppLanguage = Field(default=AppLanguage.EN, alias="IRIS_LANGUAGE")
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     api_root_prefix: str = Field(default="/api", alias="IRIS_API_ROOT_PREFIX")
@@ -56,11 +66,17 @@ class Settings(BaseSettings):
     control_plane_token: str = Field(default="", alias="IRIS_CONTROL_TOKEN")
     control_plane_dead_consumer_after_seconds: int = 300
     enable_hypothesis_engine: bool = False
+    ai_openai_enabled: bool = Field(default=False, alias="IRIS_AI_OPENAI_ENABLED")
     ai_openai_base_url: str = "https://api.openai.com/v1"
+    ai_openai_endpoint: str = "/chat/completions"
     ai_openai_api_key: str = ""
     ai_openai_model: str = "gpt-4.1-mini"
+    ai_local_http_enabled: bool = Field(default=False, alias="IRIS_AI_LOCAL_HTTP_ENABLED")
     ai_local_http_base_url: str = "http://127.0.0.1:11434"
+    ai_local_http_endpoint: str = "/api/generate"
     ai_local_http_model: str = "llama3.1:8b"
+    ai_providers: Annotated[list[dict[str, Any]], NoDecode] = Field(default_factory=list, alias="IRIS_AI_PROVIDERS")
+    ai_capabilities: Annotated[dict[str, Any], NoDecode] = Field(default_factory=dict, alias="IRIS_AI_CAPABILITIES")
     bootstrap_history_on_startup: bool = True
     portfolio_total_capital: float = 100_000.0
     portfolio_max_position_size: float = 0.05
@@ -95,6 +111,30 @@ class Settings(BaseSettings):
         if not normalized.startswith("/"):
             normalized = f"/{normalized}"
         return normalized.rstrip("/") or "/"
+
+    @field_validator("ai_providers", mode="before")
+    @classmethod
+    def normalize_ai_providers(cls, value: str | list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            parsed = json.loads(value)
+            if not isinstance(parsed, list):
+                raise TypeError("IRIS_AI_PROVIDERS must decode to a JSON array.")
+            return [dict(item) for item in parsed if isinstance(item, dict)]
+        return [dict(item) for item in value]
+
+    @field_validator("ai_capabilities", mode="before")
+    @classmethod
+    def normalize_ai_capabilities(cls, value: str | dict[str, Any] | None) -> dict[str, Any]:
+        if value in (None, ""):
+            return {}
+        if isinstance(value, str):
+            parsed = json.loads(value)
+            if not isinstance(parsed, dict):
+                raise TypeError("IRIS_AI_CAPABILITIES must decode to a JSON object.")
+            return dict(parsed)
+        return dict(value)
 
 
 @lru_cache(maxsize=1)

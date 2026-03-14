@@ -1,10 +1,13 @@
 __all__ = [
     "anomalies",
+    "briefs",
     "cross_market",
+    "explanations",
     "indicators",
     "market_data",
     "market_structure",
     "news",
+    "notifications",
     "patterns",
     "portfolio",
     "predictions",

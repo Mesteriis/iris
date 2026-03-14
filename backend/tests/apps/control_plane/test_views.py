@@ -3,11 +3,11 @@ from __future__ import annotations
 import importlib.util
 
 import pytest
+from src.apps.control_plane.api.router import build_router as build_control_plane_router
 from src.apps.control_plane.contracts import build_route_key
 from src.apps.control_plane.enums import EventRouteScope
 from src.apps.control_plane.metrics import consumer_metric_key, route_metric_key
 from src.apps.market_data.domain import utc_now
-from src.apps.control_plane.api.router import build_router as build_control_plane_router
 from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 from src.core.settings import get_settings
 
@@ -32,6 +32,21 @@ async def test_control_plane_api_flow(api_app_client, isolated_control_plane_sta
     compatibility_response = await client.get("/control-plane/registry/events/signal_created/compatible-consumers")
     assert compatibility_response.status_code == 200
     assert any(row["consumer_key"] == "hypothesis_workers" for row in compatibility_response.json())
+
+    provider_response = await client.get("/control-plane/ai/providers")
+    assert provider_response.status_code == 200
+    assert isinstance(provider_response.json(), list)
+
+    capability_response = await client.get("/control-plane/ai/capabilities")
+    assert capability_response.status_code == 200
+    assert any(row["capability"] == "hypothesis_generate" for row in capability_response.json())
+
+    prompt_response = await client.get("/control-plane/ai/prompts")
+    assert prompt_response.status_code == 200
+    prompt_names = {row["name"] for row in prompt_response.json()}
+    assert "notification.default" in prompt_names
+    assert "brief.market" in prompt_names
+    assert "explain.signal" in prompt_names
 
     create_payload = {
         "event_type": "signal_created",
@@ -359,10 +374,15 @@ def test_control_plane_api_router_is_mode_aware_and_legacy_views_removed() -> No
     full_router = build_control_plane_router(mode=LaunchMode.FULL, profile=DeploymentProfile.PLATFORM_FULL)
     full_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in full_router.routes}
     assert any(path == "/control-plane/routes" and "POST" in methods for path, methods in full_paths)
+    assert any(path == "/control-plane/ai/providers" and "GET" in methods for path, methods in full_paths)
+    assert any(path == "/control-plane/ai/prompts/{prompt_id}/activate" and "POST" in methods for path, methods in full_paths)
 
     ha_router = build_control_plane_router(mode=LaunchMode.HA_ADDON, profile=DeploymentProfile.HA_EMBEDDED)
     ha_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in ha_router.routes}
     assert not any(path == "/control-plane/routes" and "POST" in methods for path, methods in ha_paths)
     assert any(path == "/control-plane/registry/events" and "GET" in methods for path, methods in ha_paths)
+    assert not any(path == "/control-plane/ai/prompts" for path, _ in ha_paths)
+    assert not any(path == "/control-plane/ai/providers" for path, _ in ha_paths)
+    assert not any(path == "/control-plane/ai/prompts/{prompt_id}/activate" for path, _ in ha_paths)
 
     assert importlib.util.find_spec("src.apps.control_plane.views") is None

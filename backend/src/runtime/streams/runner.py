@@ -4,7 +4,8 @@ import multiprocessing
 import signal
 
 from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
-from src.runtime.streams.workers import EVENT_WORKER_GROUPS, create_worker
+from src.runtime.streams.types import get_event_worker_groups
+from src.runtime.streams.workers import create_worker
 
 
 def run_worker_loop(group_name: str) -> None:
@@ -59,7 +60,7 @@ def spawn_event_worker_processes() -> tuple[multiprocessing.synchronize.Event, l
     )
     dispatcher_process.start()
     processes.append(dispatcher_process)
-    for group_name in EVENT_WORKER_GROUPS:
+    for group_name in get_event_worker_groups():
         process = ctx.Process(
             target=_run_group_with_stop,
             args=(group_name, stop_event),

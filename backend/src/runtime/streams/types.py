@@ -6,8 +6,9 @@ from datetime import datetime
 from hashlib import sha1
 from typing import Any
 
-from src.core.settings import get_settings
 from src.apps.market_data.domain import ensure_utc, utc_now
+from src.core.ai import hypothesis_generation_runtime_enabled, notification_humanization_runtime_enabled
+from src.core.settings import get_settings
 
 EVENT_STREAM_NAME = get_settings().event_stream_name
 INDICATOR_WORKER_GROUP = "indicator_workers"
@@ -23,6 +24,7 @@ ANOMALY_SECTOR_WORKER_GROUP = "anomaly_sector_workers"
 NEWS_NORMALIZATION_WORKER_GROUP = "news_normalization_workers"
 NEWS_CORRELATION_WORKER_GROUP = "news_correlation_workers"
 HYPOTHESIS_WORKER_GROUP = "hypothesis_workers"
+NOTIFICATION_WORKER_GROUP = "notification_workers"
 
 
 def get_event_worker_groups() -> tuple[str, ...]:
@@ -40,8 +42,10 @@ def get_event_worker_groups() -> tuple[str, ...]:
         NEWS_NORMALIZATION_WORKER_GROUP,
         NEWS_CORRELATION_WORKER_GROUP,
     ]
-    if get_settings().enable_hypothesis_engine:
+    if hypothesis_generation_runtime_enabled(get_settings()):
         groups.append(HYPOTHESIS_WORKER_GROUP)
+    if notification_humanization_runtime_enabled(get_settings()):
+        groups.append(NOTIFICATION_WORKER_GROUP)
     return tuple(groups)
 
 

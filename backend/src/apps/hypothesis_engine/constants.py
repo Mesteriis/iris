@@ -14,9 +14,23 @@ PROMPT_CACHE_PREFIX = "iris:ai:prompt"
 DEFAULT_PROMPT_NAME = "hypothesis.default"
 DEFAULT_PROMPT_VERSION = 1
 
-PROVIDER_OPENAI_LIKE = "openai_like"
-PROVIDER_LOCAL_HTTP = "local_http"
 PROVIDER_HEURISTIC = "heuristic"
+
+FORBIDDEN_PROMPT_INFRA_KEYS = frozenset(
+    {
+        "provider",
+        "providers",
+        "provider_name",
+        "provider_enablement",
+        "base_url",
+        "endpoint",
+        "auth_token",
+        "auth_header",
+        "auth_scheme",
+        "api_key",
+        "network_routing",
+    }
+)
 
 FRONTEND_AI_SSE_GROUP = "frontend_ai_sse"
 AI_STREAM_PREFIXES = ("hypothesis_", "ai_")
