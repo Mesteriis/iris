@@ -11,7 +11,7 @@ class BriefJobAcceptedRead(AcceptedResponse):
     operation_type: Literal["brief.generate"] = "brief.generate"
     brief_kind: BriefKind
     scope_key: str
-    language: str
+    rendered_locale: str
     symbol: str | None = None
 
 

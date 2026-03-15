@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Index, Integer, SmallInteger, String, Text, desc, func
+from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Index, Integer, SmallInteger, String, desc, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.db.session import Base
+from src.core.i18n import CONTENT_KIND_GENERATED_TEXT
 
 if TYPE_CHECKING:
     from src.apps.market_data.models import Coin
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
 class AINotification(Base):
     __tablename__ = "ai_notifications"
     __table_args__ = (
-        Index("ux_ai_notifications_source_event_lang", "source_event_type", "source_event_id", "language", unique=True),
+        Index("ux_ai_notifications_source_event", "source_event_type", "source_event_id", unique=True),
         Index("ix_ai_notifications_created_desc", desc("created_at")),
         Index("ix_ai_notifications_coin_created_desc", "coin_id", desc("created_at")),
         Index("ix_ai_notifications_event_created_desc", "source_event_type", desc("created_at")),
@@ -26,11 +27,10 @@ class AINotification(Base):
     symbol: Mapped[str | None] = mapped_column(String(32), nullable=True)
     sector: Mapped[str | None] = mapped_column(String(64), nullable=True)
     timeframe: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    title: Mapped[str] = mapped_column(String(160), nullable=False)
-    message: Mapped[str] = mapped_column(Text, nullable=False)
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
     urgency: Mapped[str] = mapped_column(String(16), nullable=False)
-    language: Mapped[str] = mapped_column(String(16), nullable=False)
+    content_kind: Mapped[str] = mapped_column(String(32), nullable=False, default=CONTENT_KIND_GENERATED_TEXT)
+    content_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     refs_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     context_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     provider: Mapped[str] = mapped_column(String(64), nullable=False)

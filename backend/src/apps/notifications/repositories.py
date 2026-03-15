@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.notifications.models import AINotification
 from src.core.db.persistence import AsyncRepository
+from src.core.i18n import content_rendered_locale
 
 
 class NotificationRepository(AsyncRepository):
@@ -16,21 +17,18 @@ class NotificationRepository(AsyncRepository):
         *,
         source_event_type: str,
         source_event_id: str,
-        language: str,
     ) -> AINotification | None:
         self._log_debug(
             "repo.get_notification_by_source_event",
             mode="write",
             source_event_type=source_event_type,
             source_event_id=source_event_id,
-            language=language,
         )
         row = await self.session.scalar(
             select(AINotification)
             .where(
                 AINotification.source_event_type == source_event_type,
                 AINotification.source_event_id == source_event_id,
-                AINotification.language == language,
             )
             .limit(1)
         )
@@ -43,7 +41,8 @@ class NotificationRepository(AsyncRepository):
             mode="write",
             source_event_type=notification.source_event_type,
             source_event_id=notification.source_event_id,
-            language=notification.language,
+            content_kind=notification.content_kind,
+            rendered_locale=content_rendered_locale(notification.content_json),
         )
         self.session.add(notification)
         await self.session.flush()

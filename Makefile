@@ -1,6 +1,7 @@
 .PHONY: lint start backend frontend all backend-start frontend-start _lint-all _lint-backend _lint-frontend \
 	openapi-export-full openapi-export-ha openapi-check-full openapi-check-ha openapi-check \
-	api-matrix-export api-matrix-check api-capabilities-export api-capabilities-check
+	api-matrix-export api-matrix-check api-capabilities-export api-capabilities-check \
+	i18n-export i18n-check
 
 BACKEND_HOOKS := \
 	ruff \
@@ -27,6 +28,8 @@ API_MATRIX_EXPORT := cd backend && uv run python scripts/export_http_matrix.py
 API_MATRIX_CHECK := cd backend && uv run python scripts/check_http_matrix.py
 API_CAPABILITIES_EXPORT := cd backend && uv run python scripts/export_http_capabilities.py
 API_CAPABILITIES_CHECK := cd backend && uv run python scripts/check_http_capabilities.py
+I18N_EXPORT := cd backend && uv run python scripts/export_i18n_coverage.py
+I18N_CHECK := cd backend && uv run python scripts/check_i18n_catalogs.py
 
 LINT_SCOPE := $(firstword $(filter backend frontend all,$(filter-out lint start,$(MAKECMDGOALS))))
 LINT_SCOPE := $(if $(LINT_SCOPE),$(LINT_SCOPE),all)
@@ -119,6 +122,16 @@ api-capabilities-check:
 	@$(API_CAPABILITIES_CHECK) \
 		--snapshot ../docs/_generated/http-capability-catalog.md \
 		--enable-hypothesis-engine
+
+i18n-export:
+	@$(I18N_EXPORT) \
+		--output ../docs/_generated/i18n-coverage.md \
+		--base-locale en
+
+i18n-check:
+	@$(I18N_CHECK) \
+		--snapshot ../docs/_generated/i18n-coverage.md \
+		--base-locale en
 
 backend frontend all:
 	@:

@@ -15,6 +15,7 @@ from src.core.ai import (
     PydanticOutputValidator,
     get_capability_policy,
 )
+from src.core.i18n import MessageDescriptor, get_translation_service, normalize_language
 from src.core.settings import Settings, get_settings
 
 TEMPLATE_DEGRADED_STRATEGY = "deterministic_explain_summary"
@@ -67,11 +68,26 @@ class ExplanationGenerationService:
         )
         payload = result.payload
         metadata = result.metadata
+        title_descriptor = None
+        explanation_descriptor = None
+        bullet_descriptors: tuple[MessageDescriptor, ...] = ()
+        if metadata.fallback_used and metadata.degraded_strategy == TEMPLATE_DEGRADED_STRATEGY:
+            title_descriptor, explanation_descriptor, bullet_descriptors = _describe_explanation(bundle.explain_kind, merged_context)
+        title = str(payload.get("title") or "")
+        explanation = str(payload.get("explanation") or "")
+        bullets = tuple(str(item) for item in payload.get("bullets", ()))
+        if title_descriptor is not None and explanation_descriptor is not None:
+            title = ""
+            explanation = ""
+            bullets = ()
         return ExplanationArtifactResult(
-            title=str(payload.get("title") or ""),
-            explanation=str(payload.get("explanation") or ""),
-            bullets=tuple(str(item) for item in payload.get("bullets", ())),
+            title=title,
+            explanation=explanation,
+            bullets=bullets,
             metadata=metadata,
+            title_descriptor=title_descriptor,
+            explanation_descriptor=explanation_descriptor,
+            bullet_descriptors=bullet_descriptors,
         )
 
     def _validate_output(self, payload: ExplanationGenerationOutput, requested_language: str | None, effective_language: str) -> None:
@@ -113,7 +129,7 @@ class ExplanationGenerationService:
 
 
 def render_deterministic_explanation(context: dict[str, Any], *, effective_language: str) -> dict[str, Any]:
-    language = (effective_language or "en").strip().lower()
+    language = normalize_language(effective_language) or "en"
     explain_kind = str(context.get("explain_kind") or "")
     if explain_kind == ExplainKind.DECISION.value:
         return _render_decision_explanation(context, language=language)
@@ -121,80 +137,121 @@ def render_deterministic_explanation(context: dict[str, Any], *, effective_langu
 
 
 def _render_signal_explanation(context: dict[str, Any], *, language: str) -> dict[str, Any]:
-    symbol = str(context.get("symbol") or "asset").upper()
-    timeframe = int(context.get("timeframe") or 0)
-    signal_type = str(context.get("signal_type") or "signal").replace("_", " ")
-    confidence = float(context.get("confidence") or 0.0)
-    regime = str(context.get("market_regime") or "").strip()
-    cycle_phase = str(context.get("cycle_phase") or "").strip()
-    clusters = [str(item) for item in context.get("cluster_membership", ()) if str(item).strip()]
-    if language.startswith("ru"):
-        title = f"{symbol}: объяснение сигнала"
-        explanation = (
-            f"Сигнал {signal_type} на таймфрейме {timeframe}м появился с уверенностью {confidence:.2f}. "  # noqa: RUF001
-            f"Это каноническое наблюдение, а не подтвержденное действие."  # noqa: RUF001
-        )
-        bullets = [
-            f"Приоритет сигнала: {float(context.get('priority_score') or 0.0):.2f}.",
-            f"Контекстный скор: {float(context.get('context_score') or 0.0):.2f}, выравнивание с режимом: {float(context.get('regime_alignment') or 0.0):.2f}.",  # noqa: RUF001
-        ]
-        if regime:
-            bullets.append(f"Рыночный режим в snapshot: {regime}.")
-        if cycle_phase:
-            bullets.append(f"Фаза цикла: {cycle_phase}.")
-        if clusters:
-            bullets.append(f"Кластерные сигналы: {', '.join(clusters[:3])}.")
-        return {"title": title, "explanation": explanation, "bullets": bullets[:5]}
-    title = f"{symbol}: signal explanation"
-    explanation = (
-        f"The {signal_type} signal on {timeframe}m was recorded with confidence {confidence:.2f}. "
-        f"This is a canonical observation, not an executed action."
-    )
+    title_descriptor, explanation_descriptor, bullet_descriptors = _describe_signal_explanation(context)
+    translator = get_translation_service()
+    title = translator.translate(title_descriptor.key, locale=language, params=dict(title_descriptor.params)).text
+    explanation = translator.translate(
+        explanation_descriptor.key,
+        locale=language,
+        params=dict(explanation_descriptor.params),
+    ).text
     bullets = [
-        f"Priority score is {float(context.get('priority_score') or 0.0):.2f}.",
-        f"Context score is {float(context.get('context_score') or 0.0):.2f} and regime alignment is {float(context.get('regime_alignment') or 0.0):.2f}.",
+        translator.translate(descriptor.key, locale=language, params=dict(descriptor.params)).text
+        for descriptor in bullet_descriptors
     ]
-    if regime:
-        bullets.append(f"Market regime snapshot: {regime}.")
-    if cycle_phase:
-        bullets.append(f"Cycle phase snapshot: {cycle_phase}.")
-    if clusters:
-        bullets.append(f"Cluster membership flags: {', '.join(clusters[:3])}.")
     return {"title": title, "explanation": explanation, "bullets": bullets[:5]}
 
 
 def _render_decision_explanation(context: dict[str, Any], *, language: str) -> dict[str, Any]:
+    title_descriptor, explanation_descriptor, bullet_descriptors = _describe_decision_explanation(context)
+    translator = get_translation_service()
+    title = translator.translate(title_descriptor.key, locale=language, params=dict(title_descriptor.params)).text
+    explanation = translator.translate(
+        explanation_descriptor.key,
+        locale=language,
+        params=dict(explanation_descriptor.params),
+    ).text
+    bullets = [
+        translator.translate(descriptor.key, locale=language, params=dict(descriptor.params)).text
+        for descriptor in bullet_descriptors
+    ]
+    return {"title": title, "explanation": explanation, "bullets": bullets[:5]}
+
+
+def _describe_explanation(
+    explain_kind: ExplainKind,
+    context: dict[str, Any],
+) -> tuple[MessageDescriptor, MessageDescriptor, tuple[MessageDescriptor, ...]]:
+    if explain_kind is ExplainKind.DECISION:
+        return _describe_decision_explanation(context)
+    return _describe_signal_explanation(context)
+
+
+def _describe_signal_explanation(context: dict[str, Any]) -> tuple[MessageDescriptor, MessageDescriptor, tuple[MessageDescriptor, ...]]:
+    symbol = str(context.get("symbol") or "asset").upper()
+    timeframe = int(context.get("timeframe") or 0)
+    signal_type = str(context.get("signal_type") or "signal").replace("_", " ")
+    confidence = float(context.get("confidence") or 0.0)
+    priority_score = float(context.get("priority_score") or 0.0)
+    context_score = float(context.get("context_score") or 0.0)
+    regime_alignment = float(context.get("regime_alignment") or 0.0)
+    regime = str(context.get("market_regime") or "").strip()
+    cycle_phase = str(context.get("cycle_phase") or "").strip()
+    clusters = [str(item) for item in context.get("cluster_membership", ()) if str(item).strip()]
+    params = {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "signal_type": signal_type,
+        "confidence": confidence,
+        "priority_score": priority_score,
+        "context_score": context_score,
+        "regime_alignment": regime_alignment,
+        "market_regime": regime,
+        "cycle_phase": cycle_phase,
+        "cluster_membership": ", ".join(clusters[:3]),
+    }
+    bullets = [
+        MessageDescriptor(key="brief.explanation.signal.bullet.priority", params=params),
+        MessageDescriptor(key="brief.explanation.signal.bullet.context", params=params),
+    ]
+    if regime:
+        bullets.append(MessageDescriptor(key="brief.explanation.signal.bullet.market_regime", params=params))
+    if cycle_phase:
+        bullets.append(MessageDescriptor(key="brief.explanation.signal.bullet.cycle_phase", params=params))
+    if clusters:
+        bullets.append(MessageDescriptor(key="brief.explanation.signal.bullet.cluster_membership", params=params))
+    return (
+        MessageDescriptor(key="brief.explanation.signal.title", params=params),
+        MessageDescriptor(key="brief.explanation.signal.body", params=params),
+        tuple(bullets[:5]),
+    )
+
+
+def _describe_decision_explanation(context: dict[str, Any]) -> tuple[MessageDescriptor, MessageDescriptor, tuple[MessageDescriptor, ...]]:
     symbol = str(context.get("symbol") or "asset").upper()
     timeframe = int(context.get("timeframe") or 0)
     decision = str(context.get("decision") or "hold").upper()
     confidence = float(context.get("confidence") or 0.0)
     score = float(context.get("score") or 0.0)
     reason = str(context.get("reason") or "").strip()
-    if language.startswith("ru"):
-        title = f"{symbol}: объяснение решения"
-        explanation = (
-            f"Решение {decision} для таймфрейма {timeframe}м было сохранено с уверенностью {confidence:.2f} и score {score:.2f}. "  # noqa: RUF001
-            f"Это канонический artifact решения, а не персональная рекомендация."  # noqa: RUF001
-        )
-        bullets = [
-            f"Machine reason: {reason or 'причина не указана'}.",
-            f"Confidence/score snapshot: {confidence:.2f} / {score:.2f}.",
-        ]
-        if context.get("sector"):
-            bullets.append(f"Сектор актива: {context['sector']}.")
-        return {"title": title, "explanation": explanation, "bullets": bullets[:5]}
-    title = f"{symbol}: decision explanation"
-    explanation = (
-        f"The {decision} decision for {timeframe}m was stored with confidence {confidence:.2f} and score {score:.2f}. "
-        f"It is a canonical decision artifact, not personalized advice."
-    )
+    sector = str(context.get("sector") or "").strip()
+    params = {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "decision": decision,
+        "confidence": confidence,
+        "score": score,
+        "reason": reason,
+        "sector": sector,
+    }
     bullets = [
-        f"Machine reason: {reason or 'no reason provided'}.",
-        f"Confidence and score snapshot: {confidence:.2f} / {score:.2f}.",
+        MessageDescriptor(
+            key=(
+                "brief.explanation.decision.bullet.machine_reason"
+                if reason
+                else "brief.explanation.decision.bullet.machine_reason_missing"
+            ),
+            params=params,
+        ),
+        MessageDescriptor(key="brief.explanation.decision.bullet.confidence_score", params=params),
     ]
-    if context.get("sector"):
-        bullets.append(f"Sector context: {context['sector']}.")
-    return {"title": title, "explanation": explanation, "bullets": bullets[:5]}
+    if sector:
+        bullets.append(MessageDescriptor(key="brief.explanation.decision.bullet.sector", params=params))
+    return (
+        MessageDescriptor(key="brief.explanation.decision.title", params=params),
+        MessageDescriptor(key="brief.explanation.decision.body", params=params),
+        tuple(bullets[:5]),
+    )
 
 
 __all__ = ["ExplanationGenerationService", "TEMPLATE_DEGRADED_STRATEGY", "render_deterministic_explanation"]

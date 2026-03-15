@@ -7,6 +7,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict
 
 from src.core.ai.telemetry import AIExecutionMetadata
+from src.core.i18n import MessageDescriptor
 
 
 class ExplainKind(StrEnum):
@@ -33,7 +34,7 @@ class ExplanationGenerationResult:
     explanation_id: int
     explain_kind: ExplainKind
     subject_id: int
-    language: str
+    rendered_locale: str
     symbol: str | None = None
     reason: str | None = None
     generated_at: datetime | None = None
@@ -46,6 +47,9 @@ class ExplanationArtifactResult:
     explanation: str
     bullets: tuple[str, ...]
     metadata: AIExecutionMetadata
+    title_descriptor: MessageDescriptor | None = None
+    explanation_descriptor: MessageDescriptor | None = None
+    bullet_descriptors: tuple[MessageDescriptor, ...] = ()
 
 
 __all__ = [

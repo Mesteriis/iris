@@ -73,15 +73,7 @@ async def websocket_bridge(
                 try:
                     dispatch = await service.execute_command(command=message.command, payload=message.payload)
                 except HACommandDispatchError as exc:
-                    await websocket.send_json(
-                        service.command_error_ack(
-                            request_id=message.request_id,
-                            code=exc.code,
-                            message=exc.message,
-                            details=exc.details,
-                            retryable=exc.retryable,
-                        )
-                    )
+                    await websocket.send_json(service.command_dispatch_error_ack(request_id=message.request_id, error=exc))
                     continue
                 await websocket.send_json(
                     service.command_accepted_ack(

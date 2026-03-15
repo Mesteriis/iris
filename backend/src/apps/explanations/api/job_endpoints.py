@@ -33,7 +33,6 @@ async def run_signal_explanation_job(
     dispatch_result = await dispatcher.dispatch_generation(
         explain_kind=ExplainKind.SIGNAL,
         subject_id=int(signal_id),
-        language=request_locale,
         requested_provider=requested_provider,
         force=force,
     )
@@ -41,9 +40,10 @@ async def run_signal_explanation_job(
         dispatch_result=dispatch_result,
         explain_kind=ExplainKind.SIGNAL,
         subject_id=int(signal_id),
-        language=request_locale,
+        rendered_locale=request_locale,
         symbol=bundle.symbol,
         timeframe=bundle.timeframe,
+        locale=request_locale,
     )
 
 
@@ -68,7 +68,6 @@ async def run_decision_explanation_job(
     dispatch_result = await dispatcher.dispatch_generation(
         explain_kind=ExplainKind.DECISION,
         subject_id=int(decision_id),
-        language=request_locale,
         requested_provider=requested_provider,
         force=force,
     )
@@ -76,9 +75,10 @@ async def run_decision_explanation_job(
         dispatch_result=dispatch_result,
         explain_kind=ExplainKind.DECISION,
         subject_id=int(decision_id),
-        language=request_locale,
+        rendered_locale=request_locale,
         symbol=bundle.symbol,
         timeframe=bundle.timeframe,
+        locale=request_locale,
     )
 
 

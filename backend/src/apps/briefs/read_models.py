@@ -16,10 +16,8 @@ class BriefReadModel:
     scope_key: str
     symbol: str | None
     coin_id: int | None
-    language: str
-    title: str
-    summary: str
-    bullets: tuple[str, ...]
+    content_kind: str
+    content_json: Any
     refs_json: Any
     context_json: Any
     provider: str
@@ -50,10 +48,8 @@ def brief_read_model_from_orm(item) -> BriefReadModel:
         scope_key=str(item.scope_key),
         symbol=str(item.symbol) if item.symbol is not None else None,
         coin_id=int(item.coin_id) if item.coin_id is not None else None,
-        language=str(item.language),
-        title=str(item.title),
-        summary=str(item.summary),
-        bullets=tuple(str(row) for row in (item.bullets_json or [])),
+        content_kind=str(item.content_kind),
+        content_json=freeze_json_value(dict(item.content_json or {})),
         refs_json=freeze_json_value(dict(item.refs_json or {})),
         context_json=freeze_json_value(dict(item.context_json or {})),
         provider=str(item.provider),

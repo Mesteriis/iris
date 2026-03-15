@@ -11,7 +11,7 @@ class ExplanationJobAcceptedRead(AcceptedResponse):
     operation_type: Literal["explain.generate"] = "explain.generate"
     explain_kind: ExplainKind
     subject_id: int
-    language: str
+    rendered_locale: str
     symbol: str | None = None
     timeframe: int | None = None
 

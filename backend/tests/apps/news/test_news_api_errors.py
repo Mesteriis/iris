@@ -14,5 +14,5 @@ def test_news_api_errors_are_localized_from_registry() -> None:
     assert source_error.detail["message"] == "Запрошенный ресурс 'news source' не найден."
 
     assert integration_error.status_code == 503
-    assert integration_error.detail["message_key"] == "errors.generic.integration_unreachable"
+    assert integration_error.detail["message_key"] == "error.integration.unreachable"
     assert integration_error.detail["message"] == "The required external integration is currently unavailable."

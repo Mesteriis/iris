@@ -26,7 +26,6 @@ async def run_market_brief_job(
 ) -> BriefJobAcceptedRead:
     dispatch_result = await dispatcher.dispatch_generation(
         brief_kind=BriefKind.MARKET,
-        language=request_locale,
         force=force,
         requested_provider=requested_provider,
     )
@@ -34,7 +33,8 @@ async def run_market_brief_job(
         dispatch_result=dispatch_result,
         brief_kind=BriefKind.MARKET,
         scope_key=build_scope_key(BriefKind.MARKET),
-        language=request_locale,
+        rendered_locale=request_locale,
+        locale=request_locale,
     )
 
 
@@ -52,7 +52,6 @@ async def run_portfolio_brief_job(
 ) -> BriefJobAcceptedRead:
     dispatch_result = await dispatcher.dispatch_generation(
         brief_kind=BriefKind.PORTFOLIO,
-        language=request_locale,
         force=force,
         requested_provider=requested_provider,
     )
@@ -60,7 +59,8 @@ async def run_portfolio_brief_job(
         dispatch_result=dispatch_result,
         brief_kind=BriefKind.PORTFOLIO,
         scope_key=build_scope_key(BriefKind.PORTFOLIO),
-        language=request_locale,
+        rendered_locale=request_locale,
+        locale=request_locale,
     )
 
 
@@ -84,7 +84,6 @@ async def run_symbol_brief_job(
     dispatch_result = await dispatcher.dispatch_generation(
         brief_kind=BriefKind.SYMBOL,
         symbol=normalized_symbol,
-        language=request_locale,
         force=force,
         requested_provider=requested_provider,
     )
@@ -92,8 +91,9 @@ async def run_symbol_brief_job(
         dispatch_result=dispatch_result,
         brief_kind=BriefKind.SYMBOL,
         scope_key=build_scope_key(BriefKind.SYMBOL, symbol=normalized_symbol),
-        language=request_locale,
+        rendered_locale=request_locale,
         symbol=normalized_symbol,
+        locale=request_locale,
     )
 
 

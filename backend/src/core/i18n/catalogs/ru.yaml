@@ -1,0 +1,311 @@
+version: 1
+messages:
+  error.system.internal:
+    description: Общая внутренняя ошибка сервиса, отображаемая на транспортной границе.
+    message: Операция завершилась внутренней ошибкой сервиса.
+  error.resource.not_found:
+    description: Запрошенный идентификатор ресурса отсутствует в текущем контексте платформы.
+    message: Запрошенный ресурс '{resource}' не найден.
+  error.request.validation_failed:
+    description: Тело запроса или boundary-валидация не прошли проверку.
+    message: Тело запроса не прошло валидацию.
+  error.request.duplicate:
+    description: Запрос конфликтует с уже существующим ресурсом или повторной отправкой.
+    message: Запрос конфликтует с уже существующим ресурсом.
+  error.state.invalid_transition:
+    description: Запрошенная мутация недопустима в текущем состоянии домена.
+    message: Запрошенная операция недопустима в текущем состоянии.
+  error.auth.authentication_failed:
+    description: Аутентификация для запрошенной операции не пройдена.
+    message: Аутентификация для запрошенной операции не пройдена.
+  error.auth.authorization_denied:
+    description: Авторизация для текущей control surface отклонена.
+    message: Запрос не авторизован для текущей control surface.
+  error.policy.denied:
+    description: Policy layer отклонил запрос.
+    message: Запрос отклонен политикой.
+  error.request.concurrency_conflict:
+    description: Во время обработки обнаружено конкурентное изменение ресурса.
+    message: Ресурс изменился конкурентно. Повторите операцию на актуальной версии.
+  error.integration.unreachable:
+    description: Требуемая внешняя интеграция временно недоступна.
+    message: Требуемая внешняя интеграция сейчас недоступна.
+  error.hypothesis.prompt_veil_locked:
+    description: Семейство prompt намеренно скрыто и недоступно для редактирования.
+    message: Запрошенное семейство prompt скрыто veil и пока недоступно для редактирования.
+  error.control_plane.invalid_access_mode:
+    description: Заголовок режима доступа control-plane содержит недопустимое значение.
+    message: Заголовок X-IRIS-Access-Mode должен содержать один из поддерживаемых режимов доступа.
+  error.control_plane.control_mode_required:
+    description: Для изменений topology требуется режим control.
+    message: Для изменений topology требуется режим control.
+  error.control_plane.control_token_invalid:
+    description: Control token отсутствует или недействителен.
+    message: Control token отсутствует или недействителен.
+  error.control_plane.detail.allowed_access_modes:
+    description: Подпись списка допустимых режимов доступа в деталях ошибки control-plane.
+    message: Допустимые режимы доступа.
+  error.control_plane.detail.draft_id:
+    description: Подпись идентификатора draft в деталях конфликта topology.
+    message: Идентификатор draft.
+  error.control_plane.detail.expected_version:
+    description: Подпись ожидаемой базовой версии topology для draft.
+    message: Базовая версия topology для draft.
+  error.control_plane.detail.current_version:
+    description: Подпись текущей опубликованной версии topology.
+    message: Актуальная опубликованная версия topology.
+  error.ha.command_not_available:
+    description: Запрошенная команда HA bridge недоступна в текущем режиме bridge.
+    message: Команда '{command}' недоступна на текущей стадии HA bridge.
+  error.ha.invalid_payload:
+    description: Payload команды HA bridge не прошел проверку.
+    message: Команда '{command}' получила некорректный payload.
+  system.operation.accepted:
+    description: Общее сообщение о принятии фоновой операции.
+    message: Операция принята.
+  system.operation.already_active:
+    description: Сообщение дедупликации для уже активной эквивалентной операции.
+    message: Эквивалентная операция уже выполняется.
+  system.operation.queued:
+    description: Общее сообщение о постановке фоновой операции в очередь.
+    message: Операция поставлена в очередь.
+  system.operation.running:
+    description: Общее сообщение о запуске фоновой операции.
+    message: Операция запущена.
+  system.operation.deduplicated:
+    description: Общее сообщение о дедупликации фоновой операции.
+    message: Операция дедуплицирована.
+  system.operation.succeeded:
+    description: Общее сообщение об успешном завершении фоновой операции.
+    message: Операция успешно завершена.
+  system.operation.failed:
+    description: Общее сообщение о сбое фоновой операции.
+    message: Операция завершилась ошибкой.
+  system.operation.rejected:
+    description: Общее сообщение об отклонении фоновой операции.
+    message: Операция отклонена.
+  ha.command.executing:
+    description: Сообщение о начале выполнения команды HA bridge.
+    message: Выполняется команда '{command}'.
+  ha.command.completed:
+    description: Сообщение об успешном завершении команды HA bridge.
+    message: Команда '{command}' завершена.
+  notification.signal.created.title:
+    description: Заголовок уведомления о новом сигнале.
+    message: "{symbol}: новый сигнал"
+  notification.signal.created.message:
+    description: Текст уведомления о новом сигнале.
+    message: "IRIS зафиксировал сигнал {signal_type} по {symbol} на таймфрейме {timeframe}м. Проверь канонический сигнал перед действием."
+  notification.anomaly.detected.title:
+    description: Заголовок уведомления об обнаруженной аномалии.
+    message: "{symbol}: обнаружена аномалия"
+  notification.anomaly.detected.message:
+    description: Текст уведомления об обнаруженной аномалии.
+    message: "IRIS отметил аномалию {anomaly_type} по {symbol} на таймфрейме {timeframe}м. Проверь детерминированный контекст перед решением."
+  notification.decision.generated.title:
+    description: Заголовок уведомления о новом решении.
+    message: "{symbol}: новое решение"
+  notification.decision.generated.message:
+    description: Текст уведомления о новом решении.
+    message: "IRIS сгенерировал решение {decision} по {symbol} на таймфрейме {timeframe}м. Текущий score: {score}."
+  notification.market_regime.changed.title:
+    description: Заголовок уведомления о смене рыночного режима.
+    message: "{symbol}: режим рынка изменился"
+  notification.market_regime.changed.message:
+    description: Текст уведомления о смене рыночного режима.
+    message: "Для {symbol} на таймфрейме {timeframe}м режим рынка сменился на {regime}. Проверь машинный контекст перед ребалансировкой."
+  notification.portfolio_position.changed.title:
+    description: Заголовок уведомления об обновлении позиции портфеля.
+    message: "{symbol}: позиция обновлена"
+  notification.portfolio_position.changed.message:
+    description: Текст уведомления об обновлении позиции портфеля.
+    message: "Состояние позиции по {symbol} обновилось на {exchange}. Текущая стоимость: {value_usd}."
+  notification.portfolio_balance.updated.title:
+    description: Заголовок уведомления об обновлении баланса портфеля.
+    message: "{symbol}: баланс обновлен"
+  notification.portfolio_balance.updated.message:
+    description: Текст уведомления об обновлении баланса портфеля.
+    message: "Синхронизация баланса обновила {symbol} на {exchange}. Баланс: {balance}, стоимость: {value_usd}."
+  notification.event.generic.title:
+    description: Заголовок универсального уведомления для неклассифицированного события.
+    message: "{symbol}: обновление"
+  notification.event.generic.message:
+    description: Текст универсального уведомления для неклассифицированного события.
+    message: "IRIS зафиксировал событие {event_type} по {symbol}."
+  brief.explanation.signal.title:
+    description: Заголовок детерминированного объяснения для signal artifact.
+    message: "{symbol}: объяснение сигнала"
+  brief.explanation.signal.body:
+    description: Основной текст детерминированного объяснения для signal artifact.
+    message: "Сигнал {signal_type} на таймфрейме {timeframe}м появился с уверенностью {confidence:.2f}. Это каноническое наблюдение, а не подтвержденное действие."
+  brief.explanation.signal.bullet.priority:
+    description: Пункт детерминированного объяснения с приоритетом сигнала.
+    message: "Приоритет сигнала: {priority_score:.2f}."
+  brief.explanation.signal.bullet.context:
+    description: Пункт детерминированного объяснения с контекстным score и выравниванием с режимом.
+    message: "Контекстный скор: {context_score:.2f}, выравнивание с режимом: {regime_alignment:.2f}."
+  brief.explanation.signal.bullet.market_regime:
+    description: Пункт детерминированного объяснения с рыночным режимом.
+    message: "Рыночный режим в snapshot: {market_regime}."
+  brief.explanation.signal.bullet.cycle_phase:
+    description: Пункт детерминированного объяснения с фазой цикла.
+    message: "Фаза цикла: {cycle_phase}."
+  brief.explanation.signal.bullet.cluster_membership:
+    description: Пункт детерминированного объяснения с кластерными признаками.
+    message: "Кластерные сигналы: {cluster_membership}."
+  brief.explanation.decision.title:
+    description: Заголовок детерминированного объяснения для decision artifact.
+    message: "{symbol}: объяснение решения"
+  brief.explanation.decision.body:
+    description: Основной текст детерминированного объяснения для decision artifact.
+    message: "Решение {decision} для таймфрейма {timeframe}м было сохранено с уверенностью {confidence:.2f} и score {score:.2f}. Это канонический artifact решения, а не персональная рекомендация."
+  brief.explanation.decision.bullet.machine_reason:
+    description: Пункт детерминированного объяснения с машинной причиной решения.
+    message: "Машинная причина: {reason}."
+  brief.explanation.decision.bullet.machine_reason_missing:
+    description: Пункт детерминированного объяснения, когда машинная причина решения отсутствует.
+    message: "Машинная причина: не указана."
+  brief.explanation.decision.bullet.confidence_score:
+    description: Пункт детерминированного объяснения с уверенностью и score решения.
+    message: "Confidence/score snapshot: {confidence:.2f} / {score:.2f}."
+  brief.explanation.decision.bullet.sector:
+    description: Пункт детерминированного объяснения с контекстом сектора.
+    message: "Сектор актива: {sector}."
+  ha.catalog.entity.system_connection.name:
+    description: Подпись сущности подключения системы в каталоге Home Assistant.
+    message: "Подключение IRIS"
+  ha.catalog.entity.system_mode.name:
+    description: Подпись сущности режима системы в каталоге Home Assistant.
+    message: "Режим IRIS"
+  ha.catalog.entity.market_summary_active_assets_count.name:
+    description: Подпись сущности количества активных активов в каталоге Home Assistant.
+    message: "Активные активы"
+  ha.catalog.entity.market_summary_hot_assets_count.name:
+    description: Подпись сущности количества горячих активов в каталоге Home Assistant.
+    message: "Горячие активы"
+  ha.catalog.entity.portfolio_summary_portfolio_value.name:
+    description: Подпись сущности стоимости портфеля в каталоге Home Assistant.
+    message: "Стоимость портфеля"
+  ha.catalog.entity.portfolio_summary_open_positions.name:
+    description: Подпись сущности количества открытых позиций в каталоге Home Assistant.
+    message: "Открытые позиции"
+  ha.catalog.entity.notifications_enabled.name:
+    description: Подпись сущности состояния включенных уведомлений в каталоге Home Assistant.
+    message: "Уведомления включены"
+  ha.catalog.entity.settings_notifications_enabled.name:
+    description: Подпись сущности управления уведомлениями в каталоге Home Assistant.
+    message: "Уведомления включены"
+  ha.catalog.entity.settings_default_timeframe.name:
+    description: Подпись сущности управления таймфреймом по умолчанию в каталоге Home Assistant.
+    message: "Таймфрейм по умолчанию"
+  ha.catalog.entity.actions_portfolio_sync.name:
+    description: Подпись сущности действия синхронизации портфеля в каталоге Home Assistant.
+    message: "Синхронизация портфеля"
+  ha.catalog.entity.actions_market_refresh.name:
+    description: Подпись сущности действия обновления рынка в каталоге Home Assistant.
+    message: "Обновление рынка"
+  ha.catalog.command.portfolio_sync.name:
+    description: Подпись команды синхронизации портфеля в каталоге Home Assistant.
+    message: "Синхронизация портфеля"
+  ha.catalog.command.market_refresh.name:
+    description: Подпись команды обновления рынка в каталоге Home Assistant.
+    message: "Обновление рынка"
+  ha.catalog.command.settings_notifications_enabled_set.name:
+    description: Подпись команды переключения уведомлений в каталоге Home Assistant.
+    message: "Переключить уведомления"
+  ha.catalog.command.settings_default_timeframe_set.name:
+    description: Подпись команды выбора таймфрейма по умолчанию в каталоге Home Assistant.
+    message: "Выбрать таймфрейм по умолчанию"
+  ha.dashboard.view.overview.title:
+    description: Заголовок overview view для дашборда Home Assistant.
+    message: "Обзор"
+  ha.dashboard.view.assets.title:
+    description: Заголовок assets view для дашборда Home Assistant.
+    message: "Активы"
+  ha.dashboard.view.signals.title:
+    description: Заголовок signals view для дашборда Home Assistant.
+    message: "Сигналы"
+  ha.dashboard.view.predictions.title:
+    description: Заголовок predictions view для дашборда Home Assistant.
+    message: "Прогнозы"
+  ha.dashboard.view.portfolio.title:
+    description: Заголовок portfolio view для дашборда Home Assistant.
+    message: "Портфель"
+  ha.dashboard.view.integrations.title:
+    description: Заголовок integrations view для дашборда Home Assistant.
+    message: "Интеграции"
+  ha.dashboard.view.system.title:
+    description: Заголовок system view для дашборда Home Assistant.
+    message: "Система"
+  ha.dashboard.section.system.title:
+    description: Заголовок системной секции overview view в дашборде Home Assistant.
+    message: "Система"
+  ha.dashboard.section.portfolio.title:
+    description: Заголовок секции портфеля в overview view дашборда Home Assistant.
+    message: "Портфель"
+  ha.dashboard.section.assets_snapshot.title:
+    description: Заголовок секции наблюдаемых активов в дашборде Home Assistant.
+    message: "Отслеживаемые активы"
+  ha.dashboard.section.signals_snapshot.title:
+    description: Заголовок секции сигналов в дашборде Home Assistant.
+    message: "Сигналы"
+  ha.dashboard.section.predictions_snapshot.title:
+    description: Заголовок секции прогнозов в дашборде Home Assistant.
+    message: "Прогнозы"
+  ha.dashboard.section.portfolio_summary.title:
+    description: Заголовок секции сводки портфеля в дашборде Home Assistant.
+    message: "Сводка по портфелю"
+  ha.dashboard.section.notifications.title:
+    description: Заголовок секции уведомлений в дашборде Home Assistant.
+    message: "Уведомления"
+  ha.dashboard.section.system_runtime.title:
+    description: Заголовок секции runtime в дашборде Home Assistant.
+    message: "Runtime"
+  ha.dashboard.widget.system_status.title:
+    description: Заголовок виджета статуса подключения в дашборде Home Assistant.
+    message: "Подключение"
+  ha.dashboard.widget.market_summary.title:
+    description: Заголовок виджета сводки рынка в дашборде Home Assistant.
+    message: "Сводка рынка"
+  ha.dashboard.widget.portfolio_summary.title:
+    description: Заголовок обзорного виджета портфеля в дашборде Home Assistant.
+    message: "Портфель"
+  ha.dashboard.widget.portfolio_actions.title:
+    description: Заголовок обзорного виджета действий по портфелю в дашборде Home Assistant.
+    message: "Действия с портфелем"
+  ha.dashboard.widget.market_actions.title:
+    description: Заголовок обзорного виджета действий по рынку в дашборде Home Assistant.
+    message: "Действия с рынком"
+  ha.dashboard.widget.assets_table.title:
+    description: Заголовок виджета снимка активов в дашборде Home Assistant.
+    message: "Снимок активов"
+  ha.dashboard.widget.market_activity.title:
+    description: Заголовок виджета рыночной активности в дашборде Home Assistant.
+    message: "Рыночная активность"
+  ha.dashboard.widget.signals_table.title:
+    description: Заголовок виджета последних сигналов в дашборде Home Assistant.
+    message: "Последние сигналы"
+  ha.dashboard.widget.predictions_table.title:
+    description: Заголовок виджета журнала прогнозов в дашборде Home Assistant.
+    message: "Журнал прогнозов"
+  ha.dashboard.widget.portfolio_summary_detail.title:
+    description: Заголовок виджета итогов портфеля в дашборде Home Assistant.
+    message: "Итоги портфеля"
+  ha.dashboard.widget.portfolio_positions.title:
+    description: Заголовок виджета открытых позиций в дашборде Home Assistant.
+    message: "Открытые позиции"
+  ha.dashboard.widget.portfolio_actions_full.title:
+    description: Заголовок подробного виджета действий по портфелю в дашборде Home Assistant.
+    message: "Действия с портфелем"
+  ha.dashboard.widget.notifications_status.title:
+    description: Заголовок виджета состояния уведомлений в дашборде Home Assistant.
+    message: "Уведомления"
+  ha.dashboard.widget.integrations_snapshot.title:
+    description: Заголовок виджета снимка интеграций в дашборде Home Assistant.
+    message: "Снимок интеграций"
+  ha.dashboard.widget.system_runtime_status.title:
+    description: Заголовок виджета статуса runtime в дашборде Home Assistant.
+    message: "Статус runtime"
+  ha.dashboard.widget.system_controls.title:
+    description: Заголовок виджета системных действий в дашборде Home Assistant.
+    message: "Системные действия"

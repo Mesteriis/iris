@@ -26,5 +26,5 @@ def test_market_structure_api_errors_are_localized_from_registry() -> None:
 
     assert ingest_error is not None
     assert ingest_error.status_code == 400
-    assert ingest_error.detail["message_key"] == "errors.generic.invalid_state_transition"
+    assert ingest_error.detail["message_key"] == "error.state.invalid_transition"
     assert ingest_error.detail["message"] == "The requested operation is not allowed in the current state."

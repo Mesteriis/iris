@@ -25,22 +25,20 @@ class ExplanationQueryService(AsyncQueryService):
         *,
         explain_kind: ExplainKind,
         subject_id: int,
-        language: str,
     ) -> ExplanationReadModel | None:
         self._log_debug(
             "query.get_explanation",
             mode="read",
             explain_kind=explain_kind.value,
             subject_id=subject_id,
-            language=language,
         )
         row = await self.session.scalar(
             select(AIExplanation)
             .where(
                 AIExplanation.explain_kind == explain_kind.value,
                 AIExplanation.subject_id == int(subject_id),
-                AIExplanation.language == language,
             )
+            .order_by(AIExplanation.updated_at.desc())
             .limit(1)
         )
         if row is None:

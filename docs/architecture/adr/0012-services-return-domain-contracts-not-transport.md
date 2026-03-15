@@ -4,6 +4,10 @@
 
 Accepted
 
+## Date
+
+2025-02-04
+
 ## Context
 
 Before the refactor, many services returned `dict[str, object]` payloads or helper methods like `to_summary()` / `to_payload()`:
@@ -33,3 +37,9 @@ This keeps service boundaries stable and intention-revealing:
 - task and API boundaries remain the only places that shape wire payloads;
 - architectural policy can reject summary helpers mechanically;
 - future rewrites cannot stop at “typed inside, dict outside the same service module.”
+
+
+## See also
+
+- [ADR 0009: Signals Service/Engine Split](0009-canonical-signals-service-engine-split.md) — canonical example
+- [ADR 0006: Portfolio Engine Separation](0006-portfolio-engine-separation.md) — application outcome pattern

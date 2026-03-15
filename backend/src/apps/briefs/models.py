@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Index, Integer, String, Text, desc, func
+from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Index, Integer, String, desc, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.db.session import Base
+from src.core.i18n import CONTENT_KIND_GENERATED_TEXT
 
 if TYPE_CHECKING:
     from src.apps.market_data.models import Coin
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
 class AIBrief(Base):
     __tablename__ = "ai_briefs"
     __table_args__ = (
-        Index("ux_ai_briefs_scope_lang", "brief_kind", "scope_key", "language", unique=True),
+        Index("ux_ai_briefs_scope", "brief_kind", "scope_key", unique=True),
         Index("ix_ai_briefs_kind_updated_desc", "brief_kind", desc("updated_at")),
         Index("ix_ai_briefs_symbol_updated_desc", "symbol", desc("updated_at")),
         Index("ix_ai_briefs_coin_updated_desc", "coin_id", desc("updated_at")),
@@ -26,10 +27,8 @@ class AIBrief(Base):
     scope_key: Mapped[str] = mapped_column(String(128), nullable=False)
     symbol: Mapped[str | None] = mapped_column(String(32), nullable=True)
     coin_id: Mapped[int | None] = mapped_column(ForeignKey("coins.id", ondelete="SET NULL"), nullable=True)
-    language: Mapped[str] = mapped_column(String(16), nullable=False)
-    title: Mapped[str] = mapped_column(String(160), nullable=False)
-    summary: Mapped[str] = mapped_column(Text, nullable=False)
-    bullets_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    content_kind: Mapped[str] = mapped_column(String(32), nullable=False, default=CONTENT_KIND_GENERATED_TEXT)
+    content_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     refs_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     context_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     provider: Mapped[str] = mapped_column(String(64), nullable=False)

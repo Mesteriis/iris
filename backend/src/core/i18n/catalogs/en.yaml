@@ -1,0 +1,311 @@
+version: 1
+messages:
+  error.system.internal:
+    description: Generic internal service failure exposed at the transport boundary.
+    message: The operation failed due to an internal service error.
+  error.resource.not_found:
+    description: Requested resource identifier does not exist in the current platform context.
+    message: The requested {resource} was not found.
+  error.request.validation_failed:
+    description: Request payload or boundary validation failed before completing the operation.
+    message: The request payload failed validation.
+  error.request.duplicate:
+    description: Request conflicts with an already existing resource or duplicate submission.
+    message: The request conflicts with an existing resource.
+  error.state.invalid_transition:
+    description: Requested mutation is not allowed for the current domain state.
+    message: The requested operation is not allowed in the current state.
+  error.auth.authentication_failed:
+    description: Authentication failed for the requested operation.
+    message: Authentication failed for the requested operation.
+  error.auth.authorization_denied:
+    description: Authorization denied for the current control surface.
+    message: The request is not authorized for the current control surface.
+  error.policy.denied:
+    description: Policy layer rejected the request.
+    message: The request was rejected by policy.
+  error.request.concurrency_conflict:
+    description: Concurrent modification detected while processing the request.
+    message: The resource changed concurrently. Retry with the latest version.
+  error.integration.unreachable:
+    description: Required external integration is unavailable at the moment.
+    message: The required external integration is currently unavailable.
+  error.hypothesis.prompt_veil_locked:
+    description: Prompt family is intentionally locked from editing.
+    message: The requested prompt family is veiled and cannot be edited yet.
+  error.control_plane.invalid_access_mode:
+    description: Control-plane access mode header is invalid.
+    message: Header X-IRIS-Access-Mode must be one of the supported access modes.
+  error.control_plane.control_mode_required:
+    description: Control mode is required for topology mutations.
+    message: Control mode is required for topology mutations.
+  error.control_plane.control_token_invalid:
+    description: Control token is missing or invalid.
+    message: Control token is missing or invalid.
+  error.control_plane.detail.allowed_access_modes:
+    description: Allowed access modes detail label for control-plane validation payloads.
+    message: Allowed access modes.
+  error.control_plane.detail.draft_id:
+    description: Draft identifier detail label for topology conflicts.
+    message: Draft identifier.
+  error.control_plane.detail.expected_version:
+    description: Expected draft base topology version detail label.
+    message: Draft base topology version.
+  error.control_plane.detail.current_version:
+    description: Current published topology version detail label.
+    message: Latest published topology version.
+  error.ha.command_not_available:
+    description: Requested HA bridge command is unavailable in the current bridge mode.
+    message: Command '{command}' is not available for the current HA bridge stage.
+  error.ha.invalid_payload:
+    description: Requested HA bridge command payload is invalid.
+    message: Command '{command}' received an invalid payload.
+  system.operation.accepted:
+    description: Generic accepted lifecycle message for background operations.
+    message: Operation accepted.
+  system.operation.already_active:
+    description: Deduplication notice when an equivalent operation is already in progress.
+    message: An equivalent operation is already active.
+  system.operation.queued:
+    description: Generic queued lifecycle message for background operations.
+    message: Operation queued.
+  system.operation.running:
+    description: Generic running lifecycle message for background operations.
+    message: Operation started.
+  system.operation.deduplicated:
+    description: Generic deduplicated lifecycle message for background operations.
+    message: Operation deduplicated.
+  system.operation.succeeded:
+    description: Generic succeeded lifecycle message for background operations.
+    message: Operation succeeded.
+  system.operation.failed:
+    description: Generic failure lifecycle message for background operations.
+    message: Operation failed.
+  system.operation.rejected:
+    description: Generic rejected lifecycle message for background operations.
+    message: Operation rejected.
+  ha.command.executing:
+    description: Home Assistant bridge command execution started.
+    message: Executing command '{command}'.
+  ha.command.completed:
+    description: Home Assistant bridge command execution completed.
+    message: Completed command '{command}'.
+  notification.signal.created.title:
+    description: Notification title for a newly detected signal event.
+    message: "{symbol}: new signal"
+  notification.signal.created.message:
+    description: Notification message for a newly detected signal event.
+    message: "IRIS detected the {signal_type} signal for {symbol} on {timeframe}m. Review the canonical signal before acting."
+  notification.anomaly.detected.title:
+    description: Notification title for an anomaly detection event.
+    message: "{symbol}: anomaly detected"
+  notification.anomaly.detected.message:
+    description: Notification message for an anomaly detection event.
+    message: "IRIS flagged the {anomaly_type} anomaly for {symbol} on {timeframe}m. Check the deterministic context before taking action."
+  notification.decision.generated.title:
+    description: Notification title for a generated decision event.
+    message: "{symbol}: new decision"
+  notification.decision.generated.message:
+    description: Notification message for a generated decision event.
+    message: "IRIS generated a {decision} decision for {symbol} on {timeframe}m. Current score: {score}."
+  notification.market_regime.changed.title:
+    description: Notification title for a market regime change event.
+    message: "{symbol}: regime changed"
+  notification.market_regime.changed.message:
+    description: Notification message for a market regime change event.
+    message: "Market regime for {symbol} moved to {regime} on {timeframe}m. Review the machine context before rebalancing."
+  notification.portfolio_position.changed.title:
+    description: Notification title for a portfolio position change event.
+    message: "{symbol}: position updated"
+  notification.portfolio_position.changed.message:
+    description: Notification message for a portfolio position change event.
+    message: "Portfolio position for {symbol} changed on {exchange}. Current value: {value_usd}."
+  notification.portfolio_balance.updated.title:
+    description: Notification title for a portfolio balance update event.
+    message: "{symbol}: balance updated"
+  notification.portfolio_balance.updated.message:
+    description: Notification message for a portfolio balance update event.
+    message: "Balance sync updated {symbol} on {exchange}. Balance: {balance}, value: {value_usd}."
+  notification.event.generic.title:
+    description: Generic notification title for unclassified source events.
+    message: "{symbol}: update"
+  notification.event.generic.message:
+    description: Generic notification message for unclassified source events.
+    message: "IRIS recorded the {event_type} event for {symbol}."
+  brief.explanation.signal.title:
+    description: Deterministic explanation title for signal artifacts.
+    message: "{symbol}: signal explanation"
+  brief.explanation.signal.body:
+    description: Deterministic explanation body for signal artifacts.
+    message: "The {signal_type} signal on {timeframe}m was recorded with confidence {confidence:.2f}. This is a canonical observation, not an executed action."
+  brief.explanation.signal.bullet.priority:
+    description: Deterministic explanation bullet for signal priority score.
+    message: "Priority score is {priority_score:.2f}."
+  brief.explanation.signal.bullet.context:
+    description: Deterministic explanation bullet for signal context and regime alignment.
+    message: "Context score is {context_score:.2f} and regime alignment is {regime_alignment:.2f}."
+  brief.explanation.signal.bullet.market_regime:
+    description: Deterministic explanation bullet for signal market regime context.
+    message: "Market regime snapshot: {market_regime}."
+  brief.explanation.signal.bullet.cycle_phase:
+    description: Deterministic explanation bullet for signal cycle phase context.
+    message: "Cycle phase snapshot: {cycle_phase}."
+  brief.explanation.signal.bullet.cluster_membership:
+    description: Deterministic explanation bullet for signal cluster membership context.
+    message: "Cluster membership flags: {cluster_membership}."
+  brief.explanation.decision.title:
+    description: Deterministic explanation title for decision artifacts.
+    message: "{symbol}: decision explanation"
+  brief.explanation.decision.body:
+    description: Deterministic explanation body for decision artifacts.
+    message: "The {decision} decision for {timeframe}m was stored with confidence {confidence:.2f} and score {score:.2f}. It is a canonical decision artifact, not personalized advice."
+  brief.explanation.decision.bullet.machine_reason:
+    description: Deterministic explanation bullet for decision machine reason.
+    message: "Machine reason: {reason}."
+  brief.explanation.decision.bullet.machine_reason_missing:
+    description: Deterministic explanation bullet when a decision machine reason is unavailable.
+    message: "Machine reason: no reason provided."
+  brief.explanation.decision.bullet.confidence_score:
+    description: Deterministic explanation bullet for decision confidence and score.
+    message: "Confidence and score snapshot: {confidence:.2f} / {score:.2f}."
+  brief.explanation.decision.bullet.sector:
+    description: Deterministic explanation bullet for decision sector context.
+    message: "Sector context: {sector}."
+  ha.catalog.entity.system_connection.name:
+    description: Home Assistant catalog label for the system connection entity.
+    message: "IRIS Connection"
+  ha.catalog.entity.system_mode.name:
+    description: Home Assistant catalog label for the system mode entity.
+    message: "IRIS Mode"
+  ha.catalog.entity.market_summary_active_assets_count.name:
+    description: Home Assistant catalog label for the active assets entity.
+    message: "Active Assets"
+  ha.catalog.entity.market_summary_hot_assets_count.name:
+    description: Home Assistant catalog label for the hot assets entity.
+    message: "Hot Assets"
+  ha.catalog.entity.portfolio_summary_portfolio_value.name:
+    description: Home Assistant catalog label for the portfolio value entity.
+    message: "Portfolio Value"
+  ha.catalog.entity.portfolio_summary_open_positions.name:
+    description: Home Assistant catalog label for the open positions entity.
+    message: "Open Positions"
+  ha.catalog.entity.notifications_enabled.name:
+    description: Home Assistant catalog label for the notifications enabled status entity.
+    message: "Notifications Enabled"
+  ha.catalog.entity.settings_notifications_enabled.name:
+    description: Home Assistant catalog label for the notifications enabled control entity.
+    message: "Notifications Enabled"
+  ha.catalog.entity.settings_default_timeframe.name:
+    description: Home Assistant catalog label for the default timeframe control entity.
+    message: "Default Timeframe"
+  ha.catalog.entity.actions_portfolio_sync.name:
+    description: Home Assistant catalog label for the portfolio sync action entity.
+    message: "Portfolio Sync"
+  ha.catalog.entity.actions_market_refresh.name:
+    description: Home Assistant catalog label for the market refresh action entity.
+    message: "Market Refresh"
+  ha.catalog.command.portfolio_sync.name:
+    description: Home Assistant catalog label for the portfolio sync command.
+    message: "Portfolio Sync"
+  ha.catalog.command.market_refresh.name:
+    description: Home Assistant catalog label for the market refresh command.
+    message: "Market Refresh"
+  ha.catalog.command.settings_notifications_enabled_set.name:
+    description: Home Assistant catalog label for the notifications enabled toggle command.
+    message: "Set Notifications Enabled"
+  ha.catalog.command.settings_default_timeframe_set.name:
+    description: Home Assistant catalog label for the default timeframe selection command.
+    message: "Set Default Timeframe"
+  ha.dashboard.view.overview.title:
+    description: Home Assistant dashboard title for the overview view.
+    message: "Overview"
+  ha.dashboard.view.assets.title:
+    description: Home Assistant dashboard title for the assets view.
+    message: "Assets"
+  ha.dashboard.view.signals.title:
+    description: Home Assistant dashboard title for the signals view.
+    message: "Signals"
+  ha.dashboard.view.predictions.title:
+    description: Home Assistant dashboard title for the predictions view.
+    message: "Predictions"
+  ha.dashboard.view.portfolio.title:
+    description: Home Assistant dashboard title for the portfolio view.
+    message: "Portfolio"
+  ha.dashboard.view.integrations.title:
+    description: Home Assistant dashboard title for the integrations view.
+    message: "Integrations"
+  ha.dashboard.view.system.title:
+    description: Home Assistant dashboard title for the system view.
+    message: "System"
+  ha.dashboard.section.system.title:
+    description: Home Assistant dashboard title for the overview system section.
+    message: "System"
+  ha.dashboard.section.portfolio.title:
+    description: Home Assistant dashboard title for the overview portfolio section.
+    message: "Portfolio"
+  ha.dashboard.section.assets_snapshot.title:
+    description: Home Assistant dashboard title for the tracked assets section.
+    message: "Tracked Assets"
+  ha.dashboard.section.signals_snapshot.title:
+    description: Home Assistant dashboard title for the signals section.
+    message: "Signals"
+  ha.dashboard.section.predictions_snapshot.title:
+    description: Home Assistant dashboard title for the predictions section.
+    message: "Predictions"
+  ha.dashboard.section.portfolio_summary.title:
+    description: Home Assistant dashboard title for the portfolio summary section.
+    message: "Portfolio Summary"
+  ha.dashboard.section.notifications.title:
+    description: Home Assistant dashboard title for the notifications section.
+    message: "Notifications"
+  ha.dashboard.section.system_runtime.title:
+    description: Home Assistant dashboard title for the system runtime section.
+    message: "Runtime"
+  ha.dashboard.widget.system_status.title:
+    description: Home Assistant dashboard title for the system status widget.
+    message: "Connection"
+  ha.dashboard.widget.market_summary.title:
+    description: Home Assistant dashboard title for the market summary widget.
+    message: "Market Summary"
+  ha.dashboard.widget.portfolio_summary.title:
+    description: Home Assistant dashboard title for the overview portfolio summary widget.
+    message: "Portfolio"
+  ha.dashboard.widget.portfolio_actions.title:
+    description: Home Assistant dashboard title for the overview portfolio actions widget.
+    message: "Portfolio Actions"
+  ha.dashboard.widget.market_actions.title:
+    description: Home Assistant dashboard title for the overview market actions widget.
+    message: "Market Actions"
+  ha.dashboard.widget.assets_table.title:
+    description: Home Assistant dashboard title for the assets snapshot widget.
+    message: "Assets Snapshot"
+  ha.dashboard.widget.market_activity.title:
+    description: Home Assistant dashboard title for the market activity widget.
+    message: "Market Activity"
+  ha.dashboard.widget.signals_table.title:
+    description: Home Assistant dashboard title for the latest signals widget.
+    message: "Latest Signals"
+  ha.dashboard.widget.predictions_table.title:
+    description: Home Assistant dashboard title for the prediction journal widget.
+    message: "Prediction Journal"
+  ha.dashboard.widget.portfolio_summary_detail.title:
+    description: Home Assistant dashboard title for the portfolio totals widget.
+    message: "Portfolio Totals"
+  ha.dashboard.widget.portfolio_positions.title:
+    description: Home Assistant dashboard title for the open positions widget.
+    message: "Open Positions"
+  ha.dashboard.widget.portfolio_actions_full.title:
+    description: Home Assistant dashboard title for the detailed portfolio actions widget.
+    message: "Portfolio Actions"
+  ha.dashboard.widget.notifications_status.title:
+    description: Home Assistant dashboard title for the notifications status widget.
+    message: "Notifications"
+  ha.dashboard.widget.integrations_snapshot.title:
+    description: Home Assistant dashboard title for the integrations snapshot widget.
+    message: "Integrations Snapshot"
+  ha.dashboard.widget.system_runtime_status.title:
+    description: Home Assistant dashboard title for the runtime status widget.
+    message: "Runtime Status"
+  ha.dashboard.widget.system_controls.title:
+    description: Home Assistant dashboard title for the system controls widget.
+    message: "System Controls"

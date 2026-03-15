@@ -147,18 +147,24 @@ class ApiErrorFactory:
     def build_from_platform_error(
         exc: PlatformError,
         *,
+        locale: str | None = None,
         details: list[ApiErrorDetail] | None = None,
         request_id: str | None = None,
         correlation_id: str | None = None,
         docs_ref: str | None = None,
         operation_id: str | None = None,
     ) -> ApiError:
+        localized = get_translation_service().translate(
+            exc.message_key,
+            locale=locale or exc.locale,
+            params=exc.params,
+        )
         return ApiErrorFactory.build(
             code=exc.code,
-            message=exc.message,
+            message=localized.text,
             message_key=exc.message_key,
             message_params=dict(exc.params),
-            locale=exc.locale,
+            locale=localized.locale,
             domain=exc.domain.value,
             category=exc.category.value,
             http_status=exc.http_status,
@@ -176,6 +182,7 @@ class ApiErrorFactory:
     def from_platform_error(
         exc: PlatformError,
         *,
+        locale: str | None = None,
         details: list[ApiErrorDetail] | None = None,
         request_id: str | None = None,
         correlation_id: str | None = None,
@@ -183,22 +190,17 @@ class ApiErrorFactory:
         operation_id: str | None = None,
         headers: Mapping[str, str] | None = None,
     ) -> HTTPException:
-        return ApiErrorFactory.to_http_exception(
-            status_code=exc.http_status,
-            code=exc.code,
-            message=exc.message,
-            message_key=exc.message_key,
-            message_params=dict(exc.params),
-            locale=exc.locale,
-            domain=exc.domain.value,
-            category=exc.category.value,
-            severity=exc.severity.value,
-            safe_to_expose=exc.safe_to_expose,
+        payload = ApiErrorFactory.build_from_platform_error(
+            exc,
+            locale=locale,
             details=details,
-            retryable=exc.retryable,
             request_id=request_id,
             correlation_id=correlation_id,
             docs_ref=docs_ref,
             operation_id=operation_id,
-            headers=headers,
+        )
+        return HTTPException(
+            status_code=exc.http_status,
+            detail=payload.model_dump(mode="json"),
+            headers=dict(headers or {}),
         )

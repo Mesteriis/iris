@@ -4,6 +4,10 @@
 
 **Accepted**
 
+## Date
+
+2025-01-20
+
 ## Context
 
 Аналитические сигналы и реальные действия должны быть разделены.
@@ -29,11 +33,16 @@ IRIS вводит отдельный Portfolio Engine.
 
 ## Consequences
 
-**Плюсы:**
+### Positive
 
 - чёткое разделение анализа и действий
 - безопасное управление капиталом
 
-**Минусы:**
+### Negative
 
 - дополнительный слой архитектуры
+
+## See also
+
+- [ADR 0004: Signal Fusion Layer](0004-signal-fusion-layer.md) — источник сигналов
+- [ADR 0012: Services Return Domain Contracts](0012-services-return-domain-contracts-not-transport.md) — паттерны сервисного слоя

@@ -62,6 +62,9 @@ class AcceptedResponse(HttpContract):
     accepted_at: datetime
     deduplicated: bool = False
     message: str | None = None
+    message_key: str | None = None
+    message_params: dict[str, Any] = Field(default_factory=dict)
+    locale: str | None = None
     correlation_id: str | None = None
 
 

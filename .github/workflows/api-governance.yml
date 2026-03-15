@@ -39,5 +39,8 @@ jobs:
       - name: Check committed HTTP capability catalog
         run: make api-capabilities-check
 
+      - name: Check translation catalogs and coverage snapshot
+        run: make i18n-check
+
       - name: Run API governance tests
-        run: cd backend && uv run pytest tests/core/test_bootstrap_db_main.py tests/core/test_http_matrix.py tests/core/test_http_capabilities.py
+        run: cd backend && uv run pytest tests/core/test_bootstrap_db_main.py tests/core/test_http_matrix.py tests/core/test_http_capabilities.py tests/core/test_i18n_validators.py tests/apps/integrations/test_ha_i18n.py

@@ -4,6 +4,10 @@
 
 Accepted
 
+## Date
+
+2025-02-03
+
 ## Context
 
 The old hotspot modules mixed mathematical evaluation with database and provider access:
@@ -33,3 +37,9 @@ This preserves deterministic analytical behavior:
 - orchestration and retry behavior stay outside the math layer;
 - cross-domain boundaries remain explicit instead of leaking into engine code;
 - “just fetch what the engine needs” is no longer an acceptable shortcut.
+
+
+## See also
+
+- [ADR 0009: Signals Service/Engine Split](0009-canonical-signals-service-engine-split.md) — canonical example
+- [ADR 0013: Async Classes for Orchestration](0013-async-classes-orchestration-pure-functions.md) — pure function principle

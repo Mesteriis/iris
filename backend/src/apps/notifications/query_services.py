@@ -23,7 +23,6 @@ class NotificationQueryService(AsyncQueryService):
         limit: int,
         coin_id: int | None = None,
         source_event_type: str | None = None,
-        language: str | None = None,
     ) -> tuple[NotificationReadModel, ...]:
         self._log_debug(
             "query.list_notifications",
@@ -31,17 +30,17 @@ class NotificationQueryService(AsyncQueryService):
             limit=limit,
             coin_id=coin_id,
             source_event_type=source_event_type,
-            language=language,
         )
         stmt = select(AINotification).order_by(AINotification.created_at.desc()).limit(limit)
         if coin_id is not None:
             stmt = stmt.where(AINotification.coin_id == coin_id)
         if source_event_type is not None:
             stmt = stmt.where(AINotification.source_event_type == source_event_type)
-        if language is not None:
-            stmt = stmt.where(AINotification.language == language)
         rows = (await self.session.execute(stmt)).scalars().all()
-        items = tuple(notification_read_model_from_orm(item) for item in rows)
+        items = tuple(
+            notification_read_model_from_orm(item)
+            for item in _deduplicate_notification_rows(rows, limit=limit)
+        )
         self._log_debug("query.list_notifications.result", mode="read", count=len(items))
         return items
 
@@ -74,3 +73,17 @@ class NotificationQueryService(AsyncQueryService):
 
 
 __all__ = ["NotificationQueryService"]
+
+
+def _deduplicate_notification_rows(rows: list[AINotification], *, limit: int) -> list[AINotification]:
+    items: list[AINotification] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        key = (str(row.source_event_type), str(row.source_event_id))
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append(row)
+        if len(items) >= limit:
+            break
+    return items

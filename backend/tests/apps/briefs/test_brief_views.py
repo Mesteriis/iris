@@ -24,13 +24,18 @@ async def test_read_market_brief_returns_cache_headers(
                 scope_key="market",
                 symbol=None,
                 coin_id=None,
-                language="en",
-                title="Market brief",
-                summary="Leaders remain constructive while breadth stays selective.",
-                bullets_json=[
-                    "BTCUSD_EVT holds the strongest confidence profile.",
-                    "Broader breadth remains narrower than the headline momentum.",
-                ],
+                content_kind="generated_text",
+                content_json={
+                    "version": 1,
+                    "kind": "generated_text",
+                    "rendered_locale": "en",
+                    "title": "Market brief",
+                    "summary": "Leaders remain constructive while breadth stays selective.",
+                    "bullets": [
+                        "BTCUSD_EVT holds the strongest confidence profile.",
+                        "Broader breadth remains narrower than the headline momentum.",
+                    ],
+                },
                 refs_json={"scope": "market", "top_symbols": ["BTCUSD_EVT", "ETHUSD_EVT"]},
                 context_json={"snapshot": {"rows": [{"symbol": "BTCUSD_EVT", "decision": "BUY"}]}},
                 provider="local_test",
@@ -52,6 +57,10 @@ async def test_read_market_brief_returns_cache_headers(
     assert "last-modified" in response.headers
     payload = response.json()
     assert payload["brief_kind"] == "market"
+    assert payload["title"] == "Market brief"
+    assert payload["summary"] == "Leaders remain constructive while breadth stays selective."
+    assert payload["content_kind"] == "generated_text"
+    assert payload["rendered_locale"] == "en"
     assert payload["generated_at"] == generated_at.isoformat().replace("+00:00", "Z")
     assert payload["consistency"] == "derived"
     assert payload["freshness_class"] == "near_real_time"

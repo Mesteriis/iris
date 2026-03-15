@@ -56,7 +56,6 @@ async def test_explanation_service_persists_signal_artifact(async_db_session, se
         result = await ExplanationService(uow).generate_and_store(
             explain_kind=ExplainKind.SIGNAL,
             subject_id=int(signal.id),
-            language="en",
         )
         await uow.commit()
 
@@ -64,10 +63,13 @@ async def test_explanation_service_persists_signal_artifact(async_db_session, se
     assert stored is not None
     assert stored.explain_kind == "signal"
     assert stored.subject_id == int(signal.id)
-    assert stored.language == "en"
+    assert stored.content_kind == "generated_text"
+    assert stored.content_json["rendered_locale"] == "en"
+    assert stored.content_json["title"] == "BTCUSD_EVT signal explanation"
     assert stored.context_json["ai_execution"]["context_format"] == "compact_json"
     assert stored.refs_json["subject_id"] == int(signal.id)
     assert result.status is ExplanationGenerationStatus.OK
+    assert result.rendered_locale == "en"
 
 
 @pytest.mark.asyncio
@@ -128,7 +130,6 @@ async def test_explanation_service_skips_when_decision_snapshot_is_current(async
             select(AIExplanation).where(
                 AIExplanation.explain_kind == "decision",
                 AIExplanation.subject_id == int(decision.id),
-                AIExplanation.language == "en",
             )
         )
     ).scalars().all()

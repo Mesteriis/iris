@@ -21,7 +21,7 @@ def test_error_registry_rejects_duplicate_codes_and_message_keys() -> None:
         definitions=(
             ErrorDefinition(
                 error_code="duplicate_test",
-                message_key="errors.test.duplicate",
+                message_key="error.test.duplicate",
                 domain=ErrorDomain.CORE,
                 category=ErrorCategory.INTERNAL,
                 http_status=500,
@@ -34,7 +34,7 @@ def test_error_registry_rejects_duplicate_codes_and_message_keys() -> None:
         registry.register(
             ErrorDefinition(
                 error_code="duplicate_test",
-                message_key="errors.test.other",
+                message_key="error.test.other",
                 domain=ErrorDomain.CORE,
                 category=ErrorCategory.INTERNAL,
                 http_status=500,
@@ -46,7 +46,7 @@ def test_error_registry_rejects_duplicate_codes_and_message_keys() -> None:
         registry.register(
             ErrorDefinition(
                 error_code="other_code",
-                message_key="errors.test.duplicate",
+                message_key="error.test.duplicate",
                 domain=ErrorDomain.CORE,
                 category=ErrorCategory.INTERNAL,
                 http_status=500,
@@ -55,20 +55,21 @@ def test_error_registry_rejects_duplicate_codes_and_message_keys() -> None:
         )
 
 
-def test_platform_error_renders_registry_backed_message() -> None:
+def test_platform_error_keeps_structured_metadata_without_localizing_message() -> None:
     error = ResourceNotFoundError(resource="signal", locale="ru")
 
     assert error.code == "resource_not_found"
-    assert error.message_key == "errors.generic.resource_not_found"
-    assert error.message == "Запрошенный ресурс 'signal' не найден."
+    assert error.message_key == "error.resource.not_found"
+    assert error.message == "resource_not_found (resource='signal')"
+    assert error.to_metadata()["locale"] == "ru"
     assert error.to_metadata()["http_status"] == 404
 
 
 def test_api_error_factory_adapts_platform_error_without_changing_wire_shape() -> None:
     error = ResourceNotFoundError(resource="signal")
 
-    payload = ApiErrorFactory.build_from_platform_error(error)
-    http_error = ApiErrorFactory.from_platform_error(error)
+    payload = ApiErrorFactory.build_from_platform_error(error, locale="en")
+    http_error = ApiErrorFactory.from_platform_error(error, locale="en")
 
     assert payload.code == "resource_not_found"
     assert payload.message == "The requested signal was not found."

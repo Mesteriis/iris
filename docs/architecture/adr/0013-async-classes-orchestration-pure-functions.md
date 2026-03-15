@@ -4,6 +4,10 @@
 
 Accepted
 
+## Date
+
+2025-02-05
+
 ## Context
 
 Two different kinds of code coexist in IRIS:
@@ -35,3 +39,9 @@ This preserves the right abstraction at each layer:
 - analytical behavior stays easy to test and reason about;
 - the codebase avoids “everything is a service class” and “everything is a loose helper” extremes;
 - the canonical `signals` split remains the reference pattern for later domains.
+
+
+## See also
+
+- [ADR 0009: Signals Service/Engine Split](0009-canonical-signals-service-engine-split.md) — canonical example
+- [ADR 0011: Analytical Engines Never Fetch](0011-analytical-engines-never-fetch.md) — pure function constraint

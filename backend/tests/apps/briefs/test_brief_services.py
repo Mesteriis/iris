@@ -28,8 +28,8 @@ async def test_brief_service_persists_symbol_artifact(async_db_session, seeded_a
                 requested_provider=None,
                 actual_provider="local_test",
                 model="llama-test",
-                requested_language="ru",
-                effective_language="ru",
+                requested_language=None,
+                effective_language="en",
                 context_format=AIContextFormat.COMPACT_JSON,
                 context_record_count=4,
                 context_bytes=512,
@@ -49,7 +49,6 @@ async def test_brief_service_persists_symbol_artifact(async_db_session, seeded_a
         result = await BriefService(uow).generate_and_store(
             brief_kind=BriefKind.SYMBOL,
             symbol="BTCUSD_EVT",
-            language="ru",
         )
         await uow.commit()
 
@@ -57,11 +56,13 @@ async def test_brief_service_persists_symbol_artifact(async_db_session, seeded_a
     assert stored is not None
     assert stored.brief_kind == "symbol"
     assert stored.scope_key == "symbol:BTCUSD_EVT"
-    assert stored.language == "ru"
-    assert stored.title == "BTCUSD_EVT snapshot"
+    assert stored.content_kind == "generated_text"
+    assert stored.content_json["rendered_locale"] == "en"
+    assert stored.content_json["title"] == "BTCUSD_EVT snapshot"
     assert stored.context_json["ai_execution"]["context_format"] == "compact_json"
     assert stored.refs_json["symbol"] == "BTCUSD_EVT"
     assert result.status is BriefGenerationStatus.OK
+    assert result.rendered_locale == "en"
 
 
 @pytest.mark.asyncio
@@ -110,7 +111,6 @@ async def test_brief_service_skips_when_snapshot_is_current(async_db_session, se
             select(AIBrief).where(
                 AIBrief.brief_kind == "portfolio",
                 AIBrief.scope_key == "portfolio",
-                AIBrief.language == "en",
             )
         )
     ).scalars().all()

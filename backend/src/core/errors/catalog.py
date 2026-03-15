@@ -9,7 +9,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
     definitions=(
         ErrorDefinition(
             error_code="internal_error",
-            message_key="errors.generic.internal",
+            message_key="error.system.internal",
             domain=ErrorDomain.CORE,
             category=ErrorCategory.INTERNAL,
             http_status=int(HTTPStatus.INTERNAL_SERVER_ERROR),
@@ -19,7 +19,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="resource_not_found",
-            message_key="errors.generic.resource_not_found",
+            message_key="error.resource.not_found",
             domain=ErrorDomain.API,
             category=ErrorCategory.NOT_FOUND,
             http_status=int(HTTPStatus.NOT_FOUND),
@@ -29,7 +29,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="validation_failed",
-            message_key="errors.generic.validation_failed",
+            message_key="error.request.validation_failed",
             domain=ErrorDomain.API,
             category=ErrorCategory.VALIDATION,
             http_status=int(HTTPStatus.BAD_REQUEST),
@@ -39,7 +39,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="duplicate_request",
-            message_key="errors.generic.duplicate_request",
+            message_key="error.request.duplicate",
             domain=ErrorDomain.API,
             category=ErrorCategory.CONFLICT,
             http_status=int(HTTPStatus.CONFLICT),
@@ -49,7 +49,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="invalid_state_transition",
-            message_key="errors.generic.invalid_state_transition",
+            message_key="error.state.invalid_transition",
             domain=ErrorDomain.API,
             category=ErrorCategory.CONFLICT,
             http_status=int(HTTPStatus.BAD_REQUEST),
@@ -59,7 +59,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="authentication_failed",
-            message_key="errors.generic.authentication_failed",
+            message_key="error.auth.authentication_failed",
             domain=ErrorDomain.API,
             category=ErrorCategory.AUTHENTICATION,
             http_status=int(HTTPStatus.UNAUTHORIZED),
@@ -69,7 +69,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="authorization_denied",
-            message_key="errors.generic.authorization_denied",
+            message_key="error.auth.authorization_denied",
             domain=ErrorDomain.API,
             category=ErrorCategory.AUTHORIZATION,
             http_status=int(HTTPStatus.FORBIDDEN),
@@ -79,7 +79,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="policy_denied",
-            message_key="errors.generic.policy_denied",
+            message_key="error.policy.denied",
             domain=ErrorDomain.API,
             category=ErrorCategory.POLICY,
             http_status=int(HTTPStatus.FORBIDDEN),
@@ -89,7 +89,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="concurrency_conflict",
-            message_key="errors.generic.concurrency_conflict",
+            message_key="error.request.concurrency_conflict",
             domain=ErrorDomain.API,
             category=ErrorCategory.CONFLICT,
             http_status=int(HTTPStatus.CONFLICT),
@@ -99,7 +99,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="integration_unreachable",
-            message_key="errors.generic.integration_unreachable",
+            message_key="error.integration.unreachable",
             domain=ErrorDomain.API,
             category=ErrorCategory.UNAVAILABLE,
             http_status=int(HTTPStatus.SERVICE_UNAVAILABLE),
@@ -109,7 +109,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="prompt_veil_locked",
-            message_key="errors.hypothesis.prompt_veil_locked",
+            message_key="error.hypothesis.prompt_veil_locked",
             domain=ErrorDomain.API,
             category=ErrorCategory.LOCKED,
             http_status=int(HTTPStatus.LOCKED),
@@ -119,7 +119,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="invalid_access_mode",
-            message_key="errors.control_plane.invalid_access_mode",
+            message_key="error.control_plane.invalid_access_mode",
             domain=ErrorDomain.API,
             category=ErrorCategory.VALIDATION,
             http_status=int(HTTPStatus.BAD_REQUEST),
@@ -129,7 +129,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="control_mode_required",
-            message_key="errors.control_plane.control_mode_required",
+            message_key="error.control_plane.control_mode_required",
             domain=ErrorDomain.API,
             category=ErrorCategory.POLICY,
             http_status=int(HTTPStatus.FORBIDDEN),
@@ -139,7 +139,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="control_token_invalid",
-            message_key="errors.control_plane.control_token_invalid",
+            message_key="error.control_plane.control_token_invalid",
             domain=ErrorDomain.API,
             category=ErrorCategory.AUTHORIZATION,
             http_status=int(HTTPStatus.FORBIDDEN),
@@ -149,7 +149,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="command_not_available",
-            message_key="errors.ha.command_not_available",
+            message_key="error.ha.command_not_available",
             domain=ErrorDomain.HA,
             category=ErrorCategory.UNAVAILABLE,
             http_status=int(HTTPStatus.NOT_FOUND),
@@ -159,7 +159,7 @@ PLATFORM_ERROR_REGISTRY = ErrorRegistry(
         ),
         ErrorDefinition(
             error_code="invalid_payload",
-            message_key="errors.ha.invalid_payload",
+            message_key="error.ha.invalid_payload",
             domain=ErrorDomain.HA,
             category=ErrorCategory.VALIDATION,
             http_status=int(HTTPStatus.BAD_REQUEST),

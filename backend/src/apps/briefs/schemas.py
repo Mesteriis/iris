@@ -15,10 +15,12 @@ class BriefRead(AnalyticalReadContract):
     scope_key: str
     symbol: str | None = None
     coin_id: int | None = None
-    language: str
+    content_kind: str
+    rendered_locale: str | None = None
     title: str
     summary: str
     bullets: list[str]
+    content_json: Any
     refs_json: Any
     context_json: Any
     provider: str

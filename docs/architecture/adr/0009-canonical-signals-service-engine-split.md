@@ -4,6 +4,10 @@
 
 Accepted
 
+## Date
+
+2025-02-01
+
 ## Context
 
 `signals` was the reference hotspot for the service-layer refactor:
@@ -37,3 +41,10 @@ The practical rules are:
 - service tests cover wiring, invariants and post-commit behavior;
 - engine tests cover deterministic analytical behavior without DB/runtime setup;
 - future hotspot rewrites should copy this split directly instead of introducing interim compatibility wrappers.
+
+## See also
+
+- [ADR 0011: Analytical Engines Never Fetch](0011-analytical-engines-never-fetch.md) — pure engine constraints
+- [ADR 0012: Services Return Domain Contracts](0012-services-return-domain-contracts-not-transport.md) — typed results
+- [ADR 0013: Async Classes for Orchestration](0013-async-classes-orchestration-pure-functions.md) — code organization
+- [ADR 0010: Caller Owns Commit Boundary](0010-caller-owns-commit-boundary.md) — transaction ownership

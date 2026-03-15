@@ -5,7 +5,7 @@ from typing import Any
 
 from src.core.errors.catalog import PLATFORM_ERROR_REGISTRY
 from src.core.errors.registry import ErrorDefinition
-from src.core.i18n import TranslationService, get_translation_service
+from src.core.i18n import TranslationService
 
 
 class PlatformError(Exception):
@@ -19,18 +19,14 @@ class PlatformError(Exception):
         translator: TranslationService | None = None,
         retryable: bool | None = None,
     ) -> None:
-        localized = (translator or get_translation_service()).translate(
-            definition.message_key,
-            locale=locale,
-            params=params,
-        )
+        del translator
         self.definition = definition
         self.params = dict(params or {})
         self.details = dict(details or {})
-        self.locale = localized.locale
+        self.locale = locale
         self.code = definition.error_code
         self.message_key = definition.message_key
-        self.message = localized.text
+        self.message = _build_exception_message(definition.error_code, self.params)
         self.http_status = definition.http_status
         self.domain = definition.domain
         self.category = definition.category
@@ -147,3 +143,13 @@ class ControlModeRequiredError(RegistryBackedPlatformError):
 
 class ControlTokenInvalidError(RegistryBackedPlatformError):
     error_code = "control_token_invalid"
+
+
+def _build_exception_message(error_code: str, params: Mapping[str, object]) -> str:
+    if not params:
+        return error_code
+    rendered_params = ", ".join(
+        f"{key}={value!r}"
+        for key, value in sorted(params.items())
+    )
+    return f"{error_code} ({rendered_params})"

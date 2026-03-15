@@ -16,10 +16,8 @@ class ExplanationReadModel:
     coin_id: int | None
     symbol: str | None
     timeframe: int | None
-    language: str
-    title: str
-    explanation: str
-    bullets: tuple[str, ...]
+    content_kind: str
+    content_json: Any
     refs_json: Any
     context_json: Any
     provider: str
@@ -51,10 +49,8 @@ def explanation_read_model_from_orm(item) -> ExplanationReadModel:
         coin_id=int(item.coin_id) if item.coin_id is not None else None,
         symbol=str(item.symbol) if item.symbol is not None else None,
         timeframe=int(item.timeframe) if item.timeframe is not None else None,
-        language=str(item.language),
-        title=str(item.title),
-        explanation=str(item.explanation),
-        bullets=tuple(str(value) for value in (item.bullets_json or [])),
+        content_kind=str(item.content_kind),
+        content_json=freeze_json_value(dict(item.content_json or {})),
         refs_json=freeze_json_value(dict(item.refs_json or {})),
         context_json=freeze_json_value(dict(item.context_json or {})),
         provider=str(item.provider),

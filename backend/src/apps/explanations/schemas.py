@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 
 from src.apps.explanations.contracts import ExplainKind
 from src.core.http.contracts import AnalyticalReadContract
@@ -16,10 +16,18 @@ class ExplanationRead(AnalyticalReadContract):
     coin_id: int | None = None
     symbol: str | None = None
     timeframe: int | None = None
-    language: str
     title: str
+    content_kind: str
+    rendered_locale: str | None = None
+    title_key: str | None = None
+    title_params: dict[str, Any] = Field(default_factory=dict)
     explanation: str
+    explanation_key: str | None = None
+    explanation_params: dict[str, Any] = Field(default_factory=dict)
     bullets: list[str]
+    bullet_keys: list[str] = Field(default_factory=list)
+    bullet_params: list[dict[str, Any]] = Field(default_factory=list)
+    content_json: Any
     refs_json: Any
     context_json: Any
     provider: str

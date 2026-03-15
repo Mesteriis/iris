@@ -45,7 +45,7 @@ class BriefGenerationResult:
     brief_id: int
     brief_kind: BriefKind
     scope_key: str
-    language: str
+    rendered_locale: str
     symbol: str | None = None
     reason: str | None = None
     generated_at: datetime | None = None

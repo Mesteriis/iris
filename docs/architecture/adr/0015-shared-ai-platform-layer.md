@@ -4,6 +4,10 @@
 
 Accepted
 
+## Date
+
+2025-03-01
+
 ## Context
 
 IRIS already adopted a service/engine split, runtime policies, analytical snapshot semantics and control-plane governed routing.
@@ -40,3 +44,8 @@ This keeps AI aligned with the existing architecture family:
 - provider outages and degraded execution become auditable through explicit execution metadata instead of silent fallback;
 - future capabilities such as `notification_humanize`, `brief_generate` and `explain_generate` can reuse the same runtime and governance model;
 - the codebase avoids creating a parallel AI-specific architecture outside `core`, `apps` and `runtime`.
+
+
+## See also
+
+- Related to service-layer architecture patterns in ADRs 0009-0014

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, Query, Request
+from fastapi import Depends, Request
 
 from src.core.http.operation_store import OperationStore
 from src.core.http.tracing import TraceContext
-from src.core.i18n import LocalePolicy, normalize_locale, resolve_locale
-from src.core.settings import Settings, get_settings
+from src.core.i18n import LocalePolicy, build_locale_policy
+from src.core.settings import Settings
 
 
 def get_trace_context(request: Request) -> TraceContext:
@@ -23,37 +23,22 @@ def get_operation_store() -> OperationStore:
 
 
 def build_request_locale_policy(*, settings: Settings | None = None) -> LocalePolicy:
-    effective_settings = settings or get_settings()
-    default_locale = normalize_locale(getattr(effective_settings.language, "value", effective_settings.language)) or "en"
-    return LocalePolicy(
-        supported_locales=("en", "ru"),
-        default_locale=default_locale,
-        fallback_locale="en",
-    )
+    return build_locale_policy(settings=settings)
 
 
 def resolve_request_locale(
-    request: Request,
+    request: Request | None = None,
     *,
     language: str | None = None,
     locale: str | None = None,
     settings: Settings | None = None,
 ) -> str:
-    explicit_locale = locale or language or request.headers.get("X-IRIS-Locale")
-    resolution = resolve_locale(
-        explicit_locale=explicit_locale,
-        accept_language=request.headers.get("Accept-Language"),
-        policy=build_request_locale_policy(settings=settings),
-    )
-    return resolution.effective_locale
+    del request, language, locale
+    return build_request_locale_policy(settings=settings).default_locale
 
 
-def get_request_locale(
-    request: Request,
-    language: str | None = Query(default=None),
-    locale: str | None = Query(default=None),
-) -> str:
-    return resolve_request_locale(request, language=language, locale=locale)
+def get_request_locale() -> str:
+    return resolve_request_locale()
 
 
 TraceContextDep = Annotated[TraceContext, Depends(get_trace_context)]

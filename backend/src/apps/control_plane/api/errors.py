@@ -47,7 +47,7 @@ def invalid_access_mode_error(*, locale: str, value: str | None = None) -> HTTPE
         details=[
             ApiErrorFactory.build_detail(
                 field="X-IRIS-Access-Mode",
-                message_key="errors.control_plane.detail.allowed_access_modes",
+                message_key="error.control_plane.detail.allowed_access_modes",
                 locale=locale,
                 value={"provided": value, "allowed": ["observe", "control"]},
             )
@@ -77,19 +77,19 @@ def control_plane_error_to_http(exc: Exception, *, locale: str) -> HTTPException
             details=[
                 ApiErrorFactory.build_detail(
                     field="resource_id",
-                    message_key="errors.control_plane.detail.draft_id",
+                    message_key="error.control_plane.detail.draft_id",
                     locale=locale,
                     value=exc.draft_id,
                 ),
                 ApiErrorFactory.build_detail(
                     field="expected_version",
-                    message_key="errors.control_plane.detail.expected_version",
+                    message_key="error.control_plane.detail.expected_version",
                     locale=locale,
                     value=exc.expected_version,
                 ),
                 ApiErrorFactory.build_detail(
                     field="current_version",
-                    message_key="errors.control_plane.detail.current_version",
+                    message_key="error.control_plane.detail.current_version",
                     locale=locale,
                     value=exc.current_version,
                 ),

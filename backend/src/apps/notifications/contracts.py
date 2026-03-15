@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from src.core.ai.telemetry import AIExecutionMetadata
+from src.core.i18n import MessageDescriptor
 
 
 class NotificationHumanizationOutput(BaseModel):
@@ -36,6 +37,8 @@ class NotificationHumanizationResult:
     severity: Literal["info", "warning", "critical"]
     urgency: Literal["low", "medium", "high"]
     metadata: AIExecutionMetadata
+    title_descriptor: MessageDescriptor | None = None
+    message_descriptor: MessageDescriptor | None = None
 
 
 @dataclass(frozen=True, slots=True)

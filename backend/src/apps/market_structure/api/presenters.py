@@ -17,6 +17,7 @@ from src.apps.market_structure.services.results import (
     serialize_market_structure_ingest_result,
 )
 from src.core.db.persistence import thaw_json_value
+from src.core.http.operation_localization import dispatch_result_message_fields
 from src.core.http.operation_store import OperationDispatchResult
 
 
@@ -121,6 +122,7 @@ def market_structure_source_job_accepted_read(
     dispatch_result: OperationDispatchResult,
     source_id: int,
     limit: int,
+    locale: str | None = None,
 ) -> MarketStructureSourceJobAcceptedRead:
     operation = dispatch_result.operation
     return MarketStructureSourceJobAcceptedRead.model_validate(
@@ -129,7 +131,7 @@ def market_structure_source_job_accepted_read(
             "accepted_at": operation.accepted_at,
             "correlation_id": operation.correlation_id,
             "deduplicated": dispatch_result.deduplicated,
-            "message": dispatch_result.message,
+            **dispatch_result_message_fields(dispatch_result, locale=locale),
             "source_id": int(source_id),
             "limit": int(limit),
         }
@@ -139,6 +141,7 @@ def market_structure_source_job_accepted_read(
 def market_structure_health_job_accepted_read(
     *,
     dispatch_result: OperationDispatchResult,
+    locale: str | None = None,
 ) -> MarketStructureHealthJobAcceptedRead:
     operation = dispatch_result.operation
     return MarketStructureHealthJobAcceptedRead.model_validate(
@@ -147,7 +150,7 @@ def market_structure_health_job_accepted_read(
             "accepted_at": operation.accepted_at,
             "correlation_id": operation.correlation_id,
             "deduplicated": dispatch_result.deduplicated,
-            "message": dispatch_result.message,
+            **dispatch_result_message_fields(dispatch_result, locale=locale),
         }
     )
 

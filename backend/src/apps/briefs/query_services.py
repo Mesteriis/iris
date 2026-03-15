@@ -32,21 +32,18 @@ class BriefQueryService(AsyncQueryService):
         *,
         brief_kind: BriefKind,
         scope_key: str,
-        language: str,
     ) -> BriefReadModel | None:
         self._log_debug(
             "query.get_brief",
             mode="read",
             brief_kind=brief_kind.value,
             scope_key=scope_key,
-            language=language,
         )
         row = await self.session.scalar(
             select(AIBrief)
             .where(
                 AIBrief.brief_kind == brief_kind.value,
                 AIBrief.scope_key == scope_key,
-                AIBrief.language == language,
             )
             .limit(1)
         )

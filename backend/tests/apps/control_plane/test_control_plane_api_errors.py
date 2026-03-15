@@ -14,13 +14,13 @@ def test_control_plane_boundary_errors_are_localized() -> None:
     )
 
     assert access_mode_error.status_code == 400
-    assert access_mode_error.detail["message_key"] == "errors.control_plane.invalid_access_mode"
-    assert access_mode_error.detail["details"][0]["message_key"] == "errors.control_plane.detail.allowed_access_modes"
+    assert access_mode_error.detail["message_key"] == "error.control_plane.invalid_access_mode"
+    assert access_mode_error.detail["details"][0]["message_key"] == "error.control_plane.detail.allowed_access_modes"
     assert access_mode_error.detail["details"][0]["locale"] == "ru"
 
     assert conflict_error is not None
     assert conflict_error.status_code == 409
-    assert conflict_error.detail["message_key"] == "errors.generic.concurrency_conflict"
+    assert conflict_error.detail["message_key"] == "error.request.concurrency_conflict"
     assert conflict_error.detail["details"][0]["message"] == "Идентификатор draft."
-    assert conflict_error.detail["details"][1]["message_key"] == "errors.control_plane.detail.expected_version"
+    assert conflict_error.detail["details"][1]["message_key"] == "error.control_plane.detail.expected_version"
     assert conflict_error.detail["details"][2]["value"] == 5

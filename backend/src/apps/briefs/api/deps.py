@@ -23,7 +23,6 @@ class BriefJobDispatcher:
         self,
         *,
         brief_kind: BriefKind,
-        language: str | None = None,
         symbol: str | None = None,
         force: bool = False,
         requested_provider: str | None = None,
@@ -31,16 +30,15 @@ class BriefJobDispatcher:
         from src.apps.briefs.tasks import generate_brief_job
 
         normalized_symbol = str(symbol).strip().upper() if symbol is not None and str(symbol).strip() else None
-        effective_language = resolve_effective_language({"language": language})
+        effective_language = resolve_effective_language({})
         scope_key = build_scope_key(brief_kind, symbol=normalized_symbol)
         return await dispatch_background_operation(
             store=self.operation_store,
             operation_type="brief.generate",
             trace_context=self.trace_context,
-            deduplication_key=f"kind:{brief_kind.value}:scope:{scope_key}:language:{effective_language}",
+            deduplication_key=f"kind:{brief_kind.value}:scope:{scope_key}",
             dispatch=lambda operation_id: generate_brief_job.kiq(
                 brief_kind=brief_kind.value,
-                language=effective_language,
                 symbol=normalized_symbol,
                 force=force,
                 requested_provider=requested_provider,

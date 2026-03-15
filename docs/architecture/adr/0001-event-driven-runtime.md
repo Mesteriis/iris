@@ -4,6 +4,10 @@
 
 **Accepted**
 
+## Date
+
+2025-01-15
+
 ## Context
 
 IRIS выполняет сложную аналитическую обработку рыночных данных:
@@ -47,14 +51,19 @@ Workers обмениваются событиями через Redis Streams.
 
 ## Consequences
 
-**Плюсы:**
+### Positive
 
 - независимость подсистем
 - устойчивость к падениям
 - возможность горизонтального масштабирования
 - простая повторная обработка событий
 
-**Минусы:**
+### Negative
 
 - увеличивается сложность runtime
 - требуется хорошая observability
+
+## See also
+
+- [ADR 0003: Control Plane for Event Routing](0003-control-plane-event-routing.md) — динамическая маршрутизация событий
+- [ADR 0009: Signals Service/Engine Split](0009-canonical-signals-service-engine-split.md) — сервисная оркестрация

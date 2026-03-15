@@ -8,6 +8,7 @@ from src.apps.hypothesis_engine.api.contracts import (
     AIPromptRead,
     HypothesisEvaluationJobAcceptedRead,
 )
+from src.core.http.operation_localization import dispatch_result_message_fields
 from src.core.http.operation_store import OperationDispatchResult
 
 
@@ -27,6 +28,7 @@ def hypothesis_eval_read(item: Any) -> AIHypothesisEvalRead:
 def hypothesis_evaluation_job_accepted_read(
     *,
     dispatch_result: OperationDispatchResult,
+    locale: str | None = None,
 ) -> HypothesisEvaluationJobAcceptedRead:
     operation = dispatch_result.operation
     return HypothesisEvaluationJobAcceptedRead.model_validate(
@@ -35,7 +37,7 @@ def hypothesis_evaluation_job_accepted_read(
             "accepted_at": operation.accepted_at,
             "correlation_id": operation.correlation_id,
             "deduplicated": dispatch_result.deduplicated,
-            "message": dispatch_result.message,
+            **dispatch_result_message_fields(dispatch_result, locale=locale),
         }
     )
 

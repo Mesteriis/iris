@@ -9,8 +9,9 @@ from src.apps.news.api.contracts import (
     NewsSourceRead,
     TelegramBulkSubscribeRead,
 )
-from src.core.http.operation_store import OperationDispatchResult
 from src.core.db.persistence import thaw_json_value
+from src.core.http.operation_localization import dispatch_result_message_fields
+from src.core.http.operation_store import OperationDispatchResult
 
 
 def news_plugin_read(item: Any) -> NewsPluginRead:
@@ -97,6 +98,7 @@ def news_source_job_accepted_read(
     dispatch_result: OperationDispatchResult,
     source_id: int,
     limit: int,
+    locale: str | None = None,
 ) -> NewsSourceJobAcceptedRead:
     operation = dispatch_result.operation
     return NewsSourceJobAcceptedRead.model_validate(
@@ -105,7 +107,7 @@ def news_source_job_accepted_read(
             "accepted_at": operation.accepted_at,
             "correlation_id": operation.correlation_id,
             "deduplicated": dispatch_result.deduplicated,
-            "message": dispatch_result.message,
+            **dispatch_result_message_fields(dispatch_result, locale=locale),
             "source_id": int(source_id),
             "limit": int(limit),
         }

@@ -18,40 +18,14 @@ from src.core.ai import (
     PydanticOutputValidator,
     get_capability_policy,
 )
+from src.core.i18n import (
+    MessageDescriptor,
+    get_translation_service,
+    normalize_language,
+    resolve_effective_language,
+    resolve_requested_language,
+)
 from src.core.settings import Settings, get_settings
-
-_SUPPORTED_LANGUAGES = {"en", "ru", "es", "uk"}
-_LANGUAGE_ALIASES = {"ua": "uk"}
-
-
-def normalize_language(value: str | None) -> str | None:
-    if value is None:
-        return None
-    normalized = str(value).strip().lower().replace("_", "-")
-    if not normalized:
-        return None
-    normalized = _LANGUAGE_ALIASES.get(normalized, normalized)
-    primary = normalized.split("-", maxsplit=1)[0]
-    if primary in _LANGUAGE_ALIASES:
-        primary = _LANGUAGE_ALIASES[primary]
-    return primary if primary in _SUPPORTED_LANGUAGES else "en"
-
-
-def resolve_requested_language(ctx: dict[str, Any]) -> str | None:
-    for key in ("language", "locale"):
-        normalized = normalize_language(ctx.get(key))
-        if normalized is not None:
-            return normalized
-    return None
-
-
-def resolve_effective_language(ctx: dict[str, Any], *, settings: Settings | None = None) -> str:
-    requested = resolve_requested_language(ctx)
-    if requested is not None:
-        return requested
-    effective_settings = settings or get_settings()
-    default_language = normalize_language(getattr(effective_settings.language, "value", effective_settings.language))
-    return default_language or "en"
 
 
 class NotificationHumanizationService:
@@ -98,12 +72,23 @@ class NotificationHumanizationService:
         )
         payload = result.payload
         metadata = result.metadata
+        title_descriptor = None
+        message_descriptor = None
+        if metadata.fallback_used and metadata.degraded_strategy == TEMPLATE_DEGRADED_STRATEGY:
+            title_descriptor, message_descriptor = _describe_event_text(merged_ctx)
+        title = str(payload.get("title") or "")
+        message = str(payload.get("message") or "")
+        if title_descriptor is not None and message_descriptor is not None:
+            title = ""
+            message = ""
         return NotificationHumanizationResult(
-            title=str(payload.get("title") or ""),
-            message=str(payload.get("message") or ""),
+            title=title,
+            message=message,
             severity=str(payload.get("severity") or "info"),
             urgency=str(payload.get("urgency") or "medium"),
             metadata=metadata,
+            title_descriptor=title_descriptor,
+            message_descriptor=message_descriptor,
         )
 
     def _validate_output(self, payload: NotificationHumanizationOutput, requested_language: str | None, effective_language: str) -> None:
@@ -148,14 +133,11 @@ def render_template_notification(context: dict[str, Any], *, effective_language:
     language = normalize_language(effective_language) or "en"
     event_type = str(context.get("event_type") or "")
     payload = dict(context.get("payload") or {})
-    symbol = str(context.get("symbol") or payload.get("symbol") or "asset").upper()
-    timeframe = max(int(context.get("timeframe") or 0), 1)
+    title_descriptor, message_descriptor = _describe_event_text(context)
     severity, urgency = _classify_event(event_type=event_type, payload=payload)
     title, message = _render_event_text(
-        event_type=event_type,
-        payload=payload,
-        symbol=symbol,
-        timeframe=timeframe,
+        title_descriptor=title_descriptor,
+        message_descriptor=message_descriptor,
         language=language,
     )
     return {
@@ -199,151 +181,56 @@ def _classify_event(*, event_type: str, payload: dict[str, Any]) -> tuple[str, s
 
 def _render_event_text(
     *,
-    event_type: str,
-    payload: dict[str, Any],
-    symbol: str,
-    timeframe: int,
+    title_descriptor: MessageDescriptor,
+    message_descriptor: MessageDescriptor,
     language: str,
 ) -> tuple[str, str]:
-    decision = str(payload.get("decision") or "review").upper()
-    score = _format_score(payload.get("score"))
-    anomaly_type = str(payload.get("anomaly_type") or "anomaly").replace("_", " ")
-    signal_type = str(payload.get("signal_type") or "signal").replace("_", " ")
-    regime = str(payload.get("regime") or payload.get("market_regime") or "updated").replace("_", " ")
-    exchange = str(payload.get("exchange_name") or payload.get("exchange") or "exchange")
-    balance = _format_balance(payload.get("balance"))
-    value_usd = _format_usd(payload.get("value_usd"))
+    translator = get_translation_service()
+    return (
+        translator.translate(title_descriptor.key, locale=language, params=dict(title_descriptor.params)).text,
+        translator.translate(message_descriptor.key, locale=language, params=dict(message_descriptor.params)).text,
+    )
 
-    if language == "ru":
-        if event_type == "signal_created":
-            return (
-                f"{symbol}: новый сигнал",
-                f"IRIS зафиксировал сигнал {signal_type} по {symbol} на таймфрейме {timeframe}м. Проверь канонический сигнал перед действием.",
-            )
-        if event_type == "anomaly_detected":
-            return (
-                f"{symbol}: обнаружена аномалия",
-                f"IRIS отметил аномалию {anomaly_type} по {symbol} на таймфрейме {timeframe}м. Проверь детерминированный контекст перед решением.",
-            )
-        if event_type == "decision_generated":
-            return (
-                f"{symbol}: новое решение",
-                f"IRIS сгенерировал решение {decision} по {symbol} на таймфрейме {timeframe}м. Текущий score: {score}.",
-            )
-        if event_type == "market_regime_changed":
-            return (
-                f"{symbol}: режим рынка изменился",
-                f"Для {symbol} на таймфрейме {timeframe}м режим рынка сменился на {regime}. Проверь машинный контекст перед ребалансировкой.",
-            )
-        if event_type == "portfolio_position_changed":
-            return (
-                f"{symbol}: позиция обновлена",
-                f"Состояние позиции по {symbol} обновилось на {exchange}. Текущая стоимость: {value_usd}.",
-            )
-        if event_type == "portfolio_balance_updated":
-            return (
-                f"{symbol}: баланс обновлен",
-                f"Синхронизация баланса обновила {symbol} на {exchange}. Баланс: {balance}, стоимость: {value_usd}.",
-            )
-        return (f"{symbol}: обновление", f"IRIS зафиксировал событие {event_type} по {symbol}.")
 
-    if language == "es":
-        if event_type == "signal_created":
-            return (
-                f"{symbol}: nueva senal",
-                f"IRIS detecto la senal {signal_type} para {symbol} en {timeframe}m. Revisa la senal canonica antes de actuar.",
-            )
-        if event_type == "anomaly_detected":
-            return (
-                f"{symbol}: anomalia detectada",
-                f"IRIS marco la anomalia {anomaly_type} para {symbol} en {timeframe}m. Revisa el contexto determinista antes de decidir.",
-            )
-        if event_type == "decision_generated":
-            return (
-                f"{symbol}: nueva decision",
-                f"IRIS genero una decision {decision} para {symbol} en {timeframe}m. Score actual: {score}.",
-            )
-        if event_type == "market_regime_changed":
-            return (
-                f"{symbol}: cambio de regimen",
-                f"El regimen de mercado para {symbol} cambio a {regime} en {timeframe}m. Revisa el contexto canonico antes de rebalancear.",
-            )
-        if event_type == "portfolio_position_changed":
-            return (
-                f"{symbol}: posicion actualizada",
-                f"La posicion de cartera para {symbol} cambio en {exchange}. Valor actual: {value_usd}.",
-            )
-        if event_type == "portfolio_balance_updated":
-            return (
-                f"{symbol}: saldo actualizado",
-                f"La sincronizacion actualizo {symbol} en {exchange}. Saldo: {balance}, valor: {value_usd}.",
-            )
-        return (f"{symbol}: actualizacion", f"IRIS registro el evento {event_type} para {symbol}.")
-
-    if language == "uk":
-        if event_type == "signal_created":
-            return (
-                f"{symbol}: новий сигнал",
-                f"IRIS зафіксував сигнал {signal_type} для {symbol} на таймфреймі {timeframe}хв. Перевір канонічний сигнал перед дією.",
-            )
-        if event_type == "anomaly_detected":
-            return (
-                f"{symbol}: виявлено аномалію",
-                f"IRIS позначив аномалію {anomaly_type} для {symbol} на таймфреймі {timeframe}хв. Перевір детермінований контекст перед рішенням.",
-            )
-        if event_type == "decision_generated":
-            return (
-                f"{symbol}: нове рішення",
-                f"IRIS згенерував рішення {decision} для {symbol} на таймфреймі {timeframe}хв. Поточний score: {score}.",
-            )
-        if event_type == "market_regime_changed":
-            return (
-                f"{symbol}: ринок змінив режим",
-                f"Для {symbol} на таймфреймі {timeframe}хв режим ринку змінився на {regime}. Перевір машинний контекст перед ребалансом.",
-            )
-        if event_type == "portfolio_position_changed":
-            return (
-                f"{symbol}: позицію оновлено",
-                f"Стан позиції для {symbol} оновився на {exchange}. Поточна вартість: {value_usd}.",
-            )
-        if event_type == "portfolio_balance_updated":
-            return (
-                f"{symbol}: баланс оновлено",
-                f"Синхронізація балансу оновила {symbol} на {exchange}. Баланс: {balance}, вартість: {value_usd}.",
-            )
-        return (f"{symbol}: оновлення", f"IRIS зафіксував подію {event_type} для {symbol}.")
-
+def _notification_template_keys(event_type: str) -> tuple[str, str]:
     if event_type == "signal_created":
-        return (
-            f"{symbol}: new signal",
-            f"IRIS detected the {signal_type} signal for {symbol} on {timeframe}m. Review the canonical signal before acting.",
-        )
+        return "notification.signal.created.title", "notification.signal.created.message"
     if event_type == "anomaly_detected":
-        return (
-            f"{symbol}: anomaly detected",
-            f"IRIS flagged the {anomaly_type} anomaly for {symbol} on {timeframe}m. Check the deterministic context before taking action.",
-        )
+        return "notification.anomaly.detected.title", "notification.anomaly.detected.message"
     if event_type == "decision_generated":
-        return (
-            f"{symbol}: new decision",
-            f"IRIS generated a {decision} decision for {symbol} on {timeframe}m. Current score: {score}.",
-        )
+        return "notification.decision.generated.title", "notification.decision.generated.message"
     if event_type == "market_regime_changed":
-        return (
-            f"{symbol}: regime changed",
-            f"Market regime for {symbol} moved to {regime} on {timeframe}m. Review the machine context before rebalancing.",
-        )
+        return "notification.market_regime.changed.title", "notification.market_regime.changed.message"
     if event_type == "portfolio_position_changed":
-        return (
-            f"{symbol}: position updated",
-            f"Portfolio position for {symbol} changed on {exchange}. Current value: {value_usd}.",
-        )
+        return "notification.portfolio_position.changed.title", "notification.portfolio_position.changed.message"
     if event_type == "portfolio_balance_updated":
-        return (
-            f"{symbol}: balance updated",
-            f"Balance sync updated {symbol} on {exchange}. Balance: {balance}, value: {value_usd}.",
-        )
-    return (f"{symbol}: update", f"IRIS recorded the {event_type} event for {symbol}.")
+        return "notification.portfolio_balance.updated.title", "notification.portfolio_balance.updated.message"
+    return "notification.event.generic.title", "notification.event.generic.message"
+
+
+def _describe_event_text(context: dict[str, Any]) -> tuple[MessageDescriptor, MessageDescriptor]:
+    event_type = str(context.get("event_type") or "")
+    payload = dict(context.get("payload") or {})
+    symbol = str(context.get("symbol") or payload.get("symbol") or "asset").upper()
+    timeframe = max(int(context.get("timeframe") or 0), 1)
+    title_key, message_key = _notification_template_keys(event_type)
+    params = {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "event_type": event_type,
+        "decision": str(payload.get("decision") or "review").upper(),
+        "score": _format_score(payload.get("score")),
+        "anomaly_type": str(payload.get("anomaly_type") or "anomaly").replace("_", " "),
+        "signal_type": str(payload.get("signal_type") or "signal").replace("_", " "),
+        "regime": str(payload.get("regime") or payload.get("market_regime") or "updated").replace("_", " "),
+        "exchange": str(payload.get("exchange_name") or payload.get("exchange") or "exchange"),
+        "balance": _format_balance(payload.get("balance")),
+        "value_usd": _format_usd(payload.get("value_usd")),
+    }
+    return (
+        MessageDescriptor(key=title_key, params=params),
+        MessageDescriptor(key=message_key, params=params),
+    )
 
 
 def _format_score(value: object) -> str:

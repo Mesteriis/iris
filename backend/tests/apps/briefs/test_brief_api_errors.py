@@ -10,7 +10,7 @@ def test_brief_api_errors_are_localized_from_registry() -> None:
     symbol_error = symbol_not_found_error(locale="en")
 
     assert brief_error.status_code == 404
-    assert brief_error.detail["message_key"] == "errors.generic.resource_not_found"
+    assert brief_error.detail["message_key"] == "error.resource.not_found"
     assert brief_error.detail["locale"] == "ru"
     assert brief_error.detail["message"] == "Запрошенный ресурс 'brief' не найден."
 

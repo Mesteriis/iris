@@ -15,6 +15,9 @@ HACommandKind = Literal["action", "flow", "toggle", "selection", "refresh", "adm
 class HAErrorRead(BaseModel):
     code: str
     message: str
+    message_key: str | None = None
+    message_params: dict[str, Any] = Field(default_factory=dict)
+    locale: str | None = None
     details: dict[str, Any] | None = None
 
 
@@ -295,6 +298,9 @@ class HAOperationUpdateMessage(BaseModel):
     command: str | None = None
     operation_type: str | None = None
     message: str | None = None
+    message_key: str | None = None
+    message_params: dict[str, Any] = Field(default_factory=dict)
+    locale: str | None = None
     result: dict[str, Any] | None = None
     error: HAErrorRead | None = None
     timestamp: datetime

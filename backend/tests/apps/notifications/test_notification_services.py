@@ -82,10 +82,11 @@ async def test_notification_service_persists_artifact_and_emits_created_event(
         select(AINotification).where(AINotification.id == int(result.notification_id or 0))
     )
     assert notification is not None
-    assert notification.title == "ETHUSD: anomaly detected"
     assert notification.severity == "warning"
     assert notification.urgency == "high"
-    assert notification.language == "en"
+    assert notification.content_kind == "generated_text"
+    assert notification.content_json["rendered_locale"] == "en"
+    assert notification.content_json["title"] == "ETHUSD: anomaly detected"
     assert notification.context_json["ai_execution"]["validation_status"] == "valid"
     assert notification.refs_json["canonical_fields"]["anomaly_type"] == "volatility_regime_break"
     assert published == [
@@ -98,7 +99,6 @@ async def test_notification_service_persists_artifact_and_emits_created_event(
                 "notification_id": int(result.notification_id or 0),
                 "severity": "warning",
                 "urgency": "high",
-                "language": "en",
                 "source_event_type": "anomaly_detected",
             },
         )

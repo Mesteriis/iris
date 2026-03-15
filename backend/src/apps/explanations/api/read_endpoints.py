@@ -71,11 +71,10 @@ async def _read_explanation(
     item = await service.get_explanation(
         explain_kind=explain_kind,
         subject_id=int(subject_id),
-        language=locale,
     )
     if item is None:
         raise explanation_not_found_error(locale=locale)
-    payload = explanation_read(item)
+    payload = explanation_read(item, locale=locale)
     if not_modified := apply_conditional_cache(
         request=request,
         response=response,

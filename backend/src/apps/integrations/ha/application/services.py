@@ -51,8 +51,12 @@ from src.apps.portfolio.query_services import PortfolioQueryService
 from src.apps.predictions.models import MarketPrediction
 from src.core.ai import notification_humanization_runtime_enabled
 from src.core.db.session import AsyncSessionLocal
+from src.core.errors import PlatformError
+from src.core.http.errors import ApiErrorFactory
+from src.core.http.operation_localization import localize_operation_event, localize_operation_status
 from src.core.http.operation_store import OperationDispatchResult, OperationStore, dispatch_background_operation
 from src.core.http.operations import OperationStatus
+from src.core.i18n import build_locale_policy, get_translation_service
 from src.core.settings import Settings, get_settings
 from src.runtime.streams.types import IrisEvent
 
@@ -88,6 +92,7 @@ class HACommandDispatch:
     operation_id: str
     operation_type: str
     outbound_messages: tuple[dict[str, Any], ...] = ()
+
 
 class HABridgeService:
     def __init__(
@@ -177,22 +182,22 @@ class HABridgeService:
             views=[
                 HADashboardViewRead(
                     view_key="overview",
-                    title="Overview",
+                    title=self._dashboard_view_title("overview"),
                     sections=[
                         HADashboardSectionRead(
                             section_key="system",
-                            title="System",
+                            title=self._dashboard_section_title("system"),
                             widgets=[
                                 HADashboardWidgetRead(
                                     widget_key="system_status",
-                                    title="Connection",
+                                    title=self._dashboard_widget_title("system_status"),
                                     kind="status",
                                     source="system.connection",
                                     entity_keys=["system.connection", "system.mode"],
                                 ),
                                 HADashboardWidgetRead(
                                     widget_key="market_summary",
-                                    title="Market Summary",
+                                    title=self._dashboard_widget_title("market_summary"),
                                     kind="summary",
                                     source="market.summary",
                                     entity_keys=[
@@ -204,11 +209,11 @@ class HABridgeService:
                         ),
                         HADashboardSectionRead(
                             section_key="portfolio",
-                            title="Portfolio",
+                            title=self._dashboard_section_title("portfolio"),
                             widgets=[
                                 HADashboardWidgetRead(
                                     widget_key="portfolio_summary",
-                                    title="Portfolio",
+                                    title=self._dashboard_widget_title("portfolio_summary"),
                                     kind="summary",
                                     source="portfolio.snapshot",
                                     entity_keys=[
@@ -219,14 +224,14 @@ class HABridgeService:
                                 ),
                                 HADashboardWidgetRead(
                                     widget_key="portfolio_actions",
-                                    title="Portfolio Actions",
+                                    title=self._dashboard_widget_title("portfolio_actions"),
                                     kind="actions",
                                     source="portfolio.actions",
                                     command_keys=["portfolio.sync"],
                                 ),
                                 HADashboardWidgetRead(
                                     widget_key="market_actions",
-                                    title="Market Actions",
+                                    title=self._dashboard_widget_title("market_actions"),
                                     kind="actions",
                                     source="market.actions",
                                     command_keys=["market.refresh"],
@@ -237,15 +242,15 @@ class HABridgeService:
                 ),
                 HADashboardViewRead(
                     view_key="assets",
-                    title="Assets",
+                    title=self._dashboard_view_title("assets"),
                     sections=[
                         HADashboardSectionRead(
                             section_key="assets_snapshot",
-                            title="Tracked Assets",
+                            title=self._dashboard_section_title("assets_snapshot"),
                             widgets=[
                                 HADashboardWidgetRead(
                                     widget_key="assets_table",
-                                    title="Assets Snapshot",
+                                    title=self._dashboard_widget_title("assets_table"),
                                     kind="table",
                                     source="assets.snapshot",
                                     config={
@@ -261,7 +266,7 @@ class HABridgeService:
                                 ),
                                 HADashboardWidgetRead(
                                     widget_key="market_activity",
-                                    title="Market Activity",
+                                    title=self._dashboard_widget_title("market_activity"),
                                     kind="summary",
                                     source="market.summary",
                                     entity_keys=[
@@ -275,15 +280,15 @@ class HABridgeService:
                 ),
                 HADashboardViewRead(
                     view_key="signals",
-                    title="Signals",
+                    title=self._dashboard_view_title("signals"),
                     sections=[
                         HADashboardSectionRead(
                             section_key="signals_snapshot",
-                            title="Signals",
+                            title=self._dashboard_section_title("signals_snapshot"),
                             widgets=[
                                 HADashboardWidgetRead(
                                     widget_key="signals_table",
-                                    title="Latest Signals",
+                                    title=self._dashboard_widget_title("signals_table"),
                                     kind="table",
                                     source="assets.snapshot",
                                     config={
@@ -303,15 +308,15 @@ class HABridgeService:
                 ),
                 HADashboardViewRead(
                     view_key="predictions",
-                    title="Predictions",
+                    title=self._dashboard_view_title("predictions"),
                     sections=[
                         HADashboardSectionRead(
                             section_key="predictions_snapshot",
-                            title="Predictions",
+                            title=self._dashboard_section_title("predictions_snapshot"),
                             widgets=[
                                 HADashboardWidgetRead(
                                     widget_key="predictions_table",
-                                    title="Prediction Journal",
+                                    title=self._dashboard_widget_title("predictions_table"),
                                     kind="table",
                                     source="predictions.snapshot",
                                     config={
@@ -331,15 +336,15 @@ class HABridgeService:
                 ),
                 HADashboardViewRead(
                     view_key="portfolio",
-                    title="Portfolio",
+                    title=self._dashboard_view_title("portfolio"),
                     sections=[
                         HADashboardSectionRead(
                             section_key="portfolio_summary",
-                            title="Portfolio Summary",
+                            title=self._dashboard_section_title("portfolio_summary"),
                             widgets=[
                                 HADashboardWidgetRead(
                                     widget_key="portfolio_summary_detail",
-                                    title="Portfolio Totals",
+                                    title=self._dashboard_widget_title("portfolio_summary_detail"),
                                     kind="summary",
                                     source="portfolio.snapshot",
                                     entity_keys=[
@@ -349,7 +354,7 @@ class HABridgeService:
                                 ),
                                 HADashboardWidgetRead(
                                     widget_key="portfolio_positions",
-                                    title="Open Positions",
+                                    title=self._dashboard_widget_title("portfolio_positions"),
                                     kind="list",
                                     source="portfolio.snapshot",
                                     config={
@@ -365,7 +370,7 @@ class HABridgeService:
                                 ),
                                 HADashboardWidgetRead(
                                     widget_key="portfolio_actions_full",
-                                    title="Portfolio Actions",
+                                    title=self._dashboard_widget_title("portfolio_actions_full"),
                                     kind="actions",
                                     source="portfolio.actions",
                                     command_keys=["portfolio.sync"],
@@ -376,15 +381,15 @@ class HABridgeService:
                 ),
                 HADashboardViewRead(
                     view_key="integrations",
-                    title="Integrations",
+                    title=self._dashboard_view_title("integrations"),
                     sections=[
                         HADashboardSectionRead(
                             section_key="notifications",
-                            title="Notifications",
+                            title=self._dashboard_section_title("notifications"),
                             widgets=[
                                 HADashboardWidgetRead(
                                     widget_key="notifications_status",
-                                    title="Notifications",
+                                    title=self._dashboard_widget_title("notifications_status"),
                                     kind="summary",
                                     source="integrations.snapshot",
                                     entity_keys=[
@@ -395,7 +400,7 @@ class HABridgeService:
                                 ),
                                 HADashboardWidgetRead(
                                     widget_key="integrations_snapshot",
-                                    title="Integrations Snapshot",
+                                    title=self._dashboard_widget_title("integrations_snapshot"),
                                     kind="list",
                                     source="integrations.snapshot",
                                     config={
@@ -413,15 +418,15 @@ class HABridgeService:
                 ),
                 HADashboardViewRead(
                     view_key="system",
-                    title="System",
+                    title=self._dashboard_view_title("system"),
                     sections=[
                         HADashboardSectionRead(
                             section_key="system_runtime",
-                            title="Runtime",
+                            title=self._dashboard_section_title("system_runtime"),
                             widgets=[
                                 HADashboardWidgetRead(
                                     widget_key="system_runtime_status",
-                                    title="Runtime Status",
+                                    title=self._dashboard_widget_title("system_runtime_status"),
                                     kind="status",
                                     source="system.connection",
                                     entity_keys=[
@@ -432,7 +437,7 @@ class HABridgeService:
                                 ),
                                 HADashboardWidgetRead(
                                     widget_key="system_controls",
-                                    title="System Controls",
+                                    title=self._dashboard_widget_title("system_controls"),
                                     kind="actions",
                                     source="system.actions",
                                     command_keys=[
@@ -462,15 +467,22 @@ class HABridgeService:
         status = await store.get_status(operation_id)
         if status is None:
             return None
+        localized_status = localize_operation_status(status, locale=self._current_locale())
         result = await store.get_result(operation_id)
         error = None
-        if status.error_code is not None and status.error_message is not None:
+        if localized_status.error_code is not None and localized_status.error_message is not None:
             from src.apps.integrations.ha.schemas import HAErrorRead
 
-            error = HAErrorRead(code=status.error_code, message=status.error_message)
+            error = HAErrorRead(
+                code=localized_status.error_code,
+                message=localized_status.error_message,
+                message_key=localized_status.error_message_key,
+                message_params=localized_status.error_message_params,
+                locale=localized_status.error_locale,
+            )
         return HAOperationRead(
-            operation_id=operation_id,
-            status=_operation_status(status.status),
+            operation_id=localized_status.operation_id,
+            status=_operation_status(localized_status.status),
             result=result.result if result is not None else None,
             error=error,
         )
@@ -578,6 +590,9 @@ class HABridgeService:
         request_id: str,
         code: str,
         message: str,
+        message_key: str | None = None,
+        message_params: dict[str, Any] | None = None,
+        locale: str | None = None,
         details: dict[str, Any] | None = None,
         retryable: bool = False,
     ) -> dict[str, Any]:
@@ -589,6 +604,9 @@ class HABridgeService:
             error=HAErrorRead(
                 code=code,
                 message=message,
+                message_key=message_key,
+                message_params=dict(message_params or {}),
+                locale=locale,
                 details=details,
             ),
             retryable=retryable,
@@ -599,10 +617,28 @@ class HABridgeService:
             command=command,
             mode=str(self._settings.api_launch_mode),
         )
+        return self.command_dispatch_error_ack(
+            request_id=request_id,
+            error=error,
+        )
+
+    def command_dispatch_error_ack(
+        self,
+        *,
+        request_id: str,
+        error: HACommandDispatchError,
+    ) -> dict[str, Any]:
+        localized_error = ApiErrorFactory.build_from_platform_error(
+            error,
+            locale=self._current_locale(),
+        )
         return self.command_error_ack(
             request_id=request_id,
-            code=error.code,
-            message=error.message,
+            code=localized_error.code,
+            message=localized_error.message,
+            message_key=localized_error.message_key,
+            message_params=localized_error.message_params,
+            locale=localized_error.locale,
             details=error.details,
             retryable=error.retryable,
         )
@@ -620,25 +656,40 @@ class HABridgeService:
         result = await store.get_result(operation_id)
         events = await store.list_events(operation_id)
         last_event = events[-1] if events else None
+        localized_status = localize_operation_status(status, locale=self._current_locale())
+        localized_event = (
+            localize_operation_event(last_event, locale=self._current_locale())
+            if last_event is not None
+            else None
+        )
         error = None
-        if status.error_code is not None and status.error_message is not None:
+        if localized_status.error_code is not None and localized_status.error_message is not None:
             from src.apps.integrations.ha.schemas import HAErrorRead
 
-            error = HAErrorRead(code=status.error_code, message=status.error_message)
+            error = HAErrorRead(
+                code=localized_status.error_code,
+                message=localized_status.error_message,
+                message_key=localized_status.error_message_key,
+                message_params=localized_status.error_message_params,
+                locale=localized_status.error_locale,
+            )
         version = self._projection_clock.advance()
         timestamp = (
-            last_event.recorded_at
-            if last_event is not None
-            else status.finished_at or status.started_at or status.accepted_at
+            localized_event.recorded_at
+            if localized_event is not None
+            else localized_status.finished_at or localized_status.started_at or localized_status.accepted_at
         )
         return HAOperationUpdateMessage(
             projection_epoch=version.epoch,
             sequence=version.sequence,
             operation_id=operation_id,
-            status=_operation_status(status.status),
+            status=_operation_status(localized_status.status),
             command=command,
-            operation_type=status.operation_type,
-            message=last_event.message if last_event is not None else None,
+            operation_type=localized_status.operation_type,
+            message=localized_event.message if localized_event is not None else None,
+            message_key=localized_event.message_key if localized_event is not None else None,
+            message_params=localized_event.message_params if localized_event is not None else {},
+            locale=localized_event.locale if localized_event is not None else None,
             result=result.result if result is not None else None,
             error=error,
             timestamp=timestamp,
@@ -650,6 +701,32 @@ class HABridgeService:
             state_url=self._ha_api_path("/state"),
             message=message,
         ).model_dump(mode="json")
+
+    def _current_locale(self) -> str:
+        return build_locale_policy(settings=self._settings).default_locale
+
+    def _translate_ha_label(self, key: str, *, params: dict[str, object] | None = None) -> str:
+        localized = get_translation_service().translate(
+            key,
+            locale=self._current_locale(),
+            params=dict(params or {}),
+        )
+        return localized.text
+
+    def _catalog_entity_name(self, entity_key: str) -> str:
+        return self._translate_ha_label(f"ha.catalog.entity.{_message_key_suffix(entity_key)}.name")
+
+    def _catalog_command_name(self, command_key: str) -> str:
+        return self._translate_ha_label(f"ha.catalog.command.{_message_key_suffix(command_key)}.name")
+
+    def _dashboard_view_title(self, view_key: str) -> str:
+        return self._translate_ha_label(f"ha.dashboard.view.{_message_key_suffix(view_key)}.title")
+
+    def _dashboard_section_title(self, section_key: str) -> str:
+        return self._translate_ha_label(f"ha.dashboard.section.{_message_key_suffix(section_key)}.title")
+
+    def _dashboard_widget_title(self, widget_key: str) -> str:
+        return self._translate_ha_label(f"ha.dashboard.widget.{_message_key_suffix(widget_key)}.title")
 
     def catalog_version(self, catalog: HACatalogRead | None = None) -> str:
         payload = (catalog or self.catalog()).model_dump(mode="json", exclude={"catalog_version"})
@@ -663,7 +740,7 @@ class HABridgeService:
             HAEntityDefinitionRead(
                 entity_key="system.connection",
                 platform="binary_sensor",
-                name="IRIS Connection",
+                name=self._catalog_entity_name("system.connection"),
                 state_source="system.connection",
                 icon="mdi:lan-connect",
                 category="diagnostic",
@@ -674,7 +751,7 @@ class HABridgeService:
             HAEntityDefinitionRead(
                 entity_key="system.mode",
                 platform="sensor",
-                name="IRIS Mode",
+                name=self._catalog_entity_name("system.mode"),
                 state_source="system.mode",
                 icon="mdi:server-network",
                 category="diagnostic",
@@ -684,7 +761,7 @@ class HABridgeService:
             HAEntityDefinitionRead(
                 entity_key="market.summary.active_assets_count",
                 platform="sensor",
-                name="Active Assets",
+                name=self._catalog_entity_name("market.summary.active_assets_count"),
                 state_source="market.summary.active_assets_count",
                 icon="mdi:chart-bubble",
                 availability=availability,
@@ -694,7 +771,7 @@ class HABridgeService:
             HAEntityDefinitionRead(
                 entity_key="market.summary.hot_assets_count",
                 platform="sensor",
-                name="Hot Assets",
+                name=self._catalog_entity_name("market.summary.hot_assets_count"),
                 state_source="market.summary.hot_assets_count",
                 icon="mdi:fire",
                 availability=availability,
@@ -704,7 +781,7 @@ class HABridgeService:
             HAEntityDefinitionRead(
                 entity_key="portfolio.summary.portfolio_value",
                 platform="sensor",
-                name="Portfolio Value",
+                name=self._catalog_entity_name("portfolio.summary.portfolio_value"),
                 state_source="portfolio.summary.portfolio_value",
                 icon="mdi:wallet",
                 availability=availability,
@@ -714,7 +791,7 @@ class HABridgeService:
             HAEntityDefinitionRead(
                 entity_key="portfolio.summary.open_positions",
                 platform="sensor",
-                name="Open Positions",
+                name=self._catalog_entity_name("portfolio.summary.open_positions"),
                 state_source="portfolio.summary.open_positions",
                 icon="mdi:briefcase-outline",
                 availability=availability,
@@ -724,7 +801,7 @@ class HABridgeService:
             HAEntityDefinitionRead(
                 entity_key="notifications.enabled",
                 platform="binary_sensor",
-                name="Notifications Enabled",
+                name=self._catalog_entity_name("notifications.enabled"),
                 state_source="notifications.enabled",
                 icon="mdi:bell-ring-outline",
                 availability=availability,
@@ -733,7 +810,7 @@ class HABridgeService:
             HAEntityDefinitionRead(
                 entity_key="settings.notifications_enabled",
                 platform="switch",
-                name="Notifications Enabled",
+                name=self._catalog_entity_name("settings.notifications_enabled"),
                 state_source="settings.notifications_enabled",
                 command_key="settings.notifications_enabled.set",
                 icon="mdi:bell-ring-outline",
@@ -744,7 +821,7 @@ class HABridgeService:
             HAEntityDefinitionRead(
                 entity_key="settings.default_timeframe",
                 platform="select",
-                name="Default Timeframe",
+                name=self._catalog_entity_name("settings.default_timeframe"),
                 state_source="settings.default_timeframe",
                 command_key="settings.default_timeframe.set",
                 icon="mdi:timeline-clock-outline",
@@ -755,7 +832,7 @@ class HABridgeService:
             HAEntityDefinitionRead(
                 entity_key="actions.portfolio_sync",
                 platform="button",
-                name="Portfolio Sync",
+                name=self._catalog_entity_name("actions.portfolio_sync"),
                 state_source="actions.portfolio_sync",
                 command_key="portfolio.sync",
                 icon="mdi:sync",
@@ -766,7 +843,7 @@ class HABridgeService:
             HAEntityDefinitionRead(
                 entity_key="actions.market_refresh",
                 platform="button",
-                name="Market Refresh",
+                name=self._catalog_entity_name("actions.market_refresh"),
                 state_source="actions.market_refresh",
                 command_key="market.refresh",
                 icon="mdi:refresh-circle",
@@ -815,7 +892,7 @@ class HABridgeService:
         return [
             HACommandDefinitionRead(
                 command_key="portfolio.sync",
-                name="Portfolio Sync",
+                name=self._catalog_command_name("portfolio.sync"),
                 kind="refresh",
                 returns="operation",
                 availability=availability,
@@ -823,7 +900,7 @@ class HABridgeService:
             ),
             HACommandDefinitionRead(
                 command_key="market.refresh",
-                name="Market Refresh",
+                name=self._catalog_command_name("market.refresh"),
                 kind="refresh",
                 returns="operation",
                 availability=availability,
@@ -831,7 +908,7 @@ class HABridgeService:
             ),
             HACommandDefinitionRead(
                 command_key="settings.notifications_enabled.set",
-                name="Set Notifications Enabled",
+                name=self._catalog_command_name("settings.notifications_enabled.set"),
                 kind="toggle",
                 input_schema={
                     "type": "object",
@@ -845,7 +922,7 @@ class HABridgeService:
             ),
             HACommandDefinitionRead(
                 command_key="settings.default_timeframe.set",
-                name="Set Default Timeframe",
+                name=self._catalog_command_name("settings.default_timeframe.set"),
                 kind="selection",
                 input_schema={
                     "type": "object",
@@ -937,22 +1014,38 @@ class HABridgeService:
     ) -> HACommandDispatch:
         store = self._operation_store_factory()
         operation = await store.create_operation(operation_type=operation_type)
-        await store.mark_running(operation.operation_id, message=f"Executing {command}.")
+        await store.mark_running(
+            operation.operation_id,
+            message_key="ha.command.executing",
+            message_params={"command": command},
+        )
         async with self._runtime_lock:
             runtime = await self._ensure_projected_runtime_locked()
             try:
                 outbound_messages, result = await action(runtime)
             except Exception as exc:
+                if isinstance(exc, PlatformError):
+                    error_code = exc.code
+                    error_message_key = exc.message_key
+                    error_message_params = dict(exc.params)
+                    retryable = exc.retryable
+                else:
+                    error_code = "command_execution_failed"
+                    error_message_key = "error.system.internal"
+                    error_message_params = {}
+                    retryable = False
                 await store.mark_failed(
                     operation.operation_id,
-                    error_code="command_execution_failed",
-                    error_message=str(exc),
-                    retryable=False,
+                    error_code=error_code,
+                    error_message_key=error_message_key,
+                    error_message_params=error_message_params,
+                    retryable=retryable,
                 )
                 raise
         await store.mark_succeeded(
             operation.operation_id,
-            message=f"Completed {command}.",
+            message_key="ha.command.completed",
+            message_params={"command": command},
             result=result,
         )
         return HACommandDispatch(
@@ -1530,6 +1623,10 @@ def _operation_status(status: OperationStatus) -> str:
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _message_key_suffix(raw: str) -> str:
+    return str(raw).strip().replace(".", "_")
 
 
 def _clone_runtime(runtime: RuntimeSnapshot) -> RuntimeSnapshot:

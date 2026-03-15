@@ -27,6 +27,12 @@ from src.apps.notifications.services.humanization_service import (
 )
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
+from src.core.i18n import (
+    CONTENT_KIND_DESCRIPTOR_BUNDLE,
+    CONTENT_KIND_GENERATED_TEXT,
+    build_descriptor_bundle_content,
+    build_generated_text_content,
+)
 from src.runtime.streams.types import IrisEvent
 
 
@@ -64,15 +70,14 @@ class NotificationService(PersistenceComponent):
             "symbol": coin.symbol,
             "sector": coin.sector_code,
         }
-        for key in ("language", "locale", "requested_provider"):
+        for key in ("requested_provider",):
             value = event.payload.get(key)
             if value is not None and str(value).strip():
                 context[key] = str(value).strip()
-        effective_language = resolve_effective_language(context)
+        effective_language = resolve_effective_language({})
         existing = await self._repo.get_by_source_event(
             source_event_type=event.event_type,
             source_event_id=event.event_id,
-            language=effective_language,
         )
         if existing is not None:
             self._log_debug(
@@ -80,7 +85,7 @@ class NotificationService(PersistenceComponent):
                 mode="write",
                 source_event_type=event.event_type,
                 source_event_id=event.event_id,
-                language=effective_language,
+                rendered_locale=effective_language,
             )
             return NotificationCreationResult(
                 status=NotificationCreationStatus.SKIPPED,
@@ -92,17 +97,15 @@ class NotificationService(PersistenceComponent):
         prompt = await self._prompt_loader.load(prompt_name)
         humanized = await self._humanizer.generate(context, prompt=prompt)
         metadata = humanized.metadata
+        storage_fields = _notification_storage_fields(humanized, rendered_locale=metadata.effective_language)
         notification = await self._repo.add_notification(
             AINotification(
                 coin_id=int(event.coin_id),
                 symbol=str(coin.symbol),
                 sector=str(coin.sector_code) if coin.sector_code is not None else None,
                 timeframe=effective_timeframe,
-                title=humanized.title,
-                message=humanized.message,
                 severity=humanized.severity,
                 urgency=humanized.urgency,
-                language=metadata.effective_language,
                 refs_json=self._build_refs(event=event, symbol=coin.symbol, sector=coin.sector_code),
                 context_json={
                     "symbol": coin.symbol,
@@ -111,6 +114,8 @@ class NotificationService(PersistenceComponent):
                     "source_payload": dict(event.payload),
                     "ai_execution": metadata.as_dict(),
                 },
+                content_kind=storage_fields["content_kind"],
+                content_json=storage_fields["content_json"],
                 provider=str(metadata.actual_provider or ""),
                 model=metadata.model,
                 prompt_name=metadata.prompt_name,
@@ -135,7 +140,6 @@ class NotificationService(PersistenceComponent):
                         "notification_id": int(notification.id),
                         "severity": notification.severity,
                         "urgency": notification.urgency,
-                        "language": notification.language,
                         "source_event_type": notification.source_event_type,
                     },
                 ),
@@ -167,3 +171,34 @@ class NotificationService(PersistenceComponent):
 
 
 __all__ = ["NotificationService"]
+
+
+def _notification_storage_fields(humanized, *, rendered_locale: str) -> dict[str, object]:
+    content_kind, content_json = _notification_content_payload(humanized, rendered_locale=rendered_locale)
+    return {
+        "content_kind": content_kind,
+        "content_json": content_json,
+    }
+
+
+def _notification_content_payload(humanized, *, rendered_locale: str) -> tuple[str, dict[str, object]]:
+    if humanized.title_descriptor is not None or humanized.message_descriptor is not None:
+        return (
+            CONTENT_KIND_DESCRIPTOR_BUNDLE,
+            build_descriptor_bundle_content(
+                fields={
+                    "title": humanized.title_descriptor,
+                    "message": humanized.message_descriptor,
+                }
+            ),
+        )
+    return (
+        CONTENT_KIND_GENERATED_TEXT,
+        build_generated_text_content(
+            rendered_locale=rendered_locale,
+            fields={
+                "title": humanized.title,
+                "message": humanized.message,
+            },
+        ),
+    )

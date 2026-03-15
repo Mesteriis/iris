@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Shared i18n descriptor contracts in `core/i18n` plus catalog-backed deterministic localization for `notifications` and `explanations`; descriptor metadata is now persisted with those artifacts and re-rendered at read time using the active backend locale instead of treating stored text as canonical.
+- `notifications` and `explanations` now use canonical `content_kind + content_json` presentation envelopes, one-row-per-entity storage identity and locale-independent unique keys; generated text is stored explicitly as presentation snapshot content instead of implicit text-first row state.
+- `briefs` now use the same canonical `content_kind + content_json` presentation envelope, locale-independent storage identity and locale-free job deduplication model as `notifications` and `explanations`.
+- Legacy rendered-text and artifact `language` columns are now physically removed from `notifications` / `explanations` / `briefs`; read contracts and accepted job payloads expose only `rendered_locale`, and `core/i18n/presentation.py` now validates canonical content envelopes.
+- HA catalog/dashboard labels now render from shared backend `ha.*` translation keys, the HA integration ships `ru` static translations, and translation catalog validation/coverage is enforced through `core/i18n/validators.py`, committed `docs/_generated/i18n-coverage.md` and `make i18n-check` CI hooks.
 - Root `/api/v1` HTTP tree under `backend/src/api`, shared transport primitives in `backend/src/core/http`, and mode/profile-aware domain router assembly as the new bootstrap standard for API cutovers.
 - `control_plane` and `market_structure` now expose HTTP only through split `api/` packages with dedicated `deps/errors/presenters` modules, async-func-first endpoint files, structured API errors and mode-aware router builders; the legacy giant `views.py` modules are removed.
 - `news` now exposes HTTP only through a split `api/` package with dedicated deps/errors/presenters modules, category routers for read/commands/jobs/onboarding, structured API errors and a mode-aware builder; the legacy `news/views.py` module is removed.
@@ -250,6 +255,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Decision scoring now incorporates active strategy alignment from auto-discovered strategies, and the dashboard shows top strategy performance.
 
 ### Fixed
+- `notifications` and `explanations` no longer disappear or fork deterministic artifacts solely because the global language changed: read paths now fall back across stored locales while preferring the active locale, and write paths reuse existing descriptor-backed rows across locale switches.
 - Fixed the last `market_data` write helper leak where watched-asset synchronization still passed a bare `AsyncSession` into a write-side helper after the UoW cutover.
 - Fixed direct async service/runtime tests across `news`, `hypothesis_engine`, `cross_market`, `patterns`, `market_data` and `control_plane` to assert the new caller-owned commit contract instead of relying on implicit service commits or live ORM state after transaction completion.
 - Control-plane draft change writes now stay inside the shared async unit-of-work boundary, and persistence contract tests no longer collide during pytest collection.

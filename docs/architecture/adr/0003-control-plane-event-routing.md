@@ -4,6 +4,10 @@
 
 **Accepted**
 
+## Date
+
+2025-01-17
+
 ## Context
 
 В event-driven системах routing событий часто захардкожен:
@@ -35,13 +39,17 @@ Runtime dispatcher читает активную topology snapshot и напра
 
 ## Consequences
 
-**Плюсы:**
+### Positive
 
 - гибкое управление routing
 - возможность shadow processing
 - безопасные изменения topology
 
-**Минусы:**
+### Negative
 
 - дополнительная сложность runtime
 - требуется контроль версии topology
+
+## See also
+
+- [ADR 0001: Event-Driven Runtime](0001-event-driven-runtime.md) — основа event pipeline

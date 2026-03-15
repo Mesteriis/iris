@@ -15,6 +15,13 @@ from src.apps.hypothesis_engine.prompts import PromptLoader
 from src.apps.hypothesis_engine.query_services import HypothesisQueryService
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
+from src.core.i18n import (
+    CONTENT_KIND_DESCRIPTOR_BUNDLE,
+    CONTENT_KIND_GENERATED_TEXT,
+    build_descriptor_bundle_content,
+    build_generated_text_content,
+    content_rendered_locale,
+)
 
 
 class ExplanationService(PersistenceComponent):
@@ -36,21 +43,17 @@ class ExplanationService(PersistenceComponent):
         *,
         explain_kind: ExplainKind,
         subject_id: int,
-        language: str | None = None,
         requested_provider: str | None = None,
         force: bool = False,
     ) -> ExplanationGenerationResult:
         bundle = await self._load_context_bundle(explain_kind=explain_kind, subject_id=subject_id)
         context = dict(bundle.context)
-        if language is not None and str(language).strip():
-            context["language"] = str(language).strip()
         if requested_provider is not None and str(requested_provider).strip():
             context["requested_provider"] = str(requested_provider).strip()
-        effective_language = resolve_effective_language(context)
+        effective_language = resolve_effective_language({})
         existing = await self._repo.get_by_subject(
             explain_kind=explain_kind,
             subject_id=int(subject_id),
-            language=effective_language,
         )
         if existing is not None and not force and _same_subject_snapshot(existing.subject_updated_at, bundle.subject_updated_at):
             self._log_debug(
@@ -58,7 +61,7 @@ class ExplanationService(PersistenceComponent):
                 mode="write",
                 explain_kind=explain_kind.value,
                 subject_id=int(subject_id),
-                language=effective_language,
+                rendered_locale=effective_language,
                 explanation_id=int(existing.id),
             )
             return ExplanationGenerationResult(
@@ -67,7 +70,7 @@ class ExplanationService(PersistenceComponent):
                 explanation_id=int(existing.id),
                 explain_kind=explain_kind,
                 subject_id=int(subject_id),
-                language=effective_language,
+                rendered_locale=effective_language,
                 symbol=bundle.symbol,
                 generated_at=existing.updated_at,
                 subject_updated_at=existing.subject_updated_at,
@@ -81,6 +84,7 @@ class ExplanationService(PersistenceComponent):
             requested_provider=requested_provider,
         )
         metadata = generated.metadata
+        storage_fields = _explanation_storage_fields(generated, rendered_locale=metadata.effective_language)
         item = await self._repo.upsert_explanation(
             existing=existing,
             payload={
@@ -89,10 +93,6 @@ class ExplanationService(PersistenceComponent):
                 "coin_id": bundle.coin_id,
                 "symbol": bundle.symbol,
                 "timeframe": bundle.timeframe,
-                "language": metadata.effective_language,
-                "title": generated.title,
-                "explanation": generated.explanation,
-                "bullets_json": list(generated.bullets),
                 "refs_json": jsonable_encoder(bundle.refs_json),
                 "context_json": jsonable_encoder(
                     {
@@ -100,6 +100,8 @@ class ExplanationService(PersistenceComponent):
                         "ai_execution": metadata.as_dict(),
                     }
                 ),
+                "content_kind": storage_fields["content_kind"],
+                "content_json": storage_fields["content_json"],
                 "provider": str(metadata.actual_provider or ""),
                 "model": metadata.model,
                 "prompt_name": metadata.prompt_name,
@@ -126,7 +128,7 @@ class ExplanationService(PersistenceComponent):
             explanation_id=int(item.id),
             explain_kind=ExplainKind(str(item.explain_kind)),
             subject_id=int(item.subject_id),
-            language=str(item.language),
+            rendered_locale=content_rendered_locale(item.content_json) or "en",
             symbol=str(item.symbol) if item.symbol is not None else None,
             generated_at=item.updated_at,
             subject_updated_at=item.subject_updated_at,
@@ -142,3 +144,40 @@ def _same_subject_snapshot(left, right) -> bool:
 
 
 __all__ = ["ExplanationService"]
+
+
+def _explanation_storage_fields(generated, *, rendered_locale: str) -> dict[str, object]:
+    content_kind, content_json = _explanation_content_payload(generated, rendered_locale=rendered_locale)
+    return {
+        "content_kind": content_kind,
+        "content_json": content_json,
+    }
+
+
+def _explanation_content_payload(generated, *, rendered_locale: str) -> tuple[str, dict[str, object]]:
+    if (
+        generated.title_descriptor is not None
+        or generated.explanation_descriptor is not None
+        or generated.bullet_descriptors
+    ):
+        return (
+            CONTENT_KIND_DESCRIPTOR_BUNDLE,
+            build_descriptor_bundle_content(
+                fields={
+                    "title": generated.title_descriptor,
+                    "explanation": generated.explanation_descriptor,
+                    "bullets": generated.bullet_descriptors,
+                }
+            ),
+        )
+    return (
+        CONTENT_KIND_GENERATED_TEXT,
+        build_generated_text_content(
+            rendered_locale=rendered_locale,
+            fields={
+                "title": generated.title,
+                "explanation": generated.explanation,
+                "bullets": generated.bullets,
+            },
+        ),
+    )

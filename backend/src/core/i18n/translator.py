@@ -4,10 +4,10 @@ from collections.abc import Mapping
 from functools import lru_cache
 from types import MappingProxyType
 
-from src.core.i18n.catalogs.en import TRANSLATIONS as EN_TRANSLATIONS
-from src.core.i18n.catalogs.ru import TRANSLATIONS as RU_TRANSLATIONS
-from src.core.i18n.contracts import LocalePolicy, LocalizedText
+from src.core.i18n.catalog_loader import load_catalogs
+from src.core.i18n.contracts import LocalePolicy, LocalizedText, TranslationCatalog
 from src.core.i18n.locale import DEFAULT_LOCALE_POLICY, resolve_locale
+from src.core.i18n.locale_policy import build_locale_policy
 
 
 class TranslationError(ValueError):
@@ -33,30 +33,36 @@ class TranslationService:
     def __init__(
         self,
         *,
-        catalogs: Mapping[str, Mapping[str, str]],
+        catalogs: Mapping[str, Mapping[str, str] | TranslationCatalog],
         policy: LocalePolicy = DEFAULT_LOCALE_POLICY,
     ) -> None:
         self._policy = policy
+        self._catalog_versions: dict[str, int] = {}
         self._catalogs = {
-            locale: MappingProxyType(dict(catalog))
+            locale: MappingProxyType(dict(_catalog_messages(catalog)))
             for locale, catalog in catalogs.items()
         }
+        for locale, catalog in catalogs.items():
+            if isinstance(catalog, TranslationCatalog):
+                self._catalog_versions[locale] = catalog.version
 
     @property
     def policy(self) -> LocalePolicy:
         return self._policy
+
+    @property
+    def catalog_versions(self) -> Mapping[str, int]:
+        return MappingProxyType(dict(self._catalog_versions))
 
     def translate(
         self,
         key: str,
         *,
         locale: str | None = None,
-        accept_language: str | None = None,
         params: Mapping[str, object] | None = None,
     ) -> LocalizedText:
         resolution = resolve_locale(
             explicit_locale=locale,
-            accept_language=accept_language,
             policy=self._policy,
         )
         render_params = dict(params or {})
@@ -87,14 +93,22 @@ class TranslationService:
 
 @lru_cache(maxsize=1)
 def get_translation_service() -> TranslationService:
+    policy = build_locale_policy()
     return TranslationService(
-        catalogs={
-            "en": EN_TRANSLATIONS,
-            "ru": RU_TRANSLATIONS,
-        }
+        catalogs=load_catalogs(policy.supported_locales),
+        policy=policy,
     )
 
 
 class _StrictFormatDict(dict[str, object]):
     def __missing__(self, key: str) -> object:
         raise KeyError(key)
+
+
+def _catalog_messages(catalog: Mapping[str, str] | TranslationCatalog) -> Mapping[str, str]:
+    if isinstance(catalog, TranslationCatalog):
+        return {
+            key: entry.message
+            for key, entry in catalog.messages.items()
+        }
+    return catalog

@@ -24,22 +24,20 @@ class ExplanationJobDispatcher:
         *,
         explain_kind: ExplainKind,
         subject_id: int,
-        language: str | None = None,
         requested_provider: str | None = None,
         force: bool = False,
     ) -> OperationDispatchResult:
         from src.apps.explanations.tasks import generate_explanation_job
 
-        effective_language = resolve_effective_language({"language": language})
+        effective_language = resolve_effective_language({})
         return await dispatch_background_operation(
             store=self.operation_store,
             operation_type="explain.generate",
             trace_context=self.trace_context,
-            deduplication_key=f"kind:{explain_kind.value}:subject:{int(subject_id)}:language:{effective_language}",
+            deduplication_key=f"kind:{explain_kind.value}:subject:{int(subject_id)}",
             dispatch=lambda operation_id: generate_explanation_job.kiq(
                 explain_kind=explain_kind.value,
                 subject_id=int(subject_id),
-                language=effective_language,
                 requested_provider=requested_provider,
                 force=force,
                 operation_id=operation_id,

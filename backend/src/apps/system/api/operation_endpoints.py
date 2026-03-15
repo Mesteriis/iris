@@ -25,7 +25,7 @@ async def read_operation_status(
     status_row = await facade.get_status(operation_id)
     if status_row is None:
         raise operation_not_found_error(operation_id, locale=request_locale)
-    return operation_status_read(status_row)
+    return operation_status_read(status_row, locale=request_locale)
 
 
 @router.get(
@@ -42,7 +42,7 @@ async def read_operation_result(
     result = await facade.get_result(operation_id)
     if result is None:
         raise operation_not_found_error(operation_id, locale=request_locale)
-    return operation_result_read(result)
+    return operation_result_read(result, locale=request_locale)
 
 
 @router.get(
@@ -59,7 +59,7 @@ async def list_operation_events(
     status_row = await facade.get_status(operation_id)
     if status_row is None:
         raise operation_not_found_error(operation_id, locale=request_locale)
-    return [operation_event_read(item) for item in await facade.list_events(operation_id)]
+    return [operation_event_read(item, locale=request_locale) for item in await facade.list_events(operation_id)]
 
 
 __all__ = [

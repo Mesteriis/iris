@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TypeVar
 
 from fastapi import Response, status
@@ -20,14 +20,20 @@ def accepted(
     operation_id: str | None = None,
     deduplicated: bool = False,
     message: str | None = None,
+    message_key: str | None = None,
+    message_params: dict[str, object] | None = None,
+    locale: str | None = None,
     correlation_id: str | None = None,
 ) -> AcceptedResponse:
     return AcceptedResponse(
         operation_id=operation_id,
         operation_type=operation_type,
-        accepted_at=datetime.now(timezone.utc),
+        accepted_at=datetime.now(UTC),
         deduplicated=deduplicated,
         message=message,
+        message_key=message_key,
+        message_params=dict(message_params or {}),
+        locale=locale,
         correlation_id=correlation_id,
     )
 

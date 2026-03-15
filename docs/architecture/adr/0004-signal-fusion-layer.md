@@ -4,6 +4,10 @@
 
 **Accepted**
 
+## Date
+
+2025-01-18
+
 ## Context
 
 Рыночные сигналы могут противоречить друг другу.
@@ -33,12 +37,17 @@ IRIS вводит Signal Fusion Engine.
 
 ## Consequences
 
-**Плюсы:**
+### Positive
 
 - единая рыночная позиция
 - более устойчивые решения
 
-**Минусы:**
+### Negative
 
 - fusion логика может стать слишком сложной
 - требуется explainability
+
+## See also
+
+- [ADR 0007: Cross-Market Intelligence](0007-cross-market-intelligence.md) — корреляционный анализ
+- [ADR 0006: Portfolio Engine Separation](0006-portfolio-engine-separation.md) — исполнение решений

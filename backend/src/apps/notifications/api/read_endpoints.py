@@ -23,9 +23,8 @@ async def read_notifications(
         limit=limit,
         coin_id=coin_id,
         source_event_type=source_event_type,
-        language=request_locale,
     )
-    return [notification_read(item) for item in items]
+    return [notification_read(item, locale=request_locale) for item in items]
 
 
 @router.get("/notifications/{notification_id}", response_model=NotificationRead, summary="Read a persisted notification")
@@ -37,7 +36,7 @@ async def read_notification(
     item = await service.get_notification_read_by_id(notification_id)
     if item is None:
         raise notification_not_found_error(locale=request_locale)
-    return notification_read(item)
+    return notification_read(item, locale=request_locale)
 
 
 __all__ = ["router"]

@@ -4,6 +4,10 @@
 
 Accepted
 
+## Date
+
+2025-02-06
+
 ## Context
 
 IRIS services often lead to events, cache refreshes or downstream notifications. Historically these side effects were sometimes emitted inline with write operations:
@@ -33,3 +37,9 @@ This makes write behavior safer and more repeatable:
 - retries can be designed around explicit post-commit boundaries;
 - cache snapshots stop racing ahead of rolled-back writes;
 - service tests and caller tests can verify side effects independently.
+
+
+## See also
+
+- [ADR 0010: Caller Owns Commit Boundary](0010-caller-owns-commit-boundary.md) — transaction ownership
+- [ADR 0002: Persistence Architecture](0002-persistence-architecture.md) — persistence foundation

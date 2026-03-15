@@ -90,7 +90,7 @@ async def _read_brief(
     scope_key: str,
     locale: str,
 ) -> BriefRead | Response:
-    item = await service.get_brief(brief_kind=brief_kind, scope_key=scope_key, language=locale)
+    item = await service.get_brief(brief_kind=brief_kind, scope_key=scope_key)
     if item is None:
         raise brief_not_found_error(locale=locale)
     payload = brief_read(item)

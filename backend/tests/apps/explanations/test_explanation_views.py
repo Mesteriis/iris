@@ -28,13 +28,18 @@ async def test_read_decision_explanation_returns_cache_headers(
                 coin_id=int(decision.coin_id),
                 symbol="BTCUSD_EVT",
                 timeframe=int(decision.timeframe),
-                language="en",
-                title="Decision explanation",
-                explanation="The stored decision stays aligned with its canonical reason and score.",
-                bullets_json=[
-                    "Reason text remains the primary machine explanation.",
-                    "Confidence and score remain inside the stored snapshot.",
-                ],
+                content_kind="generated_text",
+                content_json={
+                    "version": 1,
+                    "kind": "generated_text",
+                    "rendered_locale": "en",
+                    "title": "Decision explanation",
+                    "explanation": "The stored decision stays aligned with its canonical reason and score.",
+                    "bullets": [
+                        "Reason text remains the primary machine explanation.",
+                        "Confidence and score remain inside the stored snapshot.",
+                    ],
+                },
                 refs_json={"subject_id": int(decision.id), "symbol": "BTCUSD_EVT"},
                 context_json={"snapshot": {"decision": decision.decision, "reason": decision.reason}},
                 provider="local_test",
@@ -56,6 +61,8 @@ async def test_read_decision_explanation_returns_cache_headers(
     assert "last-modified" in response.headers
     payload = response.json()
     assert payload["explain_kind"] == "decision"
+    assert payload["rendered_locale"] == "en"
+    assert payload["title"] == "Decision explanation"
     assert payload["generated_at"] == generated_at.isoformat().replace("+00:00", "Z")
     assert payload["consistency"] == "derived"
     assert payload["freshness_class"] == "near_real_time"

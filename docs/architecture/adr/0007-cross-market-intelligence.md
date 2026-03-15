@@ -4,6 +4,10 @@
 
 **Accepted**
 
+## Date
+
+2025-01-21
+
 ## Context
 
 Крипторынок сильно связан.
@@ -33,12 +37,16 @@ IRIS вводит Cross-Market Intelligence Layer.
 
 ## Consequences
 
-**Плюсы:**
+### Positive
 
 - более контекстные сигналы
 - выявление лидерских активов
 
-**Минусы:**
+### Negative
 
 - сложность расчётов
 - необходимость корректной калибровки
+
+## See also
+
+- [ADR 0004: Signal Fusion Layer](0004-signal-fusion-layer.md) — fusion с другими сигналами

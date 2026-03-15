@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import timedelta
 import importlib.util
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -15,9 +15,9 @@ from src.apps.market_data.api.deps import MarketDataBackfillTrigger
 from src.apps.market_data.api.job_endpoints import run_coin_job_endpoint
 from src.apps.market_data.api.read_endpoints import read_coin_history
 from src.apps.market_data.api.router import build_router as build_market_data_router
+from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 from src.core.http.operation_store import OperationDispatchResult
 from src.core.http.operations import OperationStatus, OperationStatusResponse
-from src.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 from tests.factories.market_data import CoinCreateFactory, PriceHistoryCreateFactory
 
@@ -219,12 +219,17 @@ async def test_market_data_view_branches() -> None:
                 accepted_at="2026-03-13T00:00:00Z",
             ),
             deduplicated=True,
-            message="An equivalent operation is already active.",
+            message_key="system.operation.already_active",
         )
 
     dispatcher = SimpleNamespace(dispatch_coin_history=fake_dispatch_coin_history)
 
-    result = await create_coin_endpoint(payload, commands=commands, query_service=query_service)
+    result = await create_coin_endpoint(
+        payload,
+        commands=commands,
+        query_service=query_service,
+        request_locale="en",
+    )
     assert result.symbol == "BTCUSD_EVT"
     assert trigger_state.triggered is True
 
@@ -234,26 +239,43 @@ async def test_market_data_view_branches() -> None:
         uow=TrackingUow(),
         backfill_trigger=MarketDataBackfillTrigger(event=None),
     )
-    assert (await create_coin_endpoint(payload, commands=commands_without_trigger, query_service=query_service)).symbol == "BTCUSD_EVT"
+    assert (
+        await create_coin_endpoint(
+            payload,
+            commands=commands_without_trigger,
+            query_service=query_service,
+            request_locale="en",
+        )
+    ).symbol == "BTCUSD_EVT"
     assert trigger_state.triggered is False
 
     query_service.get_coin_read_by_symbol = existing_coin
     with pytest.raises(HTTPException) as conflict:
-        await create_coin_endpoint(payload, commands=commands_without_trigger, query_service=query_service)
+        await create_coin_endpoint(
+            payload,
+            commands=commands_without_trigger,
+            query_service=query_service,
+            request_locale="en",
+        )
     assert conflict.value.status_code == 409
 
     query_service.get_coin_read_by_symbol = missing_coin
     commands.service.delete_coin = missing_delete
     with pytest.raises(HTTPException) as delete_missing:
-        await delete_coin_endpoint("BTCUSD_EVT", commands=commands)
+        await delete_coin_endpoint("BTCUSD_EVT", commands=commands, request_locale="en")
     assert delete_missing.value.status_code == 404
 
     commands.service.delete_coin = deleted
-    assert await delete_coin_endpoint("BTCUSD_EVT", commands=commands) is None
+    assert await delete_coin_endpoint("BTCUSD_EVT", commands=commands, request_locale="en") is None
 
     query_service.get_coin_read_by_symbol = missing_coin
     with pytest.raises(HTTPException) as run_missing:
-        await run_coin_job_endpoint("BTCUSD_EVT", dispatcher=dispatcher, query_service=query_service)
+        await run_coin_job_endpoint(
+            "BTCUSD_EVT",
+            dispatcher=dispatcher,
+            query_service=query_service,
+            request_locale="en",
+        )
     assert run_missing.value.status_code == 404
 
     query_service.get_coin_read_by_symbol = existing_coin
@@ -263,29 +285,37 @@ async def test_market_data_view_branches() -> None:
         force=False,
         dispatcher=dispatcher,
         query_service=query_service,
+        request_locale="en",
     )
     assert queued.status == "accepted"
     assert queued.operation_id == "op-market-data"
     assert queued.operation_type == "market_data.coin_history.sync"
     assert queued.deduplicated is True
     assert queued.message == "An equivalent operation is already active."
+    assert queued.message_key == "system.operation.already_active"
     assert dispatcher_calls == {"symbol": "BTCUSD_EVT", "mode": "latest", "force": False}
 
     query_service.get_coin_read_by_symbol = missing_coin
     with pytest.raises(HTTPException) as history_missing:
-        await read_coin_history("BTCUSD_EVT", service=query_service)
+        await read_coin_history("BTCUSD_EVT", service=query_service, request_locale="en")
     assert history_missing.value.status_code == 404
 
     query_service.get_coin_read_by_symbol = existing_coin
     query_service.list_price_history = listed_history
-    history = await read_coin_history("BTCUSD_EVT", service=query_service)
+    history = await read_coin_history("BTCUSD_EVT", service=query_service, request_locale="en")
     assert len(history) == 1
     assert history[0].price == 1.0
 
     price_payload = PriceHistoryCreateFactory.build(interval="15m", price=1.0)
     query_service.get_coin_read_by_symbol = missing_coin
     with pytest.raises(HTTPException) as create_history_missing:
-        await create_coin_history("BTCUSD_EVT", price_payload, commands=commands, query_service=query_service)
+        await create_coin_history(
+            "BTCUSD_EVT",
+            price_payload,
+            commands=commands,
+            query_service=query_service,
+            request_locale="en",
+        )
     assert create_history_missing.value.status_code == 404
 
     async def invalid_history(*_args, **_kwargs):
@@ -294,11 +324,23 @@ async def test_market_data_view_branches() -> None:
     query_service.get_coin_read_by_symbol = existing_coin
     commands.service.create_price_history = invalid_history
     with pytest.raises(HTTPException) as bad_history:
-        await create_coin_history("BTCUSD_EVT", price_payload, commands=commands, query_service=query_service)
+        await create_coin_history(
+            "BTCUSD_EVT",
+            price_payload,
+            commands=commands,
+            query_service=query_service,
+            request_locale="en",
+        )
     assert bad_history.value.status_code == 400
 
     commands.service.create_price_history = created_history
-    created = await create_coin_history("BTCUSD_EVT", price_payload, commands=commands, query_service=query_service)
+    created = await create_coin_history(
+        "BTCUSD_EVT",
+        price_payload,
+        commands=commands,
+        query_service=query_service,
+        request_locale="en",
+    )
     assert created.price == 1.0
 
 

@@ -14,11 +14,10 @@ class NotificationReadModel:
     symbol: str | None
     sector: str | None
     timeframe: int
-    title: str
-    message: str
     severity: str
     urgency: str
-    language: str
+    content_kind: str
+    content_json: Any
     refs_json: Any
     context_json: Any
     provider: str
@@ -48,11 +47,10 @@ def notification_read_model_from_orm(notification) -> NotificationReadModel:
         symbol=str(notification.symbol) if notification.symbol is not None else None,
         sector=str(notification.sector) if notification.sector is not None else None,
         timeframe=int(notification.timeframe),
-        title=str(notification.title),
-        message=str(notification.message),
         severity=str(notification.severity),
         urgency=str(notification.urgency),
-        language=str(notification.language),
+        content_kind=str(notification.content_kind),
+        content_json=freeze_json_value(dict(notification.content_json or {})),
         refs_json=freeze_json_value(dict(notification.refs_json or {})),
         context_json=freeze_json_value(dict(notification.context_json or {})),
         provider=str(notification.provider),

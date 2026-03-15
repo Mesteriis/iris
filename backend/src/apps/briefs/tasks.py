@@ -14,7 +14,6 @@ BRIEF_GENERATION_LOCK_TIMEOUT_SECONDS = 180
 @broker.task
 async def generate_brief_job(
     brief_kind: str,
-    language: str | None = None,
     symbol: str | None = None,
     force: bool = False,
     requested_provider: str | None = None,
@@ -22,12 +21,12 @@ async def generate_brief_job(
 ) -> dict[str, object]:
     normalized_kind = BriefKind(str(brief_kind).strip().lower())
     normalized_symbol = str(symbol).strip().upper() if symbol is not None and str(symbol).strip() else None
-    effective_language = resolve_effective_language({"language": language})
+    effective_language = resolve_effective_language({})
     scope_key = build_scope_key(normalized_kind, symbol=normalized_symbol)
 
     async def _action() -> dict[str, object]:
         async with async_redis_task_lock(
-            f"iris:tasklock:brief_generate:{scope_key}:{effective_language}",
+            f"iris:tasklock:brief_generate:{scope_key}",
             timeout=BRIEF_GENERATION_LOCK_TIMEOUT_SECONDS,
         ) as acquired:
             if not acquired:
@@ -36,12 +35,11 @@ async def generate_brief_job(
                     "reason": "brief_generation_in_progress",
                     "brief_kind": normalized_kind.value,
                     "scope_key": scope_key,
-                    "language": effective_language,
+                    "rendered_locale": effective_language,
                 }
             async with AsyncUnitOfWork() as uow:
                 result = await BriefService(uow).generate_and_store(
                     brief_kind=normalized_kind,
-                    language=effective_language,
                     symbol=normalized_symbol,
                     requested_provider=requested_provider,
                     force=bool(force),
@@ -63,7 +61,7 @@ def _brief_generation_result_payload(result: BriefGenerationResult) -> dict[str,
         "brief_id": int(result.brief_id),
         "brief_kind": result.brief_kind.value,
         "scope_key": result.scope_key,
-        "language": result.language,
+        "rendered_locale": result.rendered_locale,
         "symbol": result.symbol,
         "generated_at": result.generated_at.isoformat() if result.generated_at is not None else None,
         "source_updated_at": result.source_updated_at.isoformat() if result.source_updated_at is not None else None,

@@ -4,6 +4,10 @@
 
 Proposed
 
+## Date
+
+2025-03-10
+
 ## Context
 
 IRIS already has a partial HTTP error foundation (`core/http/errors.py`) and a backend localization plan (`docs/iso/backend-business-localization-plan.md`), but the repo still has architectural gaps:
@@ -39,3 +43,9 @@ This creates a migration-safe path toward a unified error and localization model
 - translation linting, registry validation and locale-aware tests become mechanically enforceable;
 - observability can attach error and locale metadata without parsing human text;
 - legacy text-first contracts remain a tracked migration debt until each surface is cut over.
+
+
+## See also
+
+- [ADR 0017: Internationalization Architecture](0017-text-ownership-localization-scope.md) — localization foundation
+- [ADR 0002: Persistence Architecture](0002-persistence-architecture.md) — infrastructure patterns

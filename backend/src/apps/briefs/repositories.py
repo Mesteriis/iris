@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.apps.briefs.contracts import BriefKind
 from src.apps.briefs.models import AIBrief
 from src.core.db.persistence import AsyncRepository
+from src.core.i18n import content_rendered_locale
 
 
 class BriefRepository(AsyncRepository):
@@ -20,21 +21,18 @@ class BriefRepository(AsyncRepository):
         *,
         brief_kind: BriefKind,
         scope_key: str,
-        language: str,
     ) -> AIBrief | None:
         self._log_debug(
             "repo.get_brief_by_scope",
             mode="write",
             brief_kind=brief_kind.value,
             scope_key=scope_key,
-            language=language,
         )
         row = await self.session.scalar(
             select(AIBrief)
             .where(
                 AIBrief.brief_kind == brief_kind.value,
                 AIBrief.scope_key == scope_key,
-                AIBrief.language == language,
             )
             .limit(1)
         )
@@ -54,21 +52,23 @@ class BriefRepository(AsyncRepository):
                 mode="write",
                 brief_kind=item.brief_kind,
                 scope_key=item.scope_key,
-                language=item.language,
+                content_kind=item.content_kind,
+                rendered_locale=content_rendered_locale(item.content_json),
             )
             self.session.add(item)
         else:
             item = existing
+            for key, value in payload.items():
+                setattr(item, key, value)
             self._log_info(
                 "repo.update_brief",
                 mode="write",
                 brief_id=int(item.id),
                 brief_kind=item.brief_kind,
                 scope_key=item.scope_key,
-                language=item.language,
+                content_kind=item.content_kind,
+                rendered_locale=content_rendered_locale(item.content_json),
             )
-            for key, value in payload.items():
-                setattr(item, key, value)
         await self.session.flush()
         await self.session.refresh(item)
         return item

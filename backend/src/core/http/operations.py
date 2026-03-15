@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
-
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
+
+from pydantic import Field
 
 from src.core.http.contracts import HttpContract
 
@@ -38,6 +39,9 @@ class OperationStatusResponse(OperationResponse):
     result_ref: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    error_message_key: str | None = None
+    error_message_params: dict[str, Any] = Field(default_factory=dict)
+    error_locale: str | None = None
     retryable: bool = False
 
 
@@ -52,4 +56,7 @@ class OperationEventResponse(HttpContract):
     status: OperationStatus
     recorded_at: datetime
     message: str | None = None
+    message_key: str | None = None
+    message_params: dict[str, Any] = Field(default_factory=dict)
+    locale: str | None = None
     payload: dict[str, Any] | None = None

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.apps.market_data.api.contracts import CoinJobAcceptedRead, CoinRead, PriceHistoryRead
+from src.core.http.operation_localization import dispatch_result_message_fields
 from src.core.http.operation_store import OperationDispatchResult
 
 
@@ -62,6 +63,7 @@ def coin_job_accepted_read(
     symbol: str,
     mode: str,
     force: bool,
+    locale: str | None = None,
 ) -> CoinJobAcceptedRead:
     operation = dispatch_result.operation
     return CoinJobAcceptedRead.model_validate(
@@ -70,7 +72,7 @@ def coin_job_accepted_read(
             "accepted_at": operation.accepted_at,
             "correlation_id": operation.correlation_id,
             "deduplicated": dispatch_result.deduplicated,
-            "message": dispatch_result.message,
+            **dispatch_result_message_fields(dispatch_result, locale=locale),
             "symbol": symbol,
             "mode": mode,
             "force": force,

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 from redis.asyncio import Redis as AsyncRedis
-
 from src.core.http.operation_store import OperationStore, dispatch_background_operation, run_tracked_operation
 from src.core.http.operations import OperationStatus
 from src.core.http.tracing import TraceContext
@@ -32,6 +31,8 @@ async def test_operation_store_tracks_status_and_events() -> None:
         assert result is not None
         assert result.result is None
         assert [item.event for item in events] == ["accepted", "queued"]
+        assert events[0].message_key == "system.operation.accepted"
+        assert events[1].message_key == "system.operation.queued"
     finally:
         await client.aclose()
 
@@ -68,6 +69,7 @@ async def test_run_tracked_operation_records_terminal_states() -> None:
         assert success_status.status is OperationStatus.SUCCEEDED
         assert success_status.result == {"status": "ok", "created": 2}
         assert [item.event for item in success_events] == ["accepted", "queued", "running", "succeeded"]
+        assert success_events[-1].message_key == "system.operation.succeeded"
 
         assert skipped_payload["reason"] == "already_running"
         assert deduplicated_status is not None
@@ -99,14 +101,15 @@ async def test_dispatch_background_operation_deduplicates_active_jobs() -> None:
 
         assert first.deduplicated is False
         assert second.deduplicated is True
-        assert second.message == "An equivalent operation is already active."
+        assert second.message_key == "system.operation.already_active"
+        assert second.message_params is None
         assert first.operation.operation_id == second.operation.operation_id
         assert dispatched == [first.operation.operation_id]
 
         await store.mark_failed(
             first.operation.operation_id,
             error_code="task_failed",
-            error_message="boom",
+            error_message_key="system.operation.failed",
             retryable=False,
         )
 

@@ -11,5 +11,5 @@ def test_hypothesis_api_errors_are_localized_from_registry() -> None:
 
     assert error is not None
     assert error.status_code == 423
-    assert error.detail["message_key"] == "errors.hypothesis.prompt_veil_locked"
+    assert error.detail["message_key"] == "error.hypothesis.prompt_veil_locked"
     assert error.detail["message"] == "Запрошенное семейство prompt скрыто veil и пока недоступно для редактирования."
