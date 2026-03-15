@@ -19,6 +19,7 @@ from src.apps.market_structure.api.presenters import (
     market_structure_webhook_registration_read,
 )
 from src.core.http.command_executor import execute_command
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["market-structure:onboarding"])
 
@@ -42,12 +43,13 @@ async def read_market_structure_onboarding_wizard() -> MarketStructureOnboarding
 async def create_binance_market_structure_source(
     payload: BinanceMarketStructureSourceCreateRequest,
     provisioning: MarketStructureProvisioningDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureSourceRead:
     return await execute_command(
         action=lambda: provisioning.service.create_binance_source(payload),
         uow=provisioning.uow,
         presenter=market_structure_source_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -61,12 +63,13 @@ async def create_binance_market_structure_source(
 async def create_bybit_market_structure_source(
     payload: BybitMarketStructureSourceCreateRequest,
     provisioning: MarketStructureProvisioningDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureSourceRead:
     return await execute_command(
         action=lambda: provisioning.service.create_bybit_source(payload),
         uow=provisioning.uow,
         presenter=market_structure_source_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -80,12 +83,13 @@ async def create_bybit_market_structure_source(
 async def create_manual_market_structure_source(
     payload: ManualPushMarketStructureSourceCreateRequest,
     provisioning: MarketStructureProvisioningDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureSourceRead:
     return await execute_command(
         action=lambda: provisioning.service.create_manual_source(payload),
         uow=provisioning.uow,
         presenter=market_structure_source_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -99,12 +103,13 @@ async def create_manual_market_structure_source(
 async def create_liqscope_market_structure_webhook_source(
     payload: ManualWebhookMarketStructureSourceCreateRequest,
     provisioning: MarketStructureProvisioningDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureWebhookRegistrationRead:
     return await execute_command(
         action=lambda: provisioning.service.create_liqscope_webhook_source(payload),
         uow=provisioning.uow,
         presenter=market_structure_webhook_registration_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -118,12 +123,13 @@ async def create_liqscope_market_structure_webhook_source(
 async def create_liquidation_market_structure_webhook_source(
     payload: ManualWebhookMarketStructureSourceCreateRequest,
     provisioning: MarketStructureProvisioningDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureWebhookRegistrationRead:
     return await execute_command(
         action=lambda: provisioning.service.create_liquidation_webhook_source(payload),
         uow=provisioning.uow,
         presenter=market_structure_webhook_registration_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -137,12 +143,13 @@ async def create_liquidation_market_structure_webhook_source(
 async def create_derivatives_market_structure_webhook_source(
     payload: ManualWebhookMarketStructureSourceCreateRequest,
     provisioning: MarketStructureProvisioningDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureWebhookRegistrationRead:
     return await execute_command(
         action=lambda: provisioning.service.create_derivatives_webhook_source(payload),
         uow=provisioning.uow,
         presenter=market_structure_webhook_registration_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -156,12 +163,13 @@ async def create_derivatives_market_structure_webhook_source(
 async def create_coinglass_market_structure_webhook_source(
     payload: ManualWebhookMarketStructureSourceCreateRequest,
     provisioning: MarketStructureProvisioningDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureWebhookRegistrationRead:
     return await execute_command(
         action=lambda: provisioning.service.create_coinglass_webhook_source(payload),
         uow=provisioning.uow,
         presenter=market_structure_webhook_registration_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -175,12 +183,13 @@ async def create_coinglass_market_structure_webhook_source(
 async def create_hyblock_market_structure_webhook_source(
     payload: ManualWebhookMarketStructureSourceCreateRequest,
     provisioning: MarketStructureProvisioningDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureWebhookRegistrationRead:
     return await execute_command(
         action=lambda: provisioning.service.create_hyblock_webhook_source(payload),
         uow=provisioning.uow,
         presenter=market_structure_webhook_registration_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -194,10 +203,11 @@ async def create_hyblock_market_structure_webhook_source(
 async def create_coinalyze_market_structure_webhook_source(
     payload: ManualWebhookMarketStructureSourceCreateRequest,
     provisioning: MarketStructureProvisioningDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureWebhookRegistrationRead:
     return await execute_command(
         action=lambda: provisioning.service.create_coinalyze_webhook_source(payload),
         uow=provisioning.uow,
         presenter=market_structure_webhook_registration_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )

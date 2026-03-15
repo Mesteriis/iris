@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 
+from src.core.errors import ResourceNotFoundError
 from src.core.http.errors import ApiError, ApiErrorFactory
 
 _ERROR_DESCRIPTIONS: dict[int, str] = {
@@ -19,11 +20,9 @@ def system_error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
     }
 
 
-def operation_not_found_error(operation_id: str) -> HTTPException:
-    return ApiErrorFactory.to_http_exception(
-        status_code=status.HTTP_404_NOT_FOUND,
-        code="resource_not_found",
-        message=f"Operation '{operation_id}' was not found.",
+def operation_not_found_error(operation_id: str, *, locale: str) -> HTTPException:
+    return ApiErrorFactory.from_platform_error(
+        ResourceNotFoundError(resource=f"operation '{operation_id}'", locale=locale),
         operation_id=operation_id,
     )
 

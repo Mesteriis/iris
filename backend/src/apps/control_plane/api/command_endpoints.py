@@ -25,6 +25,7 @@ from src.apps.control_plane.api.presenters import (
 )
 from src.apps.control_plane.contracts import RouteStatusChangeCommand
 from src.core.http.command_executor import execute_command
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["control-plane:commands"])
 
@@ -34,12 +35,13 @@ async def create_route(
     payload: EventRouteMutationWrite,
     actor: ControlActorDep,
     commands: RouteCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> EventRouteRead:
     return await execute_command(
         action=lambda: commands.service.create_route(route_mutation_command_from_request(payload), actor=actor),
         uow=commands.uow,
         presenter=route_read,
-        translate_error=control_plane_error_to_http,
+        translate_error=lambda exc: control_plane_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -49,12 +51,13 @@ async def update_route(
     payload: EventRouteMutationWrite,
     actor: ControlActorDep,
     commands: RouteCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> EventRouteRead:
     return await execute_command(
         action=lambda: commands.service.update_route(route_key, route_mutation_command_from_request(payload), actor=actor),
         uow=commands.uow,
         presenter=route_read,
-        translate_error=control_plane_error_to_http,
+        translate_error=lambda exc: control_plane_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -64,6 +67,7 @@ async def update_route_status(
     payload: EventRouteStatusWrite,
     actor: ControlActorDep,
     commands: RouteCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> EventRouteRead:
     return await execute_command(
         action=lambda: commands.service.change_status(
@@ -72,7 +76,7 @@ async def update_route_status(
         ),
         uow=commands.uow,
         presenter=route_read,
-        translate_error=control_plane_error_to_http,
+        translate_error=lambda exc: control_plane_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -81,12 +85,13 @@ async def create_draft(
     payload: TopologyDraftCreateWrite,
     actor: ControlActorDep,
     commands: DraftCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> TopologyDraftRead:
     return await execute_command(
         action=lambda: commands.service.create_draft(draft_create_command_from_request(payload, actor=actor)),
         uow=commands.uow,
         presenter=topology_draft_read,
-        translate_error=control_plane_error_to_http,
+        translate_error=lambda exc: control_plane_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -96,6 +101,7 @@ async def create_draft_change(
     payload: TopologyDraftChangeWrite,
     actor: ControlActorDep,
     commands: DraftCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> TopologyDraftChangeRead:
     return await execute_command(
         action=lambda: commands.service.add_change(
@@ -104,7 +110,7 @@ async def create_draft_change(
         ),
         uow=commands.uow,
         presenter=topology_draft_change_read,
-        translate_error=control_plane_error_to_http,
+        translate_error=lambda exc: control_plane_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -117,12 +123,13 @@ async def apply_draft(
     draft_id: int,
     actor: ControlActorDep,
     commands: DraftCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> TopologyDraftLifecycleRead:
     return await execute_command(
         action=lambda: commands.service.apply_draft(draft_id, actor=actor),
         uow=commands.uow,
         presenter=draft_lifecycle_read,
-        translate_error=control_plane_error_to_http,
+        translate_error=lambda exc: control_plane_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -131,10 +138,11 @@ async def discard_draft(
     draft_id: int,
     actor: ControlActorDep,
     commands: DraftCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> TopologyDraftLifecycleRead:
     return await execute_command(
         action=lambda: commands.service.discard_draft(draft_id, actor=actor),
         uow=commands.uow,
         presenter=draft_lifecycle_read,
-        translate_error=control_plane_error_to_http,
+        translate_error=lambda exc: control_plane_error_to_http(exc, locale=request_locale),
     )

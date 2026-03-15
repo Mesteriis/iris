@@ -7,6 +7,7 @@ from src.apps.news.api.deps import NewsCommandDep
 from src.apps.news.api.errors import NewsSourceNotFoundError, news_error_responses, news_error_to_http
 from src.apps.news.api.presenters import news_source_read
 from src.core.http.command_executor import execute_command, execute_command_no_content
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["news:commands"])
 
@@ -18,12 +19,16 @@ router = APIRouter(tags=["news:commands"])
     summary="Create a news source",
     responses=news_error_responses(400),
 )
-async def create_news_source(payload: NewsSourceCreate, commands: NewsCommandDep) -> NewsSourceRead:
+async def create_news_source(
+    payload: NewsSourceCreate,
+    commands: NewsCommandDep,
+    request_locale: RequestLocaleDep,
+) -> NewsSourceRead:
     return await execute_command(
         action=lambda: commands.service.create_source(payload),
         uow=commands.uow,
         presenter=news_source_read,
-        translate_error=news_error_to_http,
+        translate_error=lambda exc: news_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -37,6 +42,7 @@ async def patch_news_source(
     source_id: int,
     payload: NewsSourceUpdate,
     commands: NewsCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> NewsSourceRead:
     async def action() -> NewsSourceRead:
         updated = await commands.service.update_source(source_id, payload)
@@ -48,7 +54,7 @@ async def patch_news_source(
         action=action,
         uow=commands.uow,
         presenter=news_source_read,
-        translate_error=news_error_to_http,
+        translate_error=lambda exc: news_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -58,7 +64,11 @@ async def patch_news_source(
     summary="Delete a news source",
     responses=news_error_responses(404),
 )
-async def delete_news_source(source_id: int, commands: NewsCommandDep) -> None:
+async def delete_news_source(
+    source_id: int,
+    commands: NewsCommandDep,
+    request_locale: RequestLocaleDep,
+) -> None:
     async def action() -> object:
         deleted = await commands.service.delete_source(source_id)
         if not deleted:
@@ -68,5 +78,5 @@ async def delete_news_source(source_id: int, commands: NewsCommandDep) -> None:
     await execute_command_no_content(
         action=action,
         uow=commands.uow,
-        translate_error=news_error_to_http,
+        translate_error=lambda exc: news_error_to_http(exc, locale=request_locale),
     )

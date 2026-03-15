@@ -14,6 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.apps.indicators.models import CoinMetrics
 from src.apps.integrations.ha.application.control_state import HA_TIMEFRAME_OPTIONS, HAControlStateStore
+from src.apps.integrations.ha.errors import (
+    HACommandDispatchError,
+    HACommandNotAvailableError,
+    HAInvalidPayloadError,
+)
 from src.apps.integrations.ha.schemas import (
     HAAvailabilityRead,
     HABootstrapRead,
@@ -83,23 +88,6 @@ class HACommandDispatch:
     operation_id: str
     operation_type: str
     outbound_messages: tuple[dict[str, Any], ...] = ()
-
-
-class HACommandDispatchError(RuntimeError):
-    def __init__(
-        self,
-        *,
-        code: str,
-        message: str,
-        details: dict[str, Any] | None = None,
-        retryable: bool = False,
-    ) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.details = details
-        self.retryable = retryable
-
 
 class HABridgeService:
     def __init__(
@@ -569,11 +557,9 @@ class HABridgeService:
         }
         handler = handlers.get(command)
         if handler is None:
-            raise HACommandDispatchError(
-                code="command_not_available",
-                message="Command is not available for the current HA bridge stage.",
-                details={"command": command, "mode": self._settings.api_launch_mode},
-                retryable=False,
+            raise HACommandNotAvailableError(
+                command=command,
+                mode=str(self._settings.api_launch_mode),
             )
         return await handler(payload)
 
@@ -609,12 +595,16 @@ class HABridgeService:
         ).model_dump(mode="json")
 
     def command_not_available_ack(self, *, request_id: str, command: str) -> dict[str, Any]:
+        error = HACommandNotAvailableError(
+            command=command,
+            mode=str(self._settings.api_launch_mode),
+        )
         return self.command_error_ack(
             request_id=request_id,
-            code="command_not_available",
-            message="Command execution is not enabled for the current HA bridge stage.",
-            details={"command": command, "mode": self._settings.api_launch_mode},
-            retryable=False,
+            code=error.code,
+            message=error.message,
+            details=error.details,
+            retryable=error.retryable,
         )
 
     async def operation_update_message(
@@ -975,21 +965,19 @@ class HABridgeService:
     @staticmethod
     def _ensure_empty_payload(*, command: str, payload: dict[str, Any]) -> None:
         if payload:
-            raise HACommandDispatchError(
-                code="invalid_payload",
-                message="This command does not accept payload fields.",
-                details={"command": command, "payload_keys": sorted(payload)},
-                retryable=False,
+            raise HAInvalidPayloadError(
+                command=command,
+                payload={"payload_keys": sorted(payload)},
+                expected="empty_payload",
             )
 
     @staticmethod
     def _require_bool_payload(*, command: str, payload: dict[str, Any]) -> bool:
         if set(payload) != {"value"} or not isinstance(payload.get("value"), bool):
-            raise HACommandDispatchError(
-                code="invalid_payload",
-                message="Command payload must be an object with a boolean 'value'.",
-                details={"command": command, "payload": payload},
-                retryable=False,
+            raise HAInvalidPayloadError(
+                command=command,
+                payload=payload,
+                expected="boolean_value",
             )
         return bool(payload["value"])
 
@@ -997,15 +985,11 @@ class HABridgeService:
     def _require_timeframe_payload(*, command: str, payload: dict[str, Any]) -> str:
         value = payload.get("value")
         if set(payload) != {"value"} or not isinstance(value, str) or value not in HA_TIMEFRAME_OPTIONS:
-            raise HACommandDispatchError(
-                code="invalid_payload",
-                message="Command payload must contain a supported timeframe value.",
-                details={
-                    "command": command,
-                    "payload": payload,
-                    "allowed_values": list(HA_TIMEFRAME_OPTIONS),
-                },
-                retryable=False,
+            raise HAInvalidPayloadError(
+                command=command,
+                payload=payload,
+                expected="supported_timeframe",
+                allowed_values=HA_TIMEFRAME_OPTIONS,
             )
         return value
 

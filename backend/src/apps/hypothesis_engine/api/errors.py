@@ -7,6 +7,7 @@ from src.apps.hypothesis_engine.exceptions import (
     PromptNotFoundError,
     PromptVeilLockedError,
 )
+from src.core.errors import PromptVeilLockedPlatformError, ResourceNotFoundError, ValidationFailedError
 from src.core.http.errors import ApiError, ApiErrorFactory
 
 _ERROR_DESCRIPTIONS: dict[int, str] = {
@@ -26,25 +27,13 @@ def hypothesis_error_responses(*status_codes: int) -> dict[int, dict[str, object
     }
 
 
-def hypothesis_error_to_http(exc: Exception) -> HTTPException | None:
+def hypothesis_error_to_http(exc: Exception, *, locale: str) -> HTTPException | None:
     if isinstance(exc, InvalidPromptPayloadError):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            code="validation_failed",
-            message=str(exc),
-        )
+        return ApiErrorFactory.from_platform_error(ValidationFailedError(locale=locale))
     if isinstance(exc, PromptNotFoundError):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_404_NOT_FOUND,
-            code="resource_not_found",
-            message=str(exc),
-        )
+        return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="prompt", locale=locale))
     if isinstance(exc, PromptVeilLockedError):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_423_LOCKED,
-            code="prompt_veil_locked",
-            message=str(exc),
-        )
+        return ApiErrorFactory.from_platform_error(PromptVeilLockedPlatformError(locale=locale))
     return None
 
 

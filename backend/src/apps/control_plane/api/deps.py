@@ -26,15 +26,16 @@ from src.apps.control_plane.query_services import (
 from src.apps.control_plane.services import RouteManagementService, TopologyDraftService
 from src.apps.hypothesis_engine.services import PromptService, PromptSideEffectDispatcher
 from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
+from src.core.http.deps import RequestLocaleDep
 from src.core.settings import Settings, get_settings
 
 
-def _parse_access_mode(value: str | None) -> TopologyAccessMode:
+def _parse_access_mode(value: str | None, *, locale: str) -> TopologyAccessMode:
     raw = (value or "observe").strip().lower()
     try:
         return TopologyAccessMode(raw)
     except ValueError as exc:
-        raise invalid_access_mode_error() from exc
+        raise invalid_access_mode_error(locale=locale, value=value) from exc
 
 
 def _build_actor(
@@ -42,28 +43,30 @@ def _build_actor(
     actor: str | None,
     access_mode: str | None,
     reason: str | None,
+    locale: str,
 ) -> AuditActor:
     return AuditActor(
         actor=actor or "api",
-        actor_mode=_parse_access_mode(access_mode),
+        actor_mode=_parse_access_mode(access_mode, locale=locale),
         reason=reason,
         context={"surface": "http"},
     )
 
 
 async def require_control_actor(
+    request_locale: RequestLocaleDep,
     x_iris_actor: str | None = Header(default=None, alias="X-IRIS-Actor"),
     x_iris_access_mode: str | None = Header(default="observe", alias="X-IRIS-Access-Mode"),
     x_iris_reason: str | None = Header(default=None, alias="X-IRIS-Reason"),
     x_iris_control_token: str | None = Header(default=None, alias="X-IRIS-Control-Token"),
 ) -> AuditActor:
-    mode = _parse_access_mode(x_iris_access_mode)
+    mode = _parse_access_mode(x_iris_access_mode, locale=request_locale)
     if mode != TopologyAccessMode.CONTROL:
-        raise control_mode_required_error()
+        raise control_mode_required_error(locale=request_locale)
     settings = get_settings()
     if settings.control_plane_token and x_iris_control_token != settings.control_plane_token:
-        raise control_token_invalid_error()
-    return _build_actor(actor=x_iris_actor, access_mode=mode.value, reason=x_iris_reason)
+        raise control_token_invalid_error(locale=request_locale)
+    return _build_actor(actor=x_iris_actor, access_mode=mode.value, reason=x_iris_reason, locale=request_locale)
 
 
 @dataclass(slots=True, frozen=True)

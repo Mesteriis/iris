@@ -15,6 +15,7 @@ from src.apps.market_structure.api.errors import (
 )
 from src.apps.market_structure.api.presenters import market_structure_ingest_result_read
 from src.core.http.command_executor import execute_command
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["market-structure:webhooks"])
 
@@ -31,6 +32,7 @@ async def ingest_market_structure_snapshots(
     payload: ManualMarketStructureIngestRequest,
     access: MarketStructureIngestAccessDep,
     commands: MarketStructureCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureIngestResultRead:
     async def action():
         result = await commands.service.ingest_manual_snapshots(
@@ -38,7 +40,7 @@ async def ingest_market_structure_snapshots(
             payload=payload,
             ingest_token=access.token,
         )
-        http_error = market_structure_ingest_result_to_http(result, source_id=source_id)
+        http_error = market_structure_ingest_result_to_http(result, source_id=source_id, locale=request_locale)
         if http_error is not None:
             raise http_error
         return result
@@ -47,7 +49,7 @@ async def ingest_market_structure_snapshots(
         action=action,
         uow=commands.uow,
         presenter=market_structure_ingest_result_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -63,6 +65,7 @@ async def ingest_market_structure_native_webhook_payload(
     payload: NativeWebhookPayloadWrite,
     access: MarketStructureIngestAccessDep,
     commands: MarketStructureCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureIngestResultRead:
     async def action():
         result = await commands.service.ingest_native_webhook_payload(
@@ -70,7 +73,7 @@ async def ingest_market_structure_native_webhook_payload(
             payload=dict(payload.root),
             ingest_token=access.token,
         )
-        http_error = market_structure_ingest_result_to_http(result, source_id=source_id)
+        http_error = market_structure_ingest_result_to_http(result, source_id=source_id, locale=request_locale)
         if http_error is not None:
             raise http_error
         return result
@@ -79,5 +82,5 @@ async def ingest_market_structure_native_webhook_payload(
         action=action,
         uow=commands.uow,
         presenter=market_structure_ingest_result_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )

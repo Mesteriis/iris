@@ -10,8 +10,18 @@ from src.apps.control_plane.exceptions import (
     TopologyDraftNotFound,
     TopologyDraftStateError,
 )
-from src.core.http.errors import ApiError, ApiErrorDetail, ApiErrorFactory
-
+from src.core.errors import (
+    ConcurrencyConflictError,
+    ControlModeRequiredError,
+    ControlTokenInvalidError,
+    DuplicateRequestError,
+    InvalidAccessModeError,
+    InvalidStateTransitionError,
+    PolicyDeniedError,
+    ResourceNotFoundError,
+    ValidationFailedError,
+)
+from src.core.http.errors import ApiError, ApiErrorFactory
 
 _ERROR_DESCRIPTIONS: dict[int, str] = {
     status.HTTP_400_BAD_REQUEST: "Request validation or control-plane state policy failed.",
@@ -31,82 +41,68 @@ def control_plane_error_responses(*status_codes: int) -> dict[int, dict[str, obj
     }
 
 
-def invalid_access_mode_error() -> HTTPException:
-    return ApiErrorFactory.to_http_exception(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        code="validation_failed",
-        message="X-IRIS-Access-Mode must be 'observe' or 'control'.",
+def invalid_access_mode_error(*, locale: str, value: str | None = None) -> HTTPException:
+    return ApiErrorFactory.from_platform_error(
+        InvalidAccessModeError(locale=locale),
+        details=[
+            ApiErrorFactory.build_detail(
+                field="X-IRIS-Access-Mode",
+                message_key="errors.control_plane.detail.allowed_access_modes",
+                locale=locale,
+                value={"provided": value, "allowed": ["observe", "control"]},
+            )
+        ],
     )
 
 
-def control_mode_required_error() -> HTTPException:
-    return ApiErrorFactory.to_http_exception(
-        status_code=status.HTTP_403_FORBIDDEN,
-        code="policy_denied",
-        message="Control mode is required for topology mutations.",
-    )
+def control_mode_required_error(*, locale: str) -> HTTPException:
+    return ApiErrorFactory.from_platform_error(ControlModeRequiredError(locale=locale))
 
 
-def control_token_invalid_error() -> HTTPException:
-    return ApiErrorFactory.to_http_exception(
-        status_code=status.HTTP_403_FORBIDDEN,
-        code="authorization_denied",
-        message="Control token is missing or invalid.",
-    )
+def control_token_invalid_error(*, locale: str) -> HTTPException:
+    return ApiErrorFactory.from_platform_error(ControlTokenInvalidError(locale=locale))
 
 
-def event_definition_not_found_error(event_type: str) -> HTTPException:
-    return ApiErrorFactory.to_http_exception(
-        status_code=status.HTTP_404_NOT_FOUND,
-        code="resource_not_found",
-        message=f"Event definition '{event_type}' was not found.",
-    )
+def event_definition_not_found_error(*, locale: str, event_type: str) -> HTTPException:
+    del event_type
+    return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="event definition", locale=locale))
 
 
-def control_plane_error_to_http(exc: Exception) -> HTTPException | None:
+def control_plane_error_to_http(exc: Exception, *, locale: str) -> HTTPException | None:
     if isinstance(exc, EventRouteCompatibilityError):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            code="validation_failed",
-            message=str(exc),
-        )
+        return ApiErrorFactory.from_platform_error(ValidationFailedError(locale=locale))
     if isinstance(exc, TopologyDraftConcurrencyConflict):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_409_CONFLICT,
-            code="concurrency_conflict",
-            message=str(exc),
+        return ApiErrorFactory.from_platform_error(
+            ConcurrencyConflictError(locale=locale),
             details=[
-                ApiErrorDetail(field="resource_id", message="Draft identifier.", value=exc.draft_id),
-                ApiErrorDetail(
+                ApiErrorFactory.build_detail(
+                    field="resource_id",
+                    message_key="errors.control_plane.detail.draft_id",
+                    locale=locale,
+                    value=exc.draft_id,
+                ),
+                ApiErrorFactory.build_detail(
                     field="expected_version",
-                    message="Draft base topology version.",
+                    message_key="errors.control_plane.detail.expected_version",
+                    locale=locale,
                     value=exc.expected_version,
                 ),
-                ApiErrorDetail(
+                ApiErrorFactory.build_detail(
                     field="current_version",
-                    message="Latest published topology version.",
+                    message_key="errors.control_plane.detail.current_version",
+                    locale=locale,
                     value=exc.current_version,
                 ),
             ],
         )
     if isinstance(exc, TopologyDraftStateError):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            code="invalid_state_transition",
-            message=str(exc),
-        )
-    if isinstance(exc, (EventRouteNotFound, TopologyDraftNotFound)):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_404_NOT_FOUND,
-            code="resource_not_found",
-            message=str(exc),
-        )
+        return ApiErrorFactory.from_platform_error(InvalidStateTransitionError(locale=locale))
+    if isinstance(exc, EventRouteNotFound):
+        return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="event route", locale=locale))
+    if isinstance(exc, TopologyDraftNotFound):
+        return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="topology draft", locale=locale))
     if isinstance(exc, EventRouteConflict):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_409_CONFLICT,
-            code="duplicate_request",
-            message=str(exc),
-        )
+        return ApiErrorFactory.from_platform_error(DuplicateRequestError(locale=locale))
     return None
 
 

@@ -7,7 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, WebSocketExceptio
 from pydantic import ValidationError
 
 from src.apps.integrations.ha.api.deps import HABridgeServiceDep, HAWebSocketHubDep, StartedHABridgeRuntimeDep
-from src.apps.integrations.ha.application.services import HACommandDispatchError
+from src.apps.integrations.ha.errors import HACommandDispatchError
 from src.apps.integrations.ha.schemas import (
     HACommandExecuteMessage,
     HAHelloMessage,

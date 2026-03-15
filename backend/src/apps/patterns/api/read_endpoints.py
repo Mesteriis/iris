@@ -22,6 +22,7 @@ from src.apps.patterns.api.presenters import (
     sector_read,
     signal_read,
 )
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["patterns:read"])
 
@@ -65,10 +66,14 @@ async def read_coin_patterns(
 
 
 @router.get("/coins/{symbol}/regime", response_model=CoinRegimeRead, summary="Read coin regime")
-async def read_coin_regime(symbol: str, service: PatternQueryDep) -> CoinRegimeRead:
+async def read_coin_regime(
+    symbol: str,
+    service: PatternQueryDep,
+    request_locale: RequestLocaleDep,
+) -> CoinRegimeRead:
     payload = await service.get_coin_regime_read_by_symbol(symbol)
     if payload is None:
-        raise pattern_coin_not_found_error(symbol)
+        raise pattern_coin_not_found_error(locale=request_locale)
     return coin_regime_read(payload)
 
 

@@ -12,6 +12,7 @@ from src.apps.patterns.api.errors import (
 )
 from src.apps.patterns.api.presenters import pattern_feature_read, pattern_read
 from src.core.http.command_executor import execute_command
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["patterns:commands"])
 
@@ -26,6 +27,7 @@ async def patch_pattern_feature(
     feature_slug: str,
     payload: PatternFeatureUpdate,
     commands: PatternAdminDep,
+    request_locale: RequestLocaleDep,
 ) -> PatternFeatureRead:
     async def action() -> PatternFeatureRead:
         row = await commands.service.update_pattern_feature(feature_slug, enabled=payload.enabled)
@@ -37,7 +39,7 @@ async def patch_pattern_feature(
         action=action,
         uow=commands.uow,
         presenter=pattern_feature_read,
-        translate_error=pattern_error_to_http,
+        translate_error=lambda exc: pattern_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -51,6 +53,7 @@ async def patch_pattern(
     slug: str,
     payload: PatternUpdate,
     commands: PatternAdminDep,
+    request_locale: RequestLocaleDep,
 ) -> PatternRead:
     async def action() -> PatternRead:
         row = await commands.service.update_pattern(
@@ -67,5 +70,5 @@ async def patch_pattern(
         action=action,
         uow=commands.uow,
         presenter=pattern_read,
-        translate_error=pattern_error_to_http,
+        translate_error=lambda exc: pattern_error_to_http(exc, locale=request_locale),
     )

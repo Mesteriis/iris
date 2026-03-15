@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 
-from src.apps.news.exceptions import InvalidNewsSourceConfigurationError, TelegramOnboardingError, UnsupportedNewsPluginError
+from src.apps.news.exceptions import (
+    InvalidNewsSourceConfigurationError,
+    TelegramOnboardingError,
+    UnsupportedNewsPluginError,
+)
+from src.core.errors import IntegrationUnreachableError, ResourceNotFoundError, ValidationFailedError
 from src.core.http.errors import ApiError, ApiErrorFactory
 
 
@@ -29,40 +34,26 @@ def news_error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
     }
 
 
-def news_source_not_found_error(source_id: int) -> HTTPException:
-    return ApiErrorFactory.to_http_exception(
-        status_code=status.HTTP_404_NOT_FOUND,
-        code="resource_not_found",
-        message=f"News source '{int(source_id)}' was not found.",
-    )
+def news_source_not_found_error(*, locale: str) -> HTTPException:
+    return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="news source", locale=locale))
 
 
-def news_error_to_http(exc: Exception) -> HTTPException | None:
+def news_error_to_http(exc: Exception, *, locale: str) -> HTTPException | None:
     if isinstance(exc, NewsSourceNotFoundError):
-        return news_source_not_found_error(exc.source_id)
-    if isinstance(exc, (InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError)):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            code="validation_failed",
-            message=str(exc),
-        )
+        return news_source_not_found_error(locale=locale)
+    if isinstance(exc, InvalidNewsSourceConfigurationError | UnsupportedNewsPluginError):
+        return ApiErrorFactory.from_platform_error(ValidationFailedError(locale=locale))
     return None
 
 
-def telegram_request_code_error(exc: TelegramOnboardingError) -> HTTPException:
-    return ApiErrorFactory.to_http_exception(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        code="integration_unreachable",
-        message=str(exc),
-    )
+def telegram_request_code_error(exc: TelegramOnboardingError, *, locale: str) -> HTTPException:
+    del exc
+    return ApiErrorFactory.from_platform_error(IntegrationUnreachableError(locale=locale))
 
 
-def telegram_onboarding_error(exc: TelegramOnboardingError) -> HTTPException:
-    return ApiErrorFactory.to_http_exception(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        code="validation_failed",
-        message=str(exc),
-    )
+def telegram_onboarding_error(exc: TelegramOnboardingError, *, locale: str) -> HTTPException:
+    del exc
+    return ApiErrorFactory.from_platform_error(ValidationFailedError(locale=locale))
 
 
 __all__ = [

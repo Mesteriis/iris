@@ -17,6 +17,7 @@ from src.apps.hypothesis_engine.api.contracts import AIPromptCreate, AIPromptUpd
 from src.apps.hypothesis_engine.api.errors import hypothesis_error_to_http
 from src.core.ai.contracts import AICapability
 from src.core.http.command_executor import execute_command
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["control-plane:admin"])
 
@@ -79,6 +80,7 @@ async def create_ai_prompt(
     payload: AIPromptCreate,
     actor: ControlActorDep,
     commands: AIPromptCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> AIPromptOperatorRead:
     del actor
     return await execute_command(
@@ -86,7 +88,7 @@ async def create_ai_prompt(
         uow=commands.uow,
         presenter=_prompt_operator_presenter,
         post_commit=commands.dispatcher.apply_mutation,
-        translate_error=hypothesis_error_to_http,
+        translate_error=lambda exc: hypothesis_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -96,6 +98,7 @@ async def patch_ai_prompt(
     payload: AIPromptUpdate,
     actor: ControlActorDep,
     commands: AIPromptCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> AIPromptOperatorRead:
     del actor
     return await execute_command(
@@ -103,7 +106,7 @@ async def patch_ai_prompt(
         uow=commands.uow,
         presenter=_prompt_operator_presenter,
         post_commit=commands.dispatcher.apply_mutation,
-        translate_error=hypothesis_error_to_http,
+        translate_error=lambda exc: hypothesis_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -112,6 +115,7 @@ async def activate_ai_prompt(
     prompt_id: int,
     actor: ControlActorDep,
     commands: AIPromptCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> AIPromptOperatorRead:
     del actor
     return await execute_command(
@@ -119,7 +123,7 @@ async def activate_ai_prompt(
         uow=commands.uow,
         presenter=_prompt_operator_presenter,
         post_commit=commands.dispatcher.apply_mutation,
-        translate_error=hypothesis_error_to_http,
+        translate_error=lambda exc: hypothesis_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -132,13 +136,14 @@ async def lift_ai_prompt_veil(
     prompt_id: int,
     actor: ControlActorDep,
     commands: AIPromptCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> AIPromptOperatorRead:
     del actor
     return await execute_command(
         action=lambda: commands.service.lift_prompt_veil(prompt_id),
         uow=commands.uow,
         presenter=_prompt_operator_presenter,
-        translate_error=hypothesis_error_to_http,
+        translate_error=lambda exc: hypothesis_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -151,11 +156,12 @@ async def lower_ai_prompt_veil(
     prompt_id: int,
     actor: ControlActorDep,
     commands: AIPromptCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> AIPromptOperatorRead:
     del actor
     return await execute_command(
         action=lambda: commands.service.lower_prompt_veil(prompt_id),
         uow=commands.uow,
         presenter=_prompt_operator_presenter,
-        translate_error=hypothesis_error_to_http,
+        translate_error=lambda exc: hypothesis_error_to_http(exc, locale=request_locale),
     )

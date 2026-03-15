@@ -21,6 +21,7 @@
 | 0013 | [Async Classes for Orchestration](0013-async-classes-for-orchestration-pure-functions-for-analysis.md) | Async классы для orchestration, pure функции для аналитики |
 | 0014 | [Side Effects Execute Post-Commit](0014-post-commit-side-effects-only.md) | Side effects выполняются только после коммита |
 | 0015 | [Shared AI Platform Layer](0015-ai-platform-layer.md) | Общий AI platform layer с capability-aware provider registry и shared executor |
+| 0016 | [Error Taxonomy And Boundary Localization](0016-error-taxonomy-and-boundary-localization.md) | Unified error registry, typed platform errors and boundary-localized message rendering |
 
 ## Что такое ADR?
 

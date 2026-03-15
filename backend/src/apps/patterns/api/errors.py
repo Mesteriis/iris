@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 
+from src.core.errors import ResourceNotFoundError, ValidationFailedError
 from src.core.http.errors import ApiError, ApiErrorFactory
 
 
@@ -33,33 +34,17 @@ def pattern_error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
     }
 
 
-def pattern_coin_not_found_error(symbol: str) -> HTTPException:
-    return ApiErrorFactory.to_http_exception(
-        status_code=status.HTTP_404_NOT_FOUND,
-        code="resource_not_found",
-        message=f"Coin '{symbol.upper()}' was not found.",
-    )
+def pattern_coin_not_found_error(*, locale: str) -> HTTPException:
+    return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="coin", locale=locale))
 
 
-def pattern_error_to_http(exc: Exception) -> HTTPException | None:
+def pattern_error_to_http(exc: Exception, *, locale: str) -> HTTPException | None:
     if isinstance(exc, PatternFeatureNotFoundError):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_404_NOT_FOUND,
-            code="resource_not_found",
-            message=str(exc),
-        )
+        return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="pattern feature", locale=locale))
     if isinstance(exc, PatternNotFoundError):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_404_NOT_FOUND,
-            code="resource_not_found",
-            message=str(exc),
-        )
+        return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="pattern", locale=locale))
     if isinstance(exc, ValueError):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            code="validation_failed",
-            message=str(exc),
-        )
+        return ApiErrorFactory.from_platform_error(ValidationFailedError(locale=locale))
     return None
 
 

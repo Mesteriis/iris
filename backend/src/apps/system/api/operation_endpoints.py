@@ -6,6 +6,7 @@ from src.apps.system.api.contracts import OperationEventResponse, OperationResul
 from src.apps.system.api.deps import SystemOperationFacadeDep
 from src.apps.system.api.errors import operation_not_found_error, system_error_responses
 from src.apps.system.api.presenters import operation_event_read, operation_result_read, operation_status_read
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["system:operations"])
 
@@ -19,10 +20,11 @@ router = APIRouter(tags=["system:operations"])
 async def read_operation_status(
     operation_id: str,
     facade: SystemOperationFacadeDep,
+    request_locale: RequestLocaleDep,
 ) -> OperationStatusResponse:
     status_row = await facade.get_status(operation_id)
     if status_row is None:
-        raise operation_not_found_error(operation_id)
+        raise operation_not_found_error(operation_id, locale=request_locale)
     return operation_status_read(status_row)
 
 
@@ -35,10 +37,11 @@ async def read_operation_status(
 async def read_operation_result(
     operation_id: str,
     facade: SystemOperationFacadeDep,
+    request_locale: RequestLocaleDep,
 ) -> OperationResultResponse:
     result = await facade.get_result(operation_id)
     if result is None:
-        raise operation_not_found_error(operation_id)
+        raise operation_not_found_error(operation_id, locale=request_locale)
     return operation_result_read(result)
 
 
@@ -51,10 +54,11 @@ async def read_operation_result(
 async def list_operation_events(
     operation_id: str,
     facade: SystemOperationFacadeDep,
+    request_locale: RequestLocaleDep,
 ) -> list[OperationEventResponse]:
     status_row = await facade.get_status(operation_id)
     if status_row is None:
-        raise operation_not_found_error(operation_id)
+        raise operation_not_found_error(operation_id, locale=request_locale)
     return [operation_event_read(item) for item in await facade.list_events(operation_id)]
 
 

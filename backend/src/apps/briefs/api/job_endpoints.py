@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query, status
 
 from src.apps.briefs.api.contracts import BriefJobAcceptedRead
 from src.apps.briefs.api.deps import BriefJobDispatcherDep, BriefQueryDep
+from src.apps.briefs.api.errors import symbol_not_found_error
 from src.apps.briefs.api.presenters import brief_job_accepted_read
 from src.apps.briefs.contracts import BriefKind, build_scope_key
-from src.apps.briefs.language import resolve_effective_language
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["briefs:jobs"])
 
@@ -19,14 +20,13 @@ router = APIRouter(tags=["briefs:jobs"])
 )
 async def run_market_brief_job(
     dispatcher: BriefJobDispatcherDep,
-    language: str | None = Query(default=None),
+    request_locale: RequestLocaleDep,
     force: bool = Query(default=False),
     requested_provider: str | None = Query(default=None),
 ) -> BriefJobAcceptedRead:
-    effective_language = resolve_effective_language({"language": language})
     dispatch_result = await dispatcher.dispatch_generation(
         brief_kind=BriefKind.MARKET,
-        language=effective_language,
+        language=request_locale,
         force=force,
         requested_provider=requested_provider,
     )
@@ -34,7 +34,7 @@ async def run_market_brief_job(
         dispatch_result=dispatch_result,
         brief_kind=BriefKind.MARKET,
         scope_key=build_scope_key(BriefKind.MARKET),
-        language=effective_language,
+        language=request_locale,
     )
 
 
@@ -46,14 +46,13 @@ async def run_market_brief_job(
 )
 async def run_portfolio_brief_job(
     dispatcher: BriefJobDispatcherDep,
-    language: str | None = Query(default=None),
+    request_locale: RequestLocaleDep,
     force: bool = Query(default=False),
     requested_provider: str | None = Query(default=None),
 ) -> BriefJobAcceptedRead:
-    effective_language = resolve_effective_language({"language": language})
     dispatch_result = await dispatcher.dispatch_generation(
         brief_kind=BriefKind.PORTFOLIO,
-        language=effective_language,
+        language=request_locale,
         force=force,
         requested_provider=requested_provider,
     )
@@ -61,7 +60,7 @@ async def run_portfolio_brief_job(
         dispatch_result=dispatch_result,
         brief_kind=BriefKind.PORTFOLIO,
         scope_key=build_scope_key(BriefKind.PORTFOLIO),
-        language=effective_language,
+        language=request_locale,
     )
 
 
@@ -75,18 +74,17 @@ async def run_symbol_brief_job(
     symbol: str,
     dispatcher: BriefJobDispatcherDep,
     service: BriefQueryDep,
-    language: str | None = Query(default=None),
+    request_locale: RequestLocaleDep,
     force: bool = Query(default=False),
     requested_provider: str | None = Query(default=None),
 ) -> BriefJobAcceptedRead:
     normalized_symbol = str(symbol).strip().upper()
     if not await service.symbol_exists(normalized_symbol):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Symbol not found.")
-    effective_language = resolve_effective_language({"language": language})
+        raise symbol_not_found_error(locale=request_locale)
     dispatch_result = await dispatcher.dispatch_generation(
         brief_kind=BriefKind.SYMBOL,
         symbol=normalized_symbol,
-        language=effective_language,
+        language=request_locale,
         force=force,
         requested_provider=requested_provider,
     )
@@ -94,7 +92,7 @@ async def run_symbol_brief_job(
         dispatch_result=dispatch_result,
         brief_kind=BriefKind.SYMBOL,
         scope_key=build_scope_key(BriefKind.SYMBOL, symbol=normalized_symbol),
-        language=effective_language,
+        language=request_locale,
         symbol=normalized_symbol,
     )
 

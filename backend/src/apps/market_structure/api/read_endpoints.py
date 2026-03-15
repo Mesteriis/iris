@@ -22,6 +22,7 @@ from src.apps.market_structure.api.presenters import (
     market_structure_source_read,
     market_structure_webhook_registration_read,
 )
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["market-structure:read"])
 
@@ -53,10 +54,11 @@ async def read_market_structure_sources(service: MarketStructureQueryDep) -> lis
 async def read_market_structure_source_health(
     source_id: int,
     service: MarketStructureQueryDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureSourceHealthRead:
     health = await service.get_source_health_read_by_id(source_id)
     if health is None:
-        raise market_structure_source_not_found_error(source_id)
+        raise market_structure_source_not_found_error(locale=request_locale)
     return market_structure_source_health_read(health)
 
 
@@ -69,16 +71,17 @@ async def read_market_structure_source_health(
 async def read_market_structure_source_webhook(
     source_id: int,
     provisioning: MarketStructureProvisioningDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureWebhookRegistrationRead:
     try:
         registration = await provisioning.service.read_webhook_registration(source_id, include_token=False)
     except Exception as exc:
-        http_error = market_structure_error_to_http(exc)
+        http_error = market_structure_error_to_http(exc, locale=request_locale)
         if http_error is not None:
             raise http_error from exc
         raise
     if registration is None:
-        raise market_structure_source_not_found_error(source_id)
+        raise market_structure_source_not_found_error(locale=request_locale)
     return market_structure_webhook_registration_read(registration)
 
 

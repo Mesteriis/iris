@@ -6,6 +6,7 @@ from src.apps.signals.api.contracts import CoinDecisionRead, InvestmentDecisionR
 from src.apps.signals.api.deps import SignalQueryDep
 from src.apps.signals.api.errors import coin_not_found_error, signal_error_responses
 from src.apps.signals.api.presenters import coin_decision_read, investment_decision_read
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["signals:decisions"])
 
@@ -36,8 +37,12 @@ async def read_top_decisions(
     summary="Read coin decision summary",
     responses=signal_error_responses(404),
 )
-async def read_coin_decision(symbol: str, service: SignalQueryDep) -> CoinDecisionRead:
+async def read_coin_decision(
+    symbol: str,
+    service: SignalQueryDep,
+    request_locale: RequestLocaleDep,
+) -> CoinDecisionRead:
     item = await service.get_coin_decision(symbol)
     if item is None:
-        raise coin_not_found_error(symbol)
+        raise coin_not_found_error(locale=request_locale)
     return coin_decision_read(item)

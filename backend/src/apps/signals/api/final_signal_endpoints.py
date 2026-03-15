@@ -6,6 +6,7 @@ from src.apps.signals.api.contracts import CoinFinalSignalRead, FinalSignalRead
 from src.apps.signals.api.deps import SignalQueryDep
 from src.apps.signals.api.errors import coin_not_found_error, signal_error_responses
 from src.apps.signals.api.presenters import coin_final_signal_read, final_signal_read
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["signals:final-signals"])
 
@@ -36,8 +37,12 @@ async def read_top_final_signals(
     summary="Read coin final signal summary",
     responses=signal_error_responses(404),
 )
-async def read_coin_final_signal(symbol: str, service: SignalQueryDep) -> CoinFinalSignalRead:
+async def read_coin_final_signal(
+    symbol: str,
+    service: SignalQueryDep,
+    request_locale: RequestLocaleDep,
+) -> CoinFinalSignalRead:
     item = await service.get_coin_final_signal(symbol)
     if item is None:
-        raise coin_not_found_error(symbol)
+        raise coin_not_found_error(locale=request_locale)
     return coin_final_signal_read(item)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 
+from src.core.errors import DuplicateRequestError, ResourceNotFoundError, ValidationFailedError
 from src.core.http.errors import ApiError, ApiErrorFactory
 
 
@@ -34,31 +35,24 @@ def market_data_error_responses(*status_codes: int) -> dict[int, dict[str, objec
     }
 
 
-def market_data_error_to_http(exc: Exception) -> HTTPException | None:
+def market_data_coin_not_found_error(*, locale: str) -> HTTPException:
+    return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="coin", locale=locale))
+
+
+def market_data_error_to_http(exc: Exception, *, locale: str) -> HTTPException | None:
     if isinstance(exc, MarketDataCoinNotFoundError):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_404_NOT_FOUND,
-            code="resource_not_found",
-            message=str(exc),
-        )
+        return market_data_coin_not_found_error(locale=locale)
     if isinstance(exc, MarketDataCoinConflictError):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_409_CONFLICT,
-            code="duplicate_request",
-            message=str(exc),
-        )
+        return ApiErrorFactory.from_platform_error(DuplicateRequestError(locale=locale))
     if isinstance(exc, ValueError):
-        return ApiErrorFactory.to_http_exception(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            code="validation_failed",
-            message=str(exc),
-        )
+        return ApiErrorFactory.from_platform_error(ValidationFailedError(locale=locale))
     return None
 
 
 __all__ = [
     "MarketDataCoinConflictError",
     "MarketDataCoinNotFoundError",
+    "market_data_coin_not_found_error",
     "market_data_error_responses",
     "market_data_error_to_http",
 ]

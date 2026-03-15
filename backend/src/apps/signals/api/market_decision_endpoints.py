@@ -7,6 +7,7 @@ from src.apps.signals.api.deps import SignalQueryDep
 from src.apps.signals.api.errors import coin_not_found_error, signal_error_responses
 from src.apps.signals.api.presenters import coin_market_decision_read, market_decision_read
 from src.core.http.cache import PUBLIC_NEAR_REALTIME_CACHE, apply_conditional_cache, cache_not_modified_responses
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["signals:market-decisions"])
 
@@ -42,10 +43,11 @@ async def read_coin_market_decision(
     request: Request,
     response: Response,
     service: SignalQueryDep,
+    request_locale: RequestLocaleDep,
 ) -> CoinMarketDecisionRead | Response:
     item = await service.get_coin_market_decision(symbol)
     if item is None:
-        raise coin_not_found_error(symbol)
+        raise coin_not_found_error(locale=request_locale)
     payload = coin_market_decision_read(item)
     if not_modified := apply_conditional_cache(
         request=request,

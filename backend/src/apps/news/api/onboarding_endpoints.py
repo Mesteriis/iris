@@ -26,6 +26,7 @@ from src.apps.news.api.onboarding_wizard import telegram_wizard_spec
 from src.apps.news.api.presenters import news_source_read, telegram_bulk_subscribe_read
 from src.apps.news.exceptions import TelegramOnboardingError
 from src.core.http.command_executor import execute_command
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["news:onboarding"])
 
@@ -40,11 +41,12 @@ router = APIRouter(tags=["news:onboarding"])
 async def request_telegram_session_code(
     payload: TelegramSessionCodeRequest,
     service: TelegramSessionOnboardingDep,
+    request_locale: RequestLocaleDep,
 ) -> TelegramSessionCodeRequestRead:
     try:
         return await service.request_code(payload)
     except TelegramOnboardingError as exc:
-        raise telegram_request_code_error(exc) from exc
+        raise telegram_request_code_error(exc, locale=request_locale) from exc
 
 
 @router.post(
@@ -57,11 +59,12 @@ async def request_telegram_session_code(
 async def confirm_telegram_session_code(
     payload: TelegramSessionConfirmRequest,
     service: TelegramSessionOnboardingDep,
+    request_locale: RequestLocaleDep,
 ) -> TelegramSessionConfirmRead:
     try:
         return await service.confirm_code(payload)
     except TelegramOnboardingError as exc:
-        raise telegram_onboarding_error(exc) from exc
+        raise telegram_onboarding_error(exc, locale=request_locale) from exc
 
 
 @router.post(
@@ -74,11 +77,12 @@ async def confirm_telegram_session_code(
 async def list_telegram_dialogs(
     payload: TelegramDialogsRequest,
     service: TelegramSessionOnboardingDep,
+    request_locale: RequestLocaleDep,
 ) -> list[TelegramDialogRead]:
     try:
         return await service.list_dialogs(payload)
     except TelegramOnboardingError as exc:
-        raise telegram_onboarding_error(exc) from exc
+        raise telegram_onboarding_error(exc, locale=request_locale) from exc
 
 
 @router.get(
@@ -102,12 +106,13 @@ async def read_telegram_wizard(provisioning: TelegramProvisioningDep) -> Telegra
 async def create_telegram_source_from_dialog(
     payload: TelegramSourceFromDialogCreate,
     provisioning: TelegramProvisioningDep,
+    request_locale: RequestLocaleDep,
 ) -> NewsSourceRead:
     return await execute_command(
         action=lambda: provisioning.service.create_source_from_dialog(payload),
         uow=provisioning.uow,
         presenter=news_source_read,
-        translate_error=news_error_to_http,
+        translate_error=lambda exc: news_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -121,10 +126,11 @@ async def create_telegram_source_from_dialog(
 async def bulk_subscribe_telegram_sources(
     payload: TelegramBulkSubscribeRequest,
     provisioning: TelegramProvisioningDep,
+    request_locale: RequestLocaleDep,
 ) -> TelegramBulkSubscribeRead:
     return await execute_command(
         action=lambda: provisioning.service.bulk_subscribe(payload),
         uow=provisioning.uow,
         presenter=telegram_bulk_subscribe_read,
-        translate_error=news_error_to_http,
+        translate_error=lambda exc: news_error_to_http(exc, locale=request_locale),
     )

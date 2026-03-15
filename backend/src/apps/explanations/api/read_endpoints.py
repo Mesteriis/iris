@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Request, Response
 
 from src.apps.explanations.api.contracts import ExplanationRead
 from src.apps.explanations.api.deps import ExplanationQueryDep
+from src.apps.explanations.api.errors import explanation_not_found_error
 from src.apps.explanations.api.presenters import explanation_read
 from src.apps.explanations.contracts import ExplainKind
-from src.apps.explanations.language import resolve_effective_language
 from src.core.http.cache import PUBLIC_NEAR_REALTIME_CACHE, apply_conditional_cache, cache_not_modified_responses
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["explanations:read"])
 
@@ -23,7 +24,7 @@ async def read_signal_explanation(
     request: Request,
     response: Response,
     service: ExplanationQueryDep,
-    language: str | None = Query(default=None),
+    request_locale: RequestLocaleDep,
 ) -> ExplanationRead | Response:
     return await _read_explanation(
         request=request,
@@ -31,7 +32,7 @@ async def read_signal_explanation(
         service=service,
         explain_kind=ExplainKind.SIGNAL,
         subject_id=int(signal_id),
-        language=resolve_effective_language({"language": language}),
+        locale=request_locale,
     )
 
 
@@ -46,7 +47,7 @@ async def read_decision_explanation(
     request: Request,
     response: Response,
     service: ExplanationQueryDep,
-    language: str | None = Query(default=None),
+    request_locale: RequestLocaleDep,
 ) -> ExplanationRead | Response:
     return await _read_explanation(
         request=request,
@@ -54,7 +55,7 @@ async def read_decision_explanation(
         service=service,
         explain_kind=ExplainKind.DECISION,
         subject_id=int(decision_id),
-        language=resolve_effective_language({"language": language}),
+        locale=request_locale,
     )
 
 
@@ -65,15 +66,15 @@ async def _read_explanation(
     service: ExplanationQueryDep,
     explain_kind: ExplainKind,
     subject_id: int,
-    language: str,
+    locale: str,
 ) -> ExplanationRead | Response:
     item = await service.get_explanation(
         explain_kind=explain_kind,
         subject_id=int(subject_id),
-        language=language,
+        language=locale,
     )
     if item is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Explanation not found.")
+        raise explanation_not_found_error(locale=locale)
     payload = explanation_read(item)
     if not_modified := apply_conditional_cache(
         request=request,

@@ -12,6 +12,7 @@ from src.apps.market_data.api.errors import (
 )
 from src.apps.market_data.api.presenters import coin_read, price_history_read
 from src.core.http.command_executor import execute_command, execute_command_no_content
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["market-data:commands"])
 
@@ -27,6 +28,7 @@ async def create_coin_endpoint(
     payload: CoinCreate,
     commands: MarketDataCommandDep,
     query_service: MarketDataQueryDep,
+    request_locale: RequestLocaleDep,
 ) -> CoinRead:
     async def action() -> CoinRead:
         if await query_service.get_coin_read_by_symbol(payload.symbol) is not None:
@@ -38,7 +40,7 @@ async def create_coin_endpoint(
         action=action,
         uow=commands.uow,
         presenter=coin_read,
-        translate_error=market_data_error_to_http,
+        translate_error=lambda exc: market_data_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -48,7 +50,11 @@ async def create_coin_endpoint(
     summary="Delete a coin",
     responses=market_data_error_responses(404),
 )
-async def delete_coin_endpoint(symbol: str, commands: MarketDataCommandDep) -> None:
+async def delete_coin_endpoint(
+    symbol: str,
+    commands: MarketDataCommandDep,
+    request_locale: RequestLocaleDep,
+) -> None:
     async def action() -> object:
         deleted = await commands.service.delete_coin(symbol)
         if not deleted:
@@ -58,7 +64,7 @@ async def delete_coin_endpoint(symbol: str, commands: MarketDataCommandDep) -> N
     await execute_command_no_content(
         action=action,
         uow=commands.uow,
-        translate_error=market_data_error_to_http,
+        translate_error=lambda exc: market_data_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -74,6 +80,7 @@ async def create_coin_history(
     payload: PriceHistoryCreate,
     commands: MarketDataCommandDep,
     query_service: MarketDataQueryDep,
+    request_locale: RequestLocaleDep,
 ) -> PriceHistoryRead:
     async def action() -> PriceHistoryRead:
         coin = await query_service.get_coin_read_by_symbol(symbol)
@@ -88,5 +95,5 @@ async def create_coin_history(
         action=action,
         uow=commands.uow,
         presenter=price_history_read,
-        translate_error=market_data_error_to_http,
+        translate_error=lambda exc: market_data_error_to_http(exc, locale=request_locale),
     )

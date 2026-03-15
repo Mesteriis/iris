@@ -6,6 +6,7 @@ from src.apps.signals.api.contracts import BacktestSummaryRead, CoinBacktestsRea
 from src.apps.signals.api.deps import SignalQueryDep
 from src.apps.signals.api.errors import coin_not_found_error, signal_error_responses
 from src.apps.signals.api.presenters import backtest_summary_read, coin_backtests_read
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["signals:backtests"])
 
@@ -53,6 +54,7 @@ async def read_top_backtests(
 async def read_coin_backtests(
     symbol: str,
     service: SignalQueryDep,
+    request_locale: RequestLocaleDep,
     timeframe: int | None = Query(default=None),
     signal_type: str | None = Query(default=None),
     lookback_days: int = Query(default=365, ge=30, le=3650),
@@ -66,5 +68,5 @@ async def read_coin_backtests(
         limit=limit,
     )
     if item is None:
-        raise coin_not_found_error(symbol)
+        raise coin_not_found_error(locale=request_locale)
     return coin_backtests_read(item)

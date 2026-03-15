@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 
+from src.core.errors import ResourceNotFoundError
 from src.core.http.errors import ApiError, ApiErrorFactory
 
 
@@ -18,12 +19,8 @@ def signal_error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
     }
 
 
-def coin_not_found_error(symbol: str) -> HTTPException:
-    return ApiErrorFactory.to_http_exception(
-        status_code=status.HTTP_404_NOT_FOUND,
-        code="resource_not_found",
-        message=f"Coin '{symbol.upper()}' was not found.",
-    )
+def coin_not_found_error(*, locale: str) -> HTTPException:
+    return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="coin", locale=locale))
 
 
 __all__ = ["coin_not_found_error", "signal_error_responses"]

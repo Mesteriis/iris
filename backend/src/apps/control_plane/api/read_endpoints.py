@@ -35,6 +35,7 @@ from src.apps.control_plane.api.presenters import (
     topology_graph_read,
     topology_snapshot_read,
 )
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["control-plane:read"])
 
@@ -53,9 +54,10 @@ async def read_consumer_registry(service: EventRegistryQueryDep) -> list[EventCo
 async def read_compatible_consumers(
     event_type: str,
     service: EventRegistryQueryDep,
+    request_locale: RequestLocaleDep,
 ) -> list[CompatibleConsumerRead]:
     if await service.get_event_definition(event_type) is None:
-        raise event_definition_not_found_error(event_type)
+        raise event_definition_not_found_error(locale=request_locale, event_type=event_type)
     return [compatible_consumer_read(item) for item in await service.list_compatible_consumers(event_type)]
 
 
@@ -83,11 +85,12 @@ async def read_drafts(service: TopologyDraftQueryDep) -> list[TopologyDraftRead]
 async def read_draft_diff(
     draft_id: int,
     service: TopologyDraftQueryDep,
+    request_locale: RequestLocaleDep,
 ) -> list[TopologyDiffItemRead]:
     try:
         items = await service.preview_diff(draft_id)
     except Exception as exc:
-        http_error = control_plane_error_to_http(exc)
+        http_error = control_plane_error_to_http(exc, locale=request_locale)
         if http_error is not None:
             raise http_error from exc
         raise

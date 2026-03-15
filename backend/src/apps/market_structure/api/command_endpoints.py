@@ -19,6 +19,7 @@ from src.apps.market_structure.api.presenters import (
     market_structure_webhook_registration_read,
 )
 from src.core.http.command_executor import execute_command, execute_command_no_content
+from src.core.http.deps import RequestLocaleDep
 
 router = APIRouter(tags=["market-structure:commands"])
 
@@ -33,12 +34,13 @@ router = APIRouter(tags=["market-structure:commands"])
 async def create_market_structure_source(
     payload: MarketStructureSourceCreate,
     commands: MarketStructureCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureSourceRead:
     return await execute_command(
         action=lambda: commands.service.create_source(payload),
         uow=commands.uow,
         presenter=market_structure_source_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -52,6 +54,7 @@ async def patch_market_structure_source(
     source_id: int,
     payload: MarketStructureSourceUpdate,
     commands: MarketStructureCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureSourceRead:
     async def action() -> MarketStructureSourceRead:
         updated = await commands.service.update_source(source_id, payload)
@@ -63,7 +66,7 @@ async def patch_market_structure_source(
         action=action,
         uow=commands.uow,
         presenter=market_structure_source_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -76,6 +79,7 @@ async def patch_market_structure_source(
 async def delete_market_structure_source(
     source_id: int,
     commands: MarketStructureCommandDep,
+    request_locale: RequestLocaleDep,
 ) -> None:
     async def action() -> object:
         deleted = await commands.service.delete_source(source_id)
@@ -86,7 +90,7 @@ async def delete_market_structure_source(
     await execute_command_no_content(
         action=action,
         uow=commands.uow,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )
 
 
@@ -99,6 +103,7 @@ async def delete_market_structure_source(
 async def rotate_market_structure_source_webhook_token(
     source_id: int,
     provisioning: MarketStructureProvisioningDep,
+    request_locale: RequestLocaleDep,
 ) -> MarketStructureWebhookRegistrationRead:
     async def action() -> MarketStructureWebhookRegistrationRead:
         registration = await provisioning.service.rotate_webhook_token(source_id)
@@ -110,5 +115,5 @@ async def rotate_market_structure_source_webhook_token(
         action=action,
         uow=provisioning.uow,
         presenter=market_structure_webhook_registration_read,
-        translate_error=market_structure_error_to_http,
+        translate_error=lambda exc: market_structure_error_to_http(exc, locale=request_locale),
     )
