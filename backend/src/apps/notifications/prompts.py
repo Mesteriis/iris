@@ -7,6 +7,15 @@ from src.apps.notifications.constants import (
     DEFAULT_NOTIFICATION_PROMPT_VERSION,
     EVENT_PROMPT_NAMES,
     PROMPT_TASK_NOTIFICATION_HUMANIZE,
+    SUPPORTED_NOTIFICATION_SOURCE_EVENTS,
+)
+from src.core.ai.contracts import AICapability
+from src.core.ai.prompt_policy import (
+    BuiltinPromptDefinition,
+    PromptTaskPolicy,
+    prompt_style_profile,
+    register_builtin_prompt_definitions,
+    register_prompt_task_policy,
 )
 
 NOTIFICATION_OUTPUT_SCHEMA: dict[str, object] = {
@@ -67,6 +76,41 @@ def load_notification_prompt(event_type: str) -> NotificationPrompt:
             "max_message_chars": 280,
         },
     )
+
+
+def _register_notification_prompts() -> None:
+    register_prompt_task_policy(
+        PromptTaskPolicy(
+            capability=AICapability.NOTIFICATION_HUMANIZE,
+            task=PROMPT_TASK_NOTIFICATION_HUMANIZE,
+            editable=False,
+            schema_contract=NOTIFICATION_OUTPUT_SCHEMA,
+        )
+    )
+    prompts_by_name = {"default": load_notification_prompt("")}
+    for event_type in sorted(SUPPORTED_NOTIFICATION_SOURCE_EVENTS):
+        prompt = load_notification_prompt(event_type)
+        prompts_by_name[prompt.name] = prompt
+    register_builtin_prompt_definitions(
+        [
+            BuiltinPromptDefinition(
+                capability=AICapability.NOTIFICATION_HUMANIZE,
+                task=prompt.task,
+                name=prompt.name,
+                version=prompt.version,
+                template=prompt.template,
+                vars_json=dict(prompt.vars_json),
+                schema_contract=NOTIFICATION_OUTPUT_SCHEMA,
+                style_profile=prompt_style_profile(prompt.vars_json),
+                editable=False,
+                source="code",
+            )
+            for prompt in prompts_by_name.values()
+        ]
+    )
+
+
+_register_notification_prompts()
 
 
 __all__ = ["NOTIFICATION_OUTPUT_SCHEMA", "NotificationPrompt", "load_notification_prompt"]

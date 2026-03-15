@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
-from src.apps.explanations.contracts import ExplainKind
+from src.apps.explanations.contracts import ExplainKind, ExplanationGenerationStatus
 from src.apps.explanations.models import AIExplanation
 from src.apps.explanations.services import ExplanationService
 from src.apps.signals.models import InvestmentDecision, Signal
@@ -54,14 +54,14 @@ async def test_explanation_service_persists_signal_artifact(async_db_session, se
         )
         await uow.commit()
 
-    stored = await async_db_session.scalar(select(AIExplanation).where(AIExplanation.id == int(result["explanation_id"])))
+    stored = await async_db_session.scalar(select(AIExplanation).where(AIExplanation.id == int(result.explanation_id)))
     assert stored is not None
     assert stored.explain_kind == "signal"
     assert stored.subject_id == int(signal.id)
     assert stored.language == "en"
     assert stored.context_json["ai_execution"]["context_format"] == "compact_json"
     assert stored.refs_json["subject_id"] == int(signal.id)
-    assert result["status"] == "ok"
+    assert result.status is ExplanationGenerationStatus.OK
 
 
 @pytest.mark.asyncio
@@ -122,8 +122,8 @@ async def test_explanation_service_skips_when_decision_snapshot_is_current(async
             )
         )
     ).scalars().all()
-    assert first["status"] == "ok"
-    assert second["status"] == "skipped"
-    assert second["reason"] == "explanation_already_current"
+    assert first.status is ExplanationGenerationStatus.OK
+    assert second.status is ExplanationGenerationStatus.SKIPPED
+    assert second.reason == "explanation_already_current"
     assert len(rows) == 1
     assert generate.await_count == 1

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
-from src.apps.briefs.contracts import BriefKind
+from src.apps.briefs.contracts import BriefGenerationStatus, BriefKind
 from src.apps.briefs.models import AIBrief
 from src.apps.briefs.services import BriefService
 from src.core.db.uow import SessionUnitOfWork
@@ -47,7 +47,7 @@ async def test_brief_service_persists_symbol_artifact(async_db_session, seeded_a
         )
         await uow.commit()
 
-    stored = await async_db_session.scalar(select(AIBrief).where(AIBrief.id == int(result["brief_id"])))
+    stored = await async_db_session.scalar(select(AIBrief).where(AIBrief.id == int(result.brief_id)))
     assert stored is not None
     assert stored.brief_kind == "symbol"
     assert stored.scope_key == "symbol:BTCUSD_EVT"
@@ -55,7 +55,7 @@ async def test_brief_service_persists_symbol_artifact(async_db_session, seeded_a
     assert stored.title == "BTCUSD_EVT snapshot"
     assert stored.context_json["ai_execution"]["context_format"] == "compact_json"
     assert stored.refs_json["symbol"] == "BTCUSD_EVT"
-    assert result["status"] == "ok"
+    assert result.status is BriefGenerationStatus.OK
 
 
 @pytest.mark.asyncio
@@ -104,9 +104,9 @@ async def test_brief_service_skips_when_snapshot_is_current(async_db_session, se
             )
         )
     ).scalars().all()
-    assert first["status"] == "ok"
-    assert second["status"] == "skipped"
-    assert second["reason"] == "brief_already_current"
-    assert second["brief_id"] == first["brief_id"]
+    assert first.status is BriefGenerationStatus.OK
+    assert second.status is BriefGenerationStatus.SKIPPED
+    assert second.reason == "brief_already_current"
+    assert second.brief_id == first.brief_id
     assert len(rows) == 1
     assert generate.await_count == 1

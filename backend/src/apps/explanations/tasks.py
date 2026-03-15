@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.apps.explanations.contracts import ExplainKind
+from src.apps.explanations.contracts import ExplainKind, ExplanationGenerationResult
 from src.apps.explanations.language import resolve_effective_language
 from src.apps.explanations.services import ExplanationService
 from src.core.db.uow import AsyncUnitOfWork
@@ -45,13 +45,27 @@ async def generate_explanation_job(
                     force=bool(force),
                 )
                 await uow.commit()
-                return result
+                return _explanation_generation_result_payload(result)
 
     return await run_tracked_operation(
         store=OperationStore(),
         operation_id=operation_id,
         action=_action,
     )
+
+
+def _explanation_generation_result_payload(result: ExplanationGenerationResult) -> dict[str, object]:
+    return {
+        "status": result.status.value,
+        "reason": result.reason,
+        "explanation_id": int(result.explanation_id),
+        "explain_kind": result.explain_kind.value,
+        "subject_id": int(result.subject_id),
+        "language": result.language,
+        "symbol": result.symbol,
+        "generated_at": result.generated_at.isoformat() if result.generated_at is not None else None,
+        "subject_updated_at": result.subject_updated_at.isoformat() if result.subject_updated_at is not None else None,
+    }
 
 
 __all__ = ["generate_explanation_job"]

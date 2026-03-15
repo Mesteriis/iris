@@ -4,14 +4,13 @@ from typing import Any
 
 from src.apps.hypothesis_engine.constants import PROVIDER_HEURISTIC
 from src.apps.hypothesis_engine.exceptions import UnsupportedLLMProviderError
-from src.apps.hypothesis_engine.providers.base import LLMProvider
 from src.apps.hypothesis_engine.providers.heuristic import HeuristicProvider
 from src.apps.hypothesis_engine.providers.local_http import LocalHTTPProvider
 from src.apps.hypothesis_engine.providers.openai_like import OpenAILikeProvider
 from src.core.settings import get_settings
 
 
-def create_provider(name: str, *, model: str | None = None, config: dict[str, Any] | None = None) -> LLMProvider:
+def create_provider(name: str, *, model: str | None = None, config: dict[str, Any] | None = None) -> Any:
     effective_name = str(name or PROVIDER_HEURISTIC).strip().lower()
     options = dict(config or {})
     if effective_name == PROVIDER_HEURISTIC:
@@ -35,7 +34,6 @@ def create_provider(name: str, *, model: str | None = None, config: dict[str, An
 
 
 __all__ = [
-    "LLMProvider",
     "HeuristicProvider",
     "LocalHTTPProvider",
     "OpenAILikeProvider",

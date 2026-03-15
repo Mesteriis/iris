@@ -106,9 +106,10 @@ async def test_local_http_provider_parses_json(monkeypatch) -> None:
         async def __aexit__(self, exc_type, exc, tb) -> bool:
             return False
 
-        async def post(self, url: str, *, json: dict[str, object]):
+        async def post(self, url: str, *, json: dict[str, object], headers: dict[str, str]):
             assert url.endswith("/api/generate")
             assert json["model"] == "local-model"
+            assert headers["Content-Type"] == "application/json"
             return FakeResponse()
 
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)

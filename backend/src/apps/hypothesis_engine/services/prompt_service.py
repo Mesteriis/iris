@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.apps.ai_prompt_registry import ensure_ai_prompt_policy_loaded
 from src.apps.hypothesis_engine.constants import FORBIDDEN_PROMPT_INFRA_KEYS
 from src.apps.hypothesis_engine.exceptions import InvalidPromptPayloadError, PromptNotFoundError
 from src.apps.hypothesis_engine.models import AIPrompt
@@ -13,6 +14,7 @@ from src.core.db.uow import BaseAsyncUnitOfWork
 
 class PromptService:
     def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        ensure_ai_prompt_policy_loaded()
         self._uow = uow
         self._repo = HypothesisRepository(uow.session)
         self._queries = HypothesisQueryService(uow.session)

@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi.encoders import jsonable_encoder
 
-from src.apps.explanations.contracts import ExplainKind
+from src.apps.explanations.contracts import ExplainKind, ExplanationGenerationResult, ExplanationGenerationStatus
 from src.apps.explanations.language import resolve_effective_language
 from src.apps.explanations.models import AIExplanation
 from src.apps.explanations.query_services import ExplanationQueryService
@@ -35,7 +35,7 @@ class ExplanationService(PersistenceComponent):
         language: str | None = None,
         requested_provider: str | None = None,
         force: bool = False,
-    ) -> dict[str, Any]:
+    ) -> ExplanationGenerationResult:
         bundle = await self._load_context_bundle(explain_kind=explain_kind, subject_id=subject_id)
         context = dict(bundle.context)
         if language is not None and str(language).strip():
@@ -57,14 +57,17 @@ class ExplanationService(PersistenceComponent):
                 language=effective_language,
                 explanation_id=int(existing.id),
             )
-            return {
-                "status": "skipped",
-                "reason": "explanation_already_current",
-                "explanation_id": int(existing.id),
-                "explain_kind": explain_kind.value,
-                "subject_id": int(subject_id),
-                "language": effective_language,
-            }
+            return ExplanationGenerationResult(
+                status=ExplanationGenerationStatus.SKIPPED,
+                reason="explanation_already_current",
+                explanation_id=int(existing.id),
+                explain_kind=explain_kind,
+                subject_id=int(subject_id),
+                language=effective_language,
+                symbol=bundle.symbol,
+                generated_at=existing.updated_at,
+                subject_updated_at=existing.subject_updated_at,
+            )
 
         generated = await self._generator.generate(
             bundle=bundle,
@@ -109,7 +112,7 @@ class ExplanationService(PersistenceComponent):
                 "subject_updated_at": bundle.subject_updated_at,
             },
         )
-        return self._result_payload(item=item)
+        return self._result_contract(item=item)
 
     async def _load_context_bundle(self, *, explain_kind: ExplainKind, subject_id: int) -> ExplanationContextBundle:
         if explain_kind is ExplainKind.SIGNAL:
@@ -122,17 +125,17 @@ class ExplanationService(PersistenceComponent):
             raise LookupError(f"Subject '{explain_kind.value}:{int(subject_id)}' is not available.")
         return bundle
 
-    def _result_payload(self, *, item: AIExplanation) -> dict[str, Any]:
-        return {
-            "status": "ok",
-            "explanation_id": int(item.id),
-            "explain_kind": str(item.explain_kind),
-            "subject_id": int(item.subject_id),
-            "language": str(item.language),
-            "symbol": str(item.symbol) if item.symbol is not None else None,
-            "generated_at": item.updated_at.isoformat(),
-            "subject_updated_at": item.subject_updated_at.isoformat() if item.subject_updated_at is not None else None,
-        }
+    def _result_contract(self, *, item: AIExplanation) -> ExplanationGenerationResult:
+        return ExplanationGenerationResult(
+            status=ExplanationGenerationStatus.OK,
+            explanation_id=int(item.id),
+            explain_kind=ExplainKind(str(item.explain_kind)),
+            subject_id=int(item.subject_id),
+            language=str(item.language),
+            symbol=str(item.symbol) if item.symbol is not None else None,
+            generated_at=item.updated_at,
+            subject_updated_at=item.subject_updated_at,
+        )
 
 
 def _same_subject_snapshot(left, right) -> bool:

@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi.encoders import jsonable_encoder
 
-from src.apps.briefs.contracts import BriefKind, build_scope_key
+from src.apps.briefs.contracts import BriefGenerationResult, BriefGenerationStatus, BriefKind
 from src.apps.briefs.language import resolve_effective_language
 from src.apps.briefs.models import AIBrief
 from src.apps.briefs.query_services import BriefQueryService
@@ -36,7 +36,7 @@ class BriefService(PersistenceComponent):
         symbol: str | None = None,
         requested_provider: str | None = None,
         force: bool = False,
-    ) -> dict[str, Any]:
+    ) -> BriefGenerationResult:
         bundle = await self._load_context_bundle(brief_kind=brief_kind, symbol=symbol)
         context = dict(bundle.context)
         if language is not None and str(language).strip():
@@ -58,14 +58,17 @@ class BriefService(PersistenceComponent):
                 language=effective_language,
                 brief_id=int(existing.id),
             )
-            return {
-                "status": "skipped",
-                "reason": "brief_already_current",
-                "brief_id": int(existing.id),
-                "brief_kind": brief_kind.value,
-                "scope_key": bundle.scope_key,
-                "language": effective_language,
-            }
+            return BriefGenerationResult(
+                status=BriefGenerationStatus.SKIPPED,
+                reason="brief_already_current",
+                brief_id=int(existing.id),
+                brief_kind=brief_kind,
+                scope_key=bundle.scope_key,
+                language=effective_language,
+                symbol=bundle.symbol,
+                generated_at=existing.updated_at,
+                source_updated_at=existing.source_updated_at,
+            )
 
         generated = await self._generator.generate(
             bundle=bundle,
@@ -109,7 +112,7 @@ class BriefService(PersistenceComponent):
                 "source_updated_at": bundle.source_updated_at,
             },
         )
-        return self._result_payload(item=item)
+        return self._result_contract(item=item)
 
     async def _load_context_bundle(self, *, brief_kind: BriefKind, symbol: str | None) -> BriefContextBundle:
         if brief_kind is BriefKind.MARKET:
@@ -123,17 +126,17 @@ class BriefService(PersistenceComponent):
             return bundle
         raise ValueError(f"Unsupported brief kind '{brief_kind.value}'.")
 
-    def _result_payload(self, *, item: AIBrief) -> dict[str, Any]:
-        return {
-            "status": "ok",
-            "brief_id": int(item.id),
-            "brief_kind": str(item.brief_kind),
-            "scope_key": str(item.scope_key),
-            "language": str(item.language),
-            "symbol": str(item.symbol) if item.symbol is not None else None,
-            "generated_at": item.updated_at.isoformat(),
-            "source_updated_at": item.source_updated_at.isoformat() if item.source_updated_at is not None else None,
-        }
+    def _result_contract(self, *, item: AIBrief) -> BriefGenerationResult:
+        return BriefGenerationResult(
+            status=BriefGenerationStatus.OK,
+            brief_id=int(item.id),
+            brief_kind=BriefKind(str(item.brief_kind)),
+            scope_key=str(item.scope_key),
+            language=str(item.language),
+            symbol=str(item.symbol) if item.symbol is not None else None,
+            generated_at=item.updated_at,
+            source_updated_at=item.source_updated_at,
+        )
 
 
 def _same_source_snapshot(left, right) -> bool:

@@ -3,6 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.apps.briefs.contracts import BriefKind
+from src.core.ai.contracts import AICapability
+from src.core.ai.prompt_policy import (
+    BuiltinPromptDefinition,
+    PromptTaskPolicy,
+    prompt_style_profile,
+    register_builtin_prompt_definitions,
+    register_prompt_task_policy,
+)
 
 PROMPT_TASK_BRIEF_GENERATE = "brief_generate"
 DEFAULT_BRIEF_PROMPT_VERSION = 1
@@ -71,6 +79,38 @@ def load_brief_prompt(brief_kind: BriefKind) -> BriefPrompt:
             "max_bullets": 5,
         },
     )
+
+
+def _register_brief_prompts() -> None:
+    register_prompt_task_policy(
+        PromptTaskPolicy(
+            capability=AICapability.BRIEF_GENERATE,
+            task=PROMPT_TASK_BRIEF_GENERATE,
+            editable=False,
+            schema_contract=BRIEF_OUTPUT_SCHEMA,
+        )
+    )
+    register_builtin_prompt_definitions(
+        [
+            BuiltinPromptDefinition(
+                capability=AICapability.BRIEF_GENERATE,
+                task=prompt.task,
+                name=prompt.name,
+                version=prompt.version,
+                template=prompt.template,
+                vars_json=dict(prompt.vars_json),
+                schema_contract=BRIEF_OUTPUT_SCHEMA,
+                style_profile=prompt_style_profile(prompt.vars_json),
+                editable=False,
+                source="code",
+            )
+            for brief_kind in BriefKind
+            for prompt in [load_brief_prompt(brief_kind)]
+        ]
+    )
+
+
+_register_brief_prompts()
 
 
 __all__ = [

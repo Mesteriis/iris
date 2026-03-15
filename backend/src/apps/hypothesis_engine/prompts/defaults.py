@@ -10,6 +10,14 @@ from src.apps.hypothesis_engine.constants import (
     EVENT_PROMPT_NAMES,
     PROMPT_TASK_HYPOTHESIS_GENERATION,
 )
+from src.core.ai.contracts import AICapability
+from src.core.ai.prompt_policy import (
+    BuiltinPromptDefinition,
+    PromptTaskPolicy,
+    prompt_style_profile,
+    register_builtin_prompt_definitions,
+    register_prompt_task_policy,
+)
 
 HYPOTHESIS_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -63,3 +71,34 @@ for event_type, prompt_name in EVENT_PROMPT_NAMES.items():
 
 def get_fallback_prompt(name: str) -> dict[str, Any]:
     return dict(DEFAULT_PROMPTS.get(name, DEFAULT_PROMPTS[DEFAULT_PROMPT_NAME]))
+
+
+def _register_hypothesis_prompt_defaults() -> None:
+    register_prompt_task_policy(
+        PromptTaskPolicy(
+            capability=AICapability.HYPOTHESIS_GENERATE,
+            task=PROMPT_TASK_HYPOTHESIS_GENERATION,
+            editable=True,
+            schema_contract=HYPOTHESIS_OUTPUT_SCHEMA,
+        )
+    )
+    register_builtin_prompt_definitions(
+        [
+            BuiltinPromptDefinition(
+                capability=AICapability.HYPOTHESIS_GENERATE,
+                task=PROMPT_TASK_HYPOTHESIS_GENERATION,
+                name=str(payload["name"]),
+                version=int(payload["version"]),
+                template=str(payload["template"]),
+                vars_json=dict(payload.get("vars_json") or {}),
+                schema_contract=HYPOTHESIS_OUTPUT_SCHEMA,
+                style_profile=prompt_style_profile(dict(payload.get("vars_json") or {})),
+                editable=True,
+                source="fallback",
+            )
+            for payload in DEFAULT_PROMPTS.values()
+        ]
+    )
+
+
+_register_hypothesis_prompt_defaults()

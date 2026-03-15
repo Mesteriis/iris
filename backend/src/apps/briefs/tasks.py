@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.apps.briefs.contracts import BriefKind, build_scope_key
+from src.apps.briefs.contracts import BriefGenerationResult, BriefKind, build_scope_key
 from src.apps.briefs.language import resolve_effective_language
 from src.apps.briefs.services import BriefService
 from src.core.db.uow import AsyncUnitOfWork
@@ -47,13 +47,27 @@ async def generate_brief_job(
                     force=bool(force),
                 )
                 await uow.commit()
-                return result
+                return _brief_generation_result_payload(result)
 
     return await run_tracked_operation(
         store=OperationStore(),
         operation_id=operation_id,
         action=_action,
     )
+
+
+def _brief_generation_result_payload(result: BriefGenerationResult) -> dict[str, object]:
+    return {
+        "status": result.status.value,
+        "reason": result.reason,
+        "brief_id": int(result.brief_id),
+        "brief_kind": result.brief_kind.value,
+        "scope_key": result.scope_key,
+        "language": result.language,
+        "symbol": result.symbol,
+        "generated_at": result.generated_at.isoformat() if result.generated_at is not None else None,
+        "source_updated_at": result.source_updated_at.isoformat() if result.source_updated_at is not None else None,
+    }
 
 
 __all__ = ["generate_brief_job"]

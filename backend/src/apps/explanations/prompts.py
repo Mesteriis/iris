@@ -3,6 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.apps.explanations.contracts import ExplainKind
+from src.core.ai.contracts import AICapability
+from src.core.ai.prompt_policy import (
+    BuiltinPromptDefinition,
+    PromptTaskPolicy,
+    prompt_style_profile,
+    register_builtin_prompt_definitions,
+    register_prompt_task_policy,
+)
 
 PROMPT_TASK_EXPLAIN_GENERATE = "explain_generate"
 DEFAULT_EXPLAIN_PROMPT_VERSION = 1
@@ -68,6 +76,38 @@ def load_explanation_prompt(explain_kind: ExplainKind) -> ExplanationPrompt:
             "max_bullets": 5,
         },
     )
+
+
+def _register_explanation_prompts() -> None:
+    register_prompt_task_policy(
+        PromptTaskPolicy(
+            capability=AICapability.EXPLAIN_GENERATE,
+            task=PROMPT_TASK_EXPLAIN_GENERATE,
+            editable=False,
+            schema_contract=EXPLAIN_OUTPUT_SCHEMA,
+        )
+    )
+    register_builtin_prompt_definitions(
+        [
+            BuiltinPromptDefinition(
+                capability=AICapability.EXPLAIN_GENERATE,
+                task=prompt.task,
+                name=prompt.name,
+                version=prompt.version,
+                template=prompt.template,
+                vars_json=dict(prompt.vars_json),
+                schema_contract=EXPLAIN_OUTPUT_SCHEMA,
+                style_profile=prompt_style_profile(prompt.vars_json),
+                editable=False,
+                source="code",
+            )
+            for explain_kind in ExplainKind
+            for prompt in [load_explanation_prompt(explain_kind)]
+        ]
+    )
+
+
+_register_explanation_prompts()
 
 
 __all__ = [

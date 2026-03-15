@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.apps.ai_prompt_registry import ensure_ai_prompt_policy_loaded
 from src.apps.control_plane.api.contracts import (
     AICapabilityOperatorRead,
     AIPromptOperatorRead,
@@ -226,6 +227,7 @@ def ai_capability_operator_read(source: Any) -> AICapabilityOperatorRead:
 
 
 def ai_prompt_operator_read(source: Any) -> AIPromptOperatorRead:
+    ensure_ai_prompt_policy_loaded()
     is_mapping = isinstance(source, dict)
     task = source.get("task", "") if is_mapping else source.task
     vars_json = thaw_json_value(source.get("vars_json", {}) if is_mapping else source.vars_json)

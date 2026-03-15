@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.apps.ai_prompt_registry import ensure_ai_prompt_policy_loaded
 from src.apps.control_plane.contracts import (
     TopologyDiffItem,
 )
@@ -653,6 +654,7 @@ class AIOperatorQueryService(AsyncQueryService):
         task: str | None = None,
         editable: bool | None = None,
     ) -> tuple[AIPromptOperatorReadModel, ...]:
+        ensure_ai_prompt_policy_loaded()
         self._log_debug(
             "query.list_ai_prompts",
             mode="admin",

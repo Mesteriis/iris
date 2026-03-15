@@ -10,8 +10,8 @@ from src.apps.hypothesis_engine.constants import (
     PROVIDER_HEURISTIC,
 )
 from src.apps.hypothesis_engine.contracts import HypothesisGenerationOutput
+from src.apps.hypothesis_engine.degraded import build_hypothesis_degraded_output
 from src.apps.hypothesis_engine.prompts import HYPOTHESIS_OUTPUT_SCHEMA, PromptLoader
-from src.apps.hypothesis_engine.providers.heuristic import HeuristicProvider
 from src.core.ai import (
     AICapability,
     AIExecutionRequest,
@@ -107,11 +107,7 @@ class ReasoningService:
         effective_language: str,
     ) -> dict[str, Any]:
         del capability, task, requested_language, effective_language
-        return await HeuristicProvider(model="rule-based").json_chat(
-            "Return deterministic JSON only.",
-            vars=context,
-            schema=HYPOTHESIS_OUTPUT_SCHEMA,
-        )
+        return build_hypothesis_degraded_output(context)
 
     def _resolve_requested_language(self, ctx: dict[str, Any]) -> str | None:
         for key in ("language", "locale"):
