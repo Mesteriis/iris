@@ -2,7 +2,7 @@
 name = "iris-backend"
 version = "0.1.0"
 description = "IRIS backend service"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.14.2,<3.15"
 dependencies = [
     "fastapi>=0.122.0,<1.0.0",
     "uvicorn[standard]>=0.30.0,<1.0.0",
@@ -43,7 +43,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 120
 src = ["src", "tests"]
 extend-exclude = ["src/migrations"]
@@ -52,7 +52,7 @@ extend-exclude = ["src/migrations"]
 select = ["E9", "F811", "F821", "F822", "F823", "B", "I", "UP", "SIM", "C4", "RET", "RUF", "PERF"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.14"
 strict = true
 ignore_missing_imports = true
 explicit_package_bases = true

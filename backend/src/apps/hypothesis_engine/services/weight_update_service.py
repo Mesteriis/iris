@@ -6,11 +6,11 @@ from src.apps.hypothesis_engine.constants import (
     WEIGHT_POSTERIOR_BASELINE,
     WEIGHT_SCOPE_HYPOTHESIS_TYPE,
 )
+from src.apps.hypothesis_engine.contracts import HypothesisPendingEvent, WeightUpdateResult
 from src.apps.hypothesis_engine.models import AIWeight
 from src.apps.hypothesis_engine.repositories import HypothesisRepository
 from src.apps.market_data.domain import utc_now
 from src.core.db.uow import BaseAsyncUnitOfWork
-from src.runtime.streams.publisher import publish_event
 
 
 def posterior_mean(alpha: float, beta: float) -> float:
@@ -23,20 +23,15 @@ class WeightUpdateService:
         self._uow = uow
         self._repo = HypothesisRepository(uow.session)
 
-    async def apply(self, eval_id: int) -> None:
+    async def apply(self, eval_id: int) -> WeightUpdateResult:
         evaluation = await self._repo.get_eval_for_update(eval_id)
         if evaluation is None or evaluation.hypothesis is None:
-            return
-        event = await self.apply_to_evaluation(evaluation)
-        if event is not None:
-            event_type, payload = event
-            self._uow.add_after_commit_action(
-                lambda event_type=event_type, payload=dict(payload): publish_event(event_type, payload)
-            )
+            return WeightUpdateResult(updated=False)
+        return await self.apply_to_evaluation(evaluation)
 
-    async def apply_to_evaluation(self, evaluation) -> tuple[str, dict[str, object]] | None:
+    async def apply_to_evaluation(self, evaluation) -> WeightUpdateResult:
         if evaluation.hypothesis is None:
-            return None
+            return WeightUpdateResult(updated=False)
         hypothesis = evaluation.hypothesis
         weight = await self._repo.get_weight_for_update(scope=WEIGHT_SCOPE_HYPOTHESIS_TYPE, key=hypothesis.hypothesis_type)
         if weight is None:
@@ -52,17 +47,22 @@ class WeightUpdateService:
         weight.beta = float(weight.beta) * WEIGHT_DECAY + (0.0 if evaluation.success else 1.0)
         weight.updated_at = utc_now()
         await self._uow.flush()
-        return (
-            AI_EVENT_WEIGHTS_UPDATED,
-            {
-                "coin_id": int(hypothesis.coin_id),
-                "timeframe": int(hypothesis.timeframe),
-                "timestamp": utc_now(),
-                "hypothesis_id": int(hypothesis.id),
-                "scope": WEIGHT_SCOPE_HYPOTHESIS_TYPE,
-                "key": hypothesis.hypothesis_type,
-                "alpha": float(weight.alpha),
-                "beta": float(weight.beta),
-                "posterior_mean": posterior_mean(float(weight.alpha), float(weight.beta)),
-            },
+        return WeightUpdateResult(
+            updated=True,
+            pending_events=(
+                HypothesisPendingEvent(
+                    event_type=AI_EVENT_WEIGHTS_UPDATED,
+                    payload={
+                        "coin_id": int(hypothesis.coin_id),
+                        "timeframe": int(hypothesis.timeframe),
+                        "timestamp": utc_now(),
+                        "hypothesis_id": int(hypothesis.id),
+                        "scope": WEIGHT_SCOPE_HYPOTHESIS_TYPE,
+                        "key": hypothesis.hypothesis_type,
+                        "alpha": float(weight.alpha),
+                        "beta": float(weight.beta),
+                        "posterior_mean": posterior_mean(float(weight.alpha), float(weight.beta)),
+                    },
+                ),
+            ),
         )

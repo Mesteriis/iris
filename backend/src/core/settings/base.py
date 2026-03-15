@@ -1,5 +1,5 @@
 import json
-from enum import Enum
+from enum import StrEnum
 from functools import lru_cache
 from typing import Annotated, Any
 
@@ -7,7 +7,7 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
-class AppLanguage(str, Enum):
+class AppLanguage(StrEnum):
     RU = "ru"
     EN = "en"
     ES = "es"
@@ -16,6 +16,7 @@ class AppLanguage(str, Enum):
 
 class Settings(BaseSettings):
     app_name: str = "IRIS"
+    app_version: str = Field(default="2026.03.15", alias="IRIS_VERSION")
     app_env: str = "development"
     language: AppLanguage = Field(default=AppLanguage.EN, alias="IRIS_LANGUAGE")
     api_host: str = "0.0.0.0"
@@ -25,6 +26,21 @@ class Settings(BaseSettings):
     api_launch_mode: str = Field(default="full", alias="IRIS_API_LAUNCH_MODE")
     api_deployment_profile: str = Field(default="platform_full", alias="IRIS_API_DEPLOYMENT_PROFILE")
     api_operation_ttl_seconds: int = Field(default=86400, alias="IRIS_API_OPERATION_TTL_SECONDS")
+    ha_instance_id: str = Field(default="iris-main-001", alias="IRIS_HA_INSTANCE_ID")
+    ha_display_name: str = Field(default="IRIS Main", alias="IRIS_HA_DISPLAY_NAME")
+    ha_protocol_version: int = Field(default=1, alias="IRIS_HA_PROTOCOL_VERSION")
+    ha_minimum_integration_version: str = Field(
+        default="0.1.0",
+        alias="IRIS_HA_MINIMUM_INTEGRATION_VERSION",
+    )
+    ha_recommended_integration_version: str = Field(
+        default="0.1.0",
+        alias="IRIS_HA_RECOMMENDED_INTEGRATION_VERSION",
+    )
+    ha_websocket_session_queue_depth: int = Field(
+        default=1000,
+        alias="IRIS_HA_WEBSOCKET_SESSION_QUEUE_DEPTH",
+    )
     database_url: str = Field(
         default="postgresql+psycopg://iris:iris@db:5432/iris",
         alias="DATABASE_URL",

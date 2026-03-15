@@ -9,7 +9,7 @@ from src.apps.hypothesis_engine.constants import (
     EVENT_PROMPT_NAMES,
     PROVIDER_HEURISTIC,
 )
-from src.apps.hypothesis_engine.contracts import HypothesisGenerationOutput
+from src.apps.hypothesis_engine.contracts import HypothesisGenerationOutput, HypothesisReasoningResult
 from src.apps.hypothesis_engine.degraded import build_hypothesis_degraded_output
 from src.apps.hypothesis_engine.prompts import HYPOTHESIS_OUTPUT_SCHEMA, PromptLoader
 from src.core.ai import (
@@ -27,7 +27,7 @@ class ReasoningService:
         self._loader = prompt_loader
         self._executor = executor or AIExecutor()
 
-    async def generate(self, ctx: dict[str, Any]) -> dict[str, Any]:
+    async def generate(self, ctx: dict[str, Any]) -> HypothesisReasoningResult:
         event_type = str(ctx.get("event_type") or "")
         prompt_name = str(ctx.get("prompt_name") or EVENT_PROMPT_NAMES.get(event_type, DEFAULT_PROMPT_NAME))
         prompt = await self._loader.load(prompt_name)
@@ -71,32 +71,18 @@ class ReasoningService:
         assets = [str(asset) for asset in response.get("assets", []) if str(asset).strip()]
         if not assets and ctx.get("symbol") is not None:
             assets = [str(ctx["symbol"])]
-        return {
-            "type": str(response.get("type") or "event_follow_through"),
-            "confidence": max(0.0, min(float(response.get("confidence") or 0.0), 1.0)),
-            "horizon_min": max(int(response.get("horizon_min") or DEFAULT_HYPOTHESIS_HORIZON_MIN), 1),
-            "direction": str(response.get("direction") or "neutral"),
-            "target_move": max(float(response.get("target_move") or DEFAULT_TARGET_MOVE), 0.001),
-            "summary": str(response.get("summary") or "Event-triggered hypothesis generated."),
-            "assets": assets,
-            "explain": str(response.get("explain") or response.get("summary") or "No explanation provided."),
-            "kind": str(response.get("kind") or "explain"),
-            "provider": str(metadata.actual_provider or PROVIDER_HEURISTIC),
-            "requested_provider": metadata.requested_provider,
-            "model": metadata.model,
-            "requested_language": metadata.requested_language,
-            "effective_language": metadata.effective_language,
-            "context_format": metadata.context_format.value,
-            "context_record_count": metadata.context_record_count,
-            "context_bytes": metadata.context_bytes,
-            "context_token_estimate": metadata.context_token_estimate,
-            "fallback_used": metadata.fallback_used,
-            "degraded_strategy": metadata.degraded_strategy,
-            "latency_ms": metadata.latency_ms,
-            "validation_status": metadata.validation_status.value,
-            "prompt_name": metadata.prompt_name,
-            "prompt_version": int(metadata.prompt_version),
-        }
+        return HypothesisReasoningResult(
+            hypothesis_type=str(response.get("type") or "event_follow_through"),
+            confidence=max(0.0, min(float(response.get("confidence") or 0.0), 1.0)),
+            horizon_min=max(int(response.get("horizon_min") or DEFAULT_HYPOTHESIS_HORIZON_MIN), 1),
+            direction=str(response.get("direction") or "neutral"),
+            target_move=max(float(response.get("target_move") or DEFAULT_TARGET_MOVE), 0.001),
+            summary=str(response.get("summary") or "Event-triggered hypothesis generated."),
+            assets=tuple(assets),
+            explain=str(response.get("explain") or response.get("summary") or "No explanation provided."),
+            kind=str(response.get("kind") or "explain"),
+            metadata=metadata,
+        )
 
     async def _run_heuristic(
         self,

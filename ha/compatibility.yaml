@@ -1,0 +1,13 @@
+protocol_version: 1
+
+backend:
+  repository: "git@github.com:Mesteriis/iris.git"
+  minimum_version: "2026.03.15"
+  recommended_version: "2026.03.15"
+
+integration:
+  repository: "git@github.com:Mesteriis/ha-integration-iris.git"
+  path: "ha/integration"
+  minimum_version: "0.1.0"
+  recommended_version: "0.1.0"
+  pinned_commit: "abd8206f66bff63b5f410b7e901f80b78dddbd9e"

@@ -4,6 +4,7 @@ __all__ = [
     "cross_market",
     "explanations",
     "indicators",
+    "integrations",
     "market_data",
     "market_structure",
     "news",

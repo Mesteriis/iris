@@ -26,6 +26,7 @@ async def create_ai_prompt(
         action=lambda: commands.service.create_prompt(payload),
         uow=commands.uow,
         presenter=prompt_read,
+        post_commit=commands.dispatcher.apply_mutation,
         translate_error=hypothesis_error_to_http,
     )
 
@@ -45,6 +46,7 @@ async def patch_ai_prompt(
         action=lambda: commands.service.update_prompt(prompt_id, payload),
         uow=commands.uow,
         presenter=prompt_read,
+        post_commit=commands.dispatcher.apply_mutation,
         translate_error=hypothesis_error_to_http,
     )
 
@@ -63,5 +65,6 @@ async def activate_ai_prompt(
         action=lambda: commands.service.activate_prompt(prompt_id),
         uow=commands.uow,
         presenter=prompt_read,
+        post_commit=commands.dispatcher.apply_mutation,
         translate_error=hypothesis_error_to_http,
     )

@@ -130,6 +130,43 @@ When documents disagree, prefer this order:
 3. Current execution and audit docs in `docs/iso/`
 4. Historical reviews in `docs/reviews/`
 
+## Home Assistant Integration Repo
+
+The Home Assistant custom integration is maintained as a separate repository rooted at `ha/integration/` in this workspace and mirrored to:
+
+- `git@github.com:Mesteriis/ha-integration-iris.git`
+
+Compatibility metadata lives in [`ha/compatibility.yaml`](ha/compatibility.yaml). The current contract is:
+
+- protocol version `1`
+- backend `2026.03.15+`
+- integration `0.1.0`
+- pinned integration commit `31f5626a18c62c5264fab0c74efafe28c79ae173`
+
+Submodule workflow:
+
+```bash
+git clone --recurse-submodules git@github.com:Mesteriis/iris.git
+git submodule update --init --recursive
+git submodule update --remote ha/integration
+```
+
+Release/update workflow:
+
+```bash
+python scripts/update_ha_integration_submodule.py --ref main
+python scripts/check_ha_integration_contract.py
+```
+
+Local integration workflow:
+
+```bash
+cd ha/integration
+uv sync --group dev
+uv run ruff check custom_components tests
+uv run pytest tests -q
+```
+
 ## Governance
 
 The repository already enforces several architecture guardrails in CI:

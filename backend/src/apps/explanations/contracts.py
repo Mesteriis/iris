@@ -6,6 +6,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
+from src.core.ai.telemetry import AIExecutionMetadata
+
 
 class ExplainKind(StrEnum):
     SIGNAL = "signal"
@@ -38,8 +40,17 @@ class ExplanationGenerationResult:
     subject_updated_at: datetime | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ExplanationArtifactResult:
+    title: str
+    explanation: str
+    bullets: tuple[str, ...]
+    metadata: AIExecutionMetadata
+
+
 __all__ = [
     "ExplainKind",
+    "ExplanationArtifactResult",
     "ExplanationGenerationOutput",
     "ExplanationGenerationResult",
     "ExplanationGenerationStatus",

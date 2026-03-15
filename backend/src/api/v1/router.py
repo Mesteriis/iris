@@ -7,6 +7,7 @@ from src.apps.control_plane.api.router import build_router as build_control_plan
 from src.apps.explanations.api.router import build_router as build_explanations_router
 from src.apps.hypothesis_engine.api.router import build_router as build_hypothesis_router
 from src.apps.indicators.api.router import build_router as build_indicators_router
+from src.apps.integrations.ha.api.router import build_router as build_ha_router
 from src.apps.market_data.api.router import build_router as build_market_data_router
 from src.apps.market_structure.api.router import build_router as build_market_structure_router
 from src.apps.news.api.router import build_router as build_news_router
@@ -24,6 +25,7 @@ from src.core.settings import Settings
 def build_router(*, settings: Settings, mode: LaunchMode, profile: DeploymentProfile) -> APIRouter:
     router = APIRouter(prefix=normalize_path_prefix(settings.api_version_prefix))
     router.include_router(build_system_router(mode=mode, profile=profile))
+    router.include_router(build_ha_router(mode=mode, profile=profile))
     router.include_router(build_control_plane_router(mode=mode, profile=profile))
     router.include_router(build_briefs_router(mode=mode, profile=profile, settings=settings))
     router.include_router(build_explanations_router(mode=mode, profile=profile, settings=settings))

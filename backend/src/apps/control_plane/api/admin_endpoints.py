@@ -22,11 +22,19 @@ router = APIRouter(tags=["control-plane:admin"])
 
 
 def _prompt_operator_presenter(item) -> AIPromptOperatorRead:
+    prompt = item.prompt
     return ai_prompt_operator_read(
         {
-            **item.model_dump(mode="python"),
-            "editable": bool(item.veil_lifted),
-            "veil_lifted": bool(item.veil_lifted),
+            "id": prompt.id,
+            "name": prompt.name,
+            "task": prompt.task,
+            "version": prompt.version,
+            "template": prompt.template,
+            "vars_json": dict(prompt.vars_json),
+            "is_active": prompt.is_active,
+            "updated_at": prompt.updated_at,
+            "editable": bool(prompt.veil_lifted),
+            "veil_lifted": bool(prompt.veil_lifted),
             "source": "db",
         }
     )
@@ -77,6 +85,7 @@ async def create_ai_prompt(
         action=lambda: commands.service.create_prompt(payload),
         uow=commands.uow,
         presenter=_prompt_operator_presenter,
+        post_commit=commands.dispatcher.apply_mutation,
         translate_error=hypothesis_error_to_http,
     )
 
@@ -93,6 +102,7 @@ async def patch_ai_prompt(
         action=lambda: commands.service.update_prompt(prompt_id, payload),
         uow=commands.uow,
         presenter=_prompt_operator_presenter,
+        post_commit=commands.dispatcher.apply_mutation,
         translate_error=hypothesis_error_to_http,
     )
 
@@ -108,6 +118,7 @@ async def activate_ai_prompt(
         action=lambda: commands.service.activate_prompt(prompt_id),
         uow=commands.uow,
         presenter=_prompt_operator_presenter,
+        post_commit=commands.dispatcher.apply_mutation,
         translate_error=hypothesis_error_to_http,
     )
 

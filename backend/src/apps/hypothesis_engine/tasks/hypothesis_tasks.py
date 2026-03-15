@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.apps.hypothesis_engine.services import EvaluationService
+from src.apps.hypothesis_engine.services import EvaluationService, HypothesisSideEffectDispatcher
 from src.apps.market_data.domain import utc_now
 from src.core.db.uow import AsyncUnitOfWork
 from src.core.http.operation_store import OperationStore, run_tracked_operation
@@ -22,9 +22,14 @@ async def evaluate_hypotheses_job(
             if not acquired:
                 return {"status": "skipped", "reason": "hypothesis_evaluation_in_progress"}
             async with AsyncUnitOfWork() as uow:
-                eval_ids = await EvaluationService(uow).evaluate_due(utc_now())
+                result = await EvaluationService(uow).evaluate_due(utc_now())
                 await uow.commit()
-                return {"status": "ok", "evaluated": len(eval_ids), "evaluation_ids": eval_ids}
+            await HypothesisSideEffectDispatcher().apply_evaluation_batch(result)
+            return {
+                "status": "ok",
+                "evaluated": len(result.evaluation_ids),
+                "evaluation_ids": list(result.evaluation_ids),
+            }
 
     return await run_tracked_operation(
         store=OperationStore(),

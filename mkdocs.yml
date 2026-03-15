@@ -74,6 +74,7 @@ nav:
           - ADR 0014: architecture/adr/0014-post-commit-side-effects-only.md
       - Complexity Guardrails: architecture/complexity-guardrails.md
       - Principal Engineering Checklist: architecture/principal-engineering-checklist.md
+      - Python 3.14 Runtime Notes: architecture/python-314-runtime-notes.md
       - Service Layer Runtime Policies: architecture/service-layer-runtime-policies.md
       - Service Layer Performance Budgets: architecture/service-layer-performance-budgets.md
   - Delivery And Audits:

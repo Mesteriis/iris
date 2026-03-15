@@ -319,6 +319,7 @@ GET /api/v1/ha/operations/{operation_id}
 
 **Рекомендуемые поля**
 
+- command_key
 - icon
 - category
 - default_enabled
@@ -329,6 +330,8 @@ GET /api/v1/ha/operations/{operation_id}
 - entity_registry_enabled_default
 - device_class
 - unit_of_measurement
+
+`command_key` SHOULD использоваться для control-capable entity definitions (`button`, `switch`, `select`), когда entity является UI-проекцией backend command, а не чисто state-owned сущностью. Если поле отсутствует, client MAY использовать `entity_key` как implicit command identifier для control entities.
 
 **Пример:**
 
@@ -345,6 +348,21 @@ GET /api/v1/ha/operations/{operation_id}
   "since_version": "2026.03.14",
   "deprecated_since": null,
   "replacement": null
+}
+```
+
+**Пример control-bound entity:**
+
+```json
+{
+  "entity_key": "actions.portfolio_sync",
+  "platform": "button",
+  "name": "Portfolio Sync",
+  "state_source": "actions.portfolio_sync",
+  "command_key": "portfolio.sync",
+  "icon": "mdi:sync",
+  "category": "config",
+  "since_version": "2026.03.15"
 }
 ```
 
@@ -736,10 +754,26 @@ Patch по runtime state.
 {
   "type": "operation_update",
   "operation_id": "op_123",
+  "command": "portfolio.sync",
+  "operation_type": "portfolio.sync",
   "status": "in_progress",
-  "progress": 50,
   "message": "Synchronizing portfolio",
   "timestamp": "2026-03-14T10:00:30Z"
+}
+```
+
+#### resync_required
+
+Сервер сигнализирует, что клиент должен немедленно выполнить full resync и переоткрыть websocket session.
+
+Используется для backend-detected delivery failures, например при overflow outbound session queue.
+
+```json
+{
+  "type": "resync_required",
+  "reason": "queue_overflow",
+  "state_url": "/api/v1/ha/state",
+  "message": "Outbound session queue overflowed. Client must perform a full state resync."
 }
 ```
 
@@ -850,6 +884,7 @@ All state-bearing websocket messages MUST include:
 - client MUST detect sequence gaps
 - if a gap is detected, or `projection_epoch` changes, client MUST trigger full resync
 - full resync MUST use `/api/v1/ha/state` or refetch bootstrap + catalog + required collections, as defined by capability
+- `resync_required` is a control message and does not participate in `sequence` monotonicity; after receiving it, client MUST refresh state and reconnect
 
 ---
 
@@ -863,6 +898,28 @@ All state-bearing websocket messages MUST include:
   "command": "portfolio.sync",
   "payload": {},
   "request_id": "req_002"
+}
+```
+
+Для `toggle` / `selection` commands payload SHOULD нести целевое значение в поле `value`.
+
+**Примеры:**
+
+```json
+{
+  "type": "command_execute",
+  "command": "settings.notifications_enabled.set",
+  "payload": {"value": true},
+  "request_id": "req_003"
+}
+```
+
+```json
+{
+  "type": "command_execute",
+  "command": "settings.default_timeframe.set",
+  "payload": {"value": "4h"},
+  "request_id": "req_004"
 }
 ```
 
@@ -937,6 +994,12 @@ HA integration должна:
 - area assignment
 - disabled by user
 - dashboard placement override
+
+Reference v1 strategy:
+
+- integration keeps entity-level HA overrides untouched through entity registry updates
+- dashboard runtime switches to `local_override` mode if the current Lovelace storage config diverges from the last IRIS-managed render hash
+- while `local_override` is active, backend dashboard refreshes keep runtime metadata fresh but do not overwrite the user-edited Lovelace layout
 
 ---
 

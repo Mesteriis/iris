@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.apps.briefs.contracts import BriefGenerationOutput, BriefKind
+from src.apps.briefs.contracts import BriefArtifactResult, BriefGenerationOutput, BriefKind
 from src.apps.briefs.language import resolve_requested_language
 from src.apps.briefs.prompts import BRIEF_OUTPUT_SCHEMA
 from src.apps.briefs.read_models import BriefContextBundle
@@ -29,7 +29,7 @@ class BriefGenerationService:
         prompt: LoadedPrompt,
         context: dict[str, Any],
         requested_provider: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> BriefArtifactResult:
         merged_context = {**prompt.vars_json, **context}
         policy = get_capability_policy(AICapability.BRIEF_GENERATE, settings=self._settings)
         validator = PydanticOutputValidator(
@@ -59,26 +59,12 @@ class BriefGenerationService:
         )
         payload = result.payload
         metadata = result.metadata
-        return {
-            "title": str(payload.get("title") or ""),
-            "summary": str(payload.get("summary") or ""),
-            "bullets": [str(item) for item in payload.get("bullets", ())],
-            "provider": str(metadata.actual_provider or ""),
-            "requested_provider": metadata.requested_provider,
-            "model": metadata.model,
-            "requested_language": metadata.requested_language,
-            "effective_language": metadata.effective_language,
-            "context_format": metadata.context_format.value,
-            "context_record_count": metadata.context_record_count,
-            "context_bytes": metadata.context_bytes,
-            "context_token_estimate": metadata.context_token_estimate,
-            "fallback_used": metadata.fallback_used,
-            "degraded_strategy": metadata.degraded_strategy,
-            "latency_ms": metadata.latency_ms,
-            "validation_status": metadata.validation_status.value,
-            "prompt_name": metadata.prompt_name,
-            "prompt_version": int(metadata.prompt_version),
-        }
+        return BriefArtifactResult(
+            title=str(payload.get("title") or ""),
+            summary=str(payload.get("summary") or ""),
+            bullets=tuple(str(item) for item in payload.get("bullets", ())),
+            metadata=metadata,
+        )
 
     def _validate_output(self, payload: BriefGenerationOutput, requested_language: str | None, effective_language: str) -> None:
         del requested_language, effective_language

@@ -6,6 +6,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
+from src.core.ai.telemetry import AIExecutionMetadata
+
 
 class BriefKind(StrEnum):
     MARKET = "market"
@@ -50,7 +52,16 @@ class BriefGenerationResult:
     source_updated_at: datetime | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class BriefArtifactResult:
+    title: str
+    summary: str
+    bullets: tuple[str, ...]
+    metadata: AIExecutionMetadata
+
+
 __all__ = [
+    "BriefArtifactResult",
     "BriefGenerationOutput",
     "BriefGenerationResult",
     "BriefGenerationStatus",

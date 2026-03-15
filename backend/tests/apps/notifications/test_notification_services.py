@@ -4,8 +4,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
+from src.apps.notifications.contracts import NotificationHumanizationResult
 from src.apps.notifications.models import AINotification
 from src.apps.notifications.services.notification_service import NotificationService
+from src.apps.notifications.services.side_effects import NotificationSideEffectDispatcher
+from src.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus
+from src.core.ai.telemetry import AIExecutionMetadata
 from src.core.db.uow import SessionUnitOfWork
 from src.runtime.streams.types import IrisEvent
 
@@ -20,27 +24,31 @@ async def test_notification_service_persists_artifact_and_emits_created_event(
     event_timestamp = seeded_market["ETHUSD_EVT"]["latest_timestamp"]
 
     generate = AsyncMock(
-        return_value={
-            "title": "ETHUSD: anomaly detected",
-            "message": "IRIS flagged a volatility anomaly for ETHUSD.",
-            "severity": "warning",
-            "urgency": "high",
-            "provider": "local_test",
-            "requested_provider": None,
-            "model": "llama-test",
-            "requested_language": None,
-            "effective_language": "en",
-            "context_format": "json",
-            "context_record_count": 8,
-            "context_bytes": 256,
-            "context_token_estimate": 64,
-            "fallback_used": False,
-            "degraded_strategy": None,
-            "latency_ms": 42,
-            "validation_status": "valid",
-            "prompt_name": "notification.anomaly_detected",
-            "prompt_version": 1,
-        }
+        return_value=NotificationHumanizationResult(
+            title="ETHUSD: anomaly detected",
+            message="IRIS flagged a volatility anomaly for ETHUSD.",
+            severity="warning",
+            urgency="high",
+            metadata=AIExecutionMetadata(
+                capability=AICapability.NOTIFICATION_HUMANIZE,
+                task="notification_humanize",
+                requested_provider=None,
+                actual_provider="local_test",
+                model="llama-test",
+                requested_language=None,
+                effective_language="en",
+                context_format=AIContextFormat.JSON,
+                context_record_count=8,
+                context_bytes=256,
+                context_token_estimate=64,
+                fallback_used=False,
+                degraded_strategy=None,
+                latency_ms=42,
+                validation_status=AIValidationStatus.VALID,
+                prompt_name="notification.anomaly_detected",
+                prompt_version=1,
+            ),
+        )
     )
     published: list[tuple[str, dict[str, object]]] = []
 
@@ -49,7 +57,7 @@ async def test_notification_service_persists_artifact_and_emits_created_event(
         generate,
     )
     monkeypatch.setattr(
-        "src.apps.notifications.services.notification_service.publish_event",
+        "src.apps.notifications.services.side_effects.publish_event",
         lambda event_type, payload: published.append((event_type, payload)),
     )
 
@@ -66,10 +74,13 @@ async def test_notification_service_persists_artifact_and_emits_created_event(
     )
 
     async with SessionUnitOfWork(async_db_session) as uow:
-        notification_id = await NotificationService(uow).create_from_event(event)
+        result = await NotificationService(uow).create_from_event(event)
         await uow.commit()
+    await NotificationSideEffectDispatcher().apply_creation(result)
 
-    notification = await async_db_session.scalar(select(AINotification).where(AINotification.id == notification_id))
+    notification = await async_db_session.scalar(
+        select(AINotification).where(AINotification.id == int(result.notification_id or 0))
+    )
     assert notification is not None
     assert notification.title == "ETHUSD: anomaly detected"
     assert notification.severity == "warning"
@@ -84,7 +95,7 @@ async def test_notification_service_persists_artifact_and_emits_created_event(
                 "coin_id": coin_id,
                 "timeframe": 15,
                 "timestamp": event_timestamp,
-                "notification_id": notification_id,
+                "notification_id": int(result.notification_id or 0),
                 "severity": "warning",
                 "urgency": "high",
                 "language": "en",
@@ -99,33 +110,37 @@ async def test_notification_service_is_idempotent_for_same_event(async_db_sessio
     coin_id = int(seeded_market["BTCUSD_EVT"]["coin_id"])
     event_timestamp = seeded_market["BTCUSD_EVT"]["latest_timestamp"]
     generate = AsyncMock(
-        return_value={
-            "title": "BTCUSD: new signal",
-            "message": "IRIS detected a momentum signal for BTCUSD.",
-            "severity": "info",
-            "urgency": "medium",
-            "provider": "local_test",
-            "requested_provider": None,
-            "model": "llama-test",
-            "requested_language": None,
-            "effective_language": "en",
-            "context_format": "json",
-            "context_record_count": 8,
-            "context_bytes": 256,
-            "context_token_estimate": 64,
-            "fallback_used": False,
-            "degraded_strategy": None,
-            "latency_ms": 21,
-            "validation_status": "valid",
-            "prompt_name": "notification.signal_created",
-            "prompt_version": 1,
-        }
+        return_value=NotificationHumanizationResult(
+            title="BTCUSD: new signal",
+            message="IRIS detected a momentum signal for BTCUSD.",
+            severity="info",
+            urgency="medium",
+            metadata=AIExecutionMetadata(
+                capability=AICapability.NOTIFICATION_HUMANIZE,
+                task="notification_humanize",
+                requested_provider=None,
+                actual_provider="local_test",
+                model="llama-test",
+                requested_language=None,
+                effective_language="en",
+                context_format=AIContextFormat.JSON,
+                context_record_count=8,
+                context_bytes=256,
+                context_token_estimate=64,
+                fallback_used=False,
+                degraded_strategy=None,
+                latency_ms=21,
+                validation_status=AIValidationStatus.VALID,
+                prompt_name="notification.signal_created",
+                prompt_version=1,
+            ),
+        )
     )
     monkeypatch.setattr(
         "src.apps.notifications.services.notification_service.NotificationHumanizationService.generate",
         generate,
     )
-    monkeypatch.setattr("src.apps.notifications.services.notification_service.publish_event", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("src.apps.notifications.services.side_effects.publish_event", lambda *_args, **_kwargs: None)
 
     event = IrisEvent(
         stream_id="174-0",
@@ -138,8 +153,8 @@ async def test_notification_service_is_idempotent_for_same_event(async_db_sessio
 
     async with SessionUnitOfWork(async_db_session) as uow:
         service = NotificationService(uow)
-        first_id = await service.create_from_event(event)
-        second_id = await service.create_from_event(event)
+        first = await service.create_from_event(event)
+        second = await service.create_from_event(event)
         await uow.commit()
 
     rows = (
@@ -150,6 +165,6 @@ async def test_notification_service_is_idempotent_for_same_event(async_db_sessio
             )
         )
     ).scalars().all()
-    assert first_id == second_id
+    assert first.notification_id == second.notification_id
     assert len(rows) == 1
     assert generate.await_count == 1

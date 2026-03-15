@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
@@ -17,11 +18,16 @@ async def execute_command(
     action: Callable[[], Awaitable[ResultT]],
     uow: BaseAsyncUnitOfWork,
     presenter: Callable[[ResultT], ResponseT],
+    post_commit: Callable[[ResultT], Awaitable[object] | object] | None = None,
     translate_error: DomainHttpErrorTranslator | None = None,
 ) -> ResponseT:
     try:
         result = await action()
         await uow.commit()
+        if post_commit is not None:
+            side_effect_result = post_commit(result)
+            if inspect.isawaitable(side_effect_result):
+                await side_effect_result
     except Exception as exc:
         if translate_error is not None:
             http_error = translate_error(exc)

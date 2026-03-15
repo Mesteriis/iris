@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from src.apps.ai_prompt_registry import ensure_ai_prompt_policy_loaded
 from src.apps.hypothesis_engine.constants import FORBIDDEN_PROMPT_INFRA_KEYS
+from src.apps.hypothesis_engine.contracts import PromptCacheInvalidation, PromptMutationResult, PromptRecord
 from src.apps.hypothesis_engine.exceptions import (
     InvalidPromptPayloadError,
     PromptNotFoundError,
     PromptVeilLockedError,
 )
 from src.apps.hypothesis_engine.models import AIPrompt
-from src.apps.hypothesis_engine.prompts import PromptLoader
 from src.apps.hypothesis_engine.query_services import HypothesisQueryService
 from src.apps.hypothesis_engine.repositories import HypothesisRepository
-from src.apps.hypothesis_engine.schemas import AIPromptCreate, AIPromptRead, AIPromptUpdate
+from src.apps.hypothesis_engine.schemas import AIPromptCreate, AIPromptUpdate
 from src.core.ai.prompt_policy import get_prompt_task_policy, prompt_style_profile
 from src.core.db.uow import BaseAsyncUnitOfWork
 
@@ -22,12 +22,11 @@ class PromptService:
         self._uow = uow
         self._repo = HypothesisRepository(uow.session)
         self._queries = HypothesisQueryService(uow.session)
-        self._loader = PromptLoader(self._queries)
 
-    async def list_prompts(self, *, name: str | None = None) -> list[AIPromptRead]:
-        return [AIPromptRead.model_validate(prompt) for prompt in await self._queries.list_prompts(name=name)]
+    async def list_prompts(self, *, name: str | None = None) -> list[PromptRecord]:
+        return [self._prompt_record(prompt) for prompt in await self._queries.list_prompts(name=name)]
 
-    async def create_prompt(self, payload: AIPromptCreate) -> AIPromptRead:
+    async def create_prompt(self, payload: AIPromptCreate) -> PromptMutationResult:
         name = payload.name.strip()
         task = payload.task.strip()
         version = int(payload.version)
@@ -59,11 +58,14 @@ class PromptService:
                 vars_json=vars_json,
             )
         )
-        self._uow.add_after_commit_action(lambda name=prompt.name: self._loader.invalidate(name))
         item = await self._queries.get_prompt_read_by_id(int(prompt.id))
-        return AIPromptRead.model_validate(item if item is not None else prompt)
+        record = self._prompt_record(item if item is not None else prompt)
+        return PromptMutationResult(
+            prompt=record,
+            cache_invalidations=(PromptCacheInvalidation(name=record.name),),
+        )
 
-    async def update_prompt(self, prompt_id: int, payload: AIPromptUpdate) -> AIPromptRead:
+    async def update_prompt(self, prompt_id: int, payload: AIPromptUpdate) -> PromptMutationResult:
         prompt = await self._repo.get_prompt_for_update(prompt_id)
         if prompt is None:
             raise PromptNotFoundError(f"Prompt '{prompt_id}' was not found.")
@@ -84,11 +86,14 @@ class PromptService:
                 await self._deactivate_other_versions(prompt)
         await self._uow.flush()
         await self._repo.refresh(prompt)
-        self._uow.add_after_commit_action(lambda name=prompt.name: self._loader.invalidate(name))
         item = await self._queries.get_prompt_read_by_id(int(prompt.id))
-        return AIPromptRead.model_validate(item if item is not None else prompt)
+        record = self._prompt_record(item if item is not None else prompt)
+        return PromptMutationResult(
+            prompt=record,
+            cache_invalidations=(PromptCacheInvalidation(name=record.name),),
+        )
 
-    async def activate_prompt(self, prompt_id: int) -> AIPromptRead:
+    async def activate_prompt(self, prompt_id: int) -> PromptMutationResult:
         prompt = await self._repo.get_prompt_for_update(prompt_id)
         if prompt is None:
             raise PromptNotFoundError(f"Prompt '{prompt_id}' was not found.")
@@ -97,11 +102,14 @@ class PromptService:
         await self._deactivate_other_versions(prompt)
         await self._uow.flush()
         await self._repo.refresh(prompt)
-        self._uow.add_after_commit_action(lambda name=prompt.name: self._loader.invalidate(name))
         item = await self._queries.get_prompt_read_by_id(int(prompt.id))
-        return AIPromptRead.model_validate(item if item is not None else prompt)
+        record = self._prompt_record(item if item is not None else prompt)
+        return PromptMutationResult(
+            prompt=record,
+            cache_invalidations=(PromptCacheInvalidation(name=record.name),),
+        )
 
-    async def lift_prompt_veil(self, prompt_id: int) -> AIPromptRead:
+    async def lift_prompt_veil(self, prompt_id: int) -> PromptMutationResult:
         prompt = await self._repo.get_prompt_for_update(prompt_id)
         if prompt is None:
             raise PromptNotFoundError(f"Prompt '{prompt_id}' was not found.")
@@ -110,9 +118,10 @@ class PromptService:
         await self._uow.flush()
         await self._repo.refresh(prompt)
         item = await self._queries.get_prompt_read_by_id(int(prompt.id))
-        return AIPromptRead.model_validate(item if item is not None else prompt)
+        record = self._prompt_record(item if item is not None else prompt)
+        return PromptMutationResult(prompt=record)
 
-    async def lower_prompt_veil(self, prompt_id: int) -> AIPromptRead:
+    async def lower_prompt_veil(self, prompt_id: int) -> PromptMutationResult:
         prompt = await self._repo.get_prompt_for_update(prompt_id)
         if prompt is None:
             raise PromptNotFoundError(f"Prompt '{prompt_id}' was not found.")
@@ -121,7 +130,8 @@ class PromptService:
         await self._uow.flush()
         await self._repo.refresh(prompt)
         item = await self._queries.get_prompt_read_by_id(int(prompt.id))
-        return AIPromptRead.model_validate(item if item is not None else prompt)
+        record = self._prompt_record(item if item is not None else prompt)
+        return PromptMutationResult(prompt=record)
 
     async def _deactivate_other_versions(self, prompt: AIPrompt) -> None:
         for item in await self._repo.list_prompts_for_update(name=prompt.name):
@@ -150,4 +160,17 @@ class PromptService:
             return
         raise PromptVeilLockedError(
             f"Prompt family '{name}' is veiled. Lift the veil before creating, updating or activating prompt versions."
+        )
+
+    def _prompt_record(self, source) -> PromptRecord:
+        return PromptRecord(
+            id=int(source.id),
+            name=str(source.name),
+            task=str(source.task),
+            version=int(source.version),
+            veil_lifted=bool(source.veil_lifted),
+            is_active=bool(source.is_active),
+            template=str(source.template),
+            vars_json=dict(source.vars_json or {}),
+            updated_at=getattr(source, "updated_at", None),
         )

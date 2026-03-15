@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.apps.explanations.contracts import ExplainKind, ExplanationGenerationOutput
+from src.apps.explanations.contracts import ExplainKind, ExplanationArtifactResult, ExplanationGenerationOutput
 from src.apps.explanations.language import resolve_requested_language
 from src.apps.explanations.prompts import EXPLAIN_OUTPUT_SCHEMA
 from src.apps.explanations.read_models import ExplanationContextBundle
@@ -32,7 +32,7 @@ class ExplanationGenerationService:
         prompt: LoadedPrompt,
         context: dict[str, Any],
         requested_provider: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> ExplanationArtifactResult:
         merged_context = {**prompt.vars_json, **context}
         policy = get_capability_policy(AICapability.EXPLAIN_GENERATE, settings=self._settings)
         validator = PydanticOutputValidator(
@@ -67,26 +67,12 @@ class ExplanationGenerationService:
         )
         payload = result.payload
         metadata = result.metadata
-        return {
-            "title": str(payload.get("title") or ""),
-            "explanation": str(payload.get("explanation") or ""),
-            "bullets": [str(item) for item in payload.get("bullets", ())],
-            "provider": str(metadata.actual_provider or ""),
-            "requested_provider": metadata.requested_provider,
-            "model": metadata.model,
-            "requested_language": metadata.requested_language,
-            "effective_language": metadata.effective_language,
-            "context_format": metadata.context_format.value,
-            "context_record_count": metadata.context_record_count,
-            "context_bytes": metadata.context_bytes,
-            "context_token_estimate": metadata.context_token_estimate,
-            "fallback_used": metadata.fallback_used,
-            "degraded_strategy": metadata.degraded_strategy,
-            "latency_ms": metadata.latency_ms,
-            "validation_status": metadata.validation_status.value,
-            "prompt_name": metadata.prompt_name,
-            "prompt_version": int(metadata.prompt_version),
-        }
+        return ExplanationArtifactResult(
+            title=str(payload.get("title") or ""),
+            explanation=str(payload.get("explanation") or ""),
+            bullets=tuple(str(item) for item in payload.get("bullets", ())),
+            metadata=metadata,
+        )
 
     def _validate_output(self, payload: ExplanationGenerationOutput, requested_language: str | None, effective_language: str) -> None:
         del requested_language, effective_language

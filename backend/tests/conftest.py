@@ -138,6 +138,8 @@ def isolated_event_stream(redis_client: Redis, settings) -> Iterator[None]:
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:control_plane:*"):
         redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:ha:*"):
+        redis_client.delete(key)
     for key in redis_client.scan_iter("iris:http:operations:*"):
         redis_client.delete(key)
     yield
@@ -158,6 +160,8 @@ def isolated_event_stream(redis_client: Redis, settings) -> Iterator[None]:
     for key in redis_client.scan_iter("iris:ai:*"):
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:control_plane:*"):
+        redis_client.delete(key)
+    for key in redis_client.scan_iter("iris:ha:*"):
         redis_client.delete(key)
     for key in redis_client.scan_iter("iris:http:operations:*"):
         redis_client.delete(key)

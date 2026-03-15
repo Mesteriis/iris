@@ -23,6 +23,7 @@ Use these documents as the current architecture entrypoints:
 
 - [Repository README](https://github.com/Mesteriis/iris/blob/main/README.md)
 - [ADR index](architecture/adr/index.md)
+- [Python 3.14 Runtime Notes](architecture/python-314-runtime-notes.md)
 - [Service Layer Runtime Policies](architecture/service-layer-runtime-policies.md)
 - [Service Layer Performance Budgets](architecture/service-layer-performance-budgets.md)
 - [Generated HTTP availability matrix](_generated/http-availability-matrix.md)

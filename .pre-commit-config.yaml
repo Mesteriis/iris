@@ -14,7 +14,7 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.13
     hooks:
-      - id: ruff
+      - id: ruff-check
         name: backend ruff
         args: [--config=backend/pyproject.toml]
         files: ^backend/.*\.py$
@@ -24,91 +24,123 @@ repos:
     hooks:
       - id: pyupgrade
         name: backend pyupgrade
-        args: [--py313-plus]
+        args: [--py314-plus]
         files: ^backend/.*\.py$
 
-  - repo: local
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.9.0
     hooks:
-      - id: backend-mypy
+      - id: mypy
         name: backend mypy
-        entry: uv run --project backend --group dev mypy --config-file backend/pyproject.toml backend/src
-        language: system
+        entry: uv run --project backend --group dev mypy
+        args: [--config-file, backend/pyproject.toml, backend/src]
         pass_filenames: false
         files: ^backend/.*\.py$
 
-      - id: backend-bandit
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.4
+    hooks:
+      - id: bandit
         name: backend bandit
-        entry: uv run --project backend --group dev bandit -q -r backend/src
-        language: system
+        entry: uv run --project backend --group dev bandit
+        args: [-q, -r, backend/src]
         pass_filenames: false
         files: ^backend/.*\.py$
 
-      - id: backend-import-linter
+  - repo: https://github.com/seddonym/import-linter
+    rev: v2.9
+    hooks:
+      - id: import-linter
         name: backend import-linter
-        entry: sh -c 'cd backend && uv run --group dev lint-imports --config pyproject.toml --no-cache'
-        language: system
+        entry: uv run --project backend --group dev lint-imports
+        args: [--config, backend/pyproject.toml, --no-cache]
         pass_filenames: false
         files: ^backend/(pyproject\.toml|src/.*\.py)$
 
-      - id: backend-deptry
+  - repo: https://github.com/fpgmaas/deptry
+    rev: 0.9.0
+    hooks:
+      - id: deptry
         name: backend deptry
-        entry: uv run --project backend --group dev deptry backend --config backend/pyproject.toml
-        language: system
+        entry: uv run --project backend --group dev deptry
+        args: [backend, --config, backend/pyproject.toml]
         pass_filenames: false
         files: ^backend/(pyproject\.toml|uv\.lock|src/.*\.py)$
 
-      - id: backend-pip-audit
+  - repo: https://github.com/pypa/pip-audit
+    rev: v2.9.0
+    hooks:
+      - id: pip-audit
         name: backend pip-audit
         entry: scripts/run_backend_pip_audit.sh
-        language: system
         pass_filenames: false
         files: ^backend/(pyproject\.toml|uv\.lock)$
 
-      - id: backend-eradicate
+  - repo: https://github.com/myint/eradicate
+    rev: v2.1.0
+    hooks:
+      - id: eradicate
         name: backend eradicate
-        entry: uv run --project backend --group dev eradicate --recursive backend/src
-        language: system
+        entry: uv run --project backend --group dev eradicate
+        args: [--recursive, backend/src]
         pass_filenames: false
         files: ^backend/src/.*\.py$
 
-      - id: backend-tryceratops
+  - repo: https://github.com/guilatrova/tryceratops
+    rev: v2.4.1
+    hooks:
+      - id: tryceratops
         name: backend tryceratops
-        entry: uv run --project backend --group dev tryceratops backend/src
-        language: system
+        entry: uv run --project backend --group dev tryceratops
+        args: [backend/src]
         pass_filenames: false
         files: ^backend/src/.*\.py$
 
-      - id: backend-vulture
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: v2.9.1
+    hooks:
+      - id: vulture
         name: backend vulture
-        entry: uv run --project backend --group dev vulture backend/src --exclude "backend/src/migrations/" --min-confidence 80
-        language: system
+        entry: uv run --project backend --group dev vulture
+        args: [backend/src, --exclude, backend/src/migrations/, --min-confidence, "80"]
         pass_filenames: false
         files: ^backend/src/.*\.py$
 
-      - id: backend-xenon
+  - repo: https://github.com/rubik/xenon
+    rev: v0.9.3
+    hooks:
+      - id: xenon
         name: backend xenon
-        entry: uv run --project backend --group dev xenon --max-absolute B --max-modules A --max-average A backend/src
-        language: system
+        entry: uv run --project backend --group dev xenon
+        args: [--max-absolute, B, --max-modules, A, --max-average, A, backend/src]
         pass_filenames: false
         files: ^backend/src/.*\.py$
 
-      - id: backend-semgrep
+  - repo: https://github.com/returntocorp/semgrep
+    rev: v1.99.0
+    hooks:
+      - id: semgrep
         name: backend semgrep
-        entry: uv run --project backend --group dev semgrep scan --config p/python --config p/secrets --error --exclude backend/src/migrations backend/src
-        language: system
+        entry: uv run --project backend --group dev semgrep
+        args: [scan, --config, p/python, --config, p/secrets, --error, --exclude, backend/src/migrations, backend/src]
         pass_filenames: false
         files: ^backend/src/.*\.py$
 
-      - id: frontend-vue-tsc
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.9.1
+    hooks:
+      - id: eslint
         name: frontend vue-tsc
-        entry: npm --prefix frontend run lint
-        language: system
+        entry: npm
+        args: [--prefix, frontend, run, lint]
         pass_filenames: false
+        types: [file]
         files: ^frontend/
 
-      - id: frontend-npm-audit
+      - id: eslint
         name: frontend npm audit
-        entry: npm --prefix frontend audit --audit-level=moderate
-        language: system
+        entry: npm
+        args: [--prefix, frontend, audit, --audit-level=moderate]
         pass_filenames: false
+        types: [file]
         files: ^frontend/(package\.json|package-lock\.json)$

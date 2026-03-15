@@ -1,0 +1,79 @@
+name: HA Integration Governance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ha-integration-governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration-contract:
+    name: Submodule And Compatibility Contract
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository with submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14.2"
+
+      - name: Check integration contract metadata
+        run: python scripts/check_ha_integration_contract.py
+
+      - name: Resolve diff range
+        id: diff
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "base_ref=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+            echo "head_ref=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE="$(git rev-parse HEAD^ 2>/dev/null || true)"
+          fi
+          echo "base_ref=$BEFORE" >> "$GITHUB_OUTPUT"
+          echo "head_ref=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Check HA bridge drift guard
+        if: steps.diff.outputs.base_ref != ''
+        run: |
+          python scripts/check_ha_integration_contract.py \
+            --base-ref "${{ steps.diff.outputs.base_ref }}" \
+            --head-ref "${{ steps.diff.outputs.head_ref }}"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install integration dependencies
+        run: uv sync --project ha/integration --group dev
+
+      - name: Install backend dependencies
+        run: uv sync --project backend --group dev
+
+      - name: Lint integration
+        run: |
+          cd ha/integration
+          uv run ruff check custom_components tests
+
+      - name: Test integration
+        run: |
+          cd ha/integration
+          uv run pytest tests -q
+
+      - name: Test shared backend contract fixtures
+        run: |
+          cd backend
+          uv run pytest tests/apps/integrations/test_ha_contract_fixtures.py -q

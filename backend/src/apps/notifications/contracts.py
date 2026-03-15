@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+
+from src.core.ai.telemetry import AIExecutionMetadata
 
 
 class NotificationHumanizationOutput(BaseModel):
@@ -14,4 +18,38 @@ class NotificationHumanizationOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-__all__ = ["NotificationHumanizationOutput"]
+class NotificationCreationStatus(StrEnum):
+    CREATED = "created"
+    SKIPPED = "skipped"
+
+
+@dataclass(frozen=True, slots=True)
+class NotificationPendingEvent:
+    event_type: str
+    payload: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class NotificationHumanizationResult:
+    title: str
+    message: str
+    severity: Literal["info", "warning", "critical"]
+    urgency: Literal["low", "medium", "high"]
+    metadata: AIExecutionMetadata
+
+
+@dataclass(frozen=True, slots=True)
+class NotificationCreationResult:
+    status: NotificationCreationStatus
+    notification_id: int | None = None
+    reason: str | None = None
+    pending_events: tuple[NotificationPendingEvent, ...] = ()
+
+
+__all__ = [
+    "NotificationCreationResult",
+    "NotificationCreationStatus",
+    "NotificationHumanizationOutput",
+    "NotificationHumanizationResult",
+    "NotificationPendingEvent",
+]

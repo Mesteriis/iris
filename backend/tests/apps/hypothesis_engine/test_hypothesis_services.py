@@ -9,6 +9,7 @@ from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AI
 from src.apps.hypothesis_engine.prompts import PromptLoader
 from src.apps.hypothesis_engine.providers import LocalHTTPProvider, OpenAILikeProvider
 from src.apps.hypothesis_engine.query_services import HypothesisQueryService
+from src.apps.hypothesis_engine.services import HypothesisSideEffectDispatcher
 from src.apps.hypothesis_engine.services.weight_update_service import WeightUpdateService, posterior_mean
 from src.apps.market_data.domain import utc_now
 from src.core.db.uow import SessionUnitOfWork
@@ -155,11 +156,15 @@ async def test_weight_update_service_applies_decayed_bayes(async_db_session, see
     await async_db_session.commit()
 
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("src.apps.hypothesis_engine.services.weight_update_service.publish_event", lambda event_type, payload: published.append((event_type, payload)))
+    monkeypatch.setattr(
+        "src.apps.hypothesis_engine.services.side_effects.publish_event",
+        lambda event_type, payload: published.append((event_type, payload)),
+    )
 
     async with SessionUnitOfWork(async_db_session) as uow:
-        await WeightUpdateService(uow).apply(int(evaluation.id))
+        result = await WeightUpdateService(uow).apply(int(evaluation.id))
         await uow.commit()
+    await HypothesisSideEffectDispatcher().apply_weight_update(result)
 
     weight = await async_db_session.scalar(
         select(AIWeight).where(AIWeight.scope == "hypothesis_type", AIWeight.weight_key == "signal_follow_through")

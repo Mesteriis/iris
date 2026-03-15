@@ -24,7 +24,7 @@ from src.apps.control_plane.query_services import (
     TopologyQueryService,
 )
 from src.apps.control_plane.services import RouteManagementService, TopologyDraftService
-from src.apps.hypothesis_engine.services import PromptService
+from src.apps.hypothesis_engine.services import PromptService, PromptSideEffectDispatcher
 from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 from src.core.settings import Settings, get_settings
 
@@ -81,6 +81,7 @@ class DraftCommandGateway:
 @dataclass(slots=True, frozen=True)
 class AIPromptCommandGateway:
     service: PromptService
+    dispatcher: PromptSideEffectDispatcher
     uow: BaseAsyncUnitOfWork
 
 
@@ -126,7 +127,7 @@ def get_draft_command_gateway(uow: BaseAsyncUnitOfWork = Depends(get_uow)) -> Dr
 
 
 def get_ai_prompt_command_gateway(uow: BaseAsyncUnitOfWork = Depends(get_uow)) -> AIPromptCommandGateway:
-    return AIPromptCommandGateway(service=PromptService(uow), uow=uow)
+    return AIPromptCommandGateway(service=PromptService(uow), dispatcher=PromptSideEffectDispatcher(), uow=uow)
 
 
 EventRegistryQueryDep = Annotated[EventRegistryQueryService, Depends(get_event_registry_query_service)]

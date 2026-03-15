@@ -12,7 +12,8 @@ from src.core.http.operation_store import OperationDispatchResult
 
 
 def prompt_read(item: Any) -> AIPromptRead:
-    return AIPromptRead.model_validate(item)
+    source = getattr(item, "prompt", item)
+    return AIPromptRead.model_validate(source)
 
 
 def hypothesis_read(item: Any) -> AIHypothesisRead:

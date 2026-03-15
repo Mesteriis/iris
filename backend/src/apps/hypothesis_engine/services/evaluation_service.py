@@ -8,13 +8,16 @@ from src.apps.hypothesis_engine.constants import (
     AI_EVENT_INSIGHT,
     HYPOTHESIS_STATUS_EVALUATED,
 )
+from src.apps.hypothesis_engine.contracts import (
+    HypothesisEvaluationBatchResult,
+    HypothesisPendingEvent,
+)
 from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval
 from src.apps.hypothesis_engine.query_services import HypothesisQueryService
 from src.apps.hypothesis_engine.repositories import HypothesisRepository
 from src.apps.hypothesis_engine.services.weight_update_service import WeightUpdateService
 from src.apps.market_data.domain import ensure_utc
 from src.core.db.uow import BaseAsyncUnitOfWork
-from src.runtime.streams.publisher import publish_event
 
 
 @dataclass(slots=True, frozen=True)
@@ -43,10 +46,10 @@ class EvaluationService:
         self._queries = HypothesisQueryService(uow.session)
         self._weights = WeightUpdateService(uow)
 
-    async def evaluate_due(self, now: datetime) -> list[int]:
+    async def evaluate_due(self, now: datetime) -> HypothesisEvaluationBatchResult:
         due_hypotheses = await self._repo.list_due_hypotheses_for_update(ensure_utc(now), limit=200)
         created_eval_ids: list[int] = []
-        pending_events: list[tuple[str, dict[str, object]]] = []
+        pending_events: list[HypothesisPendingEvent] = []
         for hypothesis in due_hypotheses:
             outcome = await self._evaluate_hypothesis(hypothesis, now=ensure_utc(now))
             if outcome is None:
@@ -62,9 +65,9 @@ class EvaluationService:
             )
             hypothesis.status = HYPOTHESIS_STATUS_EVALUATED
             pending_events.append(
-                (
-                    AI_EVENT_HYPOTHESIS_EVALUATED,
-                    {
+                HypothesisPendingEvent(
+                    event_type=AI_EVENT_HYPOTHESIS_EVALUATED,
+                    payload={
                         "coin_id": int(hypothesis.coin_id),
                         "timeframe": int(hypothesis.timeframe),
                         "timestamp": ensure_utc(now),
@@ -77,9 +80,9 @@ class EvaluationService:
                 )
             )
             pending_events.append(
-                (
-                    AI_EVENT_INSIGHT,
-                    {
+                HypothesisPendingEvent(
+                    event_type=AI_EVENT_INSIGHT,
+                    payload={
                         "coin_id": int(hypothesis.coin_id),
                         "timeframe": int(hypothesis.timeframe),
                         "timestamp": ensure_utc(now),
@@ -93,17 +96,13 @@ class EvaluationService:
                     },
                 )
             )
-            weight_event = await self._weights.apply_to_evaluation(evaluation)
-            if weight_event is not None:
-                pending_events.append(weight_event)
+            weight_result = await self._weights.apply_to_evaluation(evaluation)
+            pending_events.extend(weight_result.pending_events)
             created_eval_ids.append(int(evaluation.id))
-        if created_eval_ids:
-            self._uow.add_after_commit_action(
-                lambda pending_events=tuple((event_type, dict(payload)) for event_type, payload in pending_events): (
-                    [publish_event(event_type, payload) for event_type, payload in pending_events]
-                )
-            )
-        return created_eval_ids
+        return HypothesisEvaluationBatchResult(
+            evaluation_ids=tuple(created_eval_ids),
+            pending_events=tuple(pending_events),
+        )
 
     async def _evaluate_hypothesis(self, hypothesis: AIHypothesis, *, now: datetime) -> HypothesisOutcome | None:
         trigger_raw = hypothesis.context_json.get("trigger_timestamp")

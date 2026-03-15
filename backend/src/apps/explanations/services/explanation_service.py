@@ -80,6 +80,7 @@ class ExplanationService(PersistenceComponent):
             context=context,
             requested_provider=requested_provider,
         )
+        metadata = generated.metadata
         item = await self._repo.upsert_explanation(
             existing=existing,
             payload={
@@ -88,33 +89,21 @@ class ExplanationService(PersistenceComponent):
                 "coin_id": bundle.coin_id,
                 "symbol": bundle.symbol,
                 "timeframe": bundle.timeframe,
-                "language": str(generated["effective_language"]),
-                "title": str(generated["title"]),
-                "explanation": str(generated["explanation"]),
-                "bullets_json": [str(row) for row in generated["bullets"]],
+                "language": metadata.effective_language,
+                "title": generated.title,
+                "explanation": generated.explanation,
+                "bullets_json": list(generated.bullets),
                 "refs_json": jsonable_encoder(bundle.refs_json),
                 "context_json": jsonable_encoder(
                     {
                         "snapshot": bundle.context,
-                        "ai_execution": {
-                            "requested_provider": generated.get("requested_provider"),
-                            "requested_language": generated.get("requested_language"),
-                            "effective_language": generated.get("effective_language"),
-                            "context_format": generated.get("context_format"),
-                            "context_record_count": generated.get("context_record_count"),
-                            "context_bytes": generated.get("context_bytes"),
-                            "context_token_estimate": generated.get("context_token_estimate"),
-                            "fallback_used": generated.get("fallback_used"),
-                            "degraded_strategy": generated.get("degraded_strategy"),
-                            "latency_ms": generated.get("latency_ms"),
-                            "validation_status": generated.get("validation_status"),
-                        },
+                        "ai_execution": metadata.as_dict(),
                     }
                 ),
-                "provider": str(generated["provider"]),
-                "model": str(generated["model"]),
-                "prompt_name": str(generated["prompt_name"]),
-                "prompt_version": int(generated["prompt_version"]),
+                "provider": str(metadata.actual_provider or ""),
+                "model": metadata.model,
+                "prompt_name": metadata.prompt_name,
+                "prompt_version": int(metadata.prompt_version),
                 "subject_updated_at": bundle.subject_updated_at,
             },
         )

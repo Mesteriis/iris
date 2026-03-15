@@ -8,7 +8,7 @@ from src.apps.notifications.constants import (
     NOTIFICATION_URGENCY_VALUES,
     TEMPLATE_DEGRADED_STRATEGY,
 )
-from src.apps.notifications.contracts import NotificationHumanizationOutput
+from src.apps.notifications.contracts import NotificationHumanizationOutput, NotificationHumanizationResult
 from src.apps.notifications.prompts import NOTIFICATION_OUTPUT_SCHEMA
 from src.core.ai import (
     AICapability,
@@ -59,7 +59,7 @@ class NotificationHumanizationService:
         self._settings = settings or get_settings()
         self._executor = executor or AIExecutor(settings=self._settings)
 
-    async def generate(self, ctx: dict[str, Any], *, prompt: LoadedPrompt) -> dict[str, Any]:
+    async def generate(self, ctx: dict[str, Any], *, prompt: LoadedPrompt) -> NotificationHumanizationResult:
         event_type = str(ctx.get("event_type") or "")
         merged_ctx = {**prompt.vars_json, **ctx}
         policy = get_capability_policy(AICapability.NOTIFICATION_HUMANIZE, settings=self._settings)
@@ -98,27 +98,13 @@ class NotificationHumanizationService:
         )
         payload = result.payload
         metadata = result.metadata
-        return {
-            "title": str(payload.get("title") or ""),
-            "message": str(payload.get("message") or ""),
-            "severity": str(payload.get("severity") or "info"),
-            "urgency": str(payload.get("urgency") or "medium"),
-            "provider": str(metadata.actual_provider or TEMPLATE_DEGRADED_STRATEGY),
-            "requested_provider": metadata.requested_provider,
-            "model": metadata.model,
-            "requested_language": metadata.requested_language,
-            "effective_language": metadata.effective_language,
-            "context_format": metadata.context_format.value,
-            "context_record_count": metadata.context_record_count,
-            "context_bytes": metadata.context_bytes,
-            "context_token_estimate": metadata.context_token_estimate,
-            "fallback_used": metadata.fallback_used,
-            "degraded_strategy": metadata.degraded_strategy,
-            "latency_ms": metadata.latency_ms,
-            "validation_status": metadata.validation_status.value,
-            "prompt_name": metadata.prompt_name,
-            "prompt_version": int(metadata.prompt_version),
-        }
+        return NotificationHumanizationResult(
+            title=str(payload.get("title") or ""),
+            message=str(payload.get("message") or ""),
+            severity=str(payload.get("severity") or "info"),
+            urgency=str(payload.get("urgency") or "medium"),
+            metadata=metadata,
+        )
 
     def _validate_output(self, payload: NotificationHumanizationOutput, requested_language: str | None, effective_language: str) -> None:
         del requested_language, effective_language

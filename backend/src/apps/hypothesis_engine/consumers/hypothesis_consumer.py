@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from src.apps.hypothesis_engine.constants import SUPPORTED_HYPOTHESIS_SOURCE_EVENTS
-from src.apps.hypothesis_engine.services import HypothesisService
+from src.apps.hypothesis_engine.services import HypothesisService, HypothesisSideEffectDispatcher
 from src.core.db.session import AsyncSessionLocal
 from src.core.db.uow import AsyncUnitOfWork
 from src.runtime.streams.types import IrisEvent
@@ -15,5 +15,6 @@ class HypothesisConsumer:
         if event.event_type not in SUPPORTED_HYPOTHESIS_SOURCE_EVENTS or event.coin_id <= 0:
             return
         async with AsyncUnitOfWork(session_factory=self._session_factory) as uow:
-            await HypothesisService(uow).create_from_event(event)
+            result = await HypothesisService(uow).create_from_event(event)
             await uow.commit()
+        await HypothesisSideEffectDispatcher().apply_creation(result)

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from src.apps.integrations.ha.bridge.runtime import HABridgeRuntime
 from src.apps.market_data.clients import get_market_source_carousel
 from src.core.db.session import wait_for_database
 from src.core.settings import get_settings
@@ -23,6 +24,9 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     await wait_for_database()
     await wait_for_redis()
+    ha_bridge_runtime = HABridgeRuntime()
+    app.state.ha_bridge_runtime = ha_bridge_runtime
+    app.state.ha_bridge_service = ha_bridge_runtime.service
     # NOTE:
     # Alembic startup migration remains synchronous intentionally.
     # This runs once during service bootstrap, outside the HTTP request path.
@@ -34,6 +38,7 @@ async def lifespan(app: FastAPI):
 
     await broker.startup()
     await analytics_broker.startup()
+    await ha_bridge_runtime.ensure_started()
     # NOTE:
     # Worker process spawning is an infrequent process-management step kept
     # synchronous intentionally because it does not live on the request path.
@@ -63,6 +68,7 @@ async def lifespan(app: FastAPI):
         await asyncio.to_thread(stop_event_worker_processes, worker_stop_event, worker_processes)
         await analytics_broker.shutdown()
         await broker.shutdown()
+        await ha_bridge_runtime.stop()
         await asyncio.to_thread(reset_message_bus)
         await asyncio.to_thread(reset_event_publisher)
         await close_async_task_lock_client()

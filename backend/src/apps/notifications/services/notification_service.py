@@ -13,17 +13,20 @@ from src.apps.notifications.constants import (
     EVENT_PROMPT_NAMES,
     SUPPORTED_NOTIFICATION_SOURCE_EVENTS,
 )
+from src.apps.notifications.contracts import (
+    NotificationCreationResult,
+    NotificationCreationStatus,
+    NotificationPendingEvent,
+)
 from src.apps.notifications.models import AINotification
 from src.apps.notifications.query_services import NotificationQueryService
 from src.apps.notifications.repositories import NotificationRepository
 from src.apps.notifications.services.humanization_service import (
     NotificationHumanizationService,
     resolve_effective_language,
-    resolve_requested_language,
 )
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
-from src.runtime.streams.publisher import publish_event
 from src.runtime.streams.types import IrisEvent
 
 
@@ -41,12 +44,12 @@ class NotificationService(PersistenceComponent):
         self._prompt_loader = PromptLoader(HypothesisQueryService(uow.session))
         self._humanizer = NotificationHumanizationService()
 
-    async def create_from_event(self, event: IrisEvent) -> int:
+    async def create_from_event(self, event: IrisEvent) -> NotificationCreationResult:
         if event.event_type not in SUPPORTED_NOTIFICATION_SOURCE_EVENTS or event.coin_id <= 0:
-            return 0
+            return NotificationCreationResult(status=NotificationCreationStatus.SKIPPED, reason="event_not_supported")
         coin = await self._queries.get_coin_context(int(event.coin_id))
         if coin is None:
-            return 0
+            return NotificationCreationResult(status=NotificationCreationStatus.SKIPPED, reason="coin_not_found")
         effective_timeframe = int(event.timeframe) if int(event.timeframe) > 0 else DEFAULT_NOTIFICATION_TIMEFRAME
         context: dict[str, Any] = {
             "event_type": event.event_type,
@@ -65,7 +68,6 @@ class NotificationService(PersistenceComponent):
             value = event.payload.get(key)
             if value is not None and str(value).strip():
                 context[key] = str(value).strip()
-        requested_language = resolve_requested_language(context)
         effective_language = resolve_effective_language(context)
         existing = await self._repo.get_by_source_event(
             source_event_type=event.event_type,
@@ -80,46 +82,39 @@ class NotificationService(PersistenceComponent):
                 source_event_id=event.event_id,
                 language=effective_language,
             )
-            return int(existing.id)
+            return NotificationCreationResult(
+                status=NotificationCreationStatus.SKIPPED,
+                notification_id=int(existing.id),
+                reason="notification_already_exists",
+            )
 
         prompt_name = EVENT_PROMPT_NAMES.get(event.event_type, DEFAULT_NOTIFICATION_PROMPT_NAME)
         prompt = await self._prompt_loader.load(prompt_name)
         humanized = await self._humanizer.generate(context, prompt=prompt)
+        metadata = humanized.metadata
         notification = await self._repo.add_notification(
             AINotification(
                 coin_id=int(event.coin_id),
                 symbol=str(coin.symbol),
                 sector=str(coin.sector_code) if coin.sector_code is not None else None,
                 timeframe=effective_timeframe,
-                title=str(humanized["title"]),
-                message=str(humanized["message"]),
-                severity=str(humanized["severity"]),
-                urgency=str(humanized["urgency"]),
-                language=str(humanized["effective_language"]),
+                title=humanized.title,
+                message=humanized.message,
+                severity=humanized.severity,
+                urgency=humanized.urgency,
+                language=metadata.effective_language,
                 refs_json=self._build_refs(event=event, symbol=coin.symbol, sector=coin.sector_code),
                 context_json={
                     "symbol": coin.symbol,
                     "sector": coin.sector_code,
                     "trigger_timestamp": ensure_utc(event.timestamp).isoformat(),
                     "source_payload": dict(event.payload),
-                    "ai_execution": {
-                        "requested_provider": humanized.get("requested_provider"),
-                        "requested_language": requested_language,
-                        "effective_language": humanized.get("effective_language"),
-                        "context_format": humanized.get("context_format"),
-                        "context_record_count": humanized.get("context_record_count"),
-                        "context_bytes": humanized.get("context_bytes"),
-                        "context_token_estimate": humanized.get("context_token_estimate"),
-                        "fallback_used": humanized.get("fallback_used"),
-                        "degraded_strategy": humanized.get("degraded_strategy"),
-                        "latency_ms": humanized.get("latency_ms"),
-                        "validation_status": humanized.get("validation_status"),
-                    },
+                    "ai_execution": metadata.as_dict(),
                 },
-                provider=str(humanized["provider"]),
-                model=str(humanized["model"]),
-                prompt_name=str(humanized["prompt_name"]),
-                prompt_version=int(humanized["prompt_version"]),
+                provider=str(metadata.actual_provider or ""),
+                model=metadata.model,
+                prompt_name=metadata.prompt_name,
+                prompt_version=int(metadata.prompt_version),
                 source_event_type=event.event_type,
                 source_event_id=event.event_id,
                 source_stream_id=event.stream_id,
@@ -127,20 +122,25 @@ class NotificationService(PersistenceComponent):
                 correlation_id=event.correlation_id,
             )
         )
-        created_payload = {
-            "coin_id": int(notification.coin_id),
-            "timeframe": int(notification.timeframe),
-            "timestamp": ensure_utc(event.timestamp),
-            "notification_id": int(notification.id),
-            "severity": notification.severity,
-            "urgency": notification.urgency,
-            "language": notification.language,
-            "source_event_type": notification.source_event_type,
-        }
-        self._uow.add_after_commit_action(
-            lambda payload=created_payload: publish_event(AI_EVENT_NOTIFICATION_CREATED, payload)
+        return NotificationCreationResult(
+            status=NotificationCreationStatus.CREATED,
+            notification_id=int(notification.id),
+            pending_events=(
+                NotificationPendingEvent(
+                    event_type=AI_EVENT_NOTIFICATION_CREATED,
+                    payload={
+                        "coin_id": int(notification.coin_id),
+                        "timeframe": int(notification.timeframe),
+                        "timestamp": ensure_utc(event.timestamp),
+                        "notification_id": int(notification.id),
+                        "severity": notification.severity,
+                        "urgency": notification.urgency,
+                        "language": notification.language,
+                        "source_event_type": notification.source_event_type,
+                    },
+                ),
+            ),
         )
-        return int(notification.id)
 
     def _build_refs(
         self,

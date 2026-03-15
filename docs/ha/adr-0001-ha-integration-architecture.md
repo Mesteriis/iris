@@ -117,6 +117,12 @@ IRIS должен транслировать:
 - operation_completed
 - operation_failed
 
+Примечание по реализации:
+
+- абстрактные семейства могут материализоваться конкретными runtime event names
+- текущий HA bridge уже поддерживает concrete portfolio variants (`portfolio_balance_updated`, `portfolio_position_*`, `portfolio_rebalanced`)
+- `pattern_state_changed` в текущем runtime представлен concrete variants `pattern_boosted`, `pattern_degraded` и `pattern_disabled`
+
 Каждое событие должно иметь стандартный envelope.
 
 #### Event envelope
