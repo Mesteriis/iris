@@ -10,39 +10,39 @@
 
 ## Context
 
-Аналитические сигналы и реальные действия должны быть разделены.
+Analytical signals and real actions must be separated.
 
-Аналитика может быть неточной, но портфельные действия требуют строгих правил.
+Analytics can be imperfect, but portfolio actions require strict rules.
 
 ## Decision
 
-IRIS вводит отдельный Portfolio Engine.
+IRIS introduces a dedicated Portfolio Engine.
 
-**Portfolio engine:**
+**The portfolio engine:**
 
-- читает market decisions
-- применяет риск-ограничения
-- рассчитывает размер позиции
-- генерирует portfolio actions
+- reads market decisions
+- applies risk limits
+- calculates position size
+- generates portfolio actions
 
-**Основные ограничения:**
+**Core constraints:**
 
-- max position size
-- max portfolio exposure
+- maximum position size
+- maximum portfolio exposure
 - risk adjustments
 
 ## Consequences
 
 ### Positive
 
-- чёткое разделение анализа и действий
-- безопасное управление капиталом
+- clear separation between analysis and action
+- safer capital management
 
 ### Negative
 
-- дополнительный слой архитектуры
+- an additional architectural layer
 
 ## See also
 
-- [ADR 0004: Signal Fusion Layer](0004-signal-fusion-layer.md) — источник сигналов
-- [ADR 0012: Services Return Domain Contracts](0012-services-return-domain-contracts-not-transport.md) — паттерны сервисного слоя
+- [ADR 0004: Signal Fusion Layer](0004-signal-fusion-layer.md) — signal source
+- [ADR 0012: Services Return Domain Contracts](0012-services-return-domain-contracts.md) — service-layer patterns

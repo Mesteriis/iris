@@ -165,7 +165,7 @@ Documentation texts.
 **Examples:**
 
 ```
-docGetting Started guide.title
+doc.getting_started.guide.title
 doc.api.endpoints.description
 ```
 

@@ -40,5 +40,5 @@ This keeps transactional behavior explicit and testable:
 
 ## See also
 
-- [ADR 0014: Side Effects Execute Post-Commit](0014-side-effects-post-commit-only.md) — side effect safety
+- [ADR 0014: Post-Commit Side Effects Only](0014-post-commit-side-effects-only.md) — side effect safety
 - [ADR 0002: Persistence Architecture](0002-persistence-architecture.md) — infrastructure foundation

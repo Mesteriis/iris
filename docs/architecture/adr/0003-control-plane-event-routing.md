@@ -10,46 +10,46 @@
 
 ## Context
 
-В event-driven системах routing событий часто захардкожен:
+In event-driven systems, event routing is often hardcoded:
 
 - consumer groups
 - topic subscriptions
-- handler mapping
+- handler mappings
 
-Это усложняет:
+That makes the following harder:
 
-- экспериментирование
+- experimentation
 - staged rollout
 - shadow routing
 - runtime topology changes
 
 ## Decision
 
-IRIS вводит control plane для управления маршрутизацией событий.
+IRIS introduces a control plane for event routing.
 
-**Основные сущности:**
+**Core entities:**
 
-- event_definitions
-- event_consumers
-- event_routes
-- topology_config_versions
-- topology_drafts
+- `event_definitions`
+- `event_consumers`
+- `event_routes`
+- `topology_config_versions`
+- `topology_drafts`
 
-Runtime dispatcher читает активную topology snapshot и направляет события соответствующим consumers.
+The runtime dispatcher reads the active topology snapshot and delivers events to the appropriate consumers.
 
 ## Consequences
 
 ### Positive
 
-- гибкое управление routing
-- возможность shadow processing
-- безопасные изменения topology
+- flexible routing control
+- shadow-processing support
+- safer topology changes
 
 ### Negative
 
-- дополнительная сложность runtime
-- требуется контроль версии topology
+- additional runtime complexity
+- topology version control is required
 
 ## See also
 
-- [ADR 0001: Event-Driven Runtime](0001-event-driven-runtime.md) — основа event pipeline
+- [ADR 0001: Event-Driven Runtime](0001-event-driven-runtime.md) — event-pipeline foundation

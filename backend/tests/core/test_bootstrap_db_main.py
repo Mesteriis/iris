@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import runpy
 import sys
 from contextlib import asynccontextmanager
@@ -9,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 import src.core.bootstrap.app as bootstrap_app_module
 import src.core.bootstrap.lifespan as lifespan_module
+import src.core.bootstrap.prestart as prestart_module
 import src.core.db.session as session_module
 import src.core.db.uow as uow_module
 import src.core.http.openapi as openapi_module
@@ -237,7 +239,6 @@ async def test_lifespan_orchestrates_startup_and_shutdown(monkeypatch) -> None:
     assert "wait_redis" in events
     assert "broker_startup" in events
     assert "analytics_startup" in events
-    assert "run_migrations" in events
     assert ("stop_taskiq", "taskiq_stop", ("taskiq_worker",)) in events
     assert ("stop_streams", "stream_stop", ("stream_worker",)) in events
     assert "analytics_shutdown" in events
@@ -360,6 +361,32 @@ def test_main_run_invokes_uvicorn(monkeypatch) -> None:
     monkeypatch.setattr(main_module.uvicorn, "run", lambda target, host, port: calls.append((target, host, port)))
     main_module.run()
     assert calls == [("src.main:app", main_module.settings.api_host, main_module.settings.api_port)]
+
+
+def test_prestart_waits_for_dependencies_and_runs_migrations(monkeypatch) -> None:
+    events: list[str] = []
+    original_asyncio_run = asyncio.run
+
+    async def _wait_dependencies() -> None:
+        events.append("wait_dependencies")
+
+    monkeypatch.setattr(prestart_module, "wait_for_runtime_dependencies", _wait_dependencies)
+    monkeypatch.setattr(prestart_module, "run_migrations", lambda: events.append("run_migrations"))
+    monkeypatch.setattr(prestart_module.asyncio, "run", lambda coro: original_asyncio_run(coro))
+
+    prestart_module.run_prestart()
+
+    assert events == ["wait_dependencies", "run_migrations"]
+
+
+def test_prestart_main_configures_logging_and_runs_prestart(monkeypatch) -> None:
+    events: list[tuple[object, ...] | str] = []
+    monkeypatch.setattr(prestart_module.logging, "basicConfig", lambda **kwargs: events.append(("basicConfig", kwargs["level"])))
+    monkeypatch.setattr(prestart_module, "run_prestart", lambda: events.append("run_prestart"))
+
+    prestart_module.main()
+
+    assert events == [("basicConfig", logging.INFO), "run_prestart"]
 
 
 def test_settings_validator_and_main_module_entrypoint(monkeypatch) -> None:

@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted**
+Proposed
 
 ## Date
 
@@ -10,371 +10,398 @@
 
 ## Context
 
-IRIS является аналитической платформой с архитектурой, основанной на:
+IRIS is an analytical platform built around:
 
-domain-oriented modules
+- domain-oriented modules
+- bounded contexts
+- event-driven orchestration
+- layered architecture
+- strict separation of concerns
 
-bounded contexts
+As the project grows, the following risks appear:
 
-event-driven orchestration
+- chaotic package structure
+- implicit dependencies between domains
+- the spread of generic "utility" files
+- deep relative imports
+- mixing infrastructure and domain logic
 
-layered architecture
+In addition, the current structure uses `src` as the source root, which leads to imports such as:
 
-strict separation of concerns
-
-По мере роста проекта возникает риск:
-
-хаотичной структуры пакетов
-
-неявных зависимостей между доменами
-
-появления "utility" файлов
-
-сложных относительных импортов
-
-смешивания инфраструктуры и доменной логики
-
-Кроме того, текущая структура использует src как source root, что приводит к импортам вида:
-
+```python
 from src.apps.signals.services import ...
+```
 
-Это связывает код с layout репозитория и ухудшает читаемость.
+That couples the code to the repository layout and reduces readability.
 
-Поэтому требуется стандарт, который:
+A standard is therefore needed to:
 
-делает структуру проекта предсказуемой
+- make project structure predictable
+- make domain dependencies explicit
+- remove the infrastructure namespace `src` from product code
+- establish one product namespace: `iris`
 
-делает зависимости между доменами явными
+## Decision
 
-устраняет инфраструктурный namespace src из продуктового кода
+IRIS uses a single product namespace: `iris`.
 
-закрепляет единый продуктовый namespace iris
+All product imports must begin with:
 
-Decision
-
-IRIS использует единый продуктовый namespace iris.
-
-Все продуктовые импорты должны начинаться с:
-
+```python
 iris.*
+```
 
-src/ используется только как repository layout, но не является namespace продукта.
+`src/` is used only as repository layout and is not part of the product namespace.
 
-Source Root Policy
+### Source Root Policy
 
 Repository layout:
 
+```text
 backend/
   src/
     iris/
+```
 
-Пример:
+Example:
 
+```text
 backend/src/iris/apps/signals
+```
 
-Импорт:
+Import:
 
+```python
 from iris.apps.signals.application.services.build_signal_snapshot import ...
+```
 
-Запрещено:
+Forbidden:
 
+```python
 from src.apps.signals ...
+```
 
-src является layout concern, а не частью runtime namespace.
+`src` is a layout concern, not part of the runtime namespace.
 
-Project Package Layout
+This is a target-state decision. The repository has not been fully migrated to it yet, so until the migration rollout is complete, this decision is not an enforceable baseline for the whole `backend/src` tree.
 
-Структура backend пакета:
+### Project Package Layout
 
+Backend package structure:
+
+```text
 iris/
   api/
   apps/
   core/
   runtime/
   main.py
-Package Responsibilities
-iris.api
+```
 
-HTTP / transport layer.
+### Package Responsibilities
 
-Содержит:
+`iris.api`
 
-routers
+HTTP and transport layer.
 
-dependencies
+Contains:
 
-request mapping
+- routers
+- dependencies
+- request mapping
+- response mapping
+- error translation
 
-response mapping
+Business logic is forbidden here.
 
-error translation
-
-Бизнес логика здесь запрещена.
-
-iris.apps
+`iris.apps`
 
 Bounded contexts.
 
-Каждый домен системы реализуется как отдельный пакет.
+Each product domain is implemented as a dedicated package.
 
-Примеры:
+Examples:
 
-iris.apps.signals
-iris.apps.market_data
-iris.apps.control_plane
-iris.apps.settings
-iris.core
+- `iris.apps.signals`
+- `iris.apps.market_data`
+- `iris.apps.control_plane`
+- `iris.apps.settings`
 
-Shared kernel платформы.
+`iris.core`
 
-Содержит:
+Shared platform kernel.
 
-configuration
+Contains:
 
-i18n
+- configuration
+- i18n
+- logging
+- base error classes
+- telemetry
+- shared utilities
 
-logging
+`core` must remain minimal and stable.
 
-error base classes
-
-telemetry
-
-shared utilities
-
-core должен быть минимальным и стабильным.
-
-iris.runtime
+`iris.runtime`
 
 Infrastructure runtime:
 
-workers
+- workers
+- stream processors
+- schedulers
+- event-loop orchestration
 
-stream processors
+### Domain Package Structure
 
-schedulers
+Each domain in `iris.apps` must follow the same structure.
 
-event loop orchestration
-
-Domain Package Structure
-
-Каждый домен в iris.apps должен следовать единой структуре.
-
+```text
 apps/<domain>/
   api/
   application/
   domain/
   infrastructure/
   contracts/
-Layer Responsibilities
-api
+```
+
+### Layer Responsibilities
+
+`api`
 
 Transport adapters.
 
-Примеры:
+Examples:
 
-routes.py
-read_routes.py
-write_routes.py
-dependencies.py
-error_mapping.py
-application
+- `routes.py`
+- `read_routes.py`
+- `write_routes.py`
+- `dependencies.py`
+- `error_mapping.py`
 
-Use cases и orchestration.
+`application`
 
-Содержит:
+Use cases and orchestration.
 
-commands/
-queries/
-services/
+Contains:
 
-Примеры файлов:
+- `commands/`
+- `queries/`
+- `services/`
 
-create_signal.py
-activate_strategy.py
-list_signals.py
-refresh_market_data.py
-domain
+Example files:
 
-Чистая предметная модель.
+- `create_signal.py`
+- `activate_strategy.py`
+- `list_signals.py`
+- `refresh_market_data.py`
 
-Содержит:
+`domain`
 
-entities.py
-value_objects.py
-events.py
-exceptions.py
-enums.py
-policies/
+Pure domain model.
 
-Domain слой не зависит от инфраструктуры.
+Contains:
 
-infrastructure
+- `entities.py`
+- `value_objects.py`
+- `events.py`
+- `exceptions.py`
+- `enums.py`
+- `policies/`
 
-Persistence и интеграции.
+The domain layer does not depend on infrastructure.
 
-Содержит:
+`infrastructure`
 
-models.py
-repositories/
-queries/
-cache/
-integrations/
-contracts
+Persistence and integrations.
 
-Typed contracts между слоями.
+Contains:
 
-Содержит:
+- `models.py`
+- `repositories/`
+- `queries/`
+- `cache/`
+- `integrations/`
 
-commands.py
-responses.py
-read_models.py
-events.py
-File Naming Rules
+`contracts`
 
-Файл должен описывать конкретную ответственность.
+Typed contracts between layers.
 
-Allowed
-refresh_market_data.py
-build_signal_snapshot.py
-activate_strategy.py
-signal_history_query.py
-Forbidden
-utils.py
-helpers.py
-common.py
-misc.py
-manager.py
-processor.py
-service.py
+Contains:
 
-Такие имена считаются архитектурным запахом.
+- `commands.py`
+- `responses.py`
+- `read_models.py`
+- `events.py`
 
-Avoid Tautological Naming
+### File Naming Rules
 
-Путь уже содержит архитектурный слой.
+A file must describe a concrete responsibility.
 
-Плохо:
+Allowed:
 
+- `refresh_market_data.py`
+- `build_signal_snapshot.py`
+- `activate_strategy.py`
+- `signal_history_query.py`
+
+Forbidden:
+
+- `utils.py`
+- `helpers.py`
+- `common.py`
+- `misc.py`
+- `manager.py`
+- `processor.py`
+- `service.py`
+
+Such names are treated as architectural smells.
+
+### Avoid Tautological Naming
+
+The path already contains the architectural layer.
+
+Bad:
+
+```text
 application/services/signal_service.py
 domain/models/domain_models.py
+```
 
-Хорошо:
+Good:
 
+```text
 application/services/build_signal_snapshot.py
 domain/entities.py
-Aggregator Files
+```
 
-Файлы типа:
+### Aggregator Files
 
-repositories.py
-schemas.py
-models.py
+Files such as:
 
-допустимы только если:
+- `repositories.py`
+- `schemas.py`
+- `models.py`
 
-они маленькие
+are allowed only if:
 
-содержат логически связанную группу объектов
+- they are small
+- they contain a logically related object group
 
-При росте их необходимо разделять.
+As they grow, they must be split.
 
-Import Rules
-Within Same Domain
+### Import Rules
 
-Разрешены relative imports.
+#### Within the Same Domain
 
-Пример:
+Relative imports are allowed.
 
+Example:
+
+```python
 from .exceptions import SignalError
 from ..contracts.read_models import SignalSummary
-Cross-Domain Imports
+```
 
-Должны быть absolute imports.
+#### Cross-Domain Imports
 
-Пример:
+Cross-domain imports must be absolute.
 
+Example:
+
+```python
 from iris.apps.market_data.contracts.read_models import MarketSnapshot
+```
 
-Запрещено:
+Forbidden:
 
+```python
 from ...market_data.contracts import MarketSnapshot
-Relative Import Depth
+```
 
-Relative imports глубже чем .. запрещены.
+#### Relative Import Depth
 
-Разрешено:
+Relative imports deeper than `..` are forbidden.
 
-.
-..
+Allowed:
 
-Запрещено:
+- `.`
+- `..`
 
-...
-....
-Cross-Domain Dependency Rules
+Forbidden:
 
-Домен может импортировать другой домен только через public modules.
+- `...`
+- `....`
 
-Разрешено:
+### Cross-Domain Dependency Rules
 
-contracts
-public facades
+A domain may import another domain only through public modules.
 
-Запрещено:
+Allowed:
 
-api
-infrastructure
-repositories
-ORM models
-private services
+- contracts
+- public facades
 
-Пример плохого импорта:
+Forbidden:
 
+- API
+- infrastructure
+- repositories
+- ORM models
+- private services
+
+Example of a bad import:
+
+```python
 from iris.apps.market_data.infrastructure.models import MarketModel
-Core Imports
+```
 
-iris.core импортируется только абсолютными импортами.
+### Core Imports
 
+`iris.core` is imported only through absolute imports.
+
+```python
 from iris.core.config import settings
-Test Imports
+```
 
-В тестах допускается дополнительная настройка import paths.
+### Test Imports
 
-src может использоваться как source root в test environment.
+Tests may use additional import-path configuration.
 
-Однако продуктовый код не должен использовать namespace src.
+`src` may be used as a source root in the test environment.
 
-Architectural Goal
+However, product code must not use the `src` namespace.
 
-Структура проекта должна обеспечивать:
+### Architectural Goal
 
-читаемость путей
+Project structure must provide:
 
-явные границы доменов
+- readable paths
+- explicit domain boundaries
+- minimal coupling
+- easy refactoring
+- architectural scalability
 
-минимальную связанность
+## Consequences
 
-простоту рефакторинга
+### Positive
 
-масштабируемость архитектуры
+IRIS gains:
 
-Result
+- one stable namespace: `iris`
+- a strict domain-package structure
+- clear file names
+- controlled cross-domain dependencies
+- a predictable import system
 
-IRIS использует:
+That makes the architecture more resilient as the system grows.
 
-единый namespace iris
+### Negative
 
-строгую структуру доменных пакетов
-
-понятные имена файлов
-
-контролируемые зависимости между доменами
-
-предсказуемую систему импортов
-
-Это обеспечивает устойчивость архитектуры при росте системы.
+- a phased migration from the existing `src.*` namespace will be required
+- until migration is complete, the repository will live in a mixed state
+- some CI constraints cannot be enabled as immediate hard failures
 
 ## See also
 
-- [ADR 0020: Dependency Direction Rules and Import Boundaries](0020-dependency-direction-import-boundaries.md) — правила направления зависимостей
-- [ADR 0002: Persistence Architecture](0002-persistence-architecture.md) — инфраструктурный слой
+- [ADR 0020: Dependency Direction Rules and Import Boundaries](0020-dependency-direction-import-boundaries.md) — dependency-direction rules
+- [ADR 0002: Persistence Architecture](0002-persistence-architecture.md) — infrastructure layer

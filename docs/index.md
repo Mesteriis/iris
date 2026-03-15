@@ -33,6 +33,15 @@ hide:
 
   <section class="iris-home__section">
     <div class="iris-home__section-head">
+      <h2>Disclaimer</h2>
+      <p>
+        IRIS provides informational and operational tooling for self-directed investors. It is not a broker, investment adviser, execution guarantee, or promise of profitability. Users remain solely responsible for any investment, trading, automation, and risk-management decisions.
+      </p>
+    </div>
+  </section>
+
+  <section class="iris-home__section">
+    <div class="iris-home__section-head">
       <h2>Platform snapshot</h2>
       <p>The docs site follows the same product language as the frontend: dark shell, glass panels, tide green highlights, and amber action accents.</p>
     </div>
@@ -43,7 +52,7 @@ hide:
       </div>
       <div class="iris-stat">
         <div class="iris-stat__label">Accepted ADRs</div>
-        <div class="iris-stat__value">14</div>
+        <div class="iris-stat__value">21</div>
       </div>
       <div class="iris-stat">
         <div class="iris-stat__label">Primary doc classes</div>
@@ -72,7 +81,7 @@ hide:
         <div class="iris-card__eyebrow">Delivery</div>
         <h3>Execution plans and audits</h3>
         <p>Refactor rollout state, implementation audits, localization planning, and AI platform working docs.</p>
-        <a href="iso/">Open delivery docs</a>
+        <a href="delivery/">Open delivery docs</a>
       </article>
       <article class="iris-card">
         <div class="iris-card__eyebrow">Generated</div>
@@ -84,7 +93,7 @@ hide:
         <div class="iris-card__eyebrow">Home Assistant</div>
         <h3>Bridge and protocol surface</h3>
         <p>Server-driven integration docs, backend plans, HACS integration planning, and protocol contracts.</p>
-        <a href="ha/">Open HA docs</a>
+        <a href="home-assistant/">Open Home Assistant docs</a>
       </article>
       <article class="iris-card">
         <div class="iris-card__eyebrow">Product</div>
@@ -109,8 +118,8 @@ hide:
     <ul class="iris-home__list">
       <li><strong>Generated artifacts first:</strong> use <a href="_generated/">code-derived HTTP snapshots</a> when validating what the platform actually exposes.</li>
       <li><strong>Accepted architecture second:</strong> use <a href="architecture/adr/">ADRs</a> and architecture policy docs for target boundaries and operating rules.</li>
-      <li><strong>Execution docs third:</strong> use <a href="iso/">delivery and audit docs</a> for rollout state, refactor campaigns, and principal implementation plans.</li>
-      <li><strong>Historical reviews last:</strong> use <a href="reviews/">review snapshots</a> as context, not as canonical contracts.</li>
+      <li><strong>Integration specs third:</strong> use <a href="home-assistant/">integration-specific protocol docs</a> when the question is scoped to Home Assistant.</li>
+      <li><strong>Execution docs fourth:</strong> use <a href="delivery/">delivery and audit docs</a> for rollout state, refactor campaigns, and principal implementation plans.</li>
     </ul>
   </section>
 </div>

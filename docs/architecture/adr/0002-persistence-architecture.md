@@ -10,44 +10,44 @@
 
 ## Context
 
-В ранней версии проекта доступ к БД происходил напрямую из разных частей кода:
+In the early project shape, database access happened directly from multiple parts of the codebase:
 
 - API routes
 - workers
-- сервисы
+- services
 
-Это приводило к:
+That led to:
 
-- размазанным транзакциям
-- N+1 запросам
-- трудно тестируемому коду
+- smeared transaction boundaries
+- N+1 queries
+- hard-to-test code
 
 ## Decision
 
-IRIS вводит стандартизированную persistence архитектуру.
+IRIS adopts a standardized persistence architecture.
 
-**Правила:**
+**Rules:**
 
-- Write side выполняется через **repositories**
-- Read side выполняется через **query services**
-- Transaction boundaries контролируются **Unit of Work**
-- Read path использует immutable typed models
-- Routes и workers не работают напрямую с AsyncSession
+- write-side logic goes through **repositories**
+- read-side logic goes through **query services**
+- transaction boundaries are controlled by **Unit of Work**
+- read paths use immutable typed models
+- routes and workers do not work directly with `AsyncSession`
 
 ## Consequences
 
 ### Positive
 
-- предсказуемые транзакции
-- упрощение тестирования
-- предотвращение N+1
+- predictable transactions
+- simpler testing
+- N+1 prevention
 
 ### Negative
 
-- больше кода инфраструктуры
-- требуется дисциплина при разработке
+- more infrastructure code
+- stronger development discipline required
 
 ## See also
 
-- [ADR 0010: Caller Owns Commit Boundary](0010-caller-owns-commit-boundary.md) — владение транзакционной границей
-- [ADR 0014: Side Effects Execute Post-Commit](0014-side-effects-post-commit-only.md) — безопасность записи
+- [ADR 0010: Caller Owns Commit Boundary](0010-caller-owns-commit-boundary.md) — transaction-boundary ownership
+- [ADR 0014: Post-Commit Side Effects Only](0014-post-commit-side-effects-only.md) — write safety

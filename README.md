@@ -2,6 +2,9 @@
 
 IRIS is an event-driven market intelligence platform for market data ingestion, analytical signal generation, routing governance, portfolio automation surfaces, and optional AI-assisted reasoning.
 
+> Disclaimer
+> IRIS provides informational and operational tooling for self-directed investors. It is not a broker, investment adviser, execution guarantee, or promise of profitability. Users remain solely responsible for any investment, trading, automation, and risk-management decisions.
+
 The repository is organized as a single product codebase:
 
 - `backend/`: FastAPI, SQLAlchemy, Alembic, Redis Streams, TaskIQ workers
@@ -43,10 +46,9 @@ frontend/
   src/         # Vue 3 application
 docs/
   architecture/
-  ha/
-  iso/
+  delivery/
+  home-assistant/
   product/
-  reviews/
   _generated/
 ```
 
@@ -54,26 +56,81 @@ docs/
 
 ### Docker Compose
 
+Default full-stack launch:
+
 ```bash
 docker compose up --build
 ```
 
-Services:
+The repository now also ships dedicated backend-only Compose modes.
+
+Embedded backend:
+
+```bash
+docker compose -f docker-compose.backend-embedded.yml up --build backend
+```
+
+External PostgreSQL / Redis:
+
+```bash
+DATABASE_URL=postgresql+psycopg://iris:iris@db.example.internal:5432/iris \
+REDIS_URL=redis://redis.example.internal:6379/0 \
+docker compose -f docker-compose.backend-external.yml up --build backend
+```
+
+Development mode with bind mounts and container restart on file changes:
+
+```bash
+docker compose -f docker-compose.backend-dev.yml up --build --watch backend
+```
+
+In embedded and dev modes the `backend` container is self-contained:
+
+- it starts embedded PostgreSQL 17 with TimescaleDB
+- it starts embedded Redis
+- it runs `/app/entrypoint.sh`, which waits for DB/Redis, applies Alembic migrations through `src.core.bootstrap.prestart`, and aborts startup if prestart fails
+- only after prestart succeeds does it launch `python -m src.main`
+- HTTP runtime, TaskIQ workers, scheduler, PostgreSQL, and Redis all run in the same backend container
+
+In dev mode:
+
+- `backend/src`, `backend/tests`, and the main backend config files are mounted from the host
+- source/config changes restart the whole backend container, so API, scheduler, and workers restart together
+- dependency/image changes such as `pyproject.toml`, `uv.lock`, `Dockerfile`, `.env`, or `entrypoint.sh` trigger a container rebuild
+
+Default local ports:
 
 - Backend: `http://localhost:8000`
-- Frontend: `http://localhost:3000`
+- Frontend: `http://localhost:3000` in the full-stack `docker-compose.yml`
 - PostgreSQL / TimescaleDB: `localhost:55432`
 - Redis: `localhost:56379`
 
-### Host-Side Backend With `uv`
+Persistent backend state is stored in Docker volumes:
 
-1. Start infrastructure only:
+- `backend_runtime_data` in the default full-stack `docker-compose.yml`
+- `backend_runtime_data_embedded` / `backend_runtime_data_external` / `backend_runtime_data_dev` in the dedicated backend-only compose files
+
+### External PostgreSQL / Redis Override
+
+The backend can switch per dependency from embedded services to external ones.
+
+- If `DATABASE_URL` is set, the container uses external PostgreSQL / TimescaleDB and does not start the embedded database.
+- If `REDIS_URL` is set, the container uses external Redis and does not start the embedded Redis.
+- If either variable is unset, the matching embedded service is started inside the backend container.
+
+The dedicated external-mode compose file enforces both variables. The embedded and dev compose files allow mixed mode per dependency.
+
+Example:
 
 ```bash
-docker compose up -d db redis
+DATABASE_URL=postgresql+psycopg://iris:iris@db.example.internal:5432/iris \
+REDIS_URL=redis://redis.example.internal:6379/0 \
+docker compose -f docker-compose.backend-external.yml up --build backend
 ```
 
-2. Create the backend environment:
+### Host-Side Backend With `uv`
+
+1. Create the backend environment:
 
 ```bash
 cd backend
@@ -81,10 +138,17 @@ cp .env.example .env
 uv sync --group dev
 ```
 
-3. Apply migrations and run tests:
+2. Ensure `DATABASE_URL` and `REDIS_URL` in `.env` point to reachable services.
+
+Notes:
+
+- `.env.example` defaults to `localhost:55432` and `localhost:56379`, which match the ports exposed by the Docker Compose backend container.
+- TimescaleDB support is required. Plain PostgreSQL is not sufficient for the full migration set.
+
+3. Run prestart and tests:
 
 ```bash
-uv run alembic upgrade head
+uv run python -m src.core.bootstrap.prestart
 uv run pytest
 ```
 
@@ -93,6 +157,8 @@ uv run pytest
 ```bash
 uv run python -m src.main
 ```
+
+When running the backend outside Docker, migrations are not applied from the app lifespan. You must run `src.core.bootstrap.prestart` or apply Alembic migrations yourself before starting `src.main`.
 
 ### Frontend
 
@@ -107,9 +173,9 @@ Primary documentation entrypoints:
 
 - Documentation site: `https://mesteriis.github.io/iris/`
 - Docs landing page: [`docs/index.md`](docs/index.md)
-- Architecture overview: [`docs/architecture.md`](docs/architecture.md)
+- Architecture overview: [`docs/architecture/index.md`](docs/architecture/index.md)
 - ADR index: [`docs/architecture/adr/index.md`](docs/architecture/adr/index.md)
-- Home Assistant docs: [`docs/ha/index.md`](docs/ha/index.md)
+- Home Assistant docs: [`docs/home-assistant/index.md`](docs/home-assistant/index.md)
 - Generated HTTP governance artifacts:
   - [`docs/_generated/http-availability-matrix.md`](docs/_generated/http-availability-matrix.md)
   - [`docs/_generated/http-capability-catalog.md`](docs/_generated/http-capability-catalog.md)
@@ -117,18 +183,17 @@ Primary documentation entrypoints:
 Documentation classes:
 
 - `docs/architecture/`: accepted architecture and governance documents
-- `docs/iso/`: execution plans, audits, refactor tracking, implementation working docs
+- `docs/delivery/`: execution plans, audits, refactor tracking, implementation working docs
 - `docs/product/`: product framing and review checklists
-- `docs/ha/`: Home Assistant integration and protocol documents
+- `docs/home-assistant/`: Home Assistant integration and protocol documents
 - `docs/_generated/`: generated snapshots exported from the live codebase
-- `docs/reviews/`: historical review snapshots that may lag the current implementation
 
 When documents disagree, prefer this order:
 
 1. Generated artifacts in `docs/_generated/`
 2. Accepted ADRs and governance docs in `docs/architecture/`
-3. Current execution and audit docs in `docs/iso/`
-4. Historical reviews in `docs/reviews/`
+3. Section-specific normative specs such as `docs/home-assistant/protocol-specification.md`
+4. Current execution and audit docs in `docs/delivery/`
 
 ## Home Assistant Integration Repo
 

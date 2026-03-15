@@ -10,44 +10,44 @@
 
 ## Context
 
-Рыночные сигналы могут противоречить друг другу.
+Market signals can contradict one another.
 
-**Например:**
+**For example:**
 
-- паттерн говорит BUY
-- режим рынка говорит HOLD
-- cross-market сигнал говорит SELL
+- a pattern says `BUY`
+- the market regime says `HOLD`
+- a cross-market signal says `SELL`
 
-Нужен слой агрегации сигналов.
+A signal-aggregation layer is required.
 
 ## Decision
 
-IRIS вводит Signal Fusion Engine.
+IRIS introduces a Signal Fusion Engine.
 
-**Fusion слой:**
+**The fusion layer:**
 
-- читает последние группы сигналов
-- взвешивает их с учётом контекста
-- разрешает конфликты
-- генерирует unified market decision
+- reads the latest signal groups
+- weights them with contextual adjustments
+- resolves conflicts
+- generates a unified market decision
 
-Результат записывается в:
+The result is stored in:
 
-- market_decisions
+- `market_decisions`
 
 ## Consequences
 
 ### Positive
 
-- единая рыночная позиция
-- более устойчивые решения
+- one coherent market stance
+- more stable decisions
 
 ### Negative
 
-- fusion логика может стать слишком сложной
-- требуется explainability
+- fusion logic can become too complex
+- explainability is required
 
 ## See also
 
-- [ADR 0007: Cross-Market Intelligence](0007-cross-market-intelligence.md) — корреляционный анализ
-- [ADR 0006: Portfolio Engine Separation](0006-portfolio-engine-separation.md) — исполнение решений
+- [ADR 0007: Cross-Market Intelligence](0007-cross-market-intelligence.md) — correlation analysis
+- [ADR 0006: Portfolio Engine Separation](0006-portfolio-engine-separation.md) — execution of decisions

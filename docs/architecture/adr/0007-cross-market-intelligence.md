@@ -10,43 +10,43 @@
 
 ## Context
 
-Крипторынок сильно связан.
+The crypto market is highly interconnected.
 
-**Примеры:**
+**Examples:**
 
-- BTC → ETH
-- ETH → altcoins
+- BTC -> ETH
+- ETH -> altcoins
 - sector rotation
 
-Игнорирование этих связей ухудшает сигналы.
+Ignoring these relationships weakens signals.
 
 ## Decision
 
-IRIS вводит Cross-Market Intelligence Layer.
+IRIS introduces a Cross-Market Intelligence Layer.
 
-**Система:**
+**The system:**
 
-- вычисляет корреляции
-- определяет лидеров рынка
-- фиксирует lag между активами
-- усиливает сигналы follower активов
+- computes correlations
+- identifies market leaders
+- records lag relationships between assets
+- strengthens follower-asset signals
 
-Данные сохраняются в:
+Data is stored in:
 
-- coin_relations
+- `coin_relations`
 
 ## Consequences
 
 ### Positive
 
-- более контекстные сигналы
-- выявление лидерских активов
+- more contextual signals
+- better identification of leader assets
 
 ### Negative
 
-- сложность расчётов
-- необходимость корректной калибровки
+- more complex computation
+- correct calibration is required
 
 ## See also
 
-- [ADR 0004: Signal Fusion Layer](0004-signal-fusion-layer.md) — fusion с другими сигналами
+- [ADR 0004: Signal Fusion Layer](0004-signal-fusion-layer.md) — fusion with other signal sources

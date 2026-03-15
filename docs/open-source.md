@@ -13,10 +13,10 @@ IRIS is being prepared for a public OSS workflow around the current repository a
 
 IRIS documentation is split by purpose:
 
-- `docs/architecture/` is for accepted architecture and governance guidance
-- `docs/iso/` is for working plans, execution boards, and implementation audits
+- `docs/architecture/` is for active architecture contracts, governance guidance, supporting notes, and historical architecture archive
+- `docs/delivery/` is for active rollout plans, execution boards, and implementation audits
+- `docs/home-assistant/` is for integration-specific protocol docs, explanatory notes, and historical integration archive
 - `docs/_generated/` is for code-derived artifacts exported from CI/tooling
-- `docs/reviews/` is for dated review snapshots and should not be treated as normative architecture
 
 ## Contribution Expectations
 
@@ -29,13 +29,13 @@ Contributors are expected to preserve the current structural contracts:
 
 ## What To Read Before Large Changes
 
-- [Architecture Overview](architecture.md)
+- [Architecture Overview](architecture/index.md)
 - [ADR Index](architecture/adr/index.md)
 - [Service Layer Runtime Policies](architecture/service-layer-runtime-policies.md)
 - [Service Layer Performance Budgets](architecture/service-layer-performance-budgets.md)
-- [Delivery And Audits](iso/index.md)
+- [Delivery](delivery/index.md)
 
 ## Notes
 
-- Review documents in `docs/reviews/` are useful context, but they are snapshots in time and may lag the implementation.
+- Home Assistant protocol questions must defer to `docs/home-assistant/protocol-specification.md` over plan or progress documents.
 - Generated docs under `docs/_generated/` should be refreshed whenever the governed HTTP surface changes.

@@ -1,378 +1,400 @@
-# IRIS как домашняя инвестиционная система
+# IRIS as a Home Investment System
 
-## Общее позиционирование
+> Disclaimer
+> IRIS provides informational support for self-directed investors. It is not a broker, investment adviser, execution engine, or promise of returns. Users remain responsible for all investment and risk decisions.
 
-IRIS — это домашняя интеллектуальная система для самостоятельного инвестора, встроенная в личную цифровую среду и экосистему умного дома.
+## Positioning
 
-Ее задача не в том, чтобы заменить человека, брокера или торговую платформу, а в том, чтобы:
-- наблюдать за рынком постоянно;
-- фильтровать шум;
-- выделять действительно важные изменения;
-- связывать рыночные события с личным портфелем;
-- давать спокойные, понятные и контекстные рекомендации;
-- помогать человеку сохранять дисциплину и качество решений.
+IRIS is a home intelligence system for a self-directed investor, embedded into a personal digital environment and smart-home ecosystem.
 
-IRIS — это не “еще один терминал с графиками”, а **домашний слой инвестиционного мышления и принятия решений**.
+Its role is not to replace the user, a broker, or a trading terminal. Its role is to:
 
----
+- watch the market continuously;
+- filter noise;
+- highlight genuinely important changes;
+- connect market events to the user’s own portfolio;
+- provide calm, understandable, contextual recommendations;
+- help the user preserve discipline and decision quality.
 
-## Главная бизнес-ценность
+IRIS is not “just another chart terminal.” It is a **home layer for investment thinking and decision support**.
 
-Главная ценность IRIS как домашней системы заключается в том, что она превращает перегруженный, шумный и эмоционально тяжелый крипторынок в персонализированную, спокойную и понятную среду принятия решений.
+## Core Business Value
 
-Для пользователя это означает:
-- меньше хаоса;
-- меньше упущенных возможностей;
-- меньше импульсивных ошибок;
-- больше понимания, что действительно важно;
-- больше связи между аналитикой и реальным состоянием личного портфеля.
+The main value of IRIS as a home system is that it turns an overloaded, noisy, emotionally demanding crypto market into a personalized, calm, understandable decision environment.
 
-IRIS не продает “магическое предсказание рынка”.  
-Ее ценность — в **повышении качества решений частного инвестора в повседневной жизни**.
+For the user, that means:
 
----
+- less chaos;
+- fewer missed opportunities;
+- fewer impulsive mistakes;
+- more clarity about what actually matters;
+- a tighter link between analytics and the real state of a personal portfolio.
 
-## Какие проблемы решает система
+IRIS does not sell “magical market prediction.”
+Its value is **improving the quality of everyday decisions for a private investor**.
 
-## 1. Информационная перегрузка
+## Problems the System Solves
 
-Самостоятельный инвестор сталкивается с постоянным потоком:
-- цен;
-- новостей;
-- твитов;
-- мнений;
-- индикаторов;
-- сигналов;
-- алертов;
-- корреляций;
-- рыночных “объяснений”.
+## 1. Information Overload
 
-Большая часть этой информации:
-- шумная;
-- противоречивая;
-- не привязана к личному портфелю;
-- требует времени на обработку;
-- повышает тревожность.
+A self-directed investor faces a constant stream of:
 
-### Какую ценность дает IRIS
-IRIS агрегирует, структурирует и приоритизирует информацию, чтобы пользователь видел не весь рынок сразу, а только то, что действительно заслуживает внимания.
+- prices;
+- news;
+- tweets;
+- opinions;
+- indicators;
+- signals;
+- alerts;
+- correlations;
+- market “explanations.”
 
-То есть система решает проблему:
-**“рынок шумит слишком громко, я не понимаю, что из этого реально важно для меня”**
+Most of that information is:
 
----
+- noisy;
+- contradictory;
+- disconnected from the user’s own portfolio;
+- time-consuming to process;
+- anxiety-inducing.
 
-## 2. Нехватка времени на постоянное наблюдение за рынком
+### Value Provided by IRIS
 
-Частный инвестор не может:
-- 24/7 смотреть терминал;
-- постоянно проверять watchlist;
-- вручную отслеживать все важные изменения;
-- следить за десятками активов и взаимосвязей между ними.
+IRIS aggregates, structures, and prioritizes information so the user does not see the whole market at once, only what actually deserves attention.
 
-Особенно это актуально для людей, у которых есть:
-- работа;
-- семья;
-- бытовые дела;
-- другие проекты.
+It solves the problem:
+**“the market is too loud, and I cannot tell what actually matters for me.”**
 
-### Какую ценность дает IRIS
-IRIS выступает как постоянный домашний наблюдатель за рынком:
-- отслеживает события в фоне;
-- выделяет важные изменения;
-- сообщает только о значимом;
-- сохраняет контекст предыдущих наблюдений.
+## 2. Lack of Time for Constant Market Monitoring
 
-То есть система решает проблему:
-**“я не могу быть всегда у экрана, но не хочу пропускать важное”**
+A private investor cannot:
 
----
+- watch a trading terminal 24/7;
+- constantly check a watchlist;
+- manually track every meaningful change;
+- monitor dozens of assets and their relationships.
 
-## 3. Импульсивные и эмоциональные решения
+This is especially relevant for people who also have:
 
-Одна из главных проблем самостоятельного инвестора — решения под влиянием:
+- work;
+- family;
+- household responsibilities;
+- other projects.
+
+### Value Provided by IRIS
+
+IRIS acts as a persistent home market observer:
+
+- tracking events in the background;
+- highlighting meaningful changes;
+- notifying only on what matters;
+- preserving the context of earlier observations.
+
+It solves the problem:
+**“I cannot always be at the screen, but I do not want to miss what matters.”**
+
+## 3. Impulsive and Emotional Decisions
+
+One of the main problems for a self-directed investor is making decisions under the influence of:
+
 - FOMO;
-- паники;
-- перегруза;
-- чужого мнения;
-- краткосрочного шума.
+- panic;
+- overload;
+- other people’s opinions;
+- short-term noise.
 
-Даже хороший инвестор часто ошибается не потому, что у него нет данных, а потому что:
-- он реагирует слишком быстро;
-- действует без контекста;
-- не сопоставляет идею с текущим портфелем;
-- забывает собственные предыдущие тезисы.
+Even a strong investor often fails not because data is unavailable, but because:
 
-### Какую ценность дает IRIS
-IRIS снижает эмоциональность решений за счет:
-- контекста;
-- истории наблюдений;
-- оценки силы сигнала;
-- проверки подтверждений и противоречий;
-- спокойной рекомендации вместо “тревожного пуша”.
+- the reaction is too fast;
+- the action happens without context;
+- the idea is not compared to the current portfolio;
+- previous theses are forgotten.
 
-То есть система решает проблему:
-**“я вижу движение рынка, но не понимаю, это действительно важно или я просто эмоционально реагирую”**
+### Value Provided by IRIS
 
----
+IRIS reduces emotional decision-making through:
 
-## 4. Разрыв между рыночной аналитикой и личным портфелем
+- context;
+- observation history;
+- signal-strength assessment;
+- confirmation and contradiction checks;
+- a calm recommendation instead of an “anxious push.”
 
-Большинство инструментов показывают, что происходит на рынке, но не отвечают:
-- что это значит именно для моего портфеля;
-- усиливает ли это мой риск;
-- не слишком ли я уже перегружен сектором;
-- не противоречит ли новая идея текущей структуре позиций;
-- стоит ли вообще действовать, если позиция уже открыта.
+It solves the problem:
+**“I see market movement, but I do not know whether it is truly important or whether I am just reacting emotionally.”**
 
-### Какую ценность дает IRIS
-IRIS связывает рыночные события с:
-- текущими позициями;
-- распределением капитала;
-- концентрацией риска;
-- наблюдаемыми активами;
-- уровнем уверенности по идее.
+## 4. Disconnect Between Market Analytics and the Personal Portfolio
 
-То есть система решает проблему:
-**“рынок дает сигнал, но я не понимаю, что это меняет лично для моего портфеля”**
+Most tools show what is happening in the market, but they do not answer:
 
----
+- what this means for my portfolio specifically;
+- whether it increases my risk;
+- whether I am already overexposed to a sector;
+- whether a new idea conflicts with my current positions;
+- whether I should act at all if the position is already open.
 
-## 5. Отсутствие единого личного инвестиционного контекста
+### Value Provided by IRIS
 
-Часто у инвестора знания хранятся фрагментарно:
-- что-то в голове;
-- что-то в заметках;
-- что-то в Telegram;
-- что-то в TradingView;
-- что-то в бирже;
-- что-то в истории покупок.
+IRIS connects market events with:
 
-В результате теряется:
-- логика прошлых решений;
-- причины добавления актива в наблюдение;
-- понимание, что уже подтверждалось, а что ломалось;
-- способность учиться на своих же действиях.
+- current positions;
+- capital allocation;
+- risk concentration;
+- watched assets;
+- confidence in the idea.
 
-### Какую ценность дает IRIS
-IRIS формирует единый слой личной инвестиционной памяти:
-- что система замечала;
-- что считала перспективным;
-- что подтвердилось;
-- что оказалось слабым;
-- как менялась уверенность;
-- как это влияло на портфель.
+It solves the problem:
+**“the market is sending a signal, but I do not understand what it changes for my portfolio personally.”**
 
-То есть система решает проблему:
-**“я не веду цельную историю своих инвестиционных гипотез и постоянно теряю контекст”**
+## 5. No Unified Personal Investment Context
 
----
+Investor knowledge is often stored in fragments:
 
-## 6. Слишком сложные профессиональные инструменты для домашнего использования
+- partly in memory;
+- partly in notes;
+- partly in Telegram;
+- partly in TradingView;
+- partly at the exchange;
+- partly in purchase history.
 
-Существующие рыночные платформы часто перегружены:
-- интерфейсами;
-- окнами;
-- графиками;
-- настройками;
-- метриками;
-- терминальным стилем подачи.
+As a result, the user loses:
 
-Для домашнего пользователя это часто означает:
-- усталость;
-- расфокус;
-- отказ от регулярного использования;
-- ощущение, что надо “садиться работать”, чтобы просто понять состояние рынка.
+- the logic behind past decisions;
+- the reasons an asset was added to watch;
+- the understanding of what had already been confirmed or invalidated;
+- the ability to learn from previous actions.
 
-### Какую ценность дает IRIS
-IRIS может быть встроен в домашнюю среду через:
-- краткие сводки;
-- карточки решений;
-- голосовые уведомления;
-- Lovelace dashboard;
-- мягкие сценарии умного дома;
-- персональные ритуалы обзора рынка утром и вечером.
+### Value Provided by IRIS
 
-То есть система решает проблему:
-**“я хочу быть в контексте инвестиций без необходимости жить в терминале”**
+IRIS creates a unified layer of personal investment memory:
 
----
+- what the system noticed;
+- what it considered promising;
+- what was confirmed;
+- what turned out weak;
+- how confidence changed;
+- how it affected the portfolio.
 
-## 7. Отсутствие персонализированной инвестиционной среды дома
+It solves the problem:
+**“I do not keep a coherent history of my investment hypotheses and keep losing context.”**
 
-Дом сегодня уже умеет:
-- управлять светом;
-- следить за климатом;
-- показывать камеры;
-- включать сценарии;
-- реагировать на присутствие.
+## 6. Professional Tools Are Too Heavy for Home Use
 
-Но инвестиционная аналитика почти никогда не становится частью домашней среды.
+Existing market platforms are often overloaded with:
 
-### Какую ценность дает IRIS
-IRIS делает инвестиционный слой частью личной цифровой экосистемы:
-- рынок перестает быть отдельным стрессовым приложением;
-- важные сигналы приходят в понятном домашнем формате;
-- аналитика адаптируется под ритм жизни;
-- взаимодействие становится привычным и естественным.
+- interfaces;
+- windows;
+- charts;
+- settings;
+- metrics;
+- terminal-style presentation.
 
-То есть система решает проблему:
-**“инвестиции существуют отдельно от моей повседневной среды, хотя они влияют на мои решения и состояние”**
+For a home user, this often means:
 
----
+- fatigue;
+- loss of focus;
+- lower usage frequency;
+- the feeling that they must “sit down and work” just to understand market state.
 
-## Для кого ценен такой продукт
+### Value Provided by IRIS
 
-IRIS особенно ценен для:
-- самостоятельных инвесторов;
-- людей, которые управляют собственным крипто-портфелем;
-- пользователей Home Assistant;
-- тех, кто хочет личную аналитическую систему у себя дома;
-- тех, кто не хочет сидеть в терминале весь день;
-- тех, кто хочет спокойную, а не агрессивную модель уведомлений;
-- тех, кто предпочитает локальную, приватную и персонализированную инфраструктуру.
+IRIS can be embedded into the home environment through:
 
-Это не массовый “продукт для всех”, а система с высокой ценностью для конкретного профиля пользователя:
-**частный инвестор с потребностью в дисциплине, контексте и автоматизированном наблюдении за рынком**
+- concise summaries;
+- decision cards;
+- voice notifications;
+- a Lovelace dashboard;
+- soft smart-home scenarios;
+- personal market-review rituals in the morning and evening.
 
----
+It solves the problem:
+**“I want to stay in investment context without needing to live inside a terminal.”**
 
-## В чем уникальность продукта
+## 7. No Personalized Investment Environment at Home
 
-Уникальность IRIS не в том, что он:
-- считает индикаторы;
-- ищет паттерны;
-- строит прогнозы.
+The modern home already knows how to:
 
-Такие вещи делают многие системы.
+- control lights;
+- monitor climate;
+- show cameras;
+- trigger scenarios;
+- react to presence.
 
-Уникальность IRIS в другом:
+But investment analytics almost never becomes part of that environment.
 
-### 1. Это домашняя инвестиционная система
-IRIS встроен в домашнюю цифровую среду и работает как часть личной инфраструктуры, а не как еще один обезличенный сервис.
+### Value Provided by IRIS
 
-### 2. Это персональный слой принятия решений
-Система не просто показывает рыночные данные, а интерпретирует их в контексте конкретного пользователя и его портфеля.
+IRIS makes the investment layer part of a personal digital ecosystem:
 
-### 3. Это спокойный интерфейс вместо рыночного шума
-IRIS фокусируется не на перегрузке аналитикой, а на понятных, своевременных и ограниченных по объему выводах.
+- the market stops being a separate stressful application;
+- important signals arrive in a familiar home format;
+- analytics adapts to the user’s daily rhythm;
+- interaction becomes habitual and natural.
 
-### 4. Это долговременная память, а не одноразовый сигнал
-Система накапливает знания о том, какие гипотезы работали, как менялись условия рынка, и что подтверждалось на практике.
+It solves the problem:
+**“investments exist separately from my everyday environment, even though they affect my decisions and my state of mind.”**
 
-### 5. Это связка рынка и образа жизни
-IRIS можно встроить в ежедневные ритуалы:
-- утренний обзор;
-- дневной watchlist;
-- вечернюю проверку риска;
+## Who This Product Is Valuable For
+
+IRIS is especially valuable for:
+
+- self-directed investors;
+- people managing their own crypto portfolios;
+- Home Assistant users;
+- people who want a personal analytics system at home;
+- people who do not want to sit in a terminal all day;
+- people who prefer calm notifications over aggressive alerts;
+- people who prefer local, private, personalized infrastructure.
+
+This is not a mass “product for everyone.”
+It is a high-value system for a specific user profile:
+**a private investor who needs discipline, context, and automated market observation.**
+
+## What Makes the Product Unique
+
+IRIS is not unique because it:
+
+- calculates indicators;
+- searches for patterns;
+- builds predictions.
+
+Many systems do those things.
+
+IRIS is unique in other ways.
+
+### 1. It Is a Home Investment System
+
+IRIS is embedded into a home digital environment and works as part of personal infrastructure rather than as another anonymous service.
+
+### 2. It Is a Personal Decision Layer
+
+The system does not simply show market data. It interprets that data in the context of a specific user and that user’s portfolio.
+
+### 3. It Is a Calm Interface Instead of Market Noise
+
+IRIS focuses not on analytical overload, but on understandable, timely, bounded conclusions.
+
+### 4. It Is Long-Term Memory Rather Than a One-Off Signal
+
+The system accumulates knowledge about which hypotheses worked, how market conditions changed, and what was confirmed in practice.
+
+### 5. It Connects the Market to Daily Life
+
+IRIS can be embedded into daily rituals:
+
+- morning review;
+- daytime watchlist check;
+- evening risk review;
 - weekly reflection;
-- голосовые сводки;
-- домашние панели.
+- voice summaries;
+- home dashboards.
 
----
+## Functional Value for the User
 
-## Какую функциональную ценность получает пользователь
+The user gets:
 
-Пользователь получает:
+### 1. Continuous Market Monitoring Without Manual Effort
 
-### 1. Постоянное наблюдение за рынком без ручного участия
-Система работает в фоне и снимает нагрузку постоянного мониторинга.
+The system runs in the background and removes the burden of constant monitoring.
 
-### 2. Умную фильтрацию сигналов
-Пользователь видит только то, что реально достойно внимания.
+### 2. Intelligent Signal Filtering
 
-### 3. Контекстные рекомендации
-Не просто “что случилось”, а “почему это важно и что это значит для моего портфеля”.
+The user sees only what is truly worth attention.
 
-### 4. Историю гипотез и подтверждений
-Система помогает учиться на собственных и системных наблюдениях.
+### 3. Contextual Recommendations
 
-### 5. Более спокойный ритм взаимодействия с рынком
-Меньше тревоги, меньше хаоса, меньше бессмысленных проверок.
+Not just “what happened,” but “why it matters and what it means for my portfolio.”
 
-### 6. Персонализацию
-IRIS можно адаптировать под:
-- активы пользователя;
-- стиль инвестирования;
-- допустимый уровень риска;
-- распорядок дня;
-- домашние сценарии уведомлений.
+### 4. A History of Hypotheses and Confirmations
 
----
+The system helps the user learn from personal and system observations.
 
-## Эмоциональная ценность продукта
+### 5. A Calmer Rhythm of Market Interaction
 
-Помимо функциональной пользы, IRIS создает важную эмоциональную ценность.
+Less anxiety, less chaos, fewer pointless checks.
 
-### 1. Снижение тревожности
-Человек понимает, что важное не будет пропущено, потому что система следит за рынком.
+### 6. Personalization
 
-### 2. Ощущение контроля
-Даже если рынок сложный, пользователь чувствует, что у него есть понятная личная система навигации.
+IRIS can be adapted to:
 
-### 3. Доверие к собственным решениям
-Когда решения принимаются не из импульса, а на основе контекста и истории, растет уверенность и дисциплина.
+- the user’s assets;
+- investment style;
+- acceptable risk level;
+- daily routine;
+- home notification scenarios.
 
-### 4. Комфорт
-Аналитика становится частью привычной домашней среды, а не стрессовым внешним шумом.
+## Emotional Value of the Product
 
----
+Beyond functional value, IRIS creates meaningful emotional value.
 
-## Почему это имеет продуктовую перспективу
+### 1. Lower Anxiety
 
-IRIS как домашняя система перспективен потому, что попадает в важный незакрытый сегмент:
+The user knows important developments will not be missed because the system is watching the market.
 
-- между профессиональными терминалами и примитивными алертами;
-- между “ручным самостоятельным инвестированием” и “полной автоматизацией”;
-- между хаотичным потреблением контента и персональной системой принятия решений.
+### 2. A Sense of Control
 
-Многие инвесторы не хотят:
-- круглосуточно жить в графиках;
-- передавать капитал в чужое управление;
-- включать авто-трейдинг;
-- пользоваться тяжелыми профессиональными интерфейсами.
+Even when the market is complex, the user feels there is a clear personal navigation system.
 
-Но они хотят:
-- понимать, что происходит;
-- не пропускать важное;
-- держать портфель под контролем;
-- принимать решения спокойнее и умнее.
+### 3. Greater Trust in One’s Own Decisions
 
-IRIS закрывает именно эту потребность.
+When decisions are made from context and history rather than impulse, confidence and discipline increase.
 
----
+### 4. Comfort
 
-## Основная продуктовая формула
+Analytics becomes part of the familiar home environment instead of an external stressful noise source.
 
-IRIS — это домашний инвестиционный ассистент, который:
-- непрерывно наблюдает за рынком;
-- связывает рыночные изменения с личным портфелем;
-- фильтрует шум;
-- помогает принимать более спокойные и качественные решения;
-- делает инвестиционную аналитику частью повседневной домашней среды.
+## Why This Has Product Potential
 
----
+IRIS fits an important under-served segment:
 
-## Ключевая бизнес-ценность в одной фразе
+- between professional terminals and primitive alerts;
+- between fully manual investing and full automation;
+- between chaotic content consumption and a personal decision system.
 
-**IRIS повышает качество решений самостоятельного инвестора, снижая шум, тревожность и нагрузку постоянного рыночного мониторинга за счет персонализированной домашней инвестиционной среды.**
+Many investors do not want to:
 
----
+- live inside charts around the clock;
+- hand capital to someone else;
+- switch on auto-trading;
+- use heavy professional interfaces.
 
-## Итог
+But they do want to:
 
-IRIS как домашняя инвестиционная система ценен не тем, что “угадывает рынок”, а тем, что:
-- экономит внимание;
-- снижает когнитивную нагрузку;
-- повышает дисциплину;
-- сохраняет инвестиционный контекст;
-- связывает аналитику с личным портфелем;
-- встраивает наблюдение за рынком в обычную жизнь пользователя.
+- understand what is happening;
+- avoid missing what matters;
+- keep the portfolio under control;
+- make calmer, better decisions.
 
-Это делает продукт особенно сильным для частных инвесторов, которые хотят не больше шума, а **больше ясности, спокойствия и контроля**.
+IRIS addresses exactly that need.
 
-Улучшение: строить пользовательский слой вокруг ежедневных домашних сценариев — утренних обзоров, вечерних сводок, мягких уведомлений и карточек решений.  
-Польза: продукт будет восприниматься как естественная часть жизни, а не как еще один перегруженный инструмент.
+## Core Product Formula
 
-Улучшение: делать главным объектом не сигнал и не прогноз, а персонализированное инвестиционное решение в контексте текущего портфеля.  
-Польза: система станет ближе к реальной потребности пользователя — понимать, что важно именно для него и что с этим делать.
+IRIS is a home investment assistant that:
+
+- continuously watches the market;
+- connects market changes to the personal portfolio;
+- filters noise;
+- helps the user make calmer, higher-quality decisions;
+- makes investment analytics part of the everyday home environment.
+
+## Key Business Value in One Sentence
+
+**IRIS improves the decision quality of a self-directed investor by reducing noise, anxiety, and the burden of constant market monitoring through a personalized home investment environment.**
+
+## Conclusion
+
+IRIS as a home investment system is valuable not because it “guesses the market,” but because it:
+
+- saves attention;
+- reduces cognitive load;
+- improves discipline;
+- preserves investment context;
+- connects analytics with the personal portfolio;
+- embeds market observation into the user’s ordinary life.
+
+That makes it especially strong for private investors who want not more noise, but **more clarity, calm, and control**.
+
+Improvement: build the user layer around daily home scenarios such as morning reviews, evening summaries, soft notifications, and decision cards.
+Benefit: the product will feel like a natural part of life rather than another overloaded tool.
+
+Improvement: make the primary object not the signal or the prediction, but the personalized investment decision in the context of the current portfolio.
+Benefit: the system becomes closer to the real user need, understanding what matters specifically for that user and what to do about it.

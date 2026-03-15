@@ -10,60 +10,60 @@
 
 ## Context
 
-IRIS выполняет сложную аналитическую обработку рыночных данных:
+IRIS performs complex analytical processing of market data:
 
-- ingestion свечей
-- вычисление индикаторов
-- детекция паттернов
-- построение рыночных режимов
-- cross-market корреляции
-- генерация сигналов
-- fusion сигналов
-- принятие инвестиционных решений
-- управление портфелем
+- candle ingestion
+- indicator computation
+- pattern detection
+- market-regime construction
+- cross-market correlation
+- signal generation
+- signal fusion
+- investment-decision generation
+- portfolio management
 
-Наивная архитектура выполняла бы всё через:
+A naive architecture would execute all of this through:
 
 - cron jobs
-- синхронные пайплайны
-- периодические batch вычисления
+- synchronous pipelines
+- periodic batch computation
 
-Такой подход плохо масштабируется и плохо восстанавливается после ошибок.
+That approach scales poorly and recovers poorly after failures.
 
 ## Decision
 
-IRIS использует event-driven runtime pipeline.
+IRIS uses an event-driven runtime pipeline.
 
-**Пайплайн:**
+**Pipeline:**
 
-```
+```text
 candle_closed
-  → indicator_updated
-  → analysis_requested
-  → pattern_detected
-  → decision_generated
-  → portfolio_actions
+  -> indicator_updated
+  -> analysis_requested
+  -> pattern_detected
+  -> decision_generated
+  -> portfolio_actions
 ```
 
-Каждый этап реализован как независимый worker.
+Each stage is implemented as an independent worker.
 
-Workers обмениваются событиями через Redis Streams.
+Workers exchange events through Redis Streams.
 
 ## Consequences
 
 ### Positive
 
-- независимость подсистем
-- устойчивость к падениям
-- возможность горизонтального масштабирования
-- простая повторная обработка событий
+- subsystem independence
+- better failure resilience
+- horizontal-scaling potential
+- straightforward event replay
 
 ### Negative
 
-- увеличивается сложность runtime
-- требуется хорошая observability
+- higher runtime complexity
+- stronger observability requirements
 
 ## See also
 
-- [ADR 0003: Control Plane for Event Routing](0003-control-plane-event-routing.md) — динамическая маршрутизация событий
-- [ADR 0009: Signals Service/Engine Split](0009-canonical-signals-service-engine-split.md) — сервисная оркестрация
+- [ADR 0003: Control Plane for Event Routing](0003-control-plane-event-routing.md) — dynamic event routing
+- [ADR 0009: Signals Service/Engine Split](0009-signals-service-engine-split.md) — service orchestration

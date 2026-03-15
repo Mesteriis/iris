@@ -27,12 +27,12 @@ However, the architecture must remain extensible to support new languages in the
 
 IRIS uses a Global Locale Model.
 
-The system language is stored in global user configuration.
+The system language is stored in global settings.
 
 **Example:**
 
-```
-settings.locale = "ru"
+```python
+settings.language = "ru"
 ```
 
 The localization engine uses this locale for all user messages.
@@ -41,7 +41,7 @@ The localization engine uses this locale for all user messages.
 
 The order of language determination:
 
-1. **System Settings**: `settings.locale`
+1. **System Settings**: `settings.language`
 2. **Default locale**: `en`
 
 `Accept-Language` header is not used.
@@ -129,11 +129,15 @@ The transport layer connects domain and localization. It:
 
 **Frontend**
 
-Frontend does not store its own translations. Frontend uses the same message_key catalog as the backend.
+The frontend rewrite is not started yet, so frontend localization is not the current source of truth.
+
+The target frontend model must consume backend-owned `message_key` contracts and must not introduce a competing text taxonomy.
 
 **Integrations**
 
-Integrations (e.g., Home Assistant) use the same message_keys. This ensures a unified system dictionary.
+Integrations use backend-owned business `message_key` contracts for runtime/business narration.
+
+Static integration chrome, such as Home Assistant `strings.json` and `translations/*`, remains integration-owned.
 
 ### Message Flow
 
@@ -159,7 +163,7 @@ message_key = error.market_not_found
 ```
 translate(
     key="error.market_not_found",
-    locale=settings.locale,
+    locale=settings.language,
     params={"market": "BTCUSDT"}
 )
 ```
@@ -268,4 +272,4 @@ This limitation is acceptable because IRIS is a single-user system.
 ## See also
 
 - [ADR 0016: Error Taxonomy And Boundary Localization](0016-error-taxonomy-boundary-localization.md) — error handling
-- [HA Integration Documentation](../../ha/index.md) — Home Assistant integration
+- [Home Assistant Overview](../../home-assistant/index.md) — Home Assistant integration

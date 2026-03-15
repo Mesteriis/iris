@@ -28,10 +28,6 @@ async def lifespan(app: FastAPI):
     app.state.ha_bridge_runtime = ha_bridge_runtime
     app.state.ha_bridge_service = ha_bridge_runtime.service
     # NOTE:
-    # Alembic startup migration remains synchronous intentionally.
-    # This runs once during service bootstrap, outside the HTTP request path.
-    await asyncio.to_thread(app.state.run_migrations)
-    # NOTE:
     # Console receiver registration is legacy sync infrastructure and executes
     # only during startup, outside the main request/event loop critical path.
     await asyncio.to_thread(register_default_receivers)

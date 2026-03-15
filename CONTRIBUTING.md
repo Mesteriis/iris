@@ -5,8 +5,8 @@ Thanks for contributing.
 ## Before You Start
 
 - Read [`README.md`](README.md) for repository entrypoints.
-- Read [`docs/architecture.md`](docs/architecture.md) and [`docs/architecture/adr/index.md`](docs/architecture/adr/index.md) before large architecture changes.
-- For refactor work, check the active rollout and audit docs under `docs/iso/`.
+- Read [`docs/architecture/index.md`](docs/architecture/index.md) and [`docs/architecture/adr/index.md`](docs/architecture/adr/index.md) before large architecture changes.
+- For refactor work, check the active rollout and audit docs under `docs/delivery/`.
 
 ## Local Setup
 

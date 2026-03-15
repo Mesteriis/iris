@@ -29,7 +29,7 @@ HA_CONTRACT_COMPANION_PREFIXES = (
     "ha/integration/tests/fixtures/contract/",
 )
 HA_CONTRACT_COMPANION_FILES = {
-    "docs/ha/ha-02-protocol-spec.md",
+    "docs/home-assistant/protocol-specification.md",
     "ha/compatibility.yaml",
     "ha/integration",
 }
@@ -276,7 +276,7 @@ def _check_diff_guard(changed_paths: set[str]) -> None:
     raise ContractCheckError(
         "HA backend contract files changed without companion updates. "
         f"Changed contract paths: {source_paths}. "
-        "Expected at least one of: docs/ha/ha-02-protocol-spec.md, ha/compatibility.yaml, ha/integration (submodule ref or files)."
+        "Expected at least one of: docs/home-assistant/protocol-specification.md, ha/compatibility.yaml, ha/integration (submodule ref or files)."
     )
 
 

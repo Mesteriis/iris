@@ -10,44 +10,44 @@
 
 ## Context
 
-Аналитические API отличаются от CRUD API.
+Analytical APIs differ from CRUD APIs.
 
-**Ответы могут быть:**
+**Responses may be:**
 
-- кэшированными
-- вычисленными
-- не абсолютно свежими
+- cached
+- computed
+- not perfectly fresh
 
-Без явного указания freshness клиенты могут ошибочно считать данные актуальными.
+Without explicit freshness semantics, clients can incorrectly assume the data is current.
 
 ## Decision
 
-Все аналитические ответы должны содержать metadata snapshot.
+All analytical responses must include snapshot metadata.
 
-**Примеры:**
+**Examples:**
 
-- generated_at
-- freshness_class
-- staleness_ms
+- `generated_at`
+- `freshness_class`
+- `staleness_ms`
 
-HTTP ответы должны поддерживать:
+HTTP responses must support:
 
-- Cache-Control
-- ETag
-- Last-Modified
-- deterministic 304 Not Modified
+- `Cache-Control`
+- `ETag`
+- `Last-Modified`
+- deterministic `304 Not Modified`
 
 ## Consequences
 
 ### Positive
 
-- честная семантика аналитических данных
-- возможность безопасного кеширования
+- honest analytical-data semantics
+- safe caching support
 
 ### Negative
 
-- усложнение API контрактов
+- more complex API contracts
 
 ## See also
 
-- Относится ко всем API дизайнам в IRIS
+- Applies to all API design in IRIS

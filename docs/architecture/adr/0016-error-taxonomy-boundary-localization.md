@@ -10,7 +10,7 @@ Proposed
 
 ## Context
 
-IRIS already has a partial HTTP error foundation (`core/http/errors.py`) and a backend localization plan (`docs/iso/backend-business-localization-plan.md`), but the repo still has architectural gaps:
+IRIS already has a partial HTTP error foundation (`core/http/errors.py`) and a backend localization plan (`docs/delivery/backend-business-localization-plan.md`), but the repo still has architectural gaps:
 
 - typed errors are not centralized and many flows still raise string-first `ValueError`, `LookupError`, `HTTPException` or `HomeAssistantError`;
 - stable `error_code` and `message_key` are not governed by a single registry;
@@ -47,5 +47,5 @@ This creates a migration-safe path toward a unified error and localization model
 
 ## See also
 
-- [ADR 0017: Internationalization Architecture](0017-text-ownership-localization-scope.md) — localization foundation
+- [ADR 0017: Text Ownership Model and Localization Scope](0017-text-ownership-localization-scope.md) — localization foundation
 - [ADR 0002: Persistence Architecture](0002-persistence-architecture.md) — infrastructure patterns

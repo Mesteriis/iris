@@ -1,0 +1,17 @@
+services:
+  backend:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: ${DATABASE_URL-}
+      REDIS_URL: ${REDIS_URL-}
+    ports:
+      - "${BACKEND_HOST_PORT:-8000}:8000"
+      - "${POSTGRES_HOST_PORT:-55432}:5432"
+      - "${REDIS_HOST_PORT:-56379}:6379"
+    volumes:
+      - backend_runtime_data_embedded:/var/lib/iris
+
+volumes:
+  backend_runtime_data_embedded:

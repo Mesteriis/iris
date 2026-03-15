@@ -7,7 +7,7 @@ Accepted on 2026-03-14 as the normative runtime policy companion to ADR 0015.
 ## Sources
 
 - `docs/architecture/adr/0015-ai-platform-layer.md`
-- `docs/iso/lazy-investor-ai-plan.md`
+- `docs/delivery/lazy-investor-ai-plan.md`
 - `docs/architecture/service-layer-runtime-policies.md`
 
 ## Scope

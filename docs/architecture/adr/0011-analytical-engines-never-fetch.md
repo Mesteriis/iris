@@ -41,5 +41,5 @@ This preserves deterministic analytical behavior:
 
 ## See also
 
-- [ADR 0009: Signals Service/Engine Split](0009-canonical-signals-service-engine-split.md) — canonical example
-- [ADR 0013: Async Classes for Orchestration](0013-async-classes-orchestration-pure-functions.md) — pure function principle
+- [ADR 0009: Signals Service/Engine Split](0009-signals-service-engine-split.md) — canonical example
+- [ADR 0013: Async Classes for Orchestration](0013-async-classes-for-orchestration-pure-functions-for-analysis.md) — pure function principle

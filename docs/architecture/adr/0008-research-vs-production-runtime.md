@@ -10,32 +10,37 @@
 
 ## Context
 
-Аналитические системы постоянно генерируют новые идеи:
+Analytical systems constantly generate new ideas:
 
-- новые паттерны
-- новые сигналы
-- новые стратегии
+- new patterns
+- new signals
+- new strategies
 
-Если все идеи сразу добавлять в runtime pipeline, система быстро станет слишком сложной.
+If every idea is immediately added to the runtime pipeline, the system becomes too complex too quickly.
 
 ## Decision
 
-IRIS разделяет:
+IRIS separates:
 
-- Research layer
-- Production runtime
+- the research layer
+- the production runtime
 
-Новые аналитические методы сначала тестируются offline.
+New analytical methods are tested offline first.
 
-Только доказав ценность, они добавляются в production pipeline.
+Only after proving value are they added to the production pipeline.
 
 ## Consequences
 
 ### Positive
 
-- стабильность runtime
-- возможность безопасных экспериментов
+- runtime stability
+- safer experimentation
 
 ### Negative
 
-- более длинный путь внедрения новых идей
+- a longer path for introducing new ideas
+
+## See also
+
+- [ADR 0001: Event-Driven Runtime Architecture](0001-event-driven-runtime.md)
+- [ADR 0005: Analytical Snapshot API Semantics](0005-analytical-snapshot-api-semantics.md)

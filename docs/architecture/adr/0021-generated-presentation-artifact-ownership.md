@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft
+Proposed
 
 ## Date
 
@@ -132,3 +132,8 @@ Tradeoffs:
 - apply the same model to persisted `briefs`
 - decide whether legacy text columns should be removed after rollout
 - add CI checks for content envelope validity and `content_kind` coverage
+
+## See also
+
+- [ADR 0017: Text Ownership Model and Localization Scope](0017-text-ownership-localization-scope.md)
+- [ADR 0018: Message Key Taxonomy and Localization Naming Rules](0018-message-key-taxonomy-naming.md)

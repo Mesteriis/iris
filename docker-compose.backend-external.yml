@@ -1,0 +1,15 @@
+services:
+  backend:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for docker-compose.backend-external.yml}
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL for docker-compose.backend-external.yml}
+    ports:
+      - "${BACKEND_HOST_PORT:-8000}:8000"
+    volumes:
+      - backend_runtime_data_external:/var/lib/iris
+
+volumes:
+  backend_runtime_data_external:

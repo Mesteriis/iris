@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted**
+Proposed
 
 ## Date
 
@@ -10,563 +10,438 @@
 
 ## Context
 
-IRIS использует domain-oriented package structure:
+IRIS uses a domain-oriented package structure:
 
-iris.api
+- `iris.api`
+- `iris.apps.<domain>`
+- `iris.core`
+- `iris.runtime`
 
-iris.apps.<domain>
+Each domain inside `iris.apps` is organized into layers:
 
-iris.core
+- `api`
+- `application`
+- `domain`
+- `infrastructure`
+- `contracts`
 
-iris.runtime
+Without a formal dependency-direction model, even a clean structure degrades quickly:
 
-Каждый домен в iris.apps организован по слоям:
+- `api` starts containing orchestration
+- `domain` starts importing SQLAlchemy models
+- one domain reaches into another domain’s repositories
+- `contracts` start depending on transport or ORM details
+- `core` turns into a junk-drawer shared bucket
 
-api
+The architecture must therefore define explicitly:
 
-application
+- who may import whom
+- which dependencies are allowed
+- which dependencies are forbidden
+- which boundaries are enforced by linter and CI
 
-domain
+## Decision
 
-infrastructure
+IRIS uses a unidirectional dependency model.
 
-contracts
+This is a target-state decision. It describes the intended dependency model and CI-enforcement path, not the fully achieved state of the current repository.
 
-Без формального определения направления зависимостей даже аккуратная структура быстро деградирует:
+The core principle:
 
-api начинает содержать orchestration
+Dependencies point inward toward more stable and more abstract layers.
 
-domain начинает импортировать SQLAlchemy models
+A more external layer may depend on a more internal layer.
+A more internal layer must not depend on a more external layer.
 
-один домен начинает ходить в repositories другого домена
+### Canonical Dependency Direction
 
-contracts начинают зависеть от transport или ORM
+Within a domain, the allowed direction is:
 
-core превращается в мусорный shared bucket
-
-Поэтому архитектура должна явно определить:
-
-кто имеет право импортировать кого
-
-какие зависимости допустимы
-
-какие зависимости запрещены
-
-какие границы контролируются линтером и CI
-
-Decision
-
-IRIS использует однонаправленную модель зависимостей.
-
-Главный принцип:
-
-зависимости направлены внутрь к более стабильным и более абстрактным слоям.
-
-Более внешний слой может зависеть от более внутреннего.
-Более внутренний слой не должен зависеть от более внешнего.
-
-Canonical Dependency Direction
-
-Внутри домена допустимое направление такое:
-
+```text
 api -> application -> domain
-
 infrastructure -> domain
+```
 
-infrastructure -> application.contracts допускается только там, где это нужно для реализации persistence / adapter mapping
+`infrastructure -> application.contracts` is allowed only where needed for persistence or adapter mapping.
 
-application -> contracts допускается
+`application -> contracts` is allowed.
 
-api -> contracts допускается
+`api -> contracts` is allowed.
 
-domain -> contracts запрещено, кроме отдельно разрешённых truly domain-owned contracts, но по умолчанию запрещено
+`domain -> contracts` is forbidden by default, except for explicitly permitted truly domain-owned contracts.
 
-Layer Intent
-domain
+### Layer Intent
 
-Самый стабильный слой предметной логики.
+`domain`
 
-Содержит:
+The most stable layer of business logic.
 
-entities
+Contains:
 
-value objects
+- entities
+- value objects
+- policies
+- domain events
+- enums
+- domain exceptions
 
-policies
+The domain does not know about transport, ORM, frameworks, API, cache, or external integrations.
 
-domain events
+`application`
 
-enums
+The use-case and orchestration layer.
 
-domain exceptions
+Contains:
 
-Domain не знает о transport, ORM, framework, API, cache, external integrations.
+- commands
+- queries
+- application services
+- orchestration logic
+- transaction coordination
 
-application
+The application layer uses domain objects and contracts, but must not depend on transport details.
 
-Слой use cases и orchestration.
+`api`
 
-Содержит:
+The transport-adapter layer.
 
-commands
+Contains:
 
-queries
+- routes
+- request parsing
+- response serialization
+- dependency wiring
+- error mapping
+- localization rendering
 
-application services
+The API layer must not contain business logic and must not work directly with ORM models.
 
-orchestration logic
+`infrastructure`
 
-transaction coordination
+The technical-adapter implementation layer.
 
-Application использует domain и contracts, но не должен зависеть от transport details.
+Contains:
 
-api
+- ORM models
+- repositories
+- query implementations
+- cache adapters
+- external service adapters
+- integration clients
 
-Transport adapter layer.
+Infrastructure implements dependencies required by application and domain, but does not own business rules.
 
-Содержит:
-
-routes
-
-request parsing
-
-response serialization
-
-dependency wiring
-
-error mapping
-
-localization rendering
-
-API не должен содержать бизнес-логику и не должен напрямую работать с ORM.
-
-infrastructure
-
-Слой реализации технических адаптеров.
-
-Содержит:
-
-ORM models
-
-repositories
-
-query implementations
-
-cache adapters
-
-external service adapters
-
-integration clients
-
-Infrastructure реализует зависимости, определённые application/domain, но не управляет бизнес-правилами.
-
-contracts
+`contracts`
 
 Typed boundary objects.
 
-Содержит:
+Contains:
 
-command DTO
+- command DTOs
+- response DTOs
+- read models
+- event payload contracts
 
-response DTO
+Contracts must remain lightweight and stable.
 
-read models
+### Allowed Dependencies Inside a Domain
 
-event payload contracts
+`api` may import:
 
-Contracts должны быть максимально лёгкими и стабильными.
+- `application`
+- `contracts`
+- `domain` only for stable enums or exceptions when necessary, but preferably through application or contracts
+- `iris.core`
 
-Allowed Dependencies Inside a Domain
-api may import
+`application` may import:
 
-application
+- `domain`
+- `contracts`
+- `iris.core`
 
-contracts
+`domain` may import:
 
-domain only for stable enums/exceptions when necessary, but preferably through application or contracts
+- only `iris.core` modules explicitly designated as domain-safe
+- standard library
+- internal same-layer domain modules
 
-iris.core
+`infrastructure` may import:
 
-application may import
+- `domain`
+- `contracts`
+- application interfaces, protocols, or ports
+- `iris.core`
 
-domain
+`contracts` may import:
 
-contracts
-
-iris.core
-
-domain may import
-
-only iris.core modules that are explicitly designated as domain-safe
-
-standard library
-
-internal same-layer domain modules
-
-infrastructure may import
-
-domain
-
-contracts
-
-application interfaces / protocols / ports
-
-iris.core
-
-contracts may import
-
-standard library
-
-pydantic / typing / tiny shared primitives
-
-iris.core only if extremely lightweight and stable
+- standard library
+- `pydantic`, `typing`, and tiny shared primitives
+- `iris.core` only if extremely lightweight and stable
 
 Contracts must not import domain services, infrastructure models, or transport code.
 
-Forbidden Dependencies Inside a Domain
-domain must not import
+### Forbidden Dependencies Inside a Domain
 
-api
+`domain` must not import:
 
-application
+- `api`
+- `application`
+- `infrastructure`
+- ORM models
+- repositories
+- framework-specific request or response objects
+- cache clients
+- external SDKs unless explicitly wrapped as rare domain-safe abstractions
 
-infrastructure
+`application` must not import:
 
-ORM models
+- `api`
+- FastAPI request or response classes
+- ORM session-management details unless abstracted
+- transport-layer serializers
 
-repositories
+`api` must not import:
 
-framework-specific request/response objects
+- infrastructure ORM models
+- raw repositories directly when an application layer exists for the same use case
+- business rules embedded in endpoints
 
-cache clients
+`contracts` must not import:
 
-external SDKs unless explicitly wrapped as domain-safe abstractions, which should be rare
+- `api`
+- `application.services`
+- `infrastructure`
+- ORM models
+- transport-framework types
 
-application must not import
+### Cross-Domain Dependency Rules
 
-api
+A domain must not import another domain’s internals.
 
-FastAPI request/response classes
+Another domain may be imported only through:
 
-ORM session management details unless abstracted
+- contracts
+- explicitly declared public facades
+- rare shared abstractions moved into `iris.core`
 
-transport-layer serializers
+### Forbidden Cross-Domain Imports
 
-api must not import
+Forbidden:
 
-infrastructure ORM models
+- `iris.apps.<other_domain>.api.*`
+- `iris.apps.<other_domain>.infrastructure.*`
+- `iris.apps.<other_domain>.repositories.*`
+- `iris.apps.<other_domain>.models.*`
+- `iris.apps.<other_domain>.application.services.*` directly, unless this is an explicit public facade
 
-raw repositories directly if application layer exists for the same use case
+### Cross-Domain Interaction Principle
 
-business rules embedded in endpoints
+If one domain needs another domain, it must depend on one of these instead of internals:
 
-contracts must not import
+- a public contract
+- a public application facade
+- a shared event contract
+- a shared abstraction in `iris.core`, only when it is truly a platform-level concern
 
-api
+### Core Rules
 
-application.services
+`iris.core` is a shared kernel, not a dumping ground.
 
-infrastructure
+Only the following are allowed in `core`:
 
-ORM models
+- config
+- logging
+- i18n
+- shared error base classes
+- telemetry primitives
+- platform-safe utility abstractions
+- foundational typing helpers
 
-transport framework types
+Code must not be moved into `core` just to bypass domain boundaries.
 
-Cross-Domain Dependency Rules
+### Core Dependency Policy
 
-Домен не должен импортировать внутренности другого домена.
+All layers may import `iris.core`, but only its stable, layer-safe parts.
 
-Разрешено импортировать другой домен только через:
+`core` must not become a backdoor for hidden coupling between domains.
 
-contracts
+If a module in `core` depends on a concrete domain, it does not belong in `core`.
 
-explicitly declared public facades
+### Runtime Rules
 
-rare shared abstractions moved to iris.core
+`iris.runtime` may import:
 
-Forbidden Cross-Domain Imports
+- `iris.apps.*.application`
+- `iris.apps.*.contracts`
+- selected infrastructure adapters where orchestration genuinely requires them
+- `iris.core`
 
-Запрещено:
+Domain packages must not depend on runtime.
 
-iris.apps.<other_domain>.api.*
+### Main Composition Rule
 
-iris.apps.<other_domain>.infrastructure.*
-
-iris.apps.<other_domain>.repositories.*
-
-iris.apps.<other_domain>.models.*
-
-iris.apps.<other_domain>.application.services.* напрямую, если это не публичный facade
-
-Cross-Domain Interaction Principle
-
-Если одному домену нужен другой домен, он должен зависеть не от его внутренностей, а от одного из вариантов:
-
-public contract
-
-public application facade
-
-shared event contract
-
-shared abstraction in iris.core, если это действительно platform-level concern
-
-Core Rules
-
-iris.core является shared kernel, но не мусорным контейнером.
-
-В core допускается размещать только:
-
-config
-
-logging
-
-i18n
-
-shared error base classes
-
-telemetry primitives
-
-platform-safe utility abstractions
-
-foundational typing helpers
-
-В core запрещено переносить туда код только ради обхода domain boundaries.
-
-Core Dependency Policy
-
-Все слои могут импортировать iris.core, но только его стабильные и layer-safe части.
-
-Нельзя использовать core как backdoor для скрытой связанности между доменами.
-
-Если модуль в core зависит от конкретного домена — он не должен находиться в core.
-
-Runtime Rules
-
-iris.runtime может импортировать:
-
-iris.apps.*.application
-
-iris.apps.*.contracts
-
-selected infrastructure adapters where orchestration genuinely requires them
-
-iris.core
-
-Но доменные пакеты не должны зависеть от runtime.
-
-Main Composition Rule
-
-Composition root находится на верхнем уровне:
-
-iris.main
-
-transport bootstrap
-
-runtime bootstrap
-
-DI wiring
-
-app assembly
-
-Именно composition root связывает:
-
-routes
-
-application services
-
-infrastructure implementations
-
-runtime processes
-
-Нижележащие слои не должны собирать приложение сами.
-
-Dependency Matrix
-
-Допустимая матрица внутри домена:
-
-api -> application : allowed
-
-api -> contracts : allowed
-
-api -> domain : limited / discouraged
-
-api -> infrastructure : discouraged, allowed only by explicit exception during migration
-
-application -> domain : allowed
-
-application -> contracts : allowed
-
-application -> infrastructure : forbidden, except through abstractions/protocol boundaries
-
-domain -> application : forbidden
-
-domain -> api : forbidden
-
-domain -> infrastructure : forbidden
-
-domain -> contracts : forbidden by default
-
-infrastructure -> domain : allowed
-
-infrastructure -> contracts : allowed
-
-infrastructure -> application : allowed only for ports/protocols/interfaces, not concrete orchestration flows
-
-infrastructure -> api : forbidden
-
-contracts -> domain : forbidden
-
-contracts -> application : forbidden
-
-contracts -> infrastructure : forbidden
-
-contracts -> api : forbidden
-
-Ports and Protocols Rule
-
-Если application нуждается в реализации из infrastructure, зависимость должна идти через порт, protocol или interface, объявленный в application или в специальном stable boundary module.
-
-Пример:
-
+The composition root lives at the top level:
+
+- `iris.main`
+- transport bootstrap
+- runtime bootstrap
+- DI wiring
+- app assembly
+
+The composition root is what ties together:
+
+- routes
+- application services
+- infrastructure implementations
+- runtime processes
+
+Lower layers must not assemble the application themselves.
+
+### Dependency Matrix
+
+Allowed matrix inside a domain:
+
+- `api -> application`: allowed
+- `api -> contracts`: allowed
+- `api -> domain`: limited and discouraged
+- `api -> infrastructure`: discouraged, allowed only by explicit migration exception
+- `application -> domain`: allowed
+- `application -> contracts`: allowed
+- `application -> infrastructure`: forbidden except through abstraction, protocol, or port boundaries
+- `domain -> application`: forbidden
+- `domain -> api`: forbidden
+- `domain -> infrastructure`: forbidden
+- `domain -> contracts`: forbidden by default
+- `infrastructure -> domain`: allowed
+- `infrastructure -> contracts`: allowed
+- `infrastructure -> application`: allowed only for ports, protocols, or interfaces, not concrete orchestration flows
+- `infrastructure -> api`: forbidden
+- `contracts -> domain`: forbidden
+- `contracts -> application`: forbidden
+- `contracts -> infrastructure`: forbidden
+- `contracts -> api`: forbidden
+
+### Ports and Protocols Rule
+
+If the application layer needs an infrastructure implementation, the dependency must go through a port, protocol, or interface declared in `application` or in a dedicated stable boundary module.
+
+Example:
+
+```text
 application/ports/market_data_reader.py
-
 infrastructure/repositories/sql_market_data_reader.py
+```
 
-Application знает контракт, infrastructure знает реализацию.
+The application layer knows the contract; infrastructure knows the implementation.
 
-ORM Isolation Rule
+### ORM Isolation Rule
 
-ORM модели должны жить только в infrastructure.
+ORM models must live only in infrastructure.
 
-Они не должны утекать в:
+They must not leak into:
 
-domain
+- `domain`
+- `contracts`
+- `api`
 
-contracts
+Domain entities and ORM models are not the same thing.
 
-api
+### Transport Isolation Rule
 
-Domain entities и ORM models — не одно и то же.
+FastAPI, HTTP, SSE, WebSocket, and request or response objects must live only in `api` and the composition root.
 
-Transport Isolation Rule
+They must not appear in:
 
-FastAPI, HTTP, SSE, WebSocket, request/response objects должны жить только в api и composition root.
+- `domain`
+- `application`
+- `contracts`
 
-Они не должны появляться в:
+### Localization Boundary Rule
 
-domain
+Localization must happen in boundary layers:
 
-application
+- `api`
+- UI
+- integration-rendering layers
 
-contracts
+Domain and application layers must not generate user-facing text.
 
-Localization Boundary Rule
+### Exceptions Policy
 
-Localization должна выполняться на boundary слоях:
+Domain exceptions:
 
-api
+- define the business meaning of an error
 
-UI
+Application exceptions:
 
-integrations rendering layer
+- define orchestration and use-case failures
 
-Domain и application не должны генерировать пользовательский текст.
+API error mapping:
 
-Exceptions Policy
-domain exceptions
+- turns exceptions into transport-safe responses and localized messages
 
-Определяют предметный смысл ошибки.
+The API layer must not push raw framework-specific exceptions into the domain, and the domain must not know the transport error shape.
 
-application exceptions
+### Temporary Migration Exceptions
 
-Определяют orchestration/use-case failures.
+During refactoring, temporary violations are allowed only if they:
 
-api error mapping
+- are documented
+- are marked with `TODO` and an owner
+- have a removal deadline
+- are not disguised as the target architecture
 
-Преобразует исключения в transport-safe responses и localized messages.
+Temporary exceptions are not part of the standard.
 
-API не должен прокидывать сырые framework-specific exceptions в домен, а домен не должен знать о transport error shape.
+### CI Enforcement
 
-Temporary Migration Exceptions
+Architectural constraints should be checked automatically where possible.
 
-Во время рефакторинга допускаются временные нарушения только если:
+Recommended tools:
 
-они задокументированы
+- `import-linter`
+- `deptry`
+- `ruff`
+- custom architecture checks
 
-помечены TODO с owner
+CI should progressively enforce:
 
-имеют срок удаления
+- `domain` does not import `infrastructure`
+- `contracts` do not import ORM or API code
+- cross-domain imports go only through contracts or approved facades
+- `src.*` is absent from product code
+- relative imports deeper than `..` are absent
 
-не маскируются под целевую архитектуру
+## Consequences
 
-Временные исключения не считаются новым стандартом.
+### Positive
 
-CI Enforcement
+- real rather than decorative bounded contexts
+- predictable dependency architecture
+- less hidden coupling
+- easier refactoring and testing
+- easier automated architectural enforcement in CI
 
-Архитектурные ограничения должны по возможности проверяться автоматически.
+### Negative
 
-Рекомендуется использовать:
+- stronger discipline is required when adding new modules
+- some legacy code will need migration
+- sometimes extra ports or contracts will be needed instead of “quick direct imports”
 
-import-linter
+These costs are considered acceptable.
 
-deptry
-
-ruff
-
-custom architecture checks
-
-CI должен постепенно начать проверять:
-
-domain не импортирует infrastructure
-
-contracts не импортируют ORM / API
-
-cross-domain imports идут только через contracts или approved facades
-
-src.* отсутствует в продуктовом коде
-
-relative imports глубже .. отсутствуют
-
-Consequences
-
-Преимущества:
-
-реальные, а не декоративные bounded contexts
-
-предсказуемая архитектура зависимостей
-
-меньше скрытой связанности
-
-проще рефакторить и тестировать
-
-легче подключить автоматический архитектурный контроль в CI
-
-Недостатки:
-
-потребуется дисциплина при добавлении новых модулей
-
-часть legacy-кода придётся мигрировать
-
-иногда потребуется создавать дополнительные ports/contracts вместо “быстрого прямого импорта”
-
-Эти издержки считаются приемлемыми.
-
-Result
-
-IRIS использует строгую модель dependency direction, где:
-
-зависимости направлены к более стабильным слоям
-
-домен изолирован от transport и infrastructure
-
-cross-domain связи контролируются
-
-core не используется как обходной путь
-
-архитектурные границы могут быть проверены автоматически
+### Result
+
+IRIS uses a strict dependency-direction model where:
+
+- dependencies point to more stable layers
+- the domain is isolated from transport and infrastructure
+- cross-domain links are controlled
+- `core` is not used as a shortcut
+- architectural boundaries can be verified automatically
 
 ## See also
 
-- [ADR 0019: Package Structure and Import Rules](0019-package-structure-import-rules.md) — структура пакетов
-- [ADR 0002: Persistence Architecture](0002-persistence-architecture.md) — инфраструктурный слой
-- [ADR 0009: Signals Service/Engine Split](0009-canonical-signals-service-engine-split.md) — пример разделения слоёв
+- [ADR 0019: Package Structure and Import Rules](0019-package-structure-import-rules.md) — package structure
+- [ADR 0002: Persistence Architecture](0002-persistence-architecture.md) — infrastructure layer
+- [ADR 0009: Signals Service/Engine Split](0009-signals-service-engine-split.md) — example of layer separation
