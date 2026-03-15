@@ -12,3 +12,7 @@ class UnsupportedLLMProviderError(HypothesisEngineError):
 
 class InvalidPromptPayloadError(HypothesisEngineError):
     """Raised when prompt CRUD payloads are invalid."""
+
+
+class PromptVeilLockedError(HypothesisEngineError):
+    """Raised when prompt family editing is blocked until veil is lifted."""

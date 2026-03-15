@@ -70,7 +70,33 @@ async def test_hypothesis_prompt_endpoints(hypothesis_api_client, monkeypatch) -
 
     prompt_catalog_response = await client.get("/control-plane/ai/prompts")
     assert prompt_catalog_response.status_code == 200
-    assert any(row["name"] == "brief.market" for row in prompt_catalog_response.json())
+    prompt_catalog = {row["name"]: row for row in prompt_catalog_response.json()}
+    assert "brief.market" in prompt_catalog
+    hypothesis_prompt = prompt_catalog["hypothesis.signal_created"]
+    assert hypothesis_prompt["editable"] is False
+    assert hypothesis_prompt["veil_lifted"] is False
+    prompt_id = int(hypothesis_prompt["id"])
+
+    create_response = await client.post(
+        "/control-plane/ai/prompts",
+        json={
+            "name": "hypothesis.signal_created",
+            "task": "hypothesis_generation",
+            "version": 4,
+            "template": "Return JSON only.",
+            "vars_json": {"horizon_min": 90, "style_profile": "concise"},
+        },
+        headers=control_headers,
+    )
+    assert create_response.status_code == 423
+
+    lift_veil_response = await client.post(
+        f"/control-plane/ai/prompts/{prompt_id}/lift-veil",
+        headers=control_headers,
+    )
+    assert lift_veil_response.status_code == 200
+    assert lift_veil_response.json()["editable"] is True
+    assert lift_veil_response.json()["veil_lifted"] is True
 
     create_response = await client.post(
         "/control-plane/ai/prompts",
@@ -85,10 +111,10 @@ async def test_hypothesis_prompt_endpoints(hypothesis_api_client, monkeypatch) -
     )
     assert create_response.status_code == 201
     assert create_response.json()["capability"] == "hypothesis_generate"
-    prompt_id = create_response.json()["id"]
+    created_prompt_id = create_response.json()["id"]
 
     patch_response = await client.patch(
-        f"/control-plane/ai/prompts/{prompt_id}",
+        f"/control-plane/ai/prompts/{created_prompt_id}",
         json={"template": "Return strict JSON only.", "vars_json": {"target_move": 0.03, "style_profile": "strict"}},
         headers=control_headers,
     )
@@ -97,11 +123,19 @@ async def test_hypothesis_prompt_endpoints(hypothesis_api_client, monkeypatch) -
     assert patch_response.json()["style_profile"] == "strict"
 
     activate_response = await client.post(
-        f"/control-plane/ai/prompts/{prompt_id}/activate",
+        f"/control-plane/ai/prompts/{created_prompt_id}/activate",
         headers=control_headers,
     )
     assert activate_response.status_code == 200
     assert activate_response.json()["is_active"] is True
+
+    lower_veil_response = await client.post(
+        f"/control-plane/ai/prompts/{created_prompt_id}/lower-veil",
+        headers=control_headers,
+    )
+    assert lower_veil_response.status_code == 200
+    assert lower_veil_response.json()["editable"] is False
+    assert lower_veil_response.json()["veil_lifted"] is False
 
     hypotheses_response = await client.get("/hypothesis/hypotheses")
     assert hypotheses_response.status_code == 200

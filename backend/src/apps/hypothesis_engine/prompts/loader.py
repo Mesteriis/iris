@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from src.apps.hypothesis_engine.exceptions import PromptNotFoundError
 from src.apps.hypothesis_engine.memory.cache import (
     cache_active_prompt_async,
     invalidate_prompt_cache_async,
     read_cached_active_prompt_async,
 )
-from src.apps.hypothesis_engine.prompts.defaults import get_fallback_prompt
 from src.apps.hypothesis_engine.query_services import HypothesisQueryService
 
 
@@ -58,9 +58,7 @@ class PromptLoader:
                 await cache_active_prompt_async(name, payload)
                 return _normalize_prompt_payload(payload, source="db")
 
-        fallback = get_fallback_prompt(name)
-        await cache_active_prompt_async(name, fallback)
-        return _normalize_prompt_payload(fallback, source="fallback")
+        raise PromptNotFoundError(f"Active prompt '{name}' was not found in the database.")
 
     async def invalidate(self, name: str) -> None:
         await invalidate_prompt_cache_async(name)

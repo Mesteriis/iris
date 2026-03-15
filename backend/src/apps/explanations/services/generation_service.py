@@ -4,8 +4,9 @@ from typing import Any
 
 from src.apps.explanations.contracts import ExplainKind, ExplanationGenerationOutput
 from src.apps.explanations.language import resolve_requested_language
-from src.apps.explanations.prompts import EXPLAIN_OUTPUT_SCHEMA, load_explanation_prompt
+from src.apps.explanations.prompts import EXPLAIN_OUTPUT_SCHEMA
 from src.apps.explanations.read_models import ExplanationContextBundle
+from src.apps.hypothesis_engine.prompts import LoadedPrompt
 from src.core.ai import (
     AICapability,
     AIExecutionRequest,
@@ -28,10 +29,10 @@ class ExplanationGenerationService:
         self,
         *,
         bundle: ExplanationContextBundle,
+        prompt: LoadedPrompt,
         context: dict[str, Any],
         requested_provider: str | None = None,
     ) -> dict[str, Any]:
-        prompt = load_explanation_prompt(bundle.explain_kind)
         merged_context = {**prompt.vars_json, **context}
         policy = get_capability_policy(AICapability.EXPLAIN_GENERATE, settings=self._settings)
         validator = PydanticOutputValidator(

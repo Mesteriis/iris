@@ -13,6 +13,7 @@ class PromptReadModel:
     name: str
     task: str
     version: int
+    veil_lifted: bool
     is_active: bool
     template: str
     vars_json: Any
@@ -70,6 +71,7 @@ def prompt_read_model_from_orm(prompt) -> PromptReadModel:
         name=str(prompt.name),
         task=str(prompt.task),
         version=int(prompt.version),
+        veil_lifted=bool(prompt.veil_lifted),
         is_active=bool(prompt.is_active),
         template=str(prompt.template),
         vars_json=freeze_json_value(dict(prompt.vars_json or {})),

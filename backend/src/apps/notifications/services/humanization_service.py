@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.apps.hypothesis_engine.prompts import LoadedPrompt
 from src.apps.notifications.constants import (
     NOTIFICATION_SEVERITY_VALUES,
     NOTIFICATION_URGENCY_VALUES,
     TEMPLATE_DEGRADED_STRATEGY,
 )
 from src.apps.notifications.contracts import NotificationHumanizationOutput
-from src.apps.notifications.prompts import NOTIFICATION_OUTPUT_SCHEMA, load_notification_prompt
+from src.apps.notifications.prompts import NOTIFICATION_OUTPUT_SCHEMA
 from src.core.ai import (
     AICapability,
     AIExecutionRequest,
@@ -58,9 +59,8 @@ class NotificationHumanizationService:
         self._settings = settings or get_settings()
         self._executor = executor or AIExecutor(settings=self._settings)
 
-    async def generate(self, ctx: dict[str, Any]) -> dict[str, Any]:
+    async def generate(self, ctx: dict[str, Any], *, prompt: LoadedPrompt) -> dict[str, Any]:
         event_type = str(ctx.get("event_type") or "")
-        prompt = load_notification_prompt(event_type)
         merged_ctx = {**prompt.vars_json, **ctx}
         policy = get_capability_policy(AICapability.NOTIFICATION_HUMANIZE, settings=self._settings)
         validator = PydanticOutputValidator(

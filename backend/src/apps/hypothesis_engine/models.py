@@ -3,7 +3,21 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, SmallInteger, String, Text, desc, func
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    desc,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.db.session import Base
@@ -23,6 +37,7 @@ class AIPrompt(Base):
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     task: Mapped[str] = mapped_column(String(64), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    veil_lifted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     template: Mapped[str] = mapped_column(Text, nullable=False)
     vars_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
@@ -66,8 +81,8 @@ class AIHypothesis(Base):
         onupdate=func.now(),
     )
 
-    coin: Mapped["Coin"] = relationship("Coin")
-    evals: Mapped[list["AIHypothesisEval"]] = relationship(
+    coin: Mapped[Coin] = relationship("Coin")
+    evals: Mapped[list[AIHypothesisEval]] = relationship(
         "AIHypothesisEval",
         back_populates="hypothesis",
         cascade="all, delete-orphan",
@@ -89,7 +104,7 @@ class AIHypothesisEval(Base):
     details_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    hypothesis: Mapped["AIHypothesis"] = relationship("AIHypothesis", back_populates="evals")
+    hypothesis: Mapped[AIHypothesis] = relationship("AIHypothesis", back_populates="evals")
 
 
 class AIWeight(Base):

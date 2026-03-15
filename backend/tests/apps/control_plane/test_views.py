@@ -43,10 +43,14 @@ async def test_control_plane_api_flow(api_app_client, isolated_control_plane_sta
 
     prompt_response = await client.get("/control-plane/ai/prompts")
     assert prompt_response.status_code == 200
-    prompt_names = {row["name"] for row in prompt_response.json()}
+    prompts = {row["name"]: row for row in prompt_response.json()}
+    prompt_names = set(prompts)
     assert "notification.default" in prompt_names
     assert "brief.market" in prompt_names
     assert "explain.signal" in prompt_names
+    assert prompts["notification.default"]["source"] == "db"
+    assert prompts["notification.default"]["editable"] is False
+    assert prompts["notification.default"]["veil_lifted"] is False
 
     create_payload = {
         "event_type": "signal_created",
@@ -376,6 +380,8 @@ def test_control_plane_api_router_is_mode_aware_and_legacy_views_removed() -> No
     assert any(path == "/control-plane/routes" and "POST" in methods for path, methods in full_paths)
     assert any(path == "/control-plane/ai/providers" and "GET" in methods for path, methods in full_paths)
     assert any(path == "/control-plane/ai/prompts/{prompt_id}/activate" and "POST" in methods for path, methods in full_paths)
+    assert any(path == "/control-plane/ai/prompts/{prompt_id}/lift-veil" and "POST" in methods for path, methods in full_paths)
+    assert any(path == "/control-plane/ai/prompts/{prompt_id}/lower-veil" and "POST" in methods for path, methods in full_paths)
 
     ha_router = build_control_plane_router(mode=LaunchMode.HA_ADDON, profile=DeploymentProfile.HA_EMBEDDED)
     ha_paths = {(route.path, tuple(sorted(route.methods or ()))) for route in ha_router.routes}
@@ -384,5 +390,7 @@ def test_control_plane_api_router_is_mode_aware_and_legacy_views_removed() -> No
     assert not any(path == "/control-plane/ai/prompts" for path, _ in ha_paths)
     assert not any(path == "/control-plane/ai/providers" for path, _ in ha_paths)
     assert not any(path == "/control-plane/ai/prompts/{prompt_id}/activate" for path, _ in ha_paths)
+    assert not any(path == "/control-plane/ai/prompts/{prompt_id}/lift-veil" for path, _ in ha_paths)
+    assert not any(path == "/control-plane/ai/prompts/{prompt_id}/lower-veil" for path, _ in ha_paths)
 
     assert importlib.util.find_spec("src.apps.control_plane.views") is None

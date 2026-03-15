@@ -71,6 +71,7 @@ TEST_SYMBOLS = {
     "SOLUSD_EVT": ("SOLUSD", "Solana Event Test"),
 }
 _CONTROL_PLANE_BOOTSTRAP_NOTES = "Bootstrapped from legacy runtime router"
+_AI_PROMPT_BASELINE: list[dict[str, object]] = []
 
 
 @pytest.fixture
@@ -102,6 +103,7 @@ def migrated_database(settings) -> None:
     config.set_main_option("script_location", str(backend_root / "src" / "migrations"))
     config.set_main_option("sqlalchemy.url", settings.database_url)
     command.upgrade(config, "head")
+    _snapshot_ai_prompt_baseline()
 
 
 @pytest.fixture(scope="session")
@@ -326,15 +328,15 @@ def cleanup_hypothesis_state() -> Iterator[None]:
     try:
         db.execute(delete(AIHypothesisEval))
         db.execute(delete(AIHypothesis))
-        db.execute(delete(AIPrompt))
         db.execute(delete(AIWeight))
+        _restore_ai_prompt_baseline(db)
         db.commit()
         yield
     finally:
         db.execute(delete(AIHypothesisEval))
         db.execute(delete(AIHypothesis))
-        db.execute(delete(AIPrompt))
         db.execute(delete(AIWeight))
+        _restore_ai_prompt_baseline(db)
         db.commit()
         db.close()
 
@@ -421,6 +423,44 @@ def _restore_control_plane_baseline(db) -> None:
             )
         )
     db.commit()
+
+
+def _snapshot_ai_prompt_baseline() -> None:
+    global _AI_PROMPT_BASELINE
+    db = SessionLocal()
+    try:
+        rows = db.scalars(select(AIPrompt).order_by(AIPrompt.name.asc(), AIPrompt.version.asc(), AIPrompt.id.asc())).all()
+        _AI_PROMPT_BASELINE = [
+            {
+                "name": str(row.name),
+                "task": str(row.task),
+                "version": int(row.version),
+                "veil_lifted": bool(row.veil_lifted),
+                "is_active": bool(row.is_active),
+                "template": str(row.template),
+                "vars_json": dict(row.vars_json or {}),
+            }
+            for row in rows
+        ]
+    finally:
+        db.close()
+
+
+def _restore_ai_prompt_baseline(db) -> None:
+    db.execute(delete(AIPrompt))
+    for row in _AI_PROMPT_BASELINE:
+        db.add(
+            AIPrompt(
+                name=str(row["name"]),
+                task=str(row["task"]),
+                version=int(row["version"]),
+                veil_lifted=bool(row["veil_lifted"]),
+                is_active=bool(row["is_active"]),
+                template=str(row["template"]),
+                vars_json=dict(row["vars_json"]),
+            )
+        )
+    db.flush()
 
 
 @pytest.fixture(autouse=True)

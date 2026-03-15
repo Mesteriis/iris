@@ -11,6 +11,8 @@ from src.apps.explanations.query_services import ExplanationQueryService
 from src.apps.explanations.read_models import ExplanationContextBundle
 from src.apps.explanations.repositories import ExplanationRepository
 from src.apps.explanations.services.generation_service import ExplanationGenerationService
+from src.apps.hypothesis_engine.prompts import PromptLoader
+from src.apps.hypothesis_engine.query_services import HypothesisQueryService
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
 
@@ -23,8 +25,10 @@ class ExplanationService(PersistenceComponent):
             domain="explanations",
             component_name="ExplanationService",
         )
+        self._uow = uow
         self._repo = ExplanationRepository(uow.session)
         self._queries = ExplanationQueryService(uow.session)
+        self._prompt_loader = PromptLoader(HypothesisQueryService(uow.session))
         self._generator = ExplanationGenerationService()
 
     async def generate_and_store(
@@ -69,8 +73,10 @@ class ExplanationService(PersistenceComponent):
                 subject_updated_at=existing.subject_updated_at,
             )
 
+        prompt = await self._prompt_loader.load(f"explain.{explain_kind.value}")
         generated = await self._generator.generate(
             bundle=bundle,
+            prompt=prompt,
             context=context,
             requested_provider=requested_provider,
         )

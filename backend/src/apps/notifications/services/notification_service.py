@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.apps.hypothesis_engine.prompts import PromptLoader
+from src.apps.hypothesis_engine.query_services import HypothesisQueryService
 from src.apps.market_data.domain import ensure_utc
 from src.apps.notifications.constants import (
     AI_EVENT_NOTIFICATION_CREATED,
     CANONICAL_REF_FIELDS,
+    DEFAULT_NOTIFICATION_PROMPT_NAME,
     DEFAULT_NOTIFICATION_TIMEFRAME,
+    EVENT_PROMPT_NAMES,
     SUPPORTED_NOTIFICATION_SOURCE_EVENTS,
 )
 from src.apps.notifications.models import AINotification
@@ -34,6 +38,7 @@ class NotificationService(PersistenceComponent):
         self._uow = uow
         self._repo = NotificationRepository(uow.session)
         self._queries = NotificationQueryService(uow.session)
+        self._prompt_loader = PromptLoader(HypothesisQueryService(uow.session))
         self._humanizer = NotificationHumanizationService()
 
     async def create_from_event(self, event: IrisEvent) -> int:
@@ -77,7 +82,9 @@ class NotificationService(PersistenceComponent):
             )
             return int(existing.id)
 
-        humanized = await self._humanizer.generate(context)
+        prompt_name = EVENT_PROMPT_NAMES.get(event.event_type, DEFAULT_NOTIFICATION_PROMPT_NAME)
+        prompt = await self._prompt_loader.load(prompt_name)
+        humanized = await self._humanizer.generate(context, prompt=prompt)
         notification = await self._repo.add_notification(
             AINotification(
                 coin_id=int(event.coin_id),

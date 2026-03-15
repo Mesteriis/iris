@@ -14,7 +14,7 @@ from src.core.db.uow import SessionUnitOfWork
 async def test_hypothesis_query_service_returns_immutable_read_models(async_db_session) -> None:
     async_db_session.add(
         AIPrompt(
-            name="hypothesis.signal_created",
+            name="hypothesis.persistence_contract",
             task="hypothesis_generation",
             version=1,
             is_active=True,
@@ -24,7 +24,7 @@ async def test_hypothesis_query_service_returns_immutable_read_models(async_db_s
     )
     await async_db_session.commit()
 
-    items = await HypothesisQueryService(async_db_session).list_prompts(name="hypothesis.signal_created")
+    items = await HypothesisQueryService(async_db_session).list_prompts(name="hypothesis.persistence_contract")
 
     assert len(items) == 1
     with pytest.raises(FrozenInstanceError):
@@ -37,7 +37,7 @@ async def test_hypothesis_query_service_returns_immutable_read_models(async_db_s
 async def test_persistence_logs_cover_hypothesis_query_and_uow(async_db_session, monkeypatch) -> None:
     async_db_session.add(
         AIPrompt(
-            name="hypothesis.signal_created",
+            name="hypothesis.persistence_logging",
             task="hypothesis_generation",
             version=2,
             is_active=False,
@@ -61,7 +61,7 @@ async def test_persistence_logs_cover_hypothesis_query_and_uow(async_db_session,
     monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
 
     async with SessionUnitOfWork(async_db_session) as uow:
-        prompts = await PromptService(uow).list_prompts(name="hypothesis.signal_created")
+        prompts = await PromptService(uow).list_prompts(name="hypothesis.persistence_logging")
 
     assert len(prompts) == 1
     assert "uow.begin" in events

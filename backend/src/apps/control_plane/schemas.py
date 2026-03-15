@@ -344,6 +344,7 @@ class AIPromptOperatorRead(BaseModel):
     capability: AICapability | None = None
     task: str
     version: int
+    veil_lifted: bool
     editable: bool
     source: str
     is_active: bool

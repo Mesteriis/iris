@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from src.apps.ai_prompt_registry import ensure_ai_prompt_policy_loaded
 from src.apps.hypothesis_engine.constants import FORBIDDEN_PROMPT_INFRA_KEYS
-from src.apps.hypothesis_engine.exceptions import InvalidPromptPayloadError, PromptNotFoundError
+from src.apps.hypothesis_engine.exceptions import (
+    InvalidPromptPayloadError,
+    PromptNotFoundError,
+    PromptVeilLockedError,
+)
 from src.apps.hypothesis_engine.models import AIPrompt
 from src.apps.hypothesis_engine.prompts import PromptLoader
 from src.apps.hypothesis_engine.query_services import HypothesisQueryService
@@ -24,18 +28,32 @@ class PromptService:
         return [AIPromptRead.model_validate(prompt) for prompt in await self._queries.list_prompts(name=name)]
 
     async def create_prompt(self, payload: AIPromptCreate) -> AIPromptRead:
+        name = payload.name.strip()
         task = payload.task.strip()
+        version = int(payload.version)
         vars_json = self._normalize_prompt_vars(task=task, vars_json=payload.vars_json)
-        existing = await self._repo.get_prompt_by_name_version(name=payload.name.strip(), version=int(payload.version))
+        existing = await self._repo.get_prompt_by_name_version(name=name, version=version)
         if existing is not None:
             raise InvalidPromptPayloadError(
-                f"Prompt '{payload.name.strip()}' version '{int(payload.version)}' already exists."
+                f"Prompt '{name}' version '{version}' already exists."
             )
+        family = await self._repo.list_prompts_for_update(name=name)
+        if not family:
+            raise InvalidPromptPayloadError(
+                f"Prompt family '{name}' is not provisioned. Baseline prompts must be seeded by migration."
+            )
+        canonical_task = str(family[0].task)
+        if task != canonical_task:
+            raise InvalidPromptPayloadError(
+                f"Prompt family '{name}' is bound to task '{canonical_task}', not '{task}'."
+            )
+        self._require_veil_lifted(name=name, prompt=family[0])
         prompt = await self._repo.add_prompt(
             AIPrompt(
-                name=payload.name.strip(),
-                task=task,
-                version=int(payload.version),
+                name=name,
+                task=canonical_task,
+                version=version,
+                veil_lifted=True,
                 is_active=False,
                 template=payload.template,
                 vars_json=vars_json,
@@ -49,7 +67,10 @@ class PromptService:
         prompt = await self._repo.get_prompt_for_update(prompt_id)
         if prompt is None:
             raise PromptNotFoundError(f"Prompt '{prompt_id}' was not found.")
+        self._require_veil_lifted(name=prompt.name, prompt=prompt)
         next_task = prompt.task if payload.task is None else payload.task.strip()
+        if next_task != prompt.task:
+            raise InvalidPromptPayloadError(f"Prompt family '{prompt.name}' is bound to task '{prompt.task}'.")
         if payload.template is not None:
             prompt.template = payload.template
         if payload.task is not None:
@@ -71,11 +92,34 @@ class PromptService:
         prompt = await self._repo.get_prompt_for_update(prompt_id)
         if prompt is None:
             raise PromptNotFoundError(f"Prompt '{prompt_id}' was not found.")
+        self._require_veil_lifted(name=prompt.name, prompt=prompt)
         prompt.is_active = True
         await self._deactivate_other_versions(prompt)
         await self._uow.flush()
         await self._repo.refresh(prompt)
         self._uow.add_after_commit_action(lambda name=prompt.name: self._loader.invalidate(name))
+        item = await self._queries.get_prompt_read_by_id(int(prompt.id))
+        return AIPromptRead.model_validate(item if item is not None else prompt)
+
+    async def lift_prompt_veil(self, prompt_id: int) -> AIPromptRead:
+        prompt = await self._repo.get_prompt_for_update(prompt_id)
+        if prompt is None:
+            raise PromptNotFoundError(f"Prompt '{prompt_id}' was not found.")
+        for item in await self._repo.list_prompts_for_update(name=prompt.name):
+            item.veil_lifted = True
+        await self._uow.flush()
+        await self._repo.refresh(prompt)
+        item = await self._queries.get_prompt_read_by_id(int(prompt.id))
+        return AIPromptRead.model_validate(item if item is not None else prompt)
+
+    async def lower_prompt_veil(self, prompt_id: int) -> AIPromptRead:
+        prompt = await self._repo.get_prompt_for_update(prompt_id)
+        if prompt is None:
+            raise PromptNotFoundError(f"Prompt '{prompt_id}' was not found.")
+        for item in await self._repo.list_prompts_for_update(name=prompt.name):
+            item.veil_lifted = False
+        await self._uow.flush()
+        await self._repo.refresh(prompt)
         item = await self._queries.get_prompt_read_by_id(int(prompt.id))
         return AIPromptRead.model_validate(item if item is not None else prompt)
 
@@ -95,10 +139,15 @@ class PromptService:
         policy = get_prompt_task_policy(task)
         if policy is None:
             raise InvalidPromptPayloadError(f"Prompt task '{task}' is not registered in the shared AI task policy.")
-        if not policy.editable:
-            raise InvalidPromptPayloadError(f"Prompt task '{task}' is code-managed and cannot be edited via operator API.")
         normalized = {str(key).strip(): value for key, value in dict(vars_json).items()}
         self._validate_prompt_vars(normalized)
         if prompt_style_profile(normalized) is None:
             raise InvalidPromptPayloadError("Prompt vars must include a non-empty 'style_profile'.")
         return normalized
+
+    def _require_veil_lifted(self, *, name: str, prompt: AIPrompt) -> None:
+        if bool(prompt.veil_lifted):
+            return
+        raise PromptVeilLockedError(
+            f"Prompt family '{name}' is veiled. Lift the veil before creating, updating or activating prompt versions."
+        )

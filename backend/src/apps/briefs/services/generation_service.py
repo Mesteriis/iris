@@ -4,8 +4,9 @@ from typing import Any
 
 from src.apps.briefs.contracts import BriefGenerationOutput, BriefKind
 from src.apps.briefs.language import resolve_requested_language
-from src.apps.briefs.prompts import BRIEF_OUTPUT_SCHEMA, load_brief_prompt
+from src.apps.briefs.prompts import BRIEF_OUTPUT_SCHEMA
 from src.apps.briefs.read_models import BriefContextBundle
+from src.apps.hypothesis_engine.prompts import LoadedPrompt
 from src.core.ai import (
     AICapability,
     AIExecutionRequest,
@@ -25,10 +26,10 @@ class BriefGenerationService:
         self,
         *,
         bundle: BriefContextBundle,
+        prompt: LoadedPrompt,
         context: dict[str, Any],
         requested_provider: str | None = None,
     ) -> dict[str, Any]:
-        prompt = load_brief_prompt(bundle.brief_kind)
         merged_context = {**prompt.vars_json, **context}
         policy = get_capability_policy(AICapability.BRIEF_GENERATE, settings=self._settings)
         validator = PydanticOutputValidator(

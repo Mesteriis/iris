@@ -26,6 +26,7 @@ class AIPromptRead(BaseModel):
     name: str
     task: str
     version: int
+    veil_lifted: bool
     is_active: bool
     template: str
     vars_json: dict[str, Any] = Field(default_factory=dict)

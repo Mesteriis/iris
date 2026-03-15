@@ -25,7 +25,8 @@ def _prompt_operator_presenter(item) -> AIPromptOperatorRead:
     return ai_prompt_operator_read(
         {
             **item.model_dump(mode="python"),
-            "editable": True,
+            "editable": bool(item.veil_lifted),
+            "veil_lifted": bool(item.veil_lifted),
             "source": "db",
         }
     )
@@ -105,6 +106,44 @@ async def activate_ai_prompt(
     del actor
     return await execute_command(
         action=lambda: commands.service.activate_prompt(prompt_id),
+        uow=commands.uow,
+        presenter=_prompt_operator_presenter,
+        translate_error=hypothesis_error_to_http,
+    )
+
+
+@router.post(
+    "/ai/prompts/{prompt_id}/lift-veil",
+    response_model=AIPromptOperatorRead,
+    summary="Lift AI prompt veil",
+)
+async def lift_ai_prompt_veil(
+    prompt_id: int,
+    actor: ControlActorDep,
+    commands: AIPromptCommandDep,
+) -> AIPromptOperatorRead:
+    del actor
+    return await execute_command(
+        action=lambda: commands.service.lift_prompt_veil(prompt_id),
+        uow=commands.uow,
+        presenter=_prompt_operator_presenter,
+        translate_error=hypothesis_error_to_http,
+    )
+
+
+@router.post(
+    "/ai/prompts/{prompt_id}/lower-veil",
+    response_model=AIPromptOperatorRead,
+    summary="Lower AI prompt veil",
+)
+async def lower_ai_prompt_veil(
+    prompt_id: int,
+    actor: ControlActorDep,
+    commands: AIPromptCommandDep,
+) -> AIPromptOperatorRead:
+    del actor
+    return await execute_command(
+        action=lambda: commands.service.lower_prompt_veil(prompt_id),
         uow=commands.uow,
         presenter=_prompt_operator_presenter,
         translate_error=hypothesis_error_to_http,

@@ -242,6 +242,7 @@ def ai_prompt_operator_read(source: Any) -> AIPromptOperatorRead:
             "capability": capability if capability is not None else None if policy is None else policy.capability,
             "task": task,
             "version": int(source.get("version") if is_mapping else source.version),
+            "veil_lifted": bool(source.get("veil_lifted") if is_mapping else source.veil_lifted),
             "editable": bool(source.get("editable") if is_mapping else source.editable),
             "source": source.get("source") if is_mapping else source.source,
             "is_active": bool(source.get("is_active") if is_mapping else source.is_active),

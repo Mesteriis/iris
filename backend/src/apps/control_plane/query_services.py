@@ -57,7 +57,7 @@ from src.apps.market_data.domain import utc_now
 from src.core.ai.capabilities import get_capability_policy
 from src.core.ai.contracts import AICapability
 from src.core.ai.health import capability_health_state
-from src.core.ai.prompt_policy import get_prompt_task_policy, list_builtin_prompt_definitions, prompt_style_profile
+from src.core.ai.prompt_policy import get_prompt_task_policy, prompt_style_profile
 from src.core.ai.settings import build_provider_configs
 from src.core.db.persistence import AsyncQueryService, freeze_json_value
 from src.core.settings import get_settings
@@ -664,12 +664,7 @@ class AIOperatorQueryService(AsyncQueryService):
             editable=editable,
         )
         db_prompts = await self._hypothesis_queries.list_prompts(name=name)
-        active_db_names = {item.name for item in db_prompts if item.is_active}
         items = [self._build_db_prompt_record(prompt) for prompt in db_prompts]
-        for prompt in list_builtin_prompt_definitions():
-            if prompt.source == "fallback" and prompt.name in active_db_names:
-                continue
-            items.append(self._build_builtin_prompt_record(prompt))
         filtered = tuple(
             item
             for item in items
@@ -727,7 +722,8 @@ class AIOperatorQueryService(AsyncQueryService):
             capability=None if policy is None else policy.capability,
             task=prompt.task,
             version=int(prompt.version),
-            editable=False if policy is None else bool(policy.editable),
+            veil_lifted=bool(prompt.veil_lifted),
+            editable=bool(prompt.veil_lifted),
             source="db",
             is_active=bool(prompt.is_active),
             template=prompt.template,
@@ -735,23 +731,6 @@ class AIOperatorQueryService(AsyncQueryService):
             schema_contract=None if policy is None else freeze_json_value(policy.schema_contract),
             style_profile=prompt_style_profile(dict(prompt.vars_json or {})),
             updated_at=prompt.updated_at,
-        )
-
-    def _build_builtin_prompt_record(self, prompt) -> AIPromptOperatorReadModel:
-        return AIPromptOperatorReadModel(
-            id=None,
-            name=prompt.name,
-            capability=prompt.capability,
-            task=prompt.task,
-            version=int(prompt.version),
-            editable=bool(prompt.editable),
-            source=prompt.source,
-            is_active=True,
-            template=prompt.template,
-            vars_json=freeze_json_value(dict(prompt.vars_json)),
-            schema_contract=freeze_json_value(prompt.schema_contract),
-            style_profile=prompt.style_profile,
-            updated_at=None,
         )
 
     def _prompt_matches(

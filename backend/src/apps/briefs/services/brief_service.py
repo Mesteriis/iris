@@ -11,6 +11,8 @@ from src.apps.briefs.query_services import BriefQueryService
 from src.apps.briefs.read_models import BriefContextBundle
 from src.apps.briefs.repositories import BriefRepository
 from src.apps.briefs.services.generation_service import BriefGenerationService
+from src.apps.hypothesis_engine.prompts import PromptLoader
+from src.apps.hypothesis_engine.query_services import HypothesisQueryService
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
 
@@ -26,6 +28,7 @@ class BriefService(PersistenceComponent):
         self._uow = uow
         self._repo = BriefRepository(uow.session)
         self._queries = BriefQueryService(uow.session)
+        self._prompt_loader = PromptLoader(HypothesisQueryService(uow.session))
         self._generator = BriefGenerationService()
 
     async def generate_and_store(
@@ -70,8 +73,10 @@ class BriefService(PersistenceComponent):
                 source_updated_at=existing.source_updated_at,
             )
 
+        prompt = await self._prompt_loader.load(f"brief.{brief_kind.value}")
         generated = await self._generator.generate(
             bundle=bundle,
+            prompt=prompt,
             context=context,
             requested_provider=requested_provider,
         )
