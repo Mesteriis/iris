@@ -8,7 +8,7 @@ log() {
 cd /app
 
 if [ "$#" -eq 0 ]; then
-  set -- python -m src.main
+  set -- python -m iris.main
 fi
 
 IRIS_DATA_ROOT="${IRIS_DATA_ROOT:-/var/lib/iris}"
@@ -92,6 +92,6 @@ else
   log "Using external Redis."
 fi
 
-python -m src.core.bootstrap.prestart
+python -m iris.core.bootstrap.prestart
 
 exec "$@"

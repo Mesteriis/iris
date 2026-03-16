@@ -71,7 +71,7 @@ Notes:
 3. Run prestart:
 
 ```bash
-uv run python -m src.core.bootstrap.prestart
+uv run python -m iris.core.bootstrap.prestart
 ```
 
 4. Run backend tests:
@@ -83,10 +83,10 @@ uv run pytest
 5. Run the backend locally:
 
 ```bash
-uv run python -m src.main
+uv run python -m iris.main
 ```
 
-When running the backend outside Docker, migrations are not applied from the app lifespan. You must run `src.core.bootstrap.prestart` or apply Alembic migrations yourself before starting `src.main`.
+When running the backend outside Docker, migrations are not applied from the app lifespan. You must run `iris.core.bootstrap.prestart` or apply Alembic migrations yourself before starting `iris.main`.
 
 ## Frontend Development
 

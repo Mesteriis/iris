@@ -2,15 +2,15 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from src.apps.patterns.runtime_results import (
+from iris.apps.patterns.runtime_results import (
     PatternIncrementalDetectionStepResult,
     PatternIncrementalSignalsResult,
     PatternRegimeRefreshResult,
     PatternSignalDerivationResult,
 )
-from src.runtime.control_plane.worker import build_delivery_stream_name
-from src.runtime.streams import workers
-from src.runtime.streams.types import (
+from iris.runtime.control_plane.worker import build_delivery_stream_name
+from iris.runtime.streams import workers
+from iris.runtime.streams.types import (
     ANALYSIS_SCHEDULER_WORKER_GROUP,
     ANOMALY_SECTOR_WORKER_GROUP,
     ANOMALY_WORKER_GROUP,

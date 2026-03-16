@@ -1,14 +1,14 @@
 from datetime import UTC, datetime, timezone
 
-from src.apps.control_plane.contracts import RouteFilters, RouteShadow, RouteThrottle
-from src.apps.control_plane.engines import (
+from iris.apps.control_plane.contracts import RouteFilters, RouteShadow, RouteThrottle
+from iris.apps.control_plane.engines import (
     command_from_payload,
     preview_topology_diff,
     route_snapshot_from_command,
     route_to_snapshot,
 )
-from src.apps.control_plane.enums import EventRouteScope, EventRouteStatus, TopologyDraftChangeType
-from src.apps.control_plane.read_models import EventRouteReadModel, TopologyDraftChangeReadModel
+from iris.apps.control_plane.enums import EventRouteScope, EventRouteStatus, TopologyDraftChangeType
+from iris.apps.control_plane.read_models import EventRouteReadModel, TopologyDraftChangeReadModel
 
 
 def test_route_engine_normalizes_command_payload() -> None:

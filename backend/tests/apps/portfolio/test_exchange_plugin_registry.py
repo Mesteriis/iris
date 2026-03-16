@@ -1,5 +1,5 @@
 import pytest
-from src.apps.portfolio.clients import (
+from iris.apps.portfolio.clients import (
     BinancePlugin,
     BybitPlugin,
     ExchangePlugin,
@@ -8,7 +8,7 @@ from src.apps.portfolio.clients import (
     list_registered_exchanges,
     register_exchange,
 )
-from src.apps.portfolio.models import ExchangeAccount
+from iris.apps.portfolio.models import ExchangeAccount
 
 
 class DummyExchangePlugin:

@@ -27,7 +27,7 @@ Every changed endpoint must have an explicit answer for:
 
 ## Transport Rules
 
-- [ ] Handler lives in `src/apps/<domain>/api/*_endpoints.py`.
+- [ ] Handler lives in `iris/apps/<domain>/api/*_endpoints.py`.
 - [ ] Handler file contains only async endpoint functions and router declarations.
 - [ ] Handler receives only ready services/facades or standardized access dependencies via `Depends(...)`.
 - [ ] Handler does not receive `AsyncSession`, repository, raw Redis client, raw queue client, or provider SDK directly.

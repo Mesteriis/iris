@@ -1,14 +1,14 @@
 import importlib.util
 from dataclasses import FrozenInstanceError
 
+import iris.apps.portfolio.services as portfolio_services_module
 import pytest
-import src.apps.portfolio.services as portfolio_services_module
+from iris.apps.portfolio.models import PortfolioAction, PortfolioBalance, PortfolioPosition, PortfolioState
+from iris.apps.portfolio.query_services import PortfolioQueryService
+from iris.apps.portfolio.services import PortfolioService
+from iris.core.db.persistence import PERSISTENCE_LOGGER
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.portfolio.models import PortfolioAction, PortfolioBalance, PortfolioPosition, PortfolioState
-from src.apps.portfolio.query_services import PortfolioQueryService
-from src.apps.portfolio.services import PortfolioService
-from src.core.db.persistence import PERSISTENCE_LOGGER
-from src.core.db.uow import SessionUnitOfWork
 
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_exchange_account, create_market_decision
@@ -198,8 +198,8 @@ def test_portfolio_services_exports_no_public_async_query_wrappers() -> None:
 
 
 def test_portfolio_modules_export_no_public_sync_selectors() -> None:
-    assert importlib.util.find_spec("src.apps.portfolio.selectors") is None
+    assert importlib.util.find_spec("iris.apps.portfolio.selectors") is None
 
 
 def test_portfolio_modules_export_no_public_sync_engine_helpers() -> None:
-    assert importlib.util.find_spec("src.apps.portfolio.engine") is None
+    assert importlib.util.find_spec("iris.apps.portfolio.engine") is None

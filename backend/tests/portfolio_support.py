@@ -1,8 +1,8 @@
+from iris.apps.cross_market.models import Sector
+from iris.apps.portfolio.models import ExchangeAccount
+from iris.apps.signals.models import MarketDecision
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from src.apps.cross_market.models import Sector
-from src.apps.portfolio.models import ExchangeAccount
-from src.apps.signals.models import MarketDecision
 
 
 def create_market_decision(

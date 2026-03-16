@@ -2,21 +2,21 @@ from datetime import UTC, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import select
-from src.apps.anomalies.models import MarketStructureSnapshot
-from src.apps.market_structure.api.onboarding_wizard import market_structure_onboarding_wizard_spec
-from src.apps.market_structure.exceptions import UnauthorizedMarketStructureIngestError
-from src.apps.market_structure.models import MarketStructureSource
-from src.apps.market_structure.query_services import MarketStructureQueryService
-from src.apps.market_structure.schemas import (
+from iris.apps.anomalies.models import MarketStructureSnapshot
+from iris.apps.market_structure.api.onboarding_wizard import market_structure_onboarding_wizard_spec
+from iris.apps.market_structure.exceptions import UnauthorizedMarketStructureIngestError
+from iris.apps.market_structure.models import MarketStructureSource
+from iris.apps.market_structure.query_services import MarketStructureQueryService
+from iris.apps.market_structure.schemas import (
     ManualMarketStructureIngestRequest,
     MarketStructureSnapshotCreate,
     MarketStructureSourceCreate,
     MarketStructureSourceUpdate,
 )
-from src.apps.market_structure.services import MarketStructureService, MarketStructureSourceProvisioningService
-from src.core.db.uow import SessionUnitOfWork
-from src.core.http.router_policy import api_path
+from iris.apps.market_structure.services import MarketStructureService, MarketStructureSourceProvisioningService
+from iris.core.db.uow import SessionUnitOfWork
+from iris.core.http.router_policy import api_path
+from sqlalchemy import select
 
 
 class _FakeResponse:
@@ -77,10 +77,10 @@ async def test_market_structure_service_polls_persists_and_publishes(
 ) -> None:
     published: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr(
-        "src.apps.market_structure.services.side_effects.publish_event",
+        "iris.apps.market_structure.services.side_effects.publish_event",
         lambda name, payload: published.append((name, payload)),
     )
-    monkeypatch.setattr("src.apps.market_structure.plugins.httpx.AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr("iris.apps.market_structure.plugins.httpx.AsyncClient", _FakeAsyncClient)
 
     async with SessionUnitOfWork(async_db_session) as uow:
         service = MarketStructureService(uow)
@@ -202,7 +202,7 @@ async def test_market_structure_service_refreshes_stale_health(async_db_session,
     del seeded_market
     published: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr(
-        "src.apps.market_structure.services.side_effects.publish_event",
+        "iris.apps.market_structure.services.side_effects.publish_event",
         lambda name, payload: published.append((name, payload)),
     )
 
@@ -232,7 +232,7 @@ async def test_market_structure_service_refreshes_stale_health(async_db_session,
         await uow.commit()
 
         monkeypatch.setattr(
-            "src.apps.market_structure.services.polling_service.utc_now",
+            "iris.apps.market_structure.services.polling_service.utc_now",
             lambda: datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
         )
         result = await service.refresh_source_health()
@@ -267,12 +267,12 @@ async def test_market_structure_service_applies_backoff_quarantine_and_release(
     del seeded_market
     published: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr(
-        "src.apps.market_structure.services.side_effects.publish_event",
+        "iris.apps.market_structure.services.side_effects.publish_event",
         lambda name, payload: published.append((name, payload)),
     )
-    monkeypatch.setattr("src.apps.market_structure.plugins.httpx.AsyncClient", _BrokenAsyncClient)
+    monkeypatch.setattr("iris.apps.market_structure.plugins.httpx.AsyncClient", _BrokenAsyncClient)
     monkeypatch.setattr(
-        "src.apps.market_structure.engines.health_engine.get_settings",
+        "iris.apps.market_structure.engines.health_engine.get_settings",
         lambda: SimpleNamespace(
             taskiq_market_structure_snapshot_poll_interval_seconds=180,
             taskiq_market_structure_failure_backoff_base_seconds=30,
@@ -368,7 +368,7 @@ async def test_market_structure_service_poll_enabled_sources_skips_manual(
     async_db_session, seeded_market, monkeypatch
 ) -> None:
     del seeded_market
-    monkeypatch.setattr("src.apps.market_structure.plugins.httpx.AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr("iris.apps.market_structure.plugins.httpx.AsyncClient", _FakeAsyncClient)
     async with SessionUnitOfWork(async_db_session) as uow:
         service = MarketStructureService(uow)
 

@@ -1,9 +1,9 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from src.apps.anomalies.contracts import AnomalyDetectionContext, DetectorFinding
-from src.apps.anomalies.engines import build_anomaly_payload, build_enriched_anomaly_projection
-from src.apps.market_data.candles import CandlePoint
+from iris.apps.anomalies.contracts import AnomalyDetectionContext, DetectorFinding
+from iris.apps.anomalies.engines import build_anomaly_payload, build_enriched_anomaly_projection
+from iris.apps.market_data.candles import CandlePoint
 
 
 @pytest.fixture(autouse=True)

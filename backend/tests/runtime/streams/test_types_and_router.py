@@ -1,8 +1,8 @@
 from datetime import UTC, datetime, timezone
 
 import pytest
-from src.runtime.streams import router
-from src.runtime.streams.types import (
+from iris.runtime.streams import router
+from iris.runtime.streams.types import (
     ANOMALY_SECTOR_WORKER_GROUP,
     ANOMALY_WORKER_GROUP,
     FUSION_WORKER_GROUP,

@@ -24,7 +24,7 @@ The lazy-investor AI plan requires AI to become a governed platform capability, 
 
 ## Decision
 
-IRIS introduces a shared `src/core/ai` platform layer and migrates hypothesis generation onto it.
+IRIS introduces a shared `iris/core/ai` platform layer and migrates hypothesis generation onto it.
 
 The practical rules are:
 

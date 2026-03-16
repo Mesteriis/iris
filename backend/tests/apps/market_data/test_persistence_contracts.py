@@ -2,14 +2,14 @@ import importlib.util
 from dataclasses import FrozenInstanceError
 from datetime import timedelta
 
+import iris.apps.market_data.services as market_data_services_module
+import iris.apps.market_data.tasks as market_data_tasks_module
 import pytest
-import src.apps.market_data.services as market_data_services_module
-import src.apps.market_data.tasks as market_data_tasks_module
-from src.apps.market_data.query_services import MarketDataQueryService
-from src.apps.market_data.schemas import CoinCreate, PriceHistoryCreate
-from src.apps.market_data.services import MarketDataService
-from src.core.db.persistence import PERSISTENCE_LOGGER
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.market_data.query_services import MarketDataQueryService
+from iris.apps.market_data.schemas import CoinCreate, PriceHistoryCreate
+from iris.apps.market_data.services import MarketDataService
+from iris.core.db.persistence import PERSISTENCE_LOGGER
+from iris.core.db.uow import SessionUnitOfWork
 
 
 @pytest.mark.asyncio
@@ -172,8 +172,8 @@ def test_market_data_tasks_export_no_wrapper_helpers() -> None:
 
 
 def test_market_data_legacy_views_module_is_absent() -> None:
-    assert importlib.util.find_spec("src.apps.market_data.views") is None
+    assert importlib.util.find_spec("iris.apps.market_data.views") is None
 
 
 def test_market_data_legacy_sync_repos_module_is_absent() -> None:
-    assert importlib.util.find_spec("src.apps.market_data.repos") is None
+    assert importlib.util.find_spec("iris.apps.market_data.repos") is None

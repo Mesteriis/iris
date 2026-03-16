@@ -2,11 +2,11 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
-2026-03-15
+2026-03-16
 
 ## Context
 
@@ -26,7 +26,7 @@ Without an explicit ownership model, the storage layer drifts into a hybrid desi
 - deterministic and AI-generated artifacts follow different undocumented rules
 - locale changes require duplicate rows or regeneration decisions that are not governed centrally
 
-This gap currently affects persisted `notifications`, `explanations`, and later will affect `briefs`.
+This gap affects persisted `notifications`, `explanations`, and `briefs`.
 
 ## Decision
 
@@ -129,8 +129,6 @@ Tradeoffs:
 
 ## Follow-up
 
-- apply the same model to persisted `briefs`
-- decide whether legacy text columns should be removed after rollout
 - add CI checks for content envelope validity and `content_kind` coverage
 
 ## See also

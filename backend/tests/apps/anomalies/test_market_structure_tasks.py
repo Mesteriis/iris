@@ -1,13 +1,13 @@
 from datetime import UTC, datetime
 
 import pytest
+from iris.apps.anomalies.consumers.sector_anomaly_consumer import SectorAnomalyConsumer
+from iris.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
+from iris.apps.anomalies.tasks.anomaly_enrichment_tasks import market_structure_anomaly_scan
+from iris.runtime.streams.publisher import flush_publisher
+from iris.runtime.streams.types import IrisEvent
 from redis import Redis
 from sqlalchemy import select
-from src.apps.anomalies.consumers.sector_anomaly_consumer import SectorAnomalyConsumer
-from src.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
-from src.apps.anomalies.tasks.anomaly_enrichment_tasks import market_structure_anomaly_scan
-from src.runtime.streams.publisher import flush_publisher
-from src.runtime.streams.types import IrisEvent
 
 from tests.market_data_support import fetch_candle_points
 
@@ -147,7 +147,7 @@ async def test_sector_consumer_enqueues_market_structure_scan_for_high_severity(
         calls.append((getattr(task, "kiq_name", getattr(task, "__name__", "task")), kwargs))
 
     monkeypatch.setattr(
-        "src.apps.anomalies.consumers.sector_anomaly_consumer.enqueue_task",
+        "iris.apps.anomalies.consumers.sector_anomaly_consumer.enqueue_task",
         _fake_enqueue,
     )
 

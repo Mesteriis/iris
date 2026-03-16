@@ -3,13 +3,13 @@ from dataclasses import FrozenInstanceError
 from datetime import timedelta
 
 import pytest
+from iris.apps.cross_market.models import CoinRelation
+from iris.apps.predictions.models import MarketPrediction
+from iris.apps.predictions.query_services import PredictionQueryService
+from iris.apps.predictions.services import PredictionService
+from iris.core.db.persistence import PERSISTENCE_LOGGER
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.cross_market.models import CoinRelation
-from src.apps.predictions.models import MarketPrediction
-from src.apps.predictions.query_services import PredictionQueryService
-from src.apps.predictions.services import PredictionService
-from src.core.db.persistence import PERSISTENCE_LOGGER
-from src.core.db.uow import SessionUnitOfWork
 
 from tests.cross_market_support import DEFAULT_START, create_cross_market_coin
 
@@ -95,4 +95,4 @@ async def test_prediction_persistence_logs_cover_query_service_and_uow(async_db_
 
 
 def test_prediction_engine_module_is_removed() -> None:
-    assert importlib.util.find_spec("src.apps.predictions.engine") is None
+    assert importlib.util.find_spec("iris.apps.predictions.engine") is None

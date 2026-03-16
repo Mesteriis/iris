@@ -3,12 +3,12 @@ import importlib.util
 import json
 from contextlib import asynccontextmanager
 
+import iris.core.bootstrap.app as bootstrap_app_module
 import pytest
-import src.core.bootstrap.app as bootstrap_app_module
 from httpx import ASGITransport, AsyncClient
-from src.apps.hypothesis_engine.api.router import build_router as build_hypothesis_router
-from src.core.http.launch_modes import DeploymentProfile, LaunchMode
-from src.runtime.streams.publisher import flush_publisher, publish_event
+from iris.apps.hypothesis_engine.api.router import build_router as build_hypothesis_router
+from iris.core.http.launch_modes import DeploymentProfile, LaunchMode
+from iris.runtime.streams.publisher import flush_publisher, publish_event
 
 from tests.apps.conftest import PrefixedAsyncClient
 
@@ -59,7 +59,7 @@ async def test_hypothesis_prompt_endpoints(hypothesis_api_client, monkeypatch) -
 
     queued: list[dict[str, object]] = []
 
-    from src.apps.hypothesis_engine.tasks.hypothesis_tasks import evaluate_hypotheses_job
+    from iris.apps.hypothesis_engine.tasks.hypothesis_tasks import evaluate_hypotheses_job
 
     async def fake_kiq(**kwargs) -> None:
         queued.append(dict(kwargs))
@@ -232,4 +232,4 @@ def test_hypothesis_api_router_is_mode_aware_and_legacy_views_removed() -> None:
     assert not any(path == "/hypothesis/jobs/evaluate" for path, _ in ha_paths)
     assert not any(path == "/hypothesis/sse/ai" for path, _ in ha_paths)
     assert not any(path == "/hypothesis/prompts" for path, _ in ha_paths)
-    assert importlib.util.find_spec("src.apps.hypothesis_engine.views") is None
+    assert importlib.util.find_spec("iris.apps.hypothesis_engine.views") is None

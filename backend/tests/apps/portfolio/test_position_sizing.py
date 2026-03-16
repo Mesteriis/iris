@@ -1,4 +1,4 @@
-from src.apps.portfolio.support import calculate_position_size, calculate_stops
+from iris.apps.portfolio.support import calculate_position_size, calculate_stops
 
 
 def test_position_sizing_scales_with_confidence_and_regime() -> None:

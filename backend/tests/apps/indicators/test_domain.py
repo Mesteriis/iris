@@ -1,6 +1,6 @@
+import iris.apps.indicators.domain as indicator_domain
 import pytest
-import src.apps.indicators.domain as indicator_domain
-from src.apps.indicators.domain import (
+from iris.apps.indicators.domain import (
     adx_series,
     atr_series,
     bollinger_bands,

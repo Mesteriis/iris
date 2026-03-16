@@ -1,7 +1,7 @@
 # ruff: noqa: RUF001
 
 
-from src.apps.patterns.api.errors import PatternNotFoundError, pattern_coin_not_found_error, pattern_error_to_http
+from iris.apps.patterns.api.errors import PatternNotFoundError, pattern_coin_not_found_error, pattern_error_to_http
 
 
 def test_pattern_api_errors_are_localized_from_registry() -> None:

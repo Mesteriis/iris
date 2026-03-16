@@ -1,24 +1,24 @@
 from datetime import UTC, datetime, timedelta, timezone
 
-from sqlalchemy.orm import Session
-from src.apps.cross_market.cache import cache_correlation_snapshot_async
-from src.apps.cross_market.query_services import CrossMarketQueryService
-from src.apps.cross_market.services import CrossMarketService
-from src.apps.cross_market.support import relation_timeframe
-from src.apps.indicators.models import CoinMetrics
-from src.apps.market_data.domain import utc_now
-from src.apps.market_data.models import Coin
-from src.apps.market_data.sources.base import MarketBar
-from src.apps.predictions.models import MarketPrediction
-from src.apps.predictions.services import (
+from iris.apps.cross_market.cache import cache_correlation_snapshot_async
+from iris.apps.cross_market.query_services import CrossMarketQueryService
+from iris.apps.cross_market.services import CrossMarketService
+from iris.apps.cross_market.support import relation_timeframe
+from iris.apps.indicators.models import CoinMetrics
+from iris.apps.market_data.domain import utc_now
+from iris.apps.market_data.models import Coin
+from iris.apps.market_data.sources.base import MarketBar
+from iris.apps.predictions.models import MarketPrediction
+from iris.apps.predictions.services import (
     PredictionCreationBatch,
     PredictionEvaluationBatch,
     PredictionService,
     PredictionSideEffectDispatcher,
 )
-from src.apps.signals.services import SignalFusionService
-from src.core.db.uow import SessionUnitOfWork
-from src.runtime.streams.publisher import publish_event
+from iris.apps.signals.services import SignalFusionService
+from iris.core.db.uow import SessionUnitOfWork
+from iris.runtime.streams.publisher import publish_event
+from sqlalchemy.orm import Session
 
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.market_data_support import upsert_base_candles

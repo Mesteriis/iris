@@ -3,12 +3,12 @@ from contextlib import asynccontextmanager
 
 import pytest
 from fastapi.testclient import TestClient
-from src.apps.integrations.ha.application.services import HABridgeService
-from src.apps.integrations.ha.bridge.runtime import HABridgeRuntime
-from src.apps.integrations.ha.bridge.websocket_hub import HAWebSocketHub
-from src.apps.integrations.ha.schemas import HASubscribeMessage
-from src.core.bootstrap.app import create_app
-from src.runtime.streams.publisher import flush_publisher, publish_event
+from iris.apps.integrations.ha.application.services import HABridgeFacade
+from iris.apps.integrations.ha.bridge.runtime import HABridgeRuntime
+from iris.apps.integrations.ha.bridge.websocket_hub import HAWebSocketHub
+from iris.apps.integrations.ha.schemas import HASubscribeMessage
+from iris.core.bootstrap.app import create_app
+from iris.runtime.streams.publisher import flush_publisher, publish_event
 
 
 def build_test_client(*, websocket_queue_depth: int | None = None) -> TestClient:
@@ -24,7 +24,7 @@ def build_test_client(*, websocket_queue_depth: int | None = None) -> TestClient
     if websocket_queue_depth is not None:
         runtime = HABridgeRuntime(websocket_queue_depth=websocket_queue_depth)
         app.state.ha_bridge_runtime = runtime
-        app.state.ha_bridge_service = runtime.service
+        app.state.ha_bridge_facade = runtime.facade
     return TestClient(app)
 
 
@@ -100,7 +100,7 @@ async def test_ha_operation_endpoint_maps_core_operation_state(api_app_client, s
 
     queued: dict[str, object] = {}
 
-    from src.apps.market_data.tasks import run_coin_history_job
+    from iris.apps.market_data.tasks import run_coin_history_job
 
     async def fake_kiq(**kwargs) -> None:
         queued.update(kwargs)
@@ -129,7 +129,7 @@ def test_ha_websocket_supports_hello_subscribe_ping_and_positive_command_ack(
     del seeded_api_state
     queued: dict[str, object] = {}
 
-    from src.apps.portfolio.tasks import portfolio_sync_job
+    from iris.apps.portfolio.tasks import portfolio_sync_job
 
     async def fake_kiq(**kwargs) -> None:
         queued.update(kwargs)
@@ -394,8 +394,8 @@ def test_ha_websocket_supports_inline_switch_and_select_commands(seeded_api_stat
 
 @pytest.mark.asyncio
 async def test_ha_websocket_hub_emits_resync_required_on_session_queue_overflow() -> None:
-    service = HABridgeService()
-    hub = HAWebSocketHub(service, max_queue_depth=1)
+    facade = HABridgeFacade()
+    hub = HAWebSocketHub(facade, max_queue_depth=1)
     session = await hub.register_session()
     await hub.update_subscription(
         session.session_id,

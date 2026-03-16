@@ -1,9 +1,9 @@
 import importlib
 from datetime import UTC, datetime, timedelta, timezone
 
-from src.apps.market_data.candles import CandlePoint
+from iris.apps.market_data.candles import CandlePoint
 
-volatility = importlib.import_module("src.apps.patterns.domain.detectors.volatility")
+volatility = importlib.import_module("iris.apps.patterns.domain.detectors.volatility")
 
 
 def _candles(count: int, *, start_price: float = 100.0) -> list[CandlePoint]:

@@ -1,17 +1,17 @@
 import pytest
-from sqlalchemy import select
-from src.apps.cross_market.models import SectorMetric
-from src.apps.market_data.candles import candle_close_timestamp
-from src.apps.market_data.models import Candle
-from src.apps.patterns.domain.strategy import StrategyCandidate
-from src.apps.patterns.models import DiscoveredPattern, PatternFeature
-from src.apps.patterns.task_services import (
+from iris.apps.cross_market.models import SectorMetric
+from iris.apps.market_data.candles import candle_close_timestamp
+from iris.apps.market_data.models import Candle
+from iris.apps.patterns.domain.strategy import StrategyCandidate
+from iris.apps.patterns.models import DiscoveredPattern, PatternFeature
+from iris.apps.patterns.task_services import (
     PatternDiscoveryService,
     PatternSignalContextService,
     PatternStrategyService,
 )
-from src.apps.signals.models import FinalSignal, InvestmentDecision, Signal, Strategy
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.signals.models import FinalSignal, InvestmentDecision, Signal, Strategy
+from iris.core.db.uow import SessionUnitOfWork
+from sqlalchemy import select
 
 from tests.fusion_support import insert_signals
 from tests.patterns_support import seed_pattern_api_state, seed_pattern_catalog_metadata
@@ -32,10 +32,10 @@ async def test_pattern_signal_context_service_enriches_rows_and_handles_missing_
             candle_timestamp=timestamp,
         )
 
-    assert result["status"] == "ok"
-    assert result["context"]["status"] == "ok"
-    assert result["decision"]["status"] in {"ok", "skipped"}
-    assert result["final_signal"]["status"] in {"ok", "skipped"}
+    assert result.status == "ok"
+    assert result.context.status == "ok"
+    assert result.decision["status"] in {"ok", "skipped"}
+    assert result.final_signal["status"] in {"ok", "skipped"}
 
     rows = (
         await async_db_session.execute(
@@ -57,7 +57,7 @@ async def test_pattern_signal_context_service_enriches_rows_and_handles_missing_
             timeframe=240,
         )
 
-    assert missing["reason"] == "signals_not_found"
+    assert missing.reason == "signals_not_found"
 
 
 @pytest.mark.asyncio
@@ -66,13 +66,13 @@ async def test_pattern_discovery_service_replaces_discovered_patterns_and_respec
 ) -> None:
     seed_pattern_catalog_metadata(db_session)
     seed_pattern_api_state(db_session)
-    monkeypatch.setattr("src.apps.patterns.task_service_market._window_signature", lambda _closes: "shared-window")
+    monkeypatch.setattr("iris.apps.patterns.task_runtime_market._window_signature", lambda _closes: "shared-window")
 
     async with SessionUnitOfWork(async_db_session) as uow:
         refreshed = await PatternDiscoveryService(uow).refresh()
 
-    assert refreshed["status"] == "ok"
-    assert refreshed["patterns"] > 0
+    assert refreshed.status == "ok"
+    assert refreshed.patterns > 0
     rows = (await async_db_session.execute(select(DiscoveredPattern))).scalars().all()
     assert rows
 
@@ -84,7 +84,7 @@ async def test_pattern_discovery_service_replaces_discovered_patterns_and_respec
     async with SessionUnitOfWork(async_db_session) as uow:
         skipped = await PatternDiscoveryService(uow).refresh()
 
-    assert skipped["reason"] == "pattern_discovery_disabled"
+    assert skipped.reason == "pattern_discovery_disabled"
 
 
 @pytest.mark.asyncio
@@ -94,20 +94,20 @@ async def test_pattern_strategy_service_refreshes_current_runtime_path(async_db_
     btc = seeded["btc"]
     timestamp = seeded["signal_timestamp"]
     monkeypatch.setattr(
-        "src.apps.patterns.task_service_market._signal_outcome",
+        "iris.apps.patterns.task_runtime_market._signal_outcome",
         lambda **_kwargs: (0.04, -0.02, True),
     )
     monkeypatch.setattr(
-        "src.apps.patterns.task_service_market._context_from_window",
+        "iris.apps.patterns.task_runtime_market._context_from_window",
         lambda **_kwargs: ("bull_trend", "MARKUP"),
     )
     monkeypatch.setattr(
-        "src.apps.patterns.task_service_market._strategy_enabled",
+        "iris.apps.patterns.task_runtime_market._strategy_enabled",
         lambda *args, **kwargs: True,
     )
-    monkeypatch.setattr("src.apps.patterns.task_service_market.MIN_DISCOVERY_SAMPLE", 1)
+    monkeypatch.setattr("iris.apps.patterns.task_runtime_market.MIN_DISCOVERY_SAMPLE", 1)
     monkeypatch.setattr(
-        "src.apps.patterns.task_service_market._candidate_definitions",
+        "iris.apps.patterns.task_runtime_market._candidate_definitions",
         lambda **_kwargs: [
             StrategyCandidate(
                 timeframe=15,
@@ -157,11 +157,11 @@ async def test_pattern_strategy_service_refreshes_current_runtime_path(async_db_
         refreshed = await PatternStrategyService(uow).refresh()
         await uow.commit()
 
-    assert refreshed["status"] == "ok"
-    assert refreshed["strategies"]["status"] == "ok"
-    assert refreshed["strategies"]["strategies"] > 0
-    assert refreshed["decisions"]["candidates"] >= 1
-    assert refreshed["final_signals"]["candidates"] >= 1
+    assert refreshed.status == "ok"
+    assert refreshed.strategies["status"] == "ok"
+    assert refreshed.strategies["strategies"] > 0
+    assert refreshed.decisions["candidates"] >= 1
+    assert refreshed.final_signals["candidates"] >= 1
 
     strategies = (await async_db_session.execute(select(Strategy).where(Strategy.enabled.is_(True)))).scalars().all()
     decisions = (await async_db_session.execute(select(InvestmentDecision))).scalars().all()

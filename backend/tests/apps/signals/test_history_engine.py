@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from src.apps.signals.engines import (
+from iris.apps.signals.engines import (
     SignalHistoryCandleInput,
     SignalHistorySignalInput,
     evaluate_signal_history_batch,

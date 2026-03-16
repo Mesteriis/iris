@@ -2,17 +2,17 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from iris.apps.cross_market.models import SectorMetric
+from iris.apps.indicators.models import CoinMetrics
+from iris.apps.patterns.models import MarketCycle, PatternFeature
+from iris.apps.patterns.query_builders import signal_select as _signal_select
+from iris.apps.patterns.query_services import PatternQueryService
+from iris.apps.patterns.services import PatternAdminService
+from iris.apps.patterns.task_service_base import PatternTaskBase
+from iris.apps.patterns.task_services import PatternMarketStructureService, PatternRealtimeService
+from iris.apps.signals.models import Signal
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.cross_market.models import SectorMetric
-from src.apps.indicators.models import CoinMetrics
-from src.apps.patterns.models import MarketCycle, PatternFeature
-from src.apps.patterns.query_builders import signal_select as _signal_select
-from src.apps.patterns.query_services import PatternQueryService
-from src.apps.patterns.services import PatternAdminService
-from src.apps.patterns.task_service_base import PatternTaskBase
-from src.apps.patterns.task_services import PatternMarketStructureService, PatternRealtimeService
-from src.apps.signals.models import Signal
-from src.core.db.uow import SessionUnitOfWork
 
 from tests.fusion_support import create_test_coin, insert_signals
 from tests.patterns_support import seed_pattern_api_state
@@ -646,7 +646,7 @@ async def test_pattern_services_cover_market_cycle_paths(async_db_session, db_se
     btc = seeded_api_state["btc"]
     timestamp = seeded_api_state["signal_timestamp"]
     monkeypatch.setattr(
-        "src.apps.patterns.task_service_base.read_cached_regime_async",
+        "iris.apps.patterns.task_runtime_base.read_cached_regime_async",
         lambda **kwargs: __import__("asyncio").sleep(0, result=None),
     )
 
@@ -713,6 +713,6 @@ async def test_pattern_services_cover_market_cycle_paths(async_db_session, db_se
     async with SessionUnitOfWork(async_db_session) as uow:
         refreshed = await PatternMarketStructureService(uow).refresh()
 
-    assert refreshed["status"] == "ok"
-    assert refreshed["cycles"]["status"] == "ok"
-    assert refreshed["cycles"]["cycles"] >= 4
+    assert refreshed.status == "ok"
+    assert refreshed.cycles["status"] == "ok"
+    assert refreshed.cycles["cycles"] >= 4

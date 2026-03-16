@@ -4,11 +4,11 @@ from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime, timezone
 
 import pytest
-from src.apps.patterns.models import PatternFeature, PatternRegistry, PatternStatistic
-from src.apps.patterns.query_services import PatternQueryService
-from src.apps.patterns.services import PatternAdminService
-from src.core.db.persistence import PERSISTENCE_LOGGER
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.patterns.models import PatternFeature, PatternRegistry, PatternStatistic
+from iris.apps.patterns.query_services import PatternQueryService
+from iris.apps.patterns.services import PatternAdminService
+from iris.core.db.persistence import PERSISTENCE_LOGGER
+from iris.core.db.uow import SessionUnitOfWork
 
 from tests.patterns_support import seed_pattern_api_state
 
@@ -97,20 +97,20 @@ async def test_patterns_persistence_logs_cover_query_repo_and_uow(async_db_sessi
 
 
 def test_patterns_legacy_selector_module_is_absent() -> None:
-    assert importlib.util.find_spec("src.apps.patterns.selectors") is None
+    assert importlib.util.find_spec("iris.apps.patterns.selectors") is None
 
 
 def test_patterns_legacy_engine_module_is_absent() -> None:
-    assert importlib.util.find_spec("src.apps.patterns.domain.engine") is None
+    assert importlib.util.find_spec("iris.apps.patterns.domain.engine") is None
 
 
 def test_patterns_legacy_cluster_and_hierarchy_modules_are_absent() -> None:
-    assert importlib.util.find_spec("src.apps.patterns.domain.clusters") is None
-    assert importlib.util.find_spec("src.apps.patterns.domain.hierarchy") is None
+    assert importlib.util.find_spec("iris.apps.patterns.domain.clusters") is None
+    assert importlib.util.find_spec("iris.apps.patterns.domain.hierarchy") is None
 
 
 def test_patterns_cycle_module_has_no_sync_db_entrypoints() -> None:
-    module = importlib.import_module("src.apps.patterns.domain.cycle")
+    module = importlib.import_module("iris.apps.patterns.domain.cycle")
     assert not hasattr(module, "update_market_cycle")
     assert not hasattr(module, "refresh_market_cycles")
 
@@ -119,7 +119,7 @@ def test_patterns_cycle_module_has_no_sync_db_entrypoints() -> None:
     ("module_name", "attributes"),
     [
         (
-            "src.apps.patterns.domain.registry",
+            "iris.apps.patterns.domain.registry",
             (
                 "sync_pattern_metadata",
                 "feature_enabled",
@@ -128,19 +128,19 @@ def test_patterns_cycle_module_has_no_sync_db_entrypoints() -> None:
             ),
         ),
         (
-            "src.apps.patterns.domain.discovery",
+            "iris.apps.patterns.domain.discovery",
             ("refresh_discovered_patterns",),
         ),
         (
-            "src.apps.patterns.domain.narrative",
+            "iris.apps.patterns.domain.narrative",
             ("_coin_bar_return", "refresh_sector_metrics", "build_sector_narratives"),
         ),
         (
-            "src.apps.patterns.domain.context",
+            "iris.apps.patterns.domain.context",
             ("_pattern_temperature", "enrich_signal_context", "refresh_recent_signal_contexts"),
         ),
         (
-            "src.apps.patterns.domain.decision",
+            "iris.apps.patterns.domain.decision",
             (
                 "_latest_pattern_timestamp",
                 "_latest_signal_stack",
@@ -152,7 +152,7 @@ def test_patterns_cycle_module_has_no_sync_db_entrypoints() -> None:
             ),
         ),
         (
-            "src.apps.patterns.domain.risk",
+            "iris.apps.patterns.domain.risk",
             (
                 "_latest_decision",
                 "_latest_final_signal",
@@ -166,15 +166,15 @@ def test_patterns_cycle_module_has_no_sync_db_entrypoints() -> None:
             ),
         ),
         (
-            "src.apps.patterns.domain.strategy",
+            "iris.apps.patterns.domain.strategy",
             ("_signal_groups", "_upsert_strategy", "refresh_strategies", "strategy_alignment"),
         ),
         (
-            "src.apps.patterns.domain.statistics",
+            "iris.apps.patterns.domain.statistics",
             ("_history_rows", "refresh_pattern_statistics"),
         ),
         (
-            "src.apps.patterns.domain.success",
+            "iris.apps.patterns.domain.success",
             ("load_pattern_success_cache",),
         ),
     ],

@@ -2,14 +2,14 @@ import importlib
 from datetime import UTC, datetime, timezone
 
 import pytest
-from src.apps.indicators.repositories import IndicatorMetricsRepository
-from src.apps.indicators.services import AnalysisSchedulerService
-from src.apps.patterns.domain.scheduler import (
+from iris.apps.indicators.repositories import IndicatorMetricsRepository
+from iris.apps.indicators.services import AnalysisSchedulerService
+from iris.apps.patterns.domain.scheduler import (
     analysis_interval,
     analysis_priority_for_bucket,
     should_request_analysis,
 )
-from src.core.db.uow import SessionUnitOfWork
+from iris.core.db.uow import SessionUnitOfWork
 
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 
@@ -38,7 +38,7 @@ async def test_scheduler_helpers_update_analysis_snapshot(async_db_session, db_s
 
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     metrics = upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bull_trend", timeframe=15)
-    module = importlib.import_module("src.apps.patterns.domain.scheduler")
+    module = importlib.import_module("iris.apps.patterns.domain.scheduler")
     assert not hasattr(module, "mark_analysis_requested")
     assert not hasattr(module, "get_activity_snapshot")
 

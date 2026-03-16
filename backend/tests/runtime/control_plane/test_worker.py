@@ -1,15 +1,15 @@
 from datetime import UTC, datetime
 
 import pytest
-from src.apps.control_plane.contracts import (
+from iris.apps.control_plane.contracts import (
     EventConsumerSnapshot,
     EventDefinitionSnapshot,
     EventRouteSnapshot,
     TopologySnapshot,
 )
-from src.apps.control_plane.enums import EventRouteScope, EventRouteStatus
-from src.runtime.control_plane.worker import TopologyDispatchService, build_delivery_stream_name
-from src.runtime.streams.types import IrisEvent
+from iris.apps.control_plane.enums import EventRouteScope, EventRouteStatus
+from iris.runtime.control_plane.worker import TopologyDispatchService, build_delivery_stream_name
+from iris.runtime.streams.types import IrisEvent
 
 
 def _snapshot() -> TopologySnapshot:

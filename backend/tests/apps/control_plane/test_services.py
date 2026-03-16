@@ -1,6 +1,5 @@
 import pytest
-from sqlalchemy import select
-from src.apps.control_plane.contracts import (
+from iris.apps.control_plane.contracts import (
     AuditActor,
     DraftChangeCommand,
     DraftCreateCommand,
@@ -8,18 +7,19 @@ from src.apps.control_plane.contracts import (
     RouteStatusChangeCommand,
     build_route_key,
 )
-from src.apps.control_plane.control_events import CONTROL_CACHE_INVALIDATED, CONTROL_TOPOLOGY_PUBLISHED
-from src.apps.control_plane.enums import (
+from iris.apps.control_plane.control_events import CONTROL_CACHE_INVALIDATED, CONTROL_TOPOLOGY_PUBLISHED
+from iris.apps.control_plane.enums import (
     EventRouteScope,
     EventRouteStatus,
     TopologyAccessMode,
     TopologyDraftChangeType,
 )
-from src.apps.control_plane.exceptions import EventRouteCompatibilityError
-from src.apps.control_plane.models import EventRoute, EventRouteAuditLog, TopologyConfigVersion, TopologyDraft
-from src.apps.control_plane.query_services import EventRegistryQueryService, TopologyQueryService
-from src.apps.control_plane.services import RouteManagementService, TopologyDraftService
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.control_plane.exceptions import EventRouteCompatibilityError
+from iris.apps.control_plane.models import EventRoute, EventRouteAuditLog, TopologyConfigVersion, TopologyDraft
+from iris.apps.control_plane.query_services import EventRegistryQueryService, TopologyQueryService
+from iris.apps.control_plane.services import RouteManagementService, TopologyDraftService
+from iris.core.db.uow import SessionUnitOfWork
+from sqlalchemy import select
 
 
 @pytest.mark.asyncio
@@ -208,7 +208,7 @@ async def test_topology_draft_apply_publishes_new_version_and_route_changes(
     published_events: list[tuple[str, dict[str, object]]] = []
 
     monkeypatch.setattr(
-        "src.apps.control_plane.services.side_effects.publish_control_event",
+        "iris.apps.control_plane.services.side_effects.publish_control_event",
         lambda event_type, payload: published_events.append((event_type, dict(payload))),
     )
 

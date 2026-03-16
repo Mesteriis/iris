@@ -2,11 +2,10 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import iris.apps.indicators.analytics as analytics
+import iris.apps.indicators.services as indicator_services
 import pytest
-import src.apps.indicators.analytics as analytics
-import src.apps.indicators.services as indicator_services
-from sqlalchemy import select
-from src.apps.indicators.analytics import (
+from iris.apps.indicators.analytics import (
     TimeframeSnapshot,
     _activity_fields,
     _calculate_snapshot,
@@ -23,18 +22,19 @@ from src.apps.indicators.analytics import (
     _snapshot_completeness,
     determine_affected_timeframes,
 )
-from src.apps.indicators.models import CoinMetrics, IndicatorCache
-from src.apps.indicators.query_services import IndicatorQueryService
-from src.apps.indicators.repositories import (
+from iris.apps.indicators.models import CoinMetrics, IndicatorCache
+from iris.apps.indicators.query_services import IndicatorQueryService
+from iris.apps.indicators.repositories import (
     IndicatorCacheRepository,
     IndicatorMetricsRepository,
     IndicatorSignalRepository,
 )
-from src.apps.indicators.services import IndicatorAnalyticsService, IndicatorMetricsUpdate
-from src.apps.market_data.candles import CandlePoint
-from src.apps.market_data.models import Coin
-from src.apps.signals.models import Signal
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.indicators.services import IndicatorAnalyticsService, IndicatorMetricsUpdate
+from iris.apps.market_data.candles import CandlePoint
+from iris.apps.market_data.models import Coin
+from iris.apps.signals.models import Signal
+from iris.core.db.uow import SessionUnitOfWork
+from sqlalchemy import select
 
 from tests.factories.market_data import build_candle_points
 

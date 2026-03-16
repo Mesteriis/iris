@@ -2,27 +2,27 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import select
-from src.apps.patterns.domain.semantics import slug_from_signal_type
-from src.apps.patterns.models import PatternStatistic
-from src.apps.signals.engines import (
+from iris.apps.patterns.domain.semantics import slug_from_signal_type
+from iris.apps.patterns.models import PatternStatistic
+from iris.apps.signals.engines import (
     SignalFusionInput,
     SignalFusionSignalInput,
     SignalSuccessRate,
     resolve_signal_success_rate,
     run_signal_fusion,
 )
-from src.apps.signals.fusion_support import (
+from iris.apps.signals.fusion_support import (
     _decision_from_scores,
     _regime_weight,
     _signal_archetype,
     _signal_regime,
 )
-from src.apps.signals.models import MarketDecision, Signal
-from src.apps.signals.repositories import SignalFusionRepository
-from src.apps.signals.services import SignalFusionService, SignalFusionSideEffectDispatcher
-from src.apps.signals.services.fusion_inputs import SignalFusionInputBuilder
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.signals.models import MarketDecision, Signal
+from iris.apps.signals.repositories import SignalFusionRepository
+from iris.apps.signals.services import SignalFusionService, SignalFusionSideEffectDispatcher
+from iris.apps.signals.services.fusion_inputs import SignalFusionInputBuilder
+from iris.core.db.uow import SessionUnitOfWork
+from sqlalchemy import select
 
 from tests.cross_market_support import DEFAULT_START
 from tests.fusion_support import create_test_coin, replace_pattern_statistics, upsert_coin_metrics
@@ -356,7 +356,7 @@ async def test_fusion_additional_regime_and_event_branches(async_db_session, db_
 
     published: list[str] = []
     monkeypatch.setattr(
-        "src.apps.signals.services.side_effects.publish_event", lambda event_type, payload: published.append(event_type)
+        "iris.apps.signals.services.side_effects.publish_event", lambda event_type, payload: published.append(event_type)
     )
     monkeypatch.setattr(SignalFusionService, "_enrich_context", _noop_enrich_context)
 

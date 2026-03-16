@@ -2,14 +2,14 @@ from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime, timezone
 
 import pytest
+from iris.apps.market_data.models import Coin
+from iris.apps.news.models import NewsItem, NewsItemLink
+from iris.apps.news.query_services import NewsQueryService
+from iris.apps.news.schemas import NewsSourceCreate
+from iris.apps.news.services import NewsService
+from iris.core.db.persistence import PERSISTENCE_LOGGER
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.market_data.models import Coin
-from src.apps.news.models import NewsItem, NewsItemLink
-from src.apps.news.query_services import NewsQueryService
-from src.apps.news.schemas import NewsSourceCreate
-from src.apps.news.services import NewsService
-from src.core.db.persistence import PERSISTENCE_LOGGER
-from src.core.db.uow import SessionUnitOfWork
 
 
 @pytest.mark.asyncio

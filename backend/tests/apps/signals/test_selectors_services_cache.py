@@ -2,12 +2,11 @@ import asyncio
 import json
 from datetime import timedelta
 
+import iris.apps.signals.cache as signal_cache_module
+import iris.apps.signals.query_services as signal_query_module
 import pytest
-import src.apps.signals.cache as signal_cache_module
-import src.apps.signals.query_services as signal_query_module
-from sqlalchemy import select
-from src.apps.patterns.query_builders import signal_select as _signal_select
-from src.apps.signals.cache import (
+from iris.apps.patterns.query_builders import signal_select as _signal_select
+from iris.apps.signals.cache import (
     DECISION_CACHE_TTL_SECONDS,
     DecisionCacheEntry,
     _parse_decision_payload,
@@ -19,12 +18,13 @@ from src.apps.signals.cache import (
     read_cached_market_decision,
     read_cached_market_decision_async,
 )
-from src.apps.signals.models import FinalSignal, InvestmentDecision, Signal, Strategy, StrategyRule
-from src.apps.signals.query_services import (
+from iris.apps.signals.models import FinalSignal, InvestmentDecision, Signal, Strategy, StrategyRule
+from iris.apps.signals.query_services import (
     SignalQueryService,
     _cluster_membership_map_async,
     _serialize_signal_rows_async,
 )
+from sqlalchemy import select
 
 from tests.factories.seeds import DecisionSeedFactory, StrategySeedFactory
 

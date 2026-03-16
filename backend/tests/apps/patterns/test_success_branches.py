@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timezone
 
-from src.apps.patterns.domain.success import (
+from iris.apps.patterns.domain.success import (
     GLOBAL_MARKET_REGIME,
     PatternSuccessSnapshot,
     apply_pattern_success_validation,
@@ -113,7 +113,7 @@ def test_pattern_success_publish_and_low_confidence_degrade(monkeypatch) -> None
     )
 
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("src.runtime.streams.publisher.publish_event", lambda event_type, payload: published.append((event_type, payload)))
+    monkeypatch.setattr("iris.runtime.streams.publisher.publish_event", lambda event_type, payload: published.append((event_type, payload)))
     publish_pattern_state_event("pattern_tested", pattern_slug="bull_flag", timeframe=15)
     assert published[-1][1]["pattern_slug"] == "bull_flag"
     assert "confidence" not in published[-1][1]

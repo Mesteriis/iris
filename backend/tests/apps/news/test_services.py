@@ -3,20 +3,19 @@ from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
 
+import iris.apps.news.plugins as news_plugins
 import pytest
-import src.apps.news.plugins as news_plugins
-from sqlalchemy import select
-from src.apps.news.api.onboarding_wizard import telegram_wizard_spec
-from src.apps.news.exceptions import InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError
-from src.apps.news.models import NewsItem, NewsSource
-from src.apps.news.plugins import (
+from iris.apps.news.api.onboarding_wizard import telegram_wizard_spec
+from iris.apps.news.exceptions import InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError
+from iris.apps.news.models import NewsItem, NewsSource
+from iris.apps.news.plugins import (
     FetchedNewsItem,
     NewsFetchResult,
     NewsPluginDescriptor,
     NewsSourcePlugin,
     register_news_plugin,
 )
-from src.apps.news.schemas import (
+from iris.apps.news.schemas import (
     NewsSourceCreate,
     NewsSourceUpdate,
     TelegramBulkSubscribeRequest,
@@ -26,9 +25,10 @@ from src.apps.news.schemas import (
     TelegramSessionConfirmRequest,
     TelegramSourceFromDialogCreate,
 )
-from src.apps.news.services import NewsService, TelegramSessionOnboardingService, TelegramSourceProvisioningService
-from src.core.db.uow import SessionUnitOfWork
-from src.core.http.router_policy import api_path
+from iris.apps.news.services import NewsService, TelegramSessionOnboardingService, TelegramSourceProvisioningService
+from iris.core.db.uow import SessionUnitOfWork
+from iris.core.http.router_policy import api_path
+from sqlalchemy import select
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +94,7 @@ async def test_news_service_polls_persists_and_publishes(async_db_session, monke
     published: list[tuple[str, dict[str, object]]] = []
 
     monkeypatch.setattr(
-        "src.apps.news.polling.publish_event",
+        "iris.apps.news.polling.publish_event",
         lambda event_name, payload: published.append((event_name, payload)),
     )
 

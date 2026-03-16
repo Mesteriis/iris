@@ -1,0 +1,152 @@
+from typing import Protocol
+
+from iris.apps.market_data.domain import utc_now
+from iris.apps.market_data.query_services import MarketDataQueryService
+from iris.apps.patterns.domain.base import PatternDetection
+from iris.apps.patterns.domain.pattern_context import apply_pattern_context, dependencies_satisfied
+from iris.apps.patterns.domain.success import apply_pattern_success_validation
+from iris.apps.patterns.domain.utils import current_indicator_map
+from iris.apps.patterns.runtime_results import PatternBootstrapCoinResult, PatternBootstrapScanResult
+from iris.apps.patterns.task_service_base import PatternTaskBase
+from iris.core.db.uow import BaseAsyncUnitOfWork
+
+
+class _BootstrapCoinRecord(Protocol):
+    id: object
+    symbol: str
+    candles_config: object | None
+    history_backfill_completed_at: object | None
+
+
+class PatternBootstrapService(PatternTaskBase):
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
+        super().__init__(uow, service_name="PatternBootstrapService")
+
+    async def bootstrap_scan(self, *, symbol: str | None = None, force: bool = False) -> PatternBootstrapScanResult:
+        if symbol is not None:
+            coin = await self._coins.get_by_symbol(symbol)
+            if coin is None:
+                return PatternBootstrapScanResult(
+                    status="error",
+                    reason="coin_not_found",
+                    symbol=symbol.upper(),
+                )
+            result = await self._bootstrap_coin(coin=coin, force=force)
+            return PatternBootstrapScanResult(
+                status="ok",
+                coins=1,
+                created=result.created,
+                items=(result,),
+            )
+
+        coin_symbols = await MarketDataQueryService(self.session).list_coin_symbols_ready_for_latest_sync()
+        items: list[PatternBootstrapCoinResult] = []
+        for coin_symbol in coin_symbols:
+            coin = await self._coins.get_by_symbol(coin_symbol)
+            if coin is None:
+                continue
+            items.append(await self._bootstrap_coin(coin=coin, force=force))
+        return PatternBootstrapScanResult(
+            status="ok",
+            coins=len(coin_symbols),
+            created=sum(item.created for item in items),
+            items=tuple(items),
+        )
+
+    async def _bootstrap_coin(self, *, coin: _BootstrapCoinRecord, force: bool) -> PatternBootstrapCoinResult:
+        if not await self._feature_enabled("pattern_detection"):
+            return PatternBootstrapCoinResult(
+                status="skipped",
+                reason="pattern_detection_disabled",
+                coin_id=int(coin.id),
+                symbol=coin.symbol,
+            )
+        history_count = await self._queries.count_coin_pattern_history(coin_id=int(coin.id))
+        if not force and history_count > 0:
+            return PatternBootstrapCoinResult(
+                status="skipped",
+                reason="pattern_history_exists",
+                coin_id=int(coin.id),
+                symbol=coin.symbol,
+            )
+
+        total_created = 0
+        total_detections = 0
+        interval_to_timeframe = {"15m": 15, "1h": 60, "4h": 240, "1d": 1440}
+        for candle_config in coin.candles_config or []:
+            timeframe = interval_to_timeframe.get(str(candle_config["interval"]))
+            if timeframe is None:
+                continue
+            detectors = await self._load_active_detectors(timeframe=timeframe)
+            if not detectors:
+                continue
+            candles = await self._fetch_candle_points(
+                coin_id=int(coin.id),
+                timeframe=timeframe,
+                limit=int(candle_config.get("retention_bars", 200)),
+            )
+            if len(candles) < 30:
+                continue
+            success_cache = await self._pattern_success_cache(
+                timeframe=timeframe,
+                slugs={detector.slug for detector in detectors},
+                regimes=set(),
+            )
+            detections: list[PatternDetection] = []
+            for index in range(29, len(candles)):
+                window = candles[max(0, index - 199) : index + 1]
+                indicators = current_indicator_map(window)
+                for detector in detectors:
+                    if not detector.enabled or timeframe not in detector.supported_timeframes:
+                        continue
+                    if not dependencies_satisfied(detector, indicators):
+                        continue
+                    for detection in detector.detect(window, indicators):
+                        adjusted = apply_pattern_context(
+                            detection=detection,
+                            detector=detector,
+                            indicators=indicators,
+                            regime=None,
+                        )
+                        if adjusted is None:
+                            continue
+                        validated = apply_pattern_success_validation(
+                            detection=adjusted,
+                            timeframe=timeframe,
+                            market_regime=None,
+                            coin_id=int(coin.id),
+                            emit_events=True,
+                            snapshot_cache=success_cache,
+                        )
+                        if validated is not None:
+                            detections.append(validated)
+            rows: list[dict[str, object]] = [
+                {
+                    "coin_id": int(coin.id),
+                    "timeframe": timeframe,
+                    "signal_type": detection.signal_type,
+                    "confidence": detection.confidence,
+                    "priority_score": 0.0,
+                    "context_score": 1.0,
+                    "regime_alignment": 1.0,
+                    "market_regime": str(detection.attributes.get("regime"))
+                    if detection.attributes.get("regime") is not None
+                    else None,
+                    "candle_timestamp": detection.candle_timestamp,
+                }
+                for detection in detections
+            ]
+            total_detections += len(detections)
+            total_created += await self._upsert_signals(rows=rows)
+        coin.history_backfill_completed_at = utc_now()
+        await self._uow.flush()
+        return PatternBootstrapCoinResult(
+            status="ok",
+            coin_id=int(coin.id),
+            symbol=coin.symbol,
+            detections=total_detections,
+            created=total_created,
+        )
+
+
+__all__ = ["PatternBootstrapService"]

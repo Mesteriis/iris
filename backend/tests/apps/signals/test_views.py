@@ -3,13 +3,13 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException, Response
-from src.apps.signals.api.backtest_endpoints import read_coin_backtests
-from src.apps.signals.api.decision_endpoints import read_coin_decision
-from src.apps.signals.api.final_signal_endpoints import read_coin_final_signal
-from src.apps.signals.api.market_decision_endpoints import read_coin_market_decision
-from src.apps.signals.api.router import build_router as build_signals_router
-from src.apps.signals.query_services import SignalQueryService
-from src.core.http.launch_modes import DeploymentProfile, LaunchMode
+from iris.apps.signals.api.backtest_endpoints import read_coin_backtests
+from iris.apps.signals.api.decision_endpoints import read_coin_decision
+from iris.apps.signals.api.final_signal_endpoints import read_coin_final_signal
+from iris.apps.signals.api.market_decision_endpoints import read_coin_market_decision
+from iris.apps.signals.api.router import build_router as build_signals_router
+from iris.apps.signals.query_services import SignalQueryService
+from iris.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 from tests.factories.base import json_utc
 
@@ -345,4 +345,4 @@ def test_signals_api_router_is_mode_agnostic_and_legacy_views_removed() -> None:
     assert any(path == "/signals" and "GET" in methods for path, methods in full_paths)
     assert any(path == "/coins/{symbol}/decision" and "GET" in methods for path, methods in full_paths)
     assert any(path == "/strategies/performance" and "GET" in methods for path, methods in full_paths)
-    assert importlib.util.find_spec("src.apps.signals.views") is None
+    assert importlib.util.find_spec("iris.apps.signals.views") is None

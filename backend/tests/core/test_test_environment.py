@@ -2,11 +2,11 @@ import os
 from urllib.parse import urlsplit
 
 import pytest
+from iris.core.settings import Settings
 from redis import Redis
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
-from src.core.settings import Settings
 
 
 def _testcontainers_enabled() -> bool:

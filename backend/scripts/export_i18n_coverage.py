@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from src.core.i18n import write_translation_coverage
+from iris.core.i18n import write_translation_coverage
 
 
 def main() -> int:

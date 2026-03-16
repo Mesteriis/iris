@@ -1,6 +1,6 @@
 import pytest
+from iris.apps.predictions.models import MarketPrediction, PredictionResult
 from sqlalchemy import select
-from src.apps.predictions.models import MarketPrediction, PredictionResult
 
 from tests.cross_market_support import (
     DEFAULT_START,

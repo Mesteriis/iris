@@ -1,9 +1,9 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from src.apps.market_data import sources as carousel_module
-from src.apps.market_data.sources import MarketFetchResult, MarketSourceCarousel, get_market_source_carousel
-from src.apps.market_data.sources.base import (
+from iris.apps.market_data import sources as carousel_module
+from iris.apps.market_data.sources import MarketFetchResult, MarketSourceCarousel, get_market_source_carousel
+from iris.apps.market_data.sources.base import (
     MarketBar,
     MarketSourceError,
     RateLimitedMarketSourceError,

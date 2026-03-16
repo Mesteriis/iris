@@ -1,11 +1,11 @@
 from dataclasses import FrozenInstanceError
 
 import pytest
-from src.apps.hypothesis_engine.models import AIPrompt
-from src.apps.hypothesis_engine.query_services import HypothesisQueryService
-from src.apps.hypothesis_engine.services.prompt_service import PromptService
-from src.core.db.persistence import PERSISTENCE_LOGGER
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.hypothesis_engine.models import AIPrompt
+from iris.apps.hypothesis_engine.query_services import HypothesisQueryService
+from iris.apps.hypothesis_engine.services.prompt_service import PromptService
+from iris.core.db.persistence import PERSISTENCE_LOGGER
+from iris.core.db.uow import SessionUnitOfWork
 
 
 @pytest.mark.asyncio

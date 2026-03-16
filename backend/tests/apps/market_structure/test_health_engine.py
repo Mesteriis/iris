@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from src.apps.market_structure.engines.health_engine import (
+from iris.apps.market_structure.engines.health_engine import (
     apply_market_structure_alert_transition,
     build_market_structure_source_health,
     mark_market_structure_poll_failure,
@@ -57,7 +57,7 @@ def test_build_market_structure_source_health_marks_stale_webhook() -> None:
 
 def test_mark_market_structure_poll_failure_applies_backoff_and_quarantine(monkeypatch) -> None:
     monkeypatch.setattr(
-        "src.apps.market_structure.engines.health_engine.get_settings",
+        "iris.apps.market_structure.engines.health_engine.get_settings",
         lambda: SimpleNamespace(
             taskiq_market_structure_snapshot_poll_interval_seconds=180,
             taskiq_market_structure_failure_backoff_base_seconds=30,

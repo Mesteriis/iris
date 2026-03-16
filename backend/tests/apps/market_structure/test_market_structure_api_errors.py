@@ -1,11 +1,11 @@
 # ruff: noqa: RUF001
 
 
-from src.apps.market_structure.api.errors import (
+from iris.apps.market_structure.api.errors import (
     market_structure_ingest_result_to_http,
     market_structure_source_not_found_error,
 )
-from src.apps.market_structure.services.results import MarketStructureIngestResult
+from iris.apps.market_structure.services.results import MarketStructureIngestResult
 
 
 def test_market_structure_api_errors_are_localized_from_registry() -> None:

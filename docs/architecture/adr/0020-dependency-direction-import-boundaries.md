@@ -2,11 +2,11 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
-2026-02-10
+2026-03-16
 
 ## Context
 
@@ -44,7 +44,7 @@ The architecture must therefore define explicitly:
 
 IRIS uses a unidirectional dependency model.
 
-This is a target-state decision. It describes the intended dependency model and CI-enforcement path, not the fully achieved state of the current repository.
+This is a binding dependency model. CI-enforced service-layer scanners now run against the active codebase, and broader package-boundary checks are ratcheted tighter as compatibility entrypoints are removed.
 
 The core principle:
 

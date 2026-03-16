@@ -1,4 +1,4 @@
-from src.apps.cross_market.engines import (
+from iris.apps.cross_market.engines import (
     CrossMarketLeaderDetectionInput,
     CrossMarketSectorMomentumAggregateInput,
     build_sector_momentum,

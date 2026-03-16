@@ -3,8 +3,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from src.core.db.base import Base
-from src.core.settings import get_settings
+from iris.core.db.base import Base
+from iris.core.settings import get_settings
 
 config = context.config
 settings = get_settings()

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta, timezone
 
-from src.apps.anomalies.detectors import (
+from iris.apps.anomalies.detectors import (
     CompressionExpansionDetector,
     CorrelationBreakdownDetector,
     CrossExchangeDislocationDetector,
@@ -13,9 +13,9 @@ from src.apps.anomalies.detectors import (
     VolatilityBreakDetector,
     VolumeSpikeDetector,
 )
-from src.apps.anomalies.schemas import AnomalyDetectionContext, BenchmarkSeries, DetectorFinding, MarketStructurePoint
-from src.apps.anomalies.scoring import AnomalyScorer
-from src.apps.market_data.candles import CandlePoint
+from iris.apps.anomalies.schemas import AnomalyDetectionContext, BenchmarkSeries, DetectorFinding, MarketStructurePoint
+from iris.apps.anomalies.scoring import AnomalyScorer
+from iris.apps.market_data.candles import CandlePoint
 
 
 def _build_candles(

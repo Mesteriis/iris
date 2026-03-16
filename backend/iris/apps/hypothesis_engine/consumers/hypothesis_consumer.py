@@ -1,0 +1,22 @@
+from collections.abc import Callable
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from iris.apps.hypothesis_engine.constants import SUPPORTED_HYPOTHESIS_SOURCE_EVENTS
+from iris.apps.hypothesis_engine.services import HypothesisService, HypothesisSideEffectDispatcher
+from iris.core.db.session import AsyncSessionLocal
+from iris.core.db.uow import AsyncUnitOfWork
+from iris.runtime.streams.types import IrisEvent
+
+
+class HypothesisConsumer:
+    def __init__(self, *, session_factory: Callable[[], AsyncSession] = AsyncSessionLocal) -> None:
+        self._session_factory = session_factory
+
+    async def handle_event(self, event: IrisEvent) -> None:
+        if event.event_type not in SUPPORTED_HYPOTHESIS_SOURCE_EVENTS or event.coin_id <= 0:
+            return
+        async with AsyncUnitOfWork(session_factory=self._session_factory) as uow:
+            result = await HypothesisService(uow).create_from_event(event)
+            await uow.commit()
+        await HypothesisSideEffectDispatcher().apply_creation(result)

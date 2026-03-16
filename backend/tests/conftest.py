@@ -98,15 +98,15 @@ import alembic.command as command
 from alembic.config import Config
 
 sys.path = _ORIGINAL_SYS_PATH
+from iris.core.settings import get_settings
 from redis import Redis
-from sqlalchemy import delete, func, select
-from src.core.settings import get_settings
+from sqlalchemy import delete, func, inspect, select
 
 get_settings.cache_clear()
 
-from src.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
-from src.apps.briefs.models import AIBrief
-from src.apps.control_plane.models import (
+from iris.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
+from iris.apps.briefs.models import AIBrief
+from iris.apps.control_plane.models import (
     EventConsumer,
     EventDefinition,
     EventRoute,
@@ -115,27 +115,27 @@ from src.apps.control_plane.models import (
     TopologyDraft,
     TopologyDraftChange,
 )
-from src.apps.cross_market.models import CoinRelation, SectorMetric
-from src.apps.explanations.models import AIExplanation
-from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AIPrompt, AIWeight
-from src.apps.market_data.domain import utc_now
-from src.apps.market_data.models import Coin
-from src.apps.market_data.schemas import CoinCreate
-from src.apps.market_data.sources.base import MarketBar
-from src.apps.market_structure.models import MarketStructureSource
-from src.apps.news.models import NewsItem, NewsItemLink, NewsSource
-from src.apps.notifications.models import AINotification
-from src.apps.patterns.models import PatternFeature, PatternRegistry, PatternStatistic
-from src.apps.portfolio.models import (
+from iris.apps.cross_market.models import CoinRelation, SectorMetric
+from iris.apps.explanations.models import AIExplanation
+from iris.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AIPrompt, AIWeight
+from iris.apps.market_data.domain import utc_now
+from iris.apps.market_data.models import Coin
+from iris.apps.market_data.schemas import CoinCreate
+from iris.apps.market_data.sources.base import MarketBar
+from iris.apps.market_structure.models import MarketStructureSource
+from iris.apps.news.models import NewsItem, NewsItemLink, NewsSource
+from iris.apps.notifications.models import AINotification
+from iris.apps.patterns.models import PatternFeature, PatternRegistry, PatternStatistic
+from iris.apps.portfolio.models import (
     ExchangeAccount,
     PortfolioAction,
     PortfolioBalance,
     PortfolioPosition,
     PortfolioState,
 )
-from src.apps.predictions.models import MarketPrediction, PredictionResult
-from src.core.db.session import AsyncSessionLocal, SessionLocal
-from src.runtime.streams.publisher import flush_publisher, reset_event_publisher
+from iris.apps.predictions.models import MarketPrediction, PredictionResult
+from iris.core.db.session import AsyncSessionLocal, SessionLocal
+from iris.runtime.streams.publisher import flush_publisher, reset_event_publisher
 
 from tests.factories.market_data import CoinCreateFactory, persist_coin
 from tests.market_data_support import upsert_base_candles
@@ -147,6 +147,13 @@ TEST_SYMBOLS = {
 }
 _CONTROL_PLANE_BOOTSTRAP_NOTES = "Bootstrapped from legacy runtime router"
 _AI_PROMPT_BASELINE: list[dict[str, object]] = []
+
+
+def _delete_if_table_present(db, model) -> None:
+    bind = db.get_bind()
+    if not inspect(bind).has_table(model.__table__.name):
+        return
+    db.execute(delete(model))
 
 
 @pytest.fixture
@@ -318,40 +325,43 @@ def cleanup_pattern_state() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def cleanup_notification_state() -> Iterator[None]:
+def cleanup_notification_state(migrated_database) -> Iterator[None]:
+    del migrated_database
     db = SessionLocal()
     try:
-        db.execute(delete(AINotification))
+        _delete_if_table_present(db, AINotification)
         db.commit()
         yield
     finally:
-        db.execute(delete(AINotification))
+        _delete_if_table_present(db, AINotification)
         db.commit()
         db.close()
 
 
 @pytest.fixture(autouse=True)
-def cleanup_brief_state() -> Iterator[None]:
+def cleanup_brief_state(migrated_database) -> Iterator[None]:
+    del migrated_database
     db = SessionLocal()
     try:
-        db.execute(delete(AIBrief))
+        _delete_if_table_present(db, AIBrief)
         db.commit()
         yield
     finally:
-        db.execute(delete(AIBrief))
+        _delete_if_table_present(db, AIBrief)
         db.commit()
         db.close()
 
 
 @pytest.fixture(autouse=True)
-def cleanup_explanation_state() -> Iterator[None]:
+def cleanup_explanation_state(migrated_database) -> Iterator[None]:
+    del migrated_database
     db = SessionLocal()
     try:
-        db.execute(delete(AIExplanation))
+        _delete_if_table_present(db, AIExplanation)
         db.commit()
         yield
     finally:
-        db.execute(delete(AIExplanation))
+        _delete_if_table_present(db, AIExplanation)
         db.commit()
         db.close()
 

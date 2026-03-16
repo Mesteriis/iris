@@ -1,5 +1,5 @@
 import pytest
-from src.apps.patterns.engines import (
+from iris.apps.patterns.engines import (
     PatternCoinMetricsSnapshot,
     PatternCycleEngineInput,
     PatternRuntimeSignalSnapshot,

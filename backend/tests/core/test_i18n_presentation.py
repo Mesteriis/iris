@@ -1,5 +1,5 @@
 import pytest
-from src.core.i18n import (
+from iris.core.i18n import (
     CONTENT_KIND_DESCRIPTOR_BUNDLE,
     CONTENT_KIND_GENERATED_TEXT,
     ContentPayloadValidationError,
@@ -13,7 +13,7 @@ from src.core.i18n import (
     content_text_list,
     validate_content_payload,
 )
-from src.core.i18n.contracts import MessageDescriptor
+from iris.core.i18n.contracts import MessageDescriptor
 
 
 def test_build_descriptor_bundle_content_round_trips_descriptors() -> None:

@@ -1,8 +1,8 @@
 import pytest
+from iris.apps.market_data.models import Coin
+from iris.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.market_data.models import Coin
-from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
-from src.core.db.uow import SessionUnitOfWork
 
 from tests.portfolio_support import create_exchange_account
 
@@ -26,7 +26,7 @@ class AutoWatchPlugin:
 
 @pytest.mark.asyncio
 async def test_auto_watch_enables_coin_from_portfolio_balance(async_db_session, db_session) -> None:
-    from src.apps.portfolio.clients import register_exchange
+    from iris.apps.portfolio.clients import register_exchange
 
     register_exchange("fixture_watch", AutoWatchPlugin)
     create_exchange_account(db_session, exchange_name="fixture_watch")

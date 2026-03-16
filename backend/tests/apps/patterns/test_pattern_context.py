@@ -1,9 +1,9 @@
 from datetime import UTC, datetime, timezone
 
+import iris.apps.patterns.domain.pattern_context as pattern_context_module
 import pytest
-import src.apps.patterns.domain.pattern_context as pattern_context_module
-from src.apps.patterns.domain.base import PatternDetection, PatternDetector
-from src.apps.patterns.domain.pattern_context import (
+from iris.apps.patterns.domain.base import PatternDetection, PatternDetector
+from iris.apps.patterns.domain.pattern_context import (
     _additional_dependencies,
     apply_pattern_context,
     dependencies_satisfied,

@@ -1,8 +1,8 @@
 from datetime import UTC, datetime, timezone
 
 import pytest
-from src.apps.signals.services import SignalFusionService
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.signals.services import SignalFusionService
+from iris.core.db.uow import SessionUnitOfWork
 
 from tests.fusion_support import create_test_coin, insert_signals, replace_pattern_statistics, upsert_coin_metrics
 

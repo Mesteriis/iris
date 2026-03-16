@@ -1,8 +1,8 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from src.apps.briefs.api.presenters import brief_read
-from src.apps.briefs.contracts import BriefKind
+from iris.apps.briefs.api.presenters import brief_read
+from iris.apps.briefs.contracts import BriefKind
 
 
 def test_brief_presenter_reads_generated_text_content_payload() -> None:

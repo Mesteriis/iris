@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from src.apps.market_data.sources import source_capability_registry as registry_module
-from src.apps.market_data.sources.source_capability_registry import (
+from iris.apps.market_data.sources import source_capability_registry as registry_module
+from iris.apps.market_data.sources.source_capability_registry import (
     MarketSourceCapabilityRegistry,
     SourceCapabilitySnapshot,
 )

@@ -1,7 +1,7 @@
 # ruff: noqa: RUF001
 
 
-from src.apps.signals.api.errors import coin_not_found_error
+from iris.apps.signals.api.errors import coin_not_found_error
 
 
 def test_signal_coin_not_found_error_is_localized() -> None:

@@ -1,13 +1,13 @@
 from dataclasses import FrozenInstanceError
 
+import iris.apps.indicators.query_services as indicator_query_module
 import pytest
-import src.apps.indicators.query_services as indicator_query_module
+from iris.apps.indicators.query_services import IndicatorQueryService
+from iris.apps.indicators.repositories import IndicatorMetricsRepository
+from iris.apps.market_data.models import Coin
+from iris.core.db.persistence import PERSISTENCE_LOGGER
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.indicators.query_services import IndicatorQueryService
-from src.apps.indicators.repositories import IndicatorMetricsRepository
-from src.apps.market_data.models import Coin
-from src.core.db.persistence import PERSISTENCE_LOGGER
-from src.core.db.uow import SessionUnitOfWork
 
 
 class _AsyncRedisClient:

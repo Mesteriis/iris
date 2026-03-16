@@ -2,15 +2,15 @@ from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime, timezone
 
 import pytest
-from src.apps.market_structure.query_services import MarketStructureQueryService
-from src.apps.market_structure.schemas import (
+from iris.apps.market_structure.query_services import MarketStructureQueryService
+from iris.apps.market_structure.schemas import (
     ManualMarketStructureIngestRequest,
     MarketStructureSnapshotCreate,
     MarketStructureSourceCreate,
 )
-from src.apps.market_structure.services import MarketStructureService, MarketStructureSourceProvisioningService
-from src.core.db.persistence import PERSISTENCE_LOGGER
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.market_structure.services import MarketStructureService, MarketStructureSourceProvisioningService
+from iris.core.db.persistence import PERSISTENCE_LOGGER
+from iris.core.db.uow import SessionUnitOfWork
 
 
 @pytest.mark.asyncio
@@ -126,7 +126,7 @@ async def test_market_structure_side_effects_run_only_after_uow_commit(
     del seeded_market
     published: list[str] = []
     monkeypatch.setattr(
-        "src.apps.market_structure.services.side_effects.publish_event",
+        "iris.apps.market_structure.services.side_effects.publish_event",
         lambda event_name, payload: published.append(event_name),
     )
 

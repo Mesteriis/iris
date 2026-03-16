@@ -2,12 +2,12 @@ import multiprocessing
 from datetime import UTC, datetime
 
 import pytest
+from iris.apps.news.models import NewsItem, NewsSource
+from iris.apps.news.query_services import NewsQueryService
+from iris.runtime.control_plane.worker import create_topology_dispatcher_consumer
+from iris.runtime.streams.publisher import flush_publisher, publish_event
+from iris.runtime.streams.runner import run_worker_loop
 from redis import Redis
-from src.apps.news.models import NewsItem, NewsSource
-from src.apps.news.query_services import NewsQueryService
-from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
-from src.runtime.streams.publisher import flush_publisher, publish_event
-from src.runtime.streams.runner import run_worker_loop
 
 
 def _run_topology_dispatcher() -> None:

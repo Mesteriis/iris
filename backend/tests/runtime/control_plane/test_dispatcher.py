@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timezone
 
 import pytest
-from src.apps.control_plane.contracts import (
+from iris.apps.control_plane.contracts import (
     EventConsumerSnapshot,
     EventDefinitionSnapshot,
     EventRouteSnapshot,
@@ -10,14 +10,14 @@ from src.apps.control_plane.contracts import (
     RouteThrottle,
     TopologySnapshot,
 )
-from src.apps.control_plane.enums import EventRouteScope, EventRouteStatus
-from src.runtime.control_plane.dispatcher import (
+from iris.apps.control_plane.enums import EventRouteScope, EventRouteStatus
+from iris.runtime.control_plane.dispatcher import (
     InMemoryRouteThrottle,
     RouteDeliveryPublisher,
     TopologyDispatcher,
     TopologyRouteEvaluator,
 )
-from src.runtime.streams.types import IrisEvent
+from iris.runtime.streams.types import IrisEvent
 
 
 class RecordingPublisher(RouteDeliveryPublisher):

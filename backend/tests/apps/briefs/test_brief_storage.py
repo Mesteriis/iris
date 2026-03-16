@@ -1,7 +1,7 @@
-from src.apps.briefs.contracts import BriefArtifactResult
-from src.apps.briefs.services.brief_service import _brief_storage_fields
-from src.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus
-from src.core.ai.telemetry import AIExecutionMetadata
+from iris.apps.briefs.contracts import BriefArtifactResult
+from iris.apps.briefs.services.brief_service import _brief_storage_fields
+from iris.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus
+from iris.core.ai.telemetry import AIExecutionMetadata
 
 
 def test_brief_storage_fields_use_generated_text_content_envelope() -> None:

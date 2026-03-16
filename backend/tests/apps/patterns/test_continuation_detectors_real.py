@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from src.apps.patterns.domain.detectors.continuation import (
+from iris.apps.patterns.domain.detectors.continuation import (
     BaseBreakoutDetector,
     BreakoutRetestDetector,
     ChannelContinuationDetector,

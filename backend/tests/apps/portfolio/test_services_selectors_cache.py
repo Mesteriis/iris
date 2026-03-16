@@ -1,10 +1,9 @@
 from contextlib import asynccontextmanager
 
 import pytest
-from sqlalchemy import delete, select
-from src.apps.indicators.models import CoinMetrics
-from src.apps.portfolio import cache, tasks
-from src.apps.portfolio.cache import (
+from iris.apps.indicators.models import CoinMetrics
+from iris.apps.portfolio import cache, tasks
+from iris.apps.portfolio.cache import (
     PORTFOLIO_BALANCES_CACHE_KEY,
     PORTFOLIO_STATE_CACHE_KEY,
     cache_portfolio_balances,
@@ -16,13 +15,14 @@ from src.apps.portfolio.cache import (
     read_cached_portfolio_state,
     read_cached_portfolio_state_async,
 )
-from src.apps.portfolio.models import ExchangeAccount, PortfolioPosition, PortfolioState
-from src.apps.portfolio.query_services import PortfolioQueryService
-from src.apps.portfolio.read_models import PortfolioStateReadModel
-from src.apps.portfolio.results import PortfolioSyncItem, PortfolioSyncResult
-from src.apps.portfolio.serializers import portfolio_sync_result_payload
-from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.portfolio.models import ExchangeAccount, PortfolioPosition, PortfolioState
+from iris.apps.portfolio.query_services import PortfolioQueryService
+from iris.apps.portfolio.read_models import PortfolioStateReadModel
+from iris.apps.portfolio.results import PortfolioSyncItem, PortfolioSyncResult
+from iris.apps.portfolio.serializers import portfolio_sync_result_payload
+from iris.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
+from iris.core.db.uow import SessionUnitOfWork
+from sqlalchemy import delete, select
 
 
 class _SyncCacheClient:
@@ -131,7 +131,7 @@ async def test_portfolio_cache_and_query_service_cover_cached_and_uncached_paths
     assert actions[0].market_decision == "BUY"
 
     monkeypatch.setattr(
-        "src.apps.portfolio.query_services.read_cached_portfolio_state_async",
+        "iris.apps.portfolio.query_services.read_cached_portfolio_state_async",
         lambda: __import__("asyncio").sleep(
             0,
             result={
@@ -149,7 +149,7 @@ async def test_portfolio_cache_and_query_service_cover_cached_and_uncached_paths
     assert cached_state.max_positions == 7
 
     monkeypatch.setattr(
-        "src.apps.portfolio.query_services.read_cached_portfolio_state_async",
+        "iris.apps.portfolio.query_services.read_cached_portfolio_state_async",
         lambda: __import__("asyncio").sleep(0, result=None),
     )
     state = await PortfolioQueryService(async_db_session).get_state()
@@ -183,7 +183,7 @@ async def test_portfolio_async_query_service_service_and_task_wrapper(
     assert actions[0].action == "OPEN_POSITION"
 
     monkeypatch.setattr(
-        "src.apps.portfolio.query_services.read_cached_portfolio_state_async",
+        "iris.apps.portfolio.query_services.read_cached_portfolio_state_async",
         lambda: __import__("asyncio").sleep(
             0,
             result={
@@ -202,11 +202,11 @@ async def test_portfolio_async_query_service_service_and_task_wrapper(
 
     cached_state_payloads: list[dict[str, object]] = []
     monkeypatch.setattr(
-        "src.apps.portfolio.query_services.read_cached_portfolio_state_async",
+        "iris.apps.portfolio.query_services.read_cached_portfolio_state_async",
         lambda: __import__("asyncio").sleep(0, result=None),
     )
     monkeypatch.setattr(
-        "src.apps.portfolio.query_services.cache_portfolio_state_async",
+        "iris.apps.portfolio.query_services.cache_portfolio_state_async",
         lambda payload: __import__("asyncio").sleep(0, result=cached_state_payloads.append(payload)),
     )
     state = await PortfolioQueryService(async_db_session).get_state()
@@ -323,17 +323,17 @@ async def test_portfolio_async_query_service_service_and_task_wrapper(
     cached_balance_payloads: list[list[dict[str, object]]] = []
     cached_sync_state_payloads: list[dict[str, object]] = []
     published_events: list[str] = []
-    monkeypatch.setattr("src.apps.portfolio.services.create_exchange_plugin", lambda item: _FixturePlugin(item))
+    monkeypatch.setattr("iris.apps.portfolio.services.create_exchange_plugin", lambda item: _FixturePlugin(item))
     monkeypatch.setattr(
-        "src.apps.portfolio.services.cache_portfolio_balances_async",
+        "iris.apps.portfolio.services.cache_portfolio_balances_async",
         lambda payload: __import__("asyncio").sleep(0, result=cached_balance_payloads.append(payload)),
     )
     monkeypatch.setattr(
-        "src.apps.portfolio.services.cache_portfolio_state_async",
+        "iris.apps.portfolio.services.cache_portfolio_state_async",
         lambda payload: __import__("asyncio").sleep(0, result=cached_sync_state_payloads.append(payload)),
     )
     monkeypatch.setattr(
-        "src.apps.portfolio.services.publish_event",
+        "iris.apps.portfolio.services.publish_event",
         lambda event_type, payload: published_events.append(event_type),
     )
 

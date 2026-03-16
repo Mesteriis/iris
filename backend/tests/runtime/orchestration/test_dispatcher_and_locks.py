@@ -2,8 +2,8 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from iris.runtime.orchestration import dispatcher, locks
 from redis.exceptions import LockError
-from src.runtime.orchestration import dispatcher, locks
 
 
 @pytest.mark.asyncio

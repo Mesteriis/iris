@@ -2,14 +2,14 @@ import importlib.util
 from dataclasses import FrozenInstanceError
 from datetime import timedelta
 
+import iris.apps.signals.services as signal_services_module
 import pytest
-import src.apps.signals.services as signal_services_module
+from iris.apps.signals.models import MarketDecision, Signal, SignalHistory
+from iris.apps.signals.query_services import SignalQueryService
+from iris.apps.signals.services import SignalFusionService, SignalHistoryService
+from iris.core.db.persistence import PERSISTENCE_LOGGER
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.signals.models import MarketDecision, Signal, SignalHistory
-from src.apps.signals.query_services import SignalQueryService
-from src.apps.signals.services import SignalFusionService, SignalHistoryService
-from src.core.db.persistence import PERSISTENCE_LOGGER
-from src.core.db.uow import SessionUnitOfWork
 
 from tests.cross_market_support import DEFAULT_START, seed_candles
 from tests.factories.seeds import SignalSeedFactory
@@ -254,5 +254,5 @@ def test_signal_services_exports_no_public_async_query_wrappers() -> None:
 
 
 def test_signal_modules_export_no_public_sync_wrappers() -> None:
-    assert importlib.util.find_spec("src.apps.signals.fusion") is None
-    assert importlib.util.find_spec("src.apps.signals.history") is None
+    assert importlib.util.find_spec("iris.apps.signals.fusion") is None
+    assert importlib.util.find_spec("iris.apps.signals.history") is None

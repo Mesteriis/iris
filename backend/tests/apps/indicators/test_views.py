@@ -1,8 +1,8 @@
 import importlib.util
 
 import pytest
-from src.apps.indicators.api.router import build_router as build_indicators_router
-from src.core.http.launch_modes import DeploymentProfile, LaunchMode
+from iris.apps.indicators.api.router import build_router as build_indicators_router
+from iris.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 from tests.factories.base import json_utc
 
@@ -92,4 +92,4 @@ def test_indicators_api_router_is_mode_agnostic_and_legacy_views_removed() -> No
     assert any(path == "/coins/metrics" and "GET" in methods for path, methods in full_paths)
     assert any(path == "/market/cycle" and "GET" in methods for path, methods in full_paths)
     assert any(path == "/market/flow" and "GET" in methods for path, methods in full_paths)
-    assert importlib.util.find_spec("src.apps.indicators.views") is None
+    assert importlib.util.find_spec("iris.apps.indicators.views") is None

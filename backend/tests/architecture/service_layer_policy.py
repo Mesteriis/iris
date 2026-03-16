@@ -14,7 +14,7 @@ from functools import cache
 from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
-APPS_ROOT = BACKEND_ROOT / "src" / "apps"
+APPS_ROOT = BACKEND_ROOT / "iris" / "apps"
 FORBIDDEN_ENGINE_IMPORT_PREFIXES = ("sqlalchemy", "fastapi", "redis", "taskiq", "httpx")
 SUMMARY_HELPER_NAMES = {"to_summary", "to_payload"}
 
@@ -41,8 +41,24 @@ def iter_service_files() -> tuple[Path, ...]:
         if "__pycache__" in path.parts or path.name == "__init__.py":
             continue
         rel = path.relative_to(APPS_ROOT)
-        if path.name == "services.py" or "services" in rel.parts or path.name.startswith("task_service_"):
+        if (
+            path.name == "services.py"
+            or "services" in rel.parts
+            or path.name.startswith("task_service_")
+            or path.name == "task_services.py"
+        ):
             files.append(path)
+    return tuple(sorted(files))
+
+
+def iter_runtime_wrapper_files() -> tuple[Path, ...]:
+    files = [
+        path
+        for path in APPS_ROOT.rglob("*.py")
+        if "__pycache__" not in path.parts
+        and path.name != "__init__.py"
+        and (path.name.startswith("task_runtime_") or path.name == "bridge_runtime.py")
+    ]
     return tuple(sorted(files))
 
 
@@ -202,7 +218,7 @@ def collect_transport_leakage_violations() -> tuple[ArchitectureViolation, ...]:
         for module in iter_module_imports(parse_module(path)):
             if (
                 module.startswith("fastapi")
-                or module.startswith("src.core.http")
+                or module.startswith("iris.core.http")
                 or ".api." in module
                 or module.endswith(".schemas")
             ):
@@ -217,7 +233,7 @@ def collect_cross_domain_boundary_violations() -> tuple[ArchitectureViolation, .
         domain = rel.parts[0]
         rel_path = module_path(path)
         for module in iter_module_imports(parse_module(path)):
-            if not module.startswith("src.apps."):
+            if not module.startswith("iris.apps."):
                 continue
             parts = module.split(".")
             if len(parts) < 4:
@@ -226,6 +242,22 @@ def collect_cross_domain_boundary_violations() -> tuple[ArchitectureViolation, .
             imported_layer = parts[3]
             if imported_domain != domain and imported_layer in {"models", "repositories"}:
                 violations.append(ArchitectureViolation(path=rel_path, symbol=module, detail="import"))
+    return tuple(sorted(set(violations)))
+
+
+def collect_runtime_wrapper_service_surface_violations() -> tuple[ArchitectureViolation, ...]:
+    violations: list[ArchitectureViolation] = []
+    for path in iter_runtime_wrapper_files():
+        rel_path = module_path(path)
+        for node in parse_module(path).body:
+            if isinstance(node, ast.ClassDef) and node.name.endswith("Service"):
+                violations.append(
+                    ArchitectureViolation(
+                        path=rel_path,
+                        symbol=node.name,
+                        detail="runtime_wrapper",
+                    )
+                )
     return tuple(sorted(set(violations)))
 
 

@@ -1,5 +1,5 @@
-from src.apps.control_plane.api.errors import control_plane_error_to_http, invalid_access_mode_error
-from src.apps.control_plane.exceptions import TopologyDraftConcurrencyConflict
+from iris.apps.control_plane.api.errors import control_plane_error_to_http, invalid_access_mode_error
+from iris.apps.control_plane.exceptions import TopologyDraftConcurrencyConflict
 
 
 def test_control_plane_boundary_errors_are_localized() -> None:

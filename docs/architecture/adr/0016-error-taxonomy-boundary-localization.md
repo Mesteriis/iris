@@ -2,11 +2,11 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
-2025-03-10
+2026-03-16
 
 ## Context
 
@@ -27,8 +27,8 @@ IRIS introduces a shared platform foundation for error taxonomy and boundary loc
 The practical rules are:
 
 - every registered platform error must define `error_code`, `message_key`, `domain`, `category`, `http_status`, `severity`, `retryable` and `safe_to_expose`;
-- registry ownership lives in `src/core/errors`, with duplicate protection for both `error_code` and `message_key`;
-- boundary localization lives in `src/core/i18n`, with deterministic locale normalization, locale resolution, interpolation and fallback behavior;
+- registry ownership lives in `iris.core.errors`, with duplicate protection for both `error_code` and `message_key`;
+- boundary localization lives in `iris.core.i18n`, with deterministic locale normalization, locale resolution, interpolation and fallback behavior;
 - machine-readable contracts remain canonical; localized text is rendered from `message_key + params`, not used as the source of truth;
 - backend API, frontend clients and Home Assistant integration must converge on the same canonical `error_code` and `message_key` vocabulary;
 - static Home Assistant UI strings remain HA-owned (`strings.json` / `translations/*`), while backend-owned business narration remains backend-owned;

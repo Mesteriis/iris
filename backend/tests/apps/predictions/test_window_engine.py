@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta, timezone
 
-from src.apps.predictions.engines import PredictionWindowCandleInput, PredictionWindowInput, evaluate_prediction_window
+from iris.apps.predictions.engines import PredictionWindowCandleInput, PredictionWindowInput, evaluate_prediction_window
 
 
 def _candle(*, minutes: int, high: float, low: float, close: float) -> PredictionWindowCandleInput:

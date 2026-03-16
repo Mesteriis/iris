@@ -1,9 +1,9 @@
-from src.apps.notifications.contracts import NotificationHumanizationResult
-from src.apps.notifications.services.humanization_service import TEMPLATE_DEGRADED_STRATEGY
-from src.apps.notifications.services.notification_service import _notification_storage_fields
-from src.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus
-from src.core.ai.telemetry import AIExecutionMetadata
-from src.core.i18n import MessageDescriptor
+from iris.apps.notifications.contracts import NotificationHumanizationResult
+from iris.apps.notifications.services.humanization_service import TEMPLATE_DEGRADED_STRATEGY
+from iris.apps.notifications.services.notification_service import _notification_storage_fields
+from iris.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus
+from iris.core.ai.telemetry import AIExecutionMetadata
+from iris.core.i18n import MessageDescriptor
 
 
 def test_notification_storage_fields_drop_rendered_text_for_descriptor_backed_result() -> None:

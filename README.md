@@ -38,10 +38,9 @@ The runtime model is hybrid:
 ## Repository Layout
 
 ```text
-backend/src/
-  core/        # settings, bootstrap, DB, HTTP primitives
-  apps/        # domain apps
-  runtime/     # streams, orchestration, scheduler, workers
+backend/
+  iris/        # runtime package: core, apps, api, runtime, main.py
+  src/         # Alembic migrations
 frontend/
   src/         # Vue 3 application
 docs/
@@ -88,13 +87,13 @@ In embedded and dev modes the `backend` container is self-contained:
 
 - it starts embedded PostgreSQL 17 with TimescaleDB
 - it starts embedded Redis
-- it runs `/app/entrypoint.sh`, which waits for DB/Redis, applies Alembic migrations through `src.core.bootstrap.prestart`, and aborts startup if prestart fails
-- only after prestart succeeds does it launch `python -m src.main`
+- it runs `/app/entrypoint.sh`, which waits for DB/Redis, applies Alembic migrations through `iris.core.bootstrap.prestart`, and aborts startup if prestart fails
+- only after prestart succeeds does it launch `python -m iris.main`
 - HTTP runtime, TaskIQ workers, scheduler, PostgreSQL, and Redis all run in the same backend container
 
 In dev mode:
 
-- `backend/src`, `backend/tests`, and the main backend config files are mounted from the host
+- `backend/iris`, `backend/src` (migrations), `backend/tests`, and the main backend config files are mounted from the host
 - source/config changes restart the whole backend container, so API, scheduler, and workers restart together
 - dependency/image changes such as `pyproject.toml`, `uv.lock`, `Dockerfile`, `.env`, or `entrypoint.sh` trigger a container rebuild
 
@@ -149,17 +148,17 @@ Notes:
 3. Run prestart and tests:
 
 ```bash
-uv run python -m src.core.bootstrap.prestart
+uv run python -m iris.core.bootstrap.prestart
 uv run pytest
 ```
 
 4. Run the backend locally:
 
 ```bash
-uv run python -m src.main
+uv run python -m iris.main
 ```
 
-When running the backend outside Docker, migrations are not applied from the app lifespan. You must run `src.core.bootstrap.prestart` or apply Alembic migrations yourself before starting `src.main`.
+When running the backend outside Docker, migrations are not applied from the app lifespan. You must run `iris.core.bootstrap.prestart` or apply Alembic migrations yourself before starting `iris.main`.
 
 ### Frontend
 

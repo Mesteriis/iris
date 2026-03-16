@@ -16,13 +16,13 @@ GITMODULES_PATH = ROOT / ".gitmodules"
 INTEGRATION_PATH = ROOT / "ha" / "integration"
 MANIFEST_PATH = INTEGRATION_PATH / "custom_components" / "iris" / "manifest.json"
 PYPROJECT_PATH = INTEGRATION_PATH / "pyproject.toml"
-SETTINGS_PATH = ROOT / "backend" / "src" / "core" / "settings" / "base.py"
+SETTINGS_PATH = ROOT / "backend" / "iris" / "core" / "settings" / "base.py"
 FIXTURES_ROOT = INTEGRATION_PATH / "tests" / "fixtures" / "contract"
 HA_CONTRACT_SOURCE_PREFIXES = (
-    "backend/src/apps/integrations/ha/",
+    "backend/iris/apps/integrations/ha/",
 )
 HA_CONTRACT_SOURCE_FILES = {
-    "backend/src/core/settings/base.py",
+    "backend/iris/core/settings/base.py",
 }
 HA_CONTRACT_COMPANION_PREFIXES = (
     "ha/integration/",

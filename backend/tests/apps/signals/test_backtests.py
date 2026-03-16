@@ -1,10 +1,10 @@
 from datetime import timedelta
 
 import pytest
-from src.apps.market_data.domain import utc_now
-from src.apps.signals.backtest_support import clamp_backtest_value, serialize_backtest_group, sharpe_ratio
-from src.apps.signals.models import SignalHistory
-from src.apps.signals.query_services import SignalQueryService
+from iris.apps.market_data.domain import utc_now
+from iris.apps.signals.backtest_support import clamp_backtest_value, serialize_backtest_group, sharpe_ratio
+from iris.apps.signals.models import SignalHistory
+from iris.apps.signals.query_services import SignalQueryService
 
 from tests.factories.signals import SignalHistorySeedFactory
 from tests.fusion_support import create_test_coin

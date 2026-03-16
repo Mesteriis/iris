@@ -3,16 +3,16 @@ from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from src.apps.anomalies.query_services import AnomalyQueryService
-from src.apps.anomalies.read_models import AnomalyReadModel
-from src.apps.anomalies.repos import AnomalyRepo
-from src.apps.anomalies.schemas import AnomalyDraft
-from src.apps.anomalies.services import AnomalyService
-from src.apps.cross_market.models import CoinRelation, Sector
-from src.apps.market_data.models import Coin
-from src.apps.portfolio.models import PortfolioPosition
-from src.core.db.persistence import PERSISTENCE_LOGGER
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.anomalies.query_services import AnomalyQueryService
+from iris.apps.anomalies.read_models import AnomalyReadModel
+from iris.apps.anomalies.repos import AnomalyRepo
+from iris.apps.anomalies.schemas import AnomalyDraft
+from iris.apps.anomalies.services import AnomalyService
+from iris.apps.cross_market.models import CoinRelation, Sector
+from iris.apps.market_data.models import Coin
+from iris.apps.portfolio.models import PortfolioPosition
+from iris.core.db.persistence import PERSISTENCE_LOGGER
+from iris.core.db.uow import SessionUnitOfWork
 
 
 @pytest.fixture(autouse=True)
@@ -203,4 +203,4 @@ async def test_anomaly_persistence_logs_cover_query_repo_and_uow(async_db_sessio
 
 
 def test_anomaly_selectors_module_is_removed() -> None:
-    assert importlib.util.find_spec("src.apps.anomalies.selectors") is None
+    assert importlib.util.find_spec("iris.apps.anomalies.selectors") is None

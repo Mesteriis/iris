@@ -12,7 +12,7 @@ Accepted
 
 `signals` was the reference hotspot for the service-layer refactor:
 
-- the old `backend/src/apps/signals/services.py` mixed orchestration, analytical fusion logic, history evaluation, cross-domain data access and summary-oriented results;
+- the old `backend/iris/apps/signals/services.py` mixed orchestration, analytical fusion logic, history evaluation, cross-domain data access and summary-oriented results;
 - fusion and history logic were hard to test without runtime wiring;
 - public service contracts leaked summary-shaped compatibility helpers instead of typed application results.
 
@@ -27,9 +27,9 @@ The service-layer standard for IRIS requires:
 
 `signals` is split into a canonical final-form package layout:
 
-- `src/apps/signals/services/` contains orchestration-only services and side-effect boundaries;
-- `src/apps/signals/engines/` contains pure fusion/history analytical logic with typed inputs and explainability contracts;
-- cross-domain market-data access is isolated behind `src/apps/signals/integrations/market_data.py`;
+- `iris/apps/signals/services/` contains orchestration-only services and side-effect boundaries;
+- `iris/apps/signals/engines/` contains pure fusion/history analytical logic with typed inputs and explainability contracts;
+- cross-domain market-data access is isolated behind `iris/apps/signals/integrations/market_data.py`;
 - public service results are dataclass contracts, not summary payload shapers.
 
 ## Consequences

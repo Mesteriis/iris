@@ -33,12 +33,12 @@ Starting with ADR 0023, files and paths follow one naming rule: `adr/<number>-<d
 | 0013 | [Async Classes for Orchestration, Pure Functions for Analysis](0013-async-classes-for-orchestration-pure-functions-for-analysis.md) | Accepted | 2025-02-05 |
 | 0014 | [Post-Commit Side Effects Only](0014-post-commit-side-effects-only.md) | Accepted | 2025-02-06 |
 | 0015 | [AI Platform Layer](0015-ai-platform-layer.md) | Accepted | 2025-03-01 |
-| 0016 | [Error Taxonomy Boundary Localization](0016-error-taxonomy-boundary-localization.md) | Proposed | 2025-03-10 |
+| 0016 | [Error Taxonomy Boundary Localization](0016-error-taxonomy-boundary-localization.md) | Accepted | 2026-03-16 |
 | 0017 | [Text Ownership Localization Scope](0017-text-ownership-localization-scope.md) | Accepted | 2026-01-15 |
 | 0018 | [Message Key Taxonomy Naming](0018-message-key-taxonomy-naming.md) | Accepted | 2026-01-20 |
-| 0019 | [Package Structure Import Rules](0019-package-structure-import-rules.md) | Proposed | 2026-02-01 |
-| 0020 | [Dependency Direction Import Boundaries](0020-dependency-direction-import-boundaries.md) | Proposed | 2026-02-10 |
-| 0021 | [Generated Presentation Artifact Ownership](0021-generated-presentation-artifact-ownership.md) | Proposed | 2026-03-15 |
+| 0019 | [Package Structure Import Rules](0019-package-structure-import-rules.md) | Accepted | 2026-03-16 |
+| 0020 | [Dependency Direction Import Boundaries](0020-dependency-direction-import-boundaries.md) | Accepted | 2026-03-16 |
+| 0021 | [Generated Presentation Artifact Ownership](0021-generated-presentation-artifact-ownership.md) | Accepted | 2026-03-16 |
 | 0022 | [Platform Maturity Additions](0022-platform-maturity-additions.md) | Accepted | 2026-03-01 |
 | 0023 | [Documentation Structure and Naming](0023-documentation-structure-and-naming.md) | Accepted | 2026-03-15 |
 | 0024 | [Frontend Dashboard Composition and Route-Owned Bootstrapping](0024-frontend-dashboard-composition-and-route-bootstrapping.md) | Accepted | 2026-03-15 |

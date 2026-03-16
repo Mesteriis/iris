@@ -1,6 +1,6 @@
 from datetime import UTC, timezone
 
-from src.apps.market_data.schemas import PriceHistoryCreate
+from iris.apps.market_data.schemas import PriceHistoryCreate
 
 
 def test_market_data_schema_defaults_use_utc_now() -> None:

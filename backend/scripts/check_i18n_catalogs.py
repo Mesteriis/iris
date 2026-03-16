@@ -2,7 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from src.core.i18n import check_translation_coverage, validate_catalogs
+from iris.core.i18n import check_translation_coverage, validate_catalogs
 
 
 def main() -> int:
@@ -13,7 +13,7 @@ def main() -> int:
 
     report = validate_catalogs(base_locale=str(args.base_locale))
     if not report.is_valid:
-        from src.core.i18n import render_translation_coverage
+        from iris.core.i18n import render_translation_coverage
 
         sys.stderr.write(render_translation_coverage(report))
         return 1

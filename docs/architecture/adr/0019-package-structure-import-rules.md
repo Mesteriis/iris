@@ -2,11 +2,11 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
-2026-02-01
+2026-03-16
 
 ## Context
 
@@ -26,13 +26,7 @@ As the project grows, the following risks appear:
 - deep relative imports
 - mixing infrastructure and domain logic
 
-In addition, the current structure uses `src` as the source root, which leads to imports such as:
-
-```python
-from src.apps.signals.services import ...
-```
-
-That couples the code to the repository layout and reduces readability.
+In addition, product code must not couple itself to a repository-layout namespace.
 
 A standard is therefore needed to:
 
@@ -51,7 +45,7 @@ All product imports must begin with:
 iris.*
 ```
 
-`src/` is used only as repository layout and is not part of the product namespace.
+`src/` is a repository-internal folder for migration artifacts and is not part of the product namespace.
 
 ### Source Root Policy
 
@@ -59,14 +53,15 @@ Repository layout:
 
 ```text
 backend/
+  iris/
   src/
-    iris/
+    migrations/
 ```
 
 Example:
 
 ```text
-backend/src/iris/apps/signals
+backend/iris/apps/signals
 ```
 
 Import:
@@ -81,9 +76,9 @@ Forbidden:
 from src.apps.signals ...
 ```
 
-`src` is a layout concern, not part of the runtime namespace.
+`src` is not part of the runtime namespace and must not appear in product imports.
 
-This is a target-state decision. The repository has not been fully migrated to it yet, so until the migration rollout is complete, this decision is not an enforceable baseline for the whole `backend/src` tree.
+This is a binding engineering rule. Compatibility entrypoints may remain while files are reorganized, but product imports and active tooling must use `iris.*` rather than `src.*`.
 
 ### Project Package Layout
 
@@ -153,7 +148,7 @@ Infrastructure runtime:
 
 ### Domain Package Structure
 
-Each domain in `iris.apps` must follow the same structure.
+Each new or actively refactored domain in `iris.apps` must follow the same structure.
 
 ```text
 apps/<domain>/

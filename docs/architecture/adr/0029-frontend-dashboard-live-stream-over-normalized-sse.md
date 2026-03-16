@@ -1,7 +1,12 @@
-# ADR-0029: Frontend Dashboard Live Stream Over Normalized SSE
+# ADR 0029: Frontend Dashboard Live Stream Over Normalized SSE
 
-- Status: Accepted
-- Date: 2026-03-16
+## Status
+
+Accepted
+
+## Date
+
+2026-03-16
 
 ## Context
 
@@ -19,7 +24,7 @@ We need a frontend-facing live channel that can deliver the parts of the system 
 
 ## Decision
 
-We add a dedicated frontend composition surface under `src.apps.frontend` that:
+We add a dedicated frontend composition surface under `iris.apps.frontend` that:
 
 - owns frontend-specific REST snapshot aggregation under `/api/v1/frontend/*`;
 - exposes Server-Sent Events as the browser-facing transport;

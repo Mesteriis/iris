@@ -15,7 +15,7 @@ These rules apply on top of ADR 0010 and ADR 0014:
 1. Task entry points must prefer explicit deduplication over optimistic reruns.
 2. Redis task locks are the default concurrency guard for singleton or keyed background work.
 3. When an external caller needs status visibility, the task path must use `OperationStore` and surface deduplication/active-operation semantics explicitly.
-4. Stream consumers rely on `event.idempotency_key` and the group-level processed-event ledger in `src/runtime/streams/consumer.py`.
+4. Stream consumers rely on `event.idempotency_key` and the group-level processed-event ledger in `iris/runtime/streams/consumer.py`.
 5. Retryable upstream failures should re-enter through the scheduler/backoff path, not by inline unbounded retry loops inside service code.
 6. A lock miss is treated as a typed `skipped` outcome, not as a hidden best-effort duplicate run.
 

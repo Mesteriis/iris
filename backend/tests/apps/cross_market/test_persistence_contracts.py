@@ -2,13 +2,13 @@ import importlib.util
 from dataclasses import FrozenInstanceError
 
 import pytest
+from iris.apps.cross_market.models import CoinRelation
+from iris.apps.cross_market.query_services import CrossMarketQueryService
+from iris.apps.cross_market.read_models import LeaderDecisionReadModel, RelationComputationContextReadModel
+from iris.apps.cross_market.services import CrossMarketService
+from iris.core.db.persistence import PERSISTENCE_LOGGER
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.cross_market.models import CoinRelation
-from src.apps.cross_market.query_services import CrossMarketQueryService
-from src.apps.cross_market.read_models import LeaderDecisionReadModel, RelationComputationContextReadModel
-from src.apps.cross_market.services import CrossMarketService
-from src.core.db.persistence import PERSISTENCE_LOGGER
-from src.core.db.uow import SessionUnitOfWork
 
 from tests.cross_market_support import (
     DEFAULT_START,
@@ -152,7 +152,7 @@ async def test_cross_market_service_batches_leader_candle_reads(async_db_session
     async with SessionUnitOfWork(async_db_session) as uow:
         service = CrossMarketService(uow)
         monkeypatch.setattr(
-            "src.apps.cross_market.services.cache_correlation_snapshot_async",
+            "iris.apps.cross_market.services.cache_correlation_snapshot_async",
             lambda **_: __import__("asyncio").sleep(0),
         )
         single_calls: list[int] = []
@@ -263,7 +263,7 @@ async def test_cross_market_persistence_logs_cover_query_repo_service_and_uow(
     monkeypatch.setattr(PERSISTENCE_LOGGER, "debug", _debug)
     monkeypatch.setattr(PERSISTENCE_LOGGER, "log", _log)
     monkeypatch.setattr(
-        "src.apps.cross_market.services.cache_correlation_snapshot_async", lambda **_: __import__("asyncio").sleep(0)
+        "iris.apps.cross_market.services.cache_correlation_snapshot_async", lambda **_: __import__("asyncio").sleep(0)
     )
 
     async with SessionUnitOfWork(async_db_session) as uow:
@@ -288,4 +288,4 @@ async def test_cross_market_persistence_logs_cover_query_repo_service_and_uow(
 
 
 def test_cross_market_modules_export_no_public_sync_wrappers() -> None:
-    assert importlib.util.find_spec("src.apps.cross_market.engine") is None
+    assert importlib.util.find_spec("iris.apps.cross_market.engine") is None

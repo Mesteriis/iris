@@ -1,5 +1,5 @@
-from src.core.i18n import normalize_language, resolve_effective_language, resolve_requested_language
-from src.core.settings import Settings
+from iris.core.i18n import normalize_language, resolve_effective_language, resolve_requested_language
+from iris.core.settings import Settings
 
 
 def test_context_language_normalization_falls_back_to_rollout_default() -> None:

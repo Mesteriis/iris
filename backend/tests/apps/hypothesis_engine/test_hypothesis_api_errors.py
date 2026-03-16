@@ -1,5 +1,5 @@
-from src.apps.hypothesis_engine.api.errors import hypothesis_error_to_http
-from src.apps.hypothesis_engine.exceptions import PromptVeilLockedError
+from iris.apps.hypothesis_engine.api.errors import hypothesis_error_to_http
+from iris.apps.hypothesis_engine.exceptions import PromptVeilLockedError
 
 
 def test_hypothesis_api_errors_are_localized_from_registry() -> None:

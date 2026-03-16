@@ -1,10 +1,10 @@
 import pytest
+from iris.apps.indicators.models import CoinMetrics
+from iris.apps.portfolio.models import ExchangeAccount, PortfolioAction, PortfolioBalance, PortfolioPosition
+from iris.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
+from iris.apps.portfolio.support import calculate_position_size, calculate_stops
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.indicators.models import CoinMetrics
-from src.apps.portfolio.models import ExchangeAccount, PortfolioAction, PortfolioBalance, PortfolioPosition
-from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
-from src.apps.portfolio.support import calculate_position_size, calculate_stops
-from src.core.db.uow import SessionUnitOfWork
 
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_exchange_account, create_market_decision, create_sector
@@ -189,7 +189,7 @@ async def test_portfolio_sync_skips_blank_balances(async_db_session, db_session)
         async def fetch_trades(self):
             return []
 
-    from src.apps.portfolio.clients import register_exchange
+    from iris.apps.portfolio.clients import register_exchange
 
     register_exchange("fixture_blank", BlankPlugin)
     create_exchange_account(db_session, exchange_name="fixture_blank")
@@ -222,12 +222,12 @@ async def test_portfolio_sync_emits_auto_watch_after_commit(async_db_session, db
         async def fetch_trades(self):
             return []
 
-    from src.apps.portfolio.clients import register_exchange
+    from iris.apps.portfolio.clients import register_exchange
 
     register_exchange("fixture_watch_events", WatchPlugin)
     create_exchange_account(db_session, exchange_name="fixture_watch_events")
     published: list[str] = []
-    monkeypatch.setattr("src.apps.portfolio.services.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr("iris.apps.portfolio.services.publish_event", lambda event_type, payload: published.append(event_type))
 
     async with SessionUnitOfWork(async_db_session) as uow:
         result = await PortfolioService(uow).sync_exchange_balances(emit_events=True)
@@ -294,7 +294,7 @@ async def test_portfolio_helper_and_event_branches(async_db_session, db_session,
     assert position.status == "open"
 
     published: list[str] = []
-    monkeypatch.setattr("src.apps.portfolio.services.publish_event", lambda event_type, payload: published.append(event_type))
+    monkeypatch.setattr("iris.apps.portfolio.services.publish_event", lambda event_type, payload: published.append(event_type))
 
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
     metrics = upsert_coin_metrics(db_session, coin_id=int(coin.id), regime="bear_trend", timeframe=15)
@@ -385,7 +385,7 @@ async def test_portfolio_balance_rows_update_and_reopen_positions(async_db_sessi
         async def fetch_trades(self):
             return []
 
-    from src.apps.portfolio.clients import register_exchange
+    from iris.apps.portfolio.clients import register_exchange
 
     register_exchange("fixture_update", MutablePlugin)
     account = create_exchange_account(db_session, exchange_name="fixture_update")

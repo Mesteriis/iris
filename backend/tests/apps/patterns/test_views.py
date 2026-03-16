@@ -3,10 +3,10 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
-from src.apps.patterns.api.command_endpoints import patch_pattern, patch_pattern_feature
-from src.apps.patterns.api.read_endpoints import read_coin_regime
-from src.apps.patterns.api.router import build_router as build_patterns_router
-from src.core.http.launch_modes import DeploymentProfile, LaunchMode
+from iris.apps.patterns.api.command_endpoints import patch_pattern, patch_pattern_feature
+from iris.apps.patterns.api.read_endpoints import read_coin_regime
+from iris.apps.patterns.api.router import build_router as build_patterns_router
+from iris.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 
 @pytest.mark.asyncio
@@ -212,4 +212,4 @@ def test_patterns_api_router_is_mode_agnostic_and_legacy_views_removed() -> None
     assert any(path == "/patterns" and "GET" in methods for path, methods in full_paths)
     assert any(path == "/patterns/{slug}" and "PATCH" in methods for path, methods in full_paths)
     assert any(path == "/coins/{symbol}/regime" and "GET" in methods for path, methods in full_paths)
-    assert importlib.util.find_spec("src.apps.patterns.views") is None
+    assert importlib.util.find_spec("iris.apps.patterns.views") is None

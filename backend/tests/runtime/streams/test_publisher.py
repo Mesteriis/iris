@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
+from iris.runtime.streams import publisher
 from redis.exceptions import RedisError
-from src.runtime.streams import publisher
 
 
 class _FakeRedis:

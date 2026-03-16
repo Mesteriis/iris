@@ -1,14 +1,14 @@
 from datetime import UTC, datetime, timezone
 
-from redis import Redis
-from src.apps.patterns.domain.base import PatternDetection
-from src.apps.patterns.domain.success import (
+from iris.apps.patterns.domain.base import PatternDetection
+from iris.apps.patterns.domain.success import (
     GLOBAL_MARKET_REGIME,
     PatternSuccessSnapshot,
     apply_pattern_success_validation,
     build_pattern_success_cache,
 )
-from src.runtime.streams.publisher import flush_publisher
+from iris.runtime.streams.publisher import flush_publisher
+from redis import Redis
 
 
 def _snapshot(

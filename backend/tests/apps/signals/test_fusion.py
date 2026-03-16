@@ -3,15 +3,15 @@ import multiprocessing
 from datetime import UTC, datetime
 
 import pytest
+from iris.apps.news.models import NewsItem, NewsItemLink, NewsSource
+from iris.apps.signals.models import MarketDecision
+from iris.apps.signals.services import SignalFusionService
+from iris.core.db.uow import SessionUnitOfWork
+from iris.runtime.control_plane.worker import create_topology_dispatcher_consumer
+from iris.runtime.streams.publisher import flush_publisher, publish_event
+from iris.runtime.streams.runner import run_worker_loop
 from redis import Redis
 from sqlalchemy import func, select
-from src.apps.news.models import NewsItem, NewsItemLink, NewsSource
-from src.apps.signals.models import MarketDecision
-from src.apps.signals.services import SignalFusionService
-from src.core.db.uow import SessionUnitOfWork
-from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
-from src.runtime.streams.publisher import flush_publisher, publish_event
-from src.runtime.streams.runner import run_worker_loop
 
 from tests.fusion_support import create_test_coin, insert_signals, replace_pattern_statistics, upsert_coin_metrics
 

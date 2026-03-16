@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from src.apps.notifications.api.presenters import notification_read
+from iris.apps.notifications.api.presenters import notification_read
 
 
 def test_notification_presenter_localizes_descriptor_backed_row() -> None:

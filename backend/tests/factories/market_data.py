@@ -1,18 +1,18 @@
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta, timezone
 
+from iris.apps.indicators.models import CoinMetrics
+from iris.apps.market_data.candles import CandlePoint
+from iris.apps.market_data.domain import utc_now
+from iris.apps.market_data.models import Coin
+from iris.apps.market_data.schemas import CoinCreate, PriceHistoryCreate
+from iris.apps.market_data.support import serialize_candles
 from polyfactory.factories.dataclass_factory import DataclassFactory
 from polyfactory.factories.pydantic_factory import ModelFactory
 from polyfactory.fields import Use
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
-from src.apps.indicators.models import CoinMetrics
-from src.apps.market_data.candles import CandlePoint
-from src.apps.market_data.domain import utc_now
-from src.apps.market_data.models import Coin
-from src.apps.market_data.schemas import CoinCreate, PriceHistoryCreate
-from src.apps.market_data.support import serialize_candles
 
 from tests.factories.base import fake
 

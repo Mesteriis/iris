@@ -1,14 +1,14 @@
 from datetime import timedelta
 
 import pytest
+from iris.apps.market_data.domain import utc_now
+from iris.apps.patterns.models import PatternRegistry, PatternStatistic
+from iris.apps.patterns.task_services import PatternEvaluationService
+from iris.apps.signals.models import SignalHistory
+from iris.core.db.uow import SessionUnitOfWork
+from iris.runtime.streams.publisher import flush_publisher
 from redis import Redis
 from sqlalchemy import delete
-from src.apps.market_data.domain import utc_now
-from src.apps.patterns.models import PatternRegistry, PatternStatistic
-from src.apps.patterns.task_services import PatternEvaluationService
-from src.apps.signals.models import SignalHistory
-from src.core.db.uow import SessionUnitOfWork
-from src.runtime.streams.publisher import flush_publisher
 
 from tests.patterns_support import seed_pattern_catalog_metadata
 
@@ -51,8 +51,8 @@ async def test_pattern_evaluation_job_disables_weak_patterns_and_emits_events(
     async with SessionUnitOfWork(async_db_session) as uow:
         result = await PatternEvaluationService(uow).run()
         await uow.commit()
-    assert result["status"] == "ok"
-    assert result["statistics"]["rolling_window"] == 200
+    assert result.status == "ok"
+    assert result.statistics["rolling_window"] == 200
     assert flush_publisher(timeout=5.0)
 
     db_session.expire_all()

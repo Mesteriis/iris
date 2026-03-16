@@ -3,17 +3,17 @@ from collections.abc import Mapping
 from datetime import timedelta
 from types import SimpleNamespace
 
+import iris.apps.indicators.query_services as indicator_query_module
 import pytest
-import src.apps.indicators.query_services as indicator_query_module
-from sqlalchemy import select
-from src.apps.indicators.models import CoinMetrics, FeatureSnapshot
-from src.apps.indicators.query_services import IndicatorQueryService
-from src.apps.indicators.read_models import market_radar_coin_read_model_from_mapping
-from src.apps.indicators.services import (
+from iris.apps.indicators.models import CoinMetrics, FeatureSnapshot
+from iris.apps.indicators.query_services import IndicatorQueryService
+from iris.apps.indicators.read_models import market_radar_coin_read_model_from_mapping
+from iris.apps.indicators.services import (
     AnalysisSchedulerService,
     FeatureSnapshotService,
 )
-from src.core.db.uow import SessionUnitOfWork
+from iris.core.db.uow import SessionUnitOfWork
+from sqlalchemy import select
 
 
 class _AsyncRedisClient:

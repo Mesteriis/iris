@@ -1,13 +1,13 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from iris.apps.briefs.contracts import BriefArtifactResult, BriefGenerationStatus, BriefKind
+from iris.apps.briefs.models import AIBrief
+from iris.apps.briefs.services import BriefService
+from iris.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus
+from iris.core.ai.telemetry import AIExecutionMetadata
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.briefs.contracts import BriefArtifactResult, BriefGenerationStatus, BriefKind
-from src.apps.briefs.models import AIBrief
-from src.apps.briefs.services import BriefService
-from src.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus
-from src.core.ai.telemetry import AIExecutionMetadata
-from src.core.db.uow import SessionUnitOfWork
 
 
 @pytest.mark.asyncio
@@ -41,7 +41,7 @@ async def test_brief_service_persists_symbol_artifact(async_db_session, seeded_a
             ),
         )
     )
-    monkeypatch.setattr("src.apps.briefs.services.brief_service.BriefGenerationService.generate", generate)
+    monkeypatch.setattr("iris.apps.briefs.services.brief_service.BriefGenerationService.generate", generate)
 
     async with SessionUnitOfWork(async_db_session) as uow:
         result = await BriefService(uow).generate_and_store(
@@ -94,7 +94,7 @@ async def test_brief_service_skips_when_snapshot_is_current(async_db_session, se
             ),
         )
     )
-    monkeypatch.setattr("src.apps.briefs.services.brief_service.BriefGenerationService.generate", generate)
+    monkeypatch.setattr("iris.apps.briefs.services.brief_service.BriefGenerationService.generate", generate)
 
     async with SessionUnitOfWork(async_db_session) as uow:
         first = await BriefService(uow).generate_and_store(brief_kind=BriefKind.PORTFOLIO)

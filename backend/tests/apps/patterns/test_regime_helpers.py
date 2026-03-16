@@ -2,7 +2,7 @@ import importlib
 from types import SimpleNamespace
 
 import pytest
-from src.apps.patterns.domain.regime import (
+from iris.apps.patterns.domain.regime import (
     MARKET_REGIMES,
     calculate_regime_map,
     detect_market_regime,
@@ -10,7 +10,7 @@ from src.apps.patterns.domain.regime import (
     read_regime_details,
     serialize_regime_map,
 )
-from src.apps.patterns.query_services import PatternQueryService
+from iris.apps.patterns.query_services import PatternQueryService
 
 from tests.cross_market_support import DEFAULT_START, create_cross_market_coin, generate_close_series, seed_candles
 
@@ -111,7 +111,7 @@ async def test_compute_live_regimes_uses_seeded_candles(db_session, async_db_ses
     )
     db_session.commit()
 
-    module = importlib.import_module("src.apps.patterns.domain.regime")
+    module = importlib.import_module("iris.apps.patterns.domain.regime")
     assert not hasattr(module, "compute_live_regimes")
 
     rows = await PatternQueryService(async_db_session).compute_live_regimes(int(coin.id))

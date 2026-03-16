@@ -1,8 +1,8 @@
 from datetime import timedelta
 
 import pytest
-from src.apps.briefs.models import AIBrief
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.briefs.models import AIBrief
+from iris.core.db.uow import SessionUnitOfWork
 
 
 @pytest.mark.asyncio

@@ -1,10 +1,10 @@
 from datetime import timedelta
 
 import pytest
+from iris.apps.explanations.models import AIExplanation
+from iris.apps.signals.models import InvestmentDecision
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.explanations.models import AIExplanation
-from src.apps.signals.models import InvestmentDecision
-from src.core.db.uow import SessionUnitOfWork
 
 
 @pytest.mark.asyncio

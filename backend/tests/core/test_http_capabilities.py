@@ -1,5 +1,5 @@
-import src.core.bootstrap.app as bootstrap_app_module
-import src.core.http.capabilities as capabilities_module
+import iris.core.bootstrap.app as bootstrap_app_module
+import iris.core.http.capabilities as capabilities_module
 
 
 def test_http_capability_catalog_tracks_mode_specific_operations() -> None:

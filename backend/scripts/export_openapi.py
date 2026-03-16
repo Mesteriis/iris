@@ -5,8 +5,8 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.core.http.openapi import write_openapi_schema
-from src.core.settings import get_settings
+from iris.core.http.openapi import write_openapi_schema
+from iris.core.settings import get_settings
 
 
 def build_parser() -> argparse.ArgumentParser:

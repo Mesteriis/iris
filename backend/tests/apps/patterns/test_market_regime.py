@@ -1,13 +1,13 @@
 import multiprocessing
 
 import pytest
+from iris.apps.patterns.cache import read_cached_regime
+from iris.apps.patterns.domain.regime import detect_market_regime
+from iris.core.settings import get_settings
+from iris.runtime.control_plane.worker import create_topology_dispatcher_consumer
+from iris.runtime.streams.publisher import flush_publisher, publish_event
+from iris.runtime.streams.runner import run_worker_loop
 from redis import Redis
-from src.apps.patterns.cache import read_cached_regime
-from src.apps.patterns.domain.regime import detect_market_regime
-from src.core.settings import get_settings
-from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
-from src.runtime.streams.publisher import flush_publisher, publish_event
-from src.runtime.streams.runner import run_worker_loop
 
 
 def _run_dispatcher_loop() -> None:

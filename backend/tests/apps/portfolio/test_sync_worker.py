@@ -1,13 +1,13 @@
 import json
 
 import pytest
+from iris.apps.market_data.models import Coin
+from iris.apps.portfolio.cache import read_cached_portfolio_balances
+from iris.apps.portfolio.models import PortfolioBalance, PortfolioPosition
+from iris.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
+from iris.core.db.uow import SessionUnitOfWork
 from redis import Redis
 from sqlalchemy import select
-from src.apps.market_data.models import Coin
-from src.apps.portfolio.cache import read_cached_portfolio_balances
-from src.apps.portfolio.models import PortfolioBalance, PortfolioPosition
-from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
-from src.core.db.uow import SessionUnitOfWork
 
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_exchange_account
@@ -35,7 +35,7 @@ class FixtureBalancePlugin:
 
 @pytest.mark.asyncio
 async def test_portfolio_sync_updates_balances_and_emits_events(async_db_session, db_session, redis_client, settings) -> None:
-    from src.apps.portfolio.clients import register_exchange
+    from iris.apps.portfolio.clients import register_exchange
 
     register_exchange("fixture_sync", FixtureBalancePlugin)
     create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")
@@ -60,7 +60,7 @@ async def test_portfolio_sync_updates_balances_and_emits_events(async_db_session
     assert cached is not None
     assert len(cached) == 2
 
-    from src.runtime.streams.publisher import flush_publisher
+    from iris.runtime.streams.publisher import flush_publisher
 
     assert flush_publisher(timeout=5.0)
     messages = redis_client.xrange(settings.event_stream_name, "-", "+")

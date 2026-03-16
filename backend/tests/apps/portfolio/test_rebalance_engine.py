@@ -1,4 +1,4 @@
-from src.apps.portfolio.engines.rebalance_engine import build_rebalance_plan
+from iris.apps.portfolio.engines.rebalance_engine import build_rebalance_plan
 
 
 def test_rebalance_engine_closes_position_when_target_is_zero() -> None:

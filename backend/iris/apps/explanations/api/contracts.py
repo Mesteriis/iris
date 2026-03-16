@@ -1,0 +1,17 @@
+from typing import Literal
+
+from iris.apps.explanations.contracts import ExplainKind
+from iris.apps.explanations.schemas import ExplanationRead
+from iris.core.http.contracts import AcceptedResponse
+
+
+class ExplanationJobAcceptedRead(AcceptedResponse):
+    operation_type: Literal["explain.generate"] = "explain.generate"
+    explain_kind: ExplainKind
+    subject_id: int
+    rendered_locale: str
+    symbol: str | None = None
+    timeframe: int | None = None
+
+
+__all__ = ["ExplanationJobAcceptedRead", "ExplanationRead"]

@@ -1,11 +1,11 @@
 from datetime import timedelta
 
 import pytest
+from iris.apps.cross_market.models import CoinRelation
+from iris.apps.market_data.domain import utc_now
+from iris.apps.predictions.cache import read_cached_prediction
+from iris.apps.predictions.models import MarketPrediction
 from sqlalchemy import select
-from src.apps.cross_market.models import CoinRelation
-from src.apps.market_data.domain import utc_now
-from src.apps.predictions.cache import read_cached_prediction
-from src.apps.predictions.models import MarketPrediction
 
 from tests.cross_market_support import create_cross_market_coin, run_prediction_creation
 

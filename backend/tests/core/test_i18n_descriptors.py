@@ -1,4 +1,4 @@
-from src.core.i18n import (
+from iris.core.i18n import (
     MessageDescriptor,
     dump_message_descriptor,
     dump_message_descriptors,

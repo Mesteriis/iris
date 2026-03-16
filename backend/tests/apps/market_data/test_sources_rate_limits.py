@@ -4,9 +4,9 @@ from datetime import UTC, datetime, timezone
 
 import httpx
 import pytest
+from iris.apps.market_data.sources import rate_limits
+from iris.apps.market_data.sources.base import RateLimitedMarketSourceError
 from redis.exceptions import RedisError, WatchError
-from src.apps.market_data.sources import rate_limits
-from src.apps.market_data.sources.base import RateLimitedMarketSourceError
 
 
 class FakePipeline:

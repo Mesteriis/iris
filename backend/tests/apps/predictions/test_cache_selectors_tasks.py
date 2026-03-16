@@ -2,10 +2,10 @@ import json
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
+import iris.apps.predictions.cache as prediction_cache_module
+import iris.apps.predictions.tasks as prediction_tasks_module
 import pytest
-import src.apps.predictions.cache as prediction_cache_module
-import src.apps.predictions.tasks as prediction_tasks_module
-from src.apps.predictions.cache import (
+from iris.apps.predictions.cache import (
     PREDICTION_CACHE_TTL_SECONDS,
     _parse_prediction_payload,
     cache_prediction_snapshot,
@@ -16,8 +16,8 @@ from src.apps.predictions.cache import (
     read_cached_prediction,
     read_cached_prediction_async,
 )
-from src.apps.predictions.query_services import PredictionQueryService
-from src.apps.predictions.services import PredictionEvaluationBatch
+from iris.apps.predictions.query_services import PredictionQueryService
+from iris.apps.predictions.services import PredictionEvaluationBatch
 
 
 class _SyncCacheClient:

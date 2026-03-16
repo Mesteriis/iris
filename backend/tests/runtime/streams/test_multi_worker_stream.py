@@ -2,9 +2,9 @@ import multiprocessing
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
+from iris.core.settings import get_settings
+from iris.runtime.streams.publisher import flush_publisher, publish_event
 from redis import Redis
-from src.core.settings import get_settings
-from src.runtime.streams.publisher import flush_publisher, publish_event
 
 from tests.worker_helpers import crashing_worker_loop, recording_worker_loop
 

@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
-from src.runtime.orchestration import runner
+from iris.runtime.orchestration import runner
 
 
 class _StopFlag:

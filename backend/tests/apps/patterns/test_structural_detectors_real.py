@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta, timezone
 
-from src.apps.patterns.domain.detectors.structural import (
+from iris.apps.patterns.domain.detectors.structural import (
     BroadeningDetector,
     ChannelBreakDetector,
     DiamondDetector,

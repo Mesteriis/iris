@@ -48,10 +48,10 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py314"
 line-length = 120
-src = ["src", "tests"]
-extend-exclude = ["src/migrations", "backend/src/migrations"]
+src = ["iris", "tests"]
+extend-exclude = ["src/migrations"]
 
 [tool.ruff.lint]
 select = ["E9", "F811", "F821", "F822", "F823", "B", "I", "UP", "SIM", "C4", "RET", "RUF", "PERF"]
@@ -68,54 +68,54 @@ pretty = true
 warn_unused_configs = true
 
 [tool.deptry]
-known_first_party = ["src"]
+known_first_party = ["iris"]
 
 [tool.importlinter]
-root_package = "src"
+root_package = "iris"
 exclude_type_checking_imports = true
 
 [[tool.importlinter.contracts]]
 name = "Enforce backend layer boundaries"
 type = "layers"
 layers = ["api", "runtime", "apps", "core"]
-containers = ["src"]
+containers = ["iris"]
 exhaustive = true
 exhaustive_ignores = ["main", "migrations"]
 ignore_imports = [
-    "src.apps.*.tasks -> src.runtime.orchestration.broker",
-    "src.apps.*.tasks -> src.runtime.orchestration.locks",
-    "src.apps.*.tasks.* -> src.runtime.orchestration.broker",
-    "src.apps.*.tasks.* -> src.runtime.orchestration.locks",
-    "src.apps.market_data.sources.* -> src.runtime.orchestration.locks",
-    "src.apps.*.services -> src.runtime.streams.publisher",
-    "src.apps.*.services.* -> src.runtime.streams.publisher",
-    "src.apps.*.pipeline -> src.runtime.streams.publisher",
-    "src.apps.*.polling -> src.runtime.streams.publisher",
-    "src.apps.*.support -> src.runtime.streams.publisher",
-    "src.apps.patterns.domain.success -> src.runtime.streams.publisher",
-    "src.apps.control_plane.control_events -> src.runtime.streams.publisher",
-    "src.apps.anomalies.detection_runner -> src.runtime.streams.publisher",
-    "src.apps.*.consumers -> src.runtime.streams.types",
-    "src.apps.*.consumers.* -> src.runtime.streams.types",
-    "src.apps.anomalies.consumers.* -> src.runtime.orchestration.dispatcher",
-    "src.apps.*.api.stream_adapter -> src.runtime.streams.types",
-    "src.apps.integrations.ha.bridge.* -> src.runtime.streams.consumer",
-    "src.apps.integrations.ha.bridge.* -> src.runtime.streams.types",
-    "src.apps.integrations.ha.application.services -> src.runtime.streams.types",
-    "src.apps.control_plane.cache -> src.runtime.streams.types",
-    "src.apps.market_data.services -> src.runtime.streams.messages",
-    "src.apps.patterns.task_service_decisions -> src.runtime.streams.messages",
-    "src.apps.notifications.services.notification_service -> src.runtime.streams.types",
-    "src.apps.hypothesis_engine.services.hypothesis_service -> src.runtime.streams.types",
-    "src.core.bootstrap.* -> src.apps.**",
-    "src.core.bootstrap.* -> src.runtime.**",
-    "src.core.bootstrap.app -> src.api.router",
-    "src.core.http.openapi -> src.api.**",
+    "iris.apps.*.tasks -> iris.runtime.orchestration.broker",
+    "iris.apps.*.tasks -> iris.runtime.orchestration.locks",
+    "iris.apps.*.tasks.* -> iris.runtime.orchestration.broker",
+    "iris.apps.*.tasks.* -> iris.runtime.orchestration.locks",
+    "iris.apps.market_data.sources.* -> iris.runtime.orchestration.locks",
+    "iris.apps.*.services -> iris.runtime.streams.publisher",
+    "iris.apps.*.services.* -> iris.runtime.streams.publisher",
+    "iris.apps.*.pipeline -> iris.runtime.streams.publisher",
+    "iris.apps.*.polling -> iris.runtime.streams.publisher",
+    "iris.apps.*.support -> iris.runtime.streams.publisher",
+    "iris.apps.patterns.domain.success -> iris.runtime.streams.publisher",
+    "iris.apps.control_plane.control_events -> iris.runtime.streams.publisher",
+    "iris.apps.anomalies.detection_runner -> iris.runtime.streams.publisher",
+    "iris.apps.*.consumers -> iris.runtime.streams.types",
+    "iris.apps.*.consumers.* -> iris.runtime.streams.types",
+    "iris.apps.anomalies.consumers.* -> iris.runtime.orchestration.dispatcher",
+    "iris.apps.*.api.stream_adapter -> iris.runtime.streams.types",
+    "iris.apps.integrations.ha.bridge.* -> iris.runtime.streams.consumer",
+    "iris.apps.integrations.ha.bridge.* -> iris.runtime.streams.types",
+    "iris.apps.integrations.ha.application.services -> iris.runtime.streams.types",
+    "iris.apps.control_plane.cache -> iris.runtime.streams.types",
+    "iris.apps.market_data.services -> iris.runtime.streams.messages",
+    "iris.apps.patterns.task_service_decisions -> iris.runtime.streams.messages",
+    "iris.apps.notifications.services.notification_service -> iris.runtime.streams.types",
+    "iris.apps.hypothesis_engine.services.hypothesis_service -> iris.runtime.streams.types",
+    "iris.core.bootstrap.* -> iris.apps.**",
+    "iris.core.bootstrap.* -> iris.runtime.**",
+    "iris.core.bootstrap.app -> iris.api.router",
+    "iris.core.http.openapi -> iris.api.**",
 ]
 
 [tool.coverage.run]
 branch = true
-source = ["src"]
+source = ["iris"]
 
 [tool.coverage.report]
 skip_empty = true

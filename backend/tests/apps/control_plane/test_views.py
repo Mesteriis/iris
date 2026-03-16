@@ -1,13 +1,13 @@
 import importlib.util
 
 import pytest
-from src.apps.control_plane.api.router import build_router as build_control_plane_router
-from src.apps.control_plane.contracts import build_route_key
-from src.apps.control_plane.enums import EventRouteScope
-from src.apps.control_plane.metrics import consumer_metric_key, route_metric_key
-from src.apps.market_data.domain import utc_now
-from src.core.http.launch_modes import DeploymentProfile, LaunchMode
-from src.core.settings import get_settings
+from iris.apps.control_plane.api.router import build_router as build_control_plane_router
+from iris.apps.control_plane.contracts import build_route_key
+from iris.apps.control_plane.enums import EventRouteScope
+from iris.apps.control_plane.metrics import consumer_metric_key, route_metric_key
+from iris.apps.market_data.domain import utc_now
+from iris.core.http.launch_modes import DeploymentProfile, LaunchMode
+from iris.core.settings import get_settings
 
 
 @pytest.mark.asyncio
@@ -391,4 +391,4 @@ def test_control_plane_api_router_is_mode_aware_and_legacy_views_removed() -> No
     assert not any(path == "/control-plane/ai/prompts/{prompt_id}/lift-veil" for path, _ in ha_paths)
     assert not any(path == "/control-plane/ai/prompts/{prompt_id}/lower-veil" for path, _ in ha_paths)
 
-    assert importlib.util.find_spec("src.apps.control_plane.views") is None
+    assert importlib.util.find_spec("iris.apps.control_plane.views") is None

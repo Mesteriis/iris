@@ -35,4 +35,4 @@ RUN chmod +x /app/entrypoint.sh
 EXPOSE 8000 5432 6379
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["python", "-m", "src.main"]
+CMD ["python", "-m", "iris.main"]

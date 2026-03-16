@@ -1,9 +1,9 @@
-from src.apps.explanations.contracts import ExplanationArtifactResult
-from src.apps.explanations.services.explanation_service import _explanation_storage_fields
-from src.apps.explanations.services.generation_service import TEMPLATE_DEGRADED_STRATEGY
-from src.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus
-from src.core.ai.telemetry import AIExecutionMetadata
-from src.core.i18n import MessageDescriptor
+from iris.apps.explanations.contracts import ExplanationArtifactResult
+from iris.apps.explanations.services.explanation_service import _explanation_storage_fields
+from iris.apps.explanations.services.generation_service import TEMPLATE_DEGRADED_STRATEGY
+from iris.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus
+from iris.core.ai.telemetry import AIExecutionMetadata
+from iris.core.i18n import MessageDescriptor
 
 
 def test_explanation_storage_fields_drop_rendered_text_for_descriptor_backed_result() -> None:

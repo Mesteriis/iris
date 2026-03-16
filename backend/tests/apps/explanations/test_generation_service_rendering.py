@@ -1,8 +1,8 @@
 # ruff: noqa: RUF001
 
 
-from src.apps.explanations.contracts import ExplainKind
-from src.apps.explanations.services.generation_service import render_deterministic_explanation
+from iris.apps.explanations.contracts import ExplainKind
+from iris.apps.explanations.services.generation_service import render_deterministic_explanation
 
 
 def test_render_deterministic_signal_explanation_uses_shared_catalog_for_ru() -> None:

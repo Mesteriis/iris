@@ -1,8 +1,8 @@
 from datetime import UTC, datetime, timezone
 
-from src.apps.market_data.models import Coin
-from src.apps.market_data.schemas import CandleConfig
-from src.apps.market_data.support import (
+from iris.apps.market_data.models import Coin
+from iris.apps.market_data.schemas import CandleConfig
+from iris.apps.market_data.support import (
     get_base_candle_config,
     get_coin_base_timeframe,
     get_interval_retention_bars,
@@ -14,7 +14,7 @@ from src.apps.market_data.support import (
 
 def test_market_data_support_config_and_event_helpers(monkeypatch) -> None:
     published: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr("src.apps.market_data.support.publish_event", lambda event_type, payload: published.append((event_type, payload)))
+    monkeypatch.setattr("iris.apps.market_data.support.publish_event", lambda event_type, payload: published.append((event_type, payload)))
 
     default_coin = Coin(
         symbol="DEFAULT_EVT",

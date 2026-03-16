@@ -2,15 +2,15 @@ from datetime import timedelta
 
 import httpx
 import pytest
+from iris.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AIPrompt, AIWeight
+from iris.apps.hypothesis_engine.prompts import PromptLoader
+from iris.apps.hypothesis_engine.providers import LocalHTTPProvider, OpenAILikeProvider
+from iris.apps.hypothesis_engine.query_services import HypothesisQueryService
+from iris.apps.hypothesis_engine.services import HypothesisSideEffectDispatcher
+from iris.apps.hypothesis_engine.services.weight_update_service import WeightUpdateService, posterior_mean
+from iris.apps.market_data.domain import utc_now
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AIPrompt, AIWeight
-from src.apps.hypothesis_engine.prompts import PromptLoader
-from src.apps.hypothesis_engine.providers import LocalHTTPProvider, OpenAILikeProvider
-from src.apps.hypothesis_engine.query_services import HypothesisQueryService
-from src.apps.hypothesis_engine.services import HypothesisSideEffectDispatcher
-from src.apps.hypothesis_engine.services.weight_update_service import WeightUpdateService, posterior_mean
-from src.apps.market_data.domain import utc_now
-from src.core.db.uow import SessionUnitOfWork
 
 
 @pytest.mark.asyncio
@@ -155,7 +155,7 @@ async def test_weight_update_service_applies_decayed_bayes(async_db_session, see
 
     published: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr(
-        "src.apps.hypothesis_engine.services.side_effects.publish_event",
+        "iris.apps.hypothesis_engine.services.side_effects.publish_event",
         lambda event_type, payload: published.append((event_type, payload)),
     )
 

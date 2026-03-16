@@ -2,23 +2,23 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import httpx
 import pytest
-from src.apps.market_data.sources.alphavantage import AlphaVantageForexMarketSource
-from src.apps.market_data.sources.base import (
+from iris.apps.market_data.sources.alphavantage import AlphaVantageForexMarketSource
+from iris.apps.market_data.sources.base import (
     RateLimitedMarketSourceError,
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
 )
-from src.apps.market_data.sources.binance import BinanceMarketSource
-from src.apps.market_data.sources.coinbase import CoinbaseMarketSource
-from src.apps.market_data.sources.eia import EiaEnergyMarketSource
-from src.apps.market_data.sources.fred import FredMacroMarketSource
-from src.apps.market_data.sources.kraken import KrakenMarketSource
-from src.apps.market_data.sources.kucoin import KucoinMarketSource
-from src.apps.market_data.sources.moex import MOEX_PAGE_SIZE, MoexIndexMarketSource
-from src.apps.market_data.sources.polygon import PolygonMarketSource
-from src.apps.market_data.sources.stooq import StooqMarketSource
-from src.apps.market_data.sources.twelvedata import TwelveDataMarketSource
-from src.apps.market_data.sources.yfinance import YahooMarketSource
+from iris.apps.market_data.sources.binance import BinanceMarketSource
+from iris.apps.market_data.sources.coinbase import CoinbaseMarketSource
+from iris.apps.market_data.sources.eia import EiaEnergyMarketSource
+from iris.apps.market_data.sources.fred import FredMacroMarketSource
+from iris.apps.market_data.sources.kraken import KrakenMarketSource
+from iris.apps.market_data.sources.kucoin import KucoinMarketSource
+from iris.apps.market_data.sources.moex import MOEX_PAGE_SIZE, MoexIndexMarketSource
+from iris.apps.market_data.sources.polygon import PolygonMarketSource
+from iris.apps.market_data.sources.stooq import StooqMarketSource
+from iris.apps.market_data.sources.twelvedata import TwelveDataMarketSource
+from iris.apps.market_data.sources.yfinance import YahooMarketSource
 
 from tests.factories.base import fake
 from tests.factories.market_data import CoinCreateFactory
@@ -312,14 +312,14 @@ async def test_polygon_market_source_supports_parses_and_resamples(monkeypatch) 
 @pytest.mark.asyncio
 async def test_twelvedata_market_source_symbol_resolution_and_errors(monkeypatch) -> None:
     monkeypatch.setattr(
-        "src.apps.market_data.sources.twelvedata.get_settings",
+        "iris.apps.market_data.sources.twelvedata.get_settings",
         lambda: type("Settings", (), {"twelve_data_api_key": "header-key"})(),
     )
     configured_source = TwelveDataMarketSource()
     assert configured_source.client.headers["Authorization"] == "apikey header-key"
 
     monkeypatch.setattr(
-        "src.apps.market_data.sources.twelvedata.get_settings",
+        "iris.apps.market_data.sources.twelvedata.get_settings",
         lambda: type("Settings", (), {"twelve_data_api_key": ""})(),
     )
     source = TwelveDataMarketSource()

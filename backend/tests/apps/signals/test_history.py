@@ -1,10 +1,9 @@
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
-from src.apps.market_data.candles import CandlePoint
-from src.apps.market_data.domain import ensure_utc
-from src.apps.signals.history_support import (
+from iris.apps.market_data.candles import CandlePoint
+from iris.apps.market_data.domain import ensure_utc
+from iris.apps.signals.history_support import (
     _candle_index_map,
     _close_timestamps,
     _drawdown_for_window,
@@ -14,11 +13,12 @@ from src.apps.signals.history_support import (
     _return_for_index,
     _signal_direction,
 )
-from src.apps.signals.models import Signal, SignalHistory
-from src.apps.signals.repositories import SignalHistoryRepository
-from src.apps.signals.services import SignalHistoryRefreshResult, SignalHistoryService
-from src.core.db.persistence import PERSISTENCE_LOGGER
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.signals.models import Signal, SignalHistory
+from iris.apps.signals.repositories import SignalHistoryRepository
+from iris.apps.signals.services import SignalHistoryRefreshResult, SignalHistoryService
+from iris.core.db.persistence import PERSISTENCE_LOGGER
+from iris.core.db.uow import SessionUnitOfWork
+from sqlalchemy import select
 
 from tests.cross_market_support import DEFAULT_START, seed_candles
 from tests.factories.seeds import SignalSeedFactory

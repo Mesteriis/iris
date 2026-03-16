@@ -1,11 +1,11 @@
 from datetime import timedelta
 
 import pytest
+from iris.apps.cross_market.models import CoinRelation
+from iris.apps.predictions.models import MarketPrediction, PredictionResult
+from iris.apps.predictions.services import PredictionService, PredictionSideEffectDispatcher
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.cross_market.models import CoinRelation
-from src.apps.predictions.models import MarketPrediction, PredictionResult
-from src.apps.predictions.services import PredictionService, PredictionSideEffectDispatcher
-from src.core.db.uow import SessionUnitOfWork
 
 from tests.cross_market_support import (
     DEFAULT_START,
@@ -183,7 +183,7 @@ async def test_prediction_creation_defers_cache_until_after_commit(async_db_sess
 
     monkeypatch.setattr(async_db_session, "commit", _commit)
     monkeypatch.setattr(
-        "src.apps.predictions.services.cache_prediction_snapshot_async",
+        "iris.apps.predictions.services.cache_prediction_snapshot_async",
         _cache_prediction_snapshot_async,
     )
 
@@ -444,10 +444,10 @@ async def test_prediction_evaluation_failure_expiry_update_and_pending_branches(
         return None
 
     monkeypatch.setattr(
-        "src.apps.predictions.services.publish_event", lambda event_type, payload: published.append(event_type)
+        "iris.apps.predictions.services.publish_event", lambda event_type, payload: published.append(event_type)
     )
     monkeypatch.setattr(
-        "src.apps.predictions.services.cache_prediction_snapshot_async",
+        "iris.apps.predictions.services.cache_prediction_snapshot_async",
         _noop_cache_prediction_snapshot_async,
     )
 
@@ -552,11 +552,11 @@ async def test_prediction_evaluation_defers_cache_and_events_until_after_commit(
 
     monkeypatch.setattr(async_db_session, "commit", _commit)
     monkeypatch.setattr(
-        "src.apps.predictions.services.cache_prediction_snapshot_async",
+        "iris.apps.predictions.services.cache_prediction_snapshot_async",
         _cache_prediction_snapshot_async,
     )
     monkeypatch.setattr(
-        "src.apps.predictions.services.publish_event", lambda *_args, **_kwargs: events.append("publish")
+        "iris.apps.predictions.services.publish_event", lambda *_args, **_kwargs: events.append("publish")
     )
 
     async with SessionUnitOfWork(async_db_session) as uow:

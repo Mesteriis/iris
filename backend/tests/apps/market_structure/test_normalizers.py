@@ -1,8 +1,8 @@
 from datetime import UTC, datetime, timezone
 
 import pytest
-from src.apps.market_structure.exceptions import InvalidMarketStructureWebhookPayloadError
-from src.apps.market_structure.normalizers import create_market_structure_webhook_normalizer
+from iris.apps.market_structure.exceptions import InvalidMarketStructureWebhookPayloadError
+from iris.apps.market_structure.normalizers import create_market_structure_webhook_normalizer
 
 
 def test_liqscope_webhook_normalizer_maps_native_payload() -> None:

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
-from src.apps.market_data.domain import (
+from iris.apps.market_data.domain import (
     align_timestamp,
     ensure_utc,
     history_window_start,

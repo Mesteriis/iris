@@ -1,5 +1,5 @@
 import pytest
-from src.core.i18n import (
+from iris.core.i18n import (
     LocalePolicy,
     TranslationInterpolationError,
     TranslationService,

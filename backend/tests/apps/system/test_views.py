@@ -3,9 +3,9 @@ from datetime import UTC, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from src.apps.system.api.deps import SystemStatusFacade
-from src.apps.system.api.router import build_router as build_system_router
-from src.core.http.launch_modes import DeploymentProfile, LaunchMode
+from iris.apps.system.api.deps import SystemStatusFacade
+from iris.apps.system.api.router import build_router as build_system_router
+from iris.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 from tests.apps.conftest import AliveProcess, SourceStatusRead
 
@@ -37,8 +37,8 @@ async def test_status_and_health_endpoints(api_app_client, monkeypatch) -> None:
     async def fake_ping_database() -> None:
         return None
 
-    monkeypatch.setattr("src.apps.system.api.deps.SystemStatusFacade.list_source_status_rows", fake_source_status_rows)
-    monkeypatch.setattr("src.apps.system.api.deps.ping_database", fake_ping_database)
+    monkeypatch.setattr("iris.apps.system.api.deps.SystemStatusFacade.list_source_status_rows", fake_source_status_rows)
+    monkeypatch.setattr("iris.apps.system.api.deps.ping_database", fake_ping_database)
 
     status_response = await client.get("/status")
     assert status_response.status_code == 200
@@ -57,7 +57,7 @@ async def test_operation_endpoints_expose_tracked_job_state(api_app_client, seed
 
     queued: dict[str, object] = {}
 
-    from src.apps.market_data.tasks import run_coin_history_job
+    from iris.apps.market_data.tasks import run_coin_history_job
 
     async def fake_kiq(**kwargs) -> None:
         queued.update(kwargs)
@@ -111,7 +111,7 @@ async def test_source_status_rows_uses_carousel_and_rate_limits(monkeypatch) -> 
         )
 
     monkeypatch.setattr(
-        "src.apps.system.api.deps.get_market_source_carousel",
+        "iris.apps.system.api.deps.get_market_source_carousel",
         lambda: SimpleNamespace(
             sources={
                 "fixture": SimpleNamespace(
@@ -122,7 +122,7 @@ async def test_source_status_rows_uses_carousel_and_rate_limits(monkeypatch) -> 
         ),
     )
     monkeypatch.setattr(
-        "src.apps.system.api.deps.get_rate_limit_manager",
+        "iris.apps.system.api.deps.get_rate_limit_manager",
         lambda: SimpleNamespace(snapshot=fake_snapshot),
     )
 
@@ -156,4 +156,4 @@ def test_system_api_router_is_mode_agnostic_and_legacy_views_removed() -> None:
     assert any(path == "/operations/{operation_id}/events" and "GET" in methods for path, methods in full_paths)
     assert any(path == "/system/status" and "GET" in methods for path, methods in full_paths)
     assert any(path == "/system/health" and "GET" in methods for path, methods in full_paths)
-    assert importlib.util.find_spec("src.apps.system.views") is None
+    assert importlib.util.find_spec("iris.apps.system.views") is None

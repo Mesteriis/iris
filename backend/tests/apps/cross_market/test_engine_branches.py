@@ -1,18 +1,18 @@
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
-from src.apps.cross_market.models import CoinRelation, SectorMetric
-from src.apps.cross_market.query_services import CrossMarketQueryService
-from src.apps.cross_market.services import (
+from iris.apps.cross_market.models import CoinRelation, SectorMetric
+from iris.apps.cross_market.query_services import CrossMarketQueryService
+from iris.apps.cross_market.services import (
     CrossMarketRelationUpdateResult,
     CrossMarketSectorMomentumResult,
     CrossMarketService,
 )
-from src.apps.cross_market.support import best_lagged_correlation, pearson
-from src.apps.indicators.models import CoinMetrics
-from src.apps.market_data.candles import CandlePoint
-from src.apps.signals.models import MarketDecision
+from iris.apps.cross_market.support import best_lagged_correlation, pearson
+from iris.apps.indicators.models import CoinMetrics
+from iris.apps.market_data.candles import CandlePoint
+from iris.apps.signals.models import MarketDecision
+from sqlalchemy import select
 
 from tests.cross_market_support import (
     DEFAULT_START,
@@ -117,7 +117,7 @@ async def test_cross_market_helper_math_and_alignment_branches(async_db_session,
     async def _no_cached_correlation(**_kwargs):
         return None
 
-    monkeypatch.setattr("src.apps.signals.services.read_cached_correlation_async", _no_cached_correlation)
+    monkeypatch.setattr("iris.apps.signals.services.read_cached_correlation_async", _no_cached_correlation)
     assert (
         await compute_cross_market_alignment_weight(
             async_db_session,
@@ -655,7 +655,7 @@ async def test_cross_market_decision_and_alignment_fallback_branches(async_db_se
     async def _no_cached_correlation(**_kwargs):
         return None
 
-    monkeypatch.setattr("src.apps.signals.services.read_cached_correlation_async", _no_cached_correlation)
+    monkeypatch.setattr("iris.apps.signals.services.read_cached_correlation_async", _no_cached_correlation)
     bearish_weight = await compute_cross_market_alignment_weight(
         async_db_session,
         coin_id=int(follower.id),

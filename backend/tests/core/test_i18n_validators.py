@@ -1,5 +1,5 @@
 import pytest
-from src.core.i18n import TranslationCatalogError, load_catalog, render_translation_coverage, validate_catalogs
+from iris.core.i18n import TranslationCatalogError, load_catalog, render_translation_coverage, validate_catalogs
 
 
 def test_load_catalog_rejects_duplicate_message_keys(tmp_path) -> None:

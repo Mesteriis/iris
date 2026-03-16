@@ -3,14 +3,14 @@ import multiprocessing
 from datetime import timedelta
 
 import pytest
+from iris.apps.cross_market.models import CoinRelation
+from iris.apps.indicators.models import CoinMetrics
+from iris.apps.predictions.models import MarketPrediction
+from iris.runtime.control_plane.worker import create_topology_dispatcher_consumer
+from iris.runtime.streams.publisher import flush_publisher, publish_event
+from iris.runtime.streams.runner import run_worker_loop
 from redis import Redis
 from sqlalchemy import select
-from src.apps.cross_market.models import CoinRelation
-from src.apps.indicators.models import CoinMetrics
-from src.apps.predictions.models import MarketPrediction
-from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
-from src.runtime.streams.publisher import flush_publisher, publish_event
-from src.runtime.streams.runner import run_worker_loop
 
 from tests.cross_market_support import (
     DEFAULT_START,

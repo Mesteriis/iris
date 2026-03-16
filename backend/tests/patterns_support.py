@@ -1,13 +1,13 @@
 from datetime import UTC, datetime, timedelta, timezone
 
+from iris.apps.cross_market.models import SectorMetric
+from iris.apps.indicators.models import CoinMetrics
+from iris.apps.market_data.models import Candle
+from iris.apps.patterns.domain.registry import PATTERN_CATALOG, SUPPORTED_PATTERN_FEATURES
+from iris.apps.patterns.models import DiscoveredPattern, MarketCycle, PatternFeature, PatternRegistry, PatternStatistic
+from iris.apps.signals.models import Signal
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
-from src.apps.cross_market.models import SectorMetric
-from src.apps.indicators.models import CoinMetrics
-from src.apps.market_data.models import Candle
-from src.apps.patterns.domain.registry import PATTERN_CATALOG, SUPPORTED_PATTERN_FEATURES
-from src.apps.patterns.models import DiscoveredPattern, MarketCycle, PatternFeature, PatternRegistry, PatternStatistic
-from src.apps.signals.models import Signal
 
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_sector

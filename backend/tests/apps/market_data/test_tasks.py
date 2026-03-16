@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from src.apps.market_data import tasks
+from iris.apps.market_data import tasks
 
 
 @asynccontextmanager

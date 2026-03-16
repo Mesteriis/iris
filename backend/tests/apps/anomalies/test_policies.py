@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from src.apps.anomalies.constants import (
+from iris.apps.anomalies.constants import (
     ANOMALY_STATUS_ACTIVE,
     ANOMALY_STATUS_COOLING,
     ANOMALY_STATUS_RESOLVED,
@@ -9,7 +9,7 @@ from src.apps.anomalies.constants import (
     ANOMALY_TYPE_CORRELATION_BREAKDOWN,
     ANOMALY_TYPE_PRICE_SPIKE,
 )
-from src.apps.anomalies.policies import AnomalyPolicyEngine
+from iris.apps.anomalies.policies import AnomalyPolicyEngine
 
 
 def _policy_engine() -> AnomalyPolicyEngine:

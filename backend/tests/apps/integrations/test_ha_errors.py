@@ -1,10 +1,10 @@
 from datetime import UTC, datetime
 
 import pytest
-from src.apps.integrations.ha.application.services import HABridgeService
-from src.apps.integrations.ha.errors import HACommandNotAvailableError, HAInvalidPayloadError
-from src.core.http.operations import OperationEventResponse, OperationStatus, OperationStatusResponse
-from src.core.settings import Settings
+from iris.apps.integrations.ha.application.services import HABridgeFacade
+from iris.apps.integrations.ha.errors import HACommandNotAvailableError, HAInvalidPayloadError
+from iris.core.http.operations import OperationEventResponse, OperationStatus, OperationStatusResponse
+from iris.core.settings import Settings
 
 
 def test_ha_command_not_available_error_keeps_structured_error_metadata() -> None:
@@ -32,9 +32,9 @@ def test_ha_invalid_payload_error_tracks_machine_readable_details() -> None:
 
 
 def test_ha_command_not_available_ack_localizes_from_global_settings() -> None:
-    service = HABridgeService(settings=Settings(IRIS_LANGUAGE="ru"))
+    facade = HABridgeFacade(settings=Settings(IRIS_LANGUAGE="ru"))
 
-    payload = service.command_not_available_ack(request_id="req-1", command="portfolio.sync")
+    payload = facade.command_not_available_ack(request_id="req-1", command="portfolio.sync")
 
     assert payload["error"]["code"] == "command_not_available"
     assert payload["error"]["message_key"] == "error.ha.command_not_available"
@@ -76,12 +76,12 @@ async def test_ha_operation_update_message_localizes_structured_status_and_event
                 ),
             )
 
-    service = HABridgeService(
+    facade = HABridgeFacade(
         settings=Settings(IRIS_LANGUAGE="ru"),
         operation_store_factory=FakeOperationStore,
     )
 
-    payload = await service.operation_update_message(operation_id="op-1", command="portfolio.sync")
+    payload = await facade.operation_update_message(operation_id="op-1", command="portfolio.sync")
 
     assert payload is not None
     assert payload["message"] == "Выполняется команда 'portfolio.sync'."

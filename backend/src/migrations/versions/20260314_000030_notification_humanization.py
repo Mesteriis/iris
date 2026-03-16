@@ -24,7 +24,7 @@ NOTIFICATION_CONSUMER = {
     "display_name": "Notification Workers",
     "domain": "notifications",
     "description": "Creates persisted humanized notifications from selected upstream events.",
-    "implementation_key": "src.runtime.streams.workers._handle_notification_event",
+    "implementation_key": "iris.runtime.streams.workers._handle_notification_event",
     "delivery_mode": "worker",
     "delivery_stream": "iris:deliveries:notification_workers",
     "supports_shadow": False,

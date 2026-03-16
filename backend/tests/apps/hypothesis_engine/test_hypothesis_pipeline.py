@@ -2,16 +2,16 @@ import json
 import multiprocessing
 
 import pytest
+from iris.apps.hypothesis_engine.models import AIHypothesis, AIWeight
+from iris.apps.hypothesis_engine.query_services import HypothesisQueryService
+from iris.apps.hypothesis_engine.tasks.hypothesis_tasks import evaluate_hypotheses_job
+from iris.apps.market_data.domain import utc_now
+from iris.apps.market_data.models import Candle
+from iris.runtime.control_plane.worker import create_topology_dispatcher_consumer
+from iris.runtime.streams.publisher import flush_publisher, publish_event
+from iris.runtime.streams.runner import run_worker_loop
 from redis import Redis
 from sqlalchemy import select
-from src.apps.hypothesis_engine.models import AIHypothesis, AIWeight
-from src.apps.hypothesis_engine.query_services import HypothesisQueryService
-from src.apps.hypothesis_engine.tasks.hypothesis_tasks import evaluate_hypotheses_job
-from src.apps.market_data.domain import utc_now
-from src.apps.market_data.models import Candle
-from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
-from src.runtime.streams.publisher import flush_publisher, publish_event
-from src.runtime.streams.runner import run_worker_loop
 
 
 def _run_dispatcher_loop() -> None:

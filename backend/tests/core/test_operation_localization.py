@@ -1,8 +1,8 @@
 from datetime import UTC, datetime
 
-from src.core.http.operation_localization import dispatch_result_message_fields, localize_operation_status
-from src.core.http.operation_store import OperationDispatchResult
-from src.core.http.operations import OperationStatus, OperationStatusResponse
+from iris.core.http.operation_localization import dispatch_result_message_fields, localize_operation_status
+from iris.core.http.operation_store import OperationDispatchResult
+from iris.core.http.operations import OperationStatus, OperationStatusResponse
 
 
 def test_dispatch_result_message_fields_localize_structured_message() -> None:

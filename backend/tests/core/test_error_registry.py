@@ -1,5 +1,5 @@
 import pytest
-from src.core.errors import (
+from iris.core.errors import (
     DuplicateErrorCodeError,
     DuplicateMessageKeyError,
     ErrorCategory,
@@ -9,7 +9,7 @@ from src.core.errors import (
     ErrorSeverity,
     ResourceNotFoundError,
 )
-from src.core.http.errors import ApiErrorFactory
+from iris.core.http.errors import ApiErrorFactory
 
 
 def test_error_registry_rejects_duplicate_codes_and_message_keys() -> None:

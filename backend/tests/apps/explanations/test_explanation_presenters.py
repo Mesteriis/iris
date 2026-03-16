@@ -4,8 +4,8 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from src.apps.explanations.api.presenters import explanation_read
-from src.apps.explanations.contracts import ExplainKind
+from iris.apps.explanations.api.presenters import explanation_read
+from iris.apps.explanations.contracts import ExplainKind
 
 
 def test_explanation_presenter_localizes_descriptor_backed_row() -> None:

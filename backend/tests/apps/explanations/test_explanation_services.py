@@ -1,14 +1,14 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from iris.apps.explanations.contracts import ExplainKind, ExplanationArtifactResult, ExplanationGenerationStatus
+from iris.apps.explanations.models import AIExplanation
+from iris.apps.explanations.services import ExplanationService
+from iris.apps.signals.models import InvestmentDecision, Signal
+from iris.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus
+from iris.core.ai.telemetry import AIExecutionMetadata
+from iris.core.db.uow import SessionUnitOfWork
 from sqlalchemy import select
-from src.apps.explanations.contracts import ExplainKind, ExplanationArtifactResult, ExplanationGenerationStatus
-from src.apps.explanations.models import AIExplanation
-from src.apps.explanations.services import ExplanationService
-from src.apps.signals.models import InvestmentDecision, Signal
-from src.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus
-from src.core.ai.telemetry import AIExecutionMetadata
-from src.core.db.uow import SessionUnitOfWork
 
 
 @pytest.mark.asyncio
@@ -46,7 +46,7 @@ async def test_explanation_service_persists_signal_artifact(async_db_session, se
         )
     )
     monkeypatch.setattr(
-        "src.apps.explanations.services.explanation_service.ExplanationGenerationService.generate",
+        "iris.apps.explanations.services.explanation_service.ExplanationGenerationService.generate",
         generate,
     )
 
@@ -105,7 +105,7 @@ async def test_explanation_service_skips_when_decision_snapshot_is_current(async
         )
     )
     monkeypatch.setattr(
-        "src.apps.explanations.services.explanation_service.ExplanationGenerationService.generate",
+        "iris.apps.explanations.services.explanation_service.ExplanationGenerationService.generate",
         generate,
     )
 

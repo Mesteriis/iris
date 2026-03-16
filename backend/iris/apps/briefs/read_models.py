@@ -1,0 +1,63 @@
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
+
+from iris.apps.briefs.contracts import BriefKind
+from iris.core.ai import AIContextFormat
+from iris.core.db.persistence import freeze_json_value
+
+
+@dataclass(slots=True, frozen=True)
+class BriefReadModel:
+    id: int
+    brief_kind: BriefKind
+    scope_key: str
+    symbol: str | None
+    coin_id: int | None
+    content_kind: str
+    content_json: Any
+    refs_json: Any
+    context_json: Any
+    provider: str
+    model: str
+    prompt_name: str
+    prompt_version: int
+    source_updated_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(slots=True, frozen=True)
+class BriefContextBundle:
+    brief_kind: BriefKind
+    scope_key: str
+    symbol: str | None
+    coin_id: int | None
+    source_updated_at: datetime | None
+    preferred_context_format: AIContextFormat
+    context: dict[str, Any]
+    refs_json: dict[str, Any]
+
+
+def brief_read_model_from_orm(item: Any) -> BriefReadModel:
+    return BriefReadModel(
+        id=int(item.id),
+        brief_kind=BriefKind(str(item.brief_kind)),
+        scope_key=str(item.scope_key),
+        symbol=str(item.symbol) if item.symbol is not None else None,
+        coin_id=int(item.coin_id) if item.coin_id is not None else None,
+        content_kind=str(item.content_kind),
+        content_json=freeze_json_value(dict(item.content_json or {})),
+        refs_json=freeze_json_value(dict(item.refs_json or {})),
+        context_json=freeze_json_value(dict(item.context_json or {})),
+        provider=str(item.provider),
+        model=str(item.model),
+        prompt_name=str(item.prompt_name),
+        prompt_version=int(item.prompt_version),
+        source_updated_at=item.source_updated_at,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
+__all__ = ["BriefContextBundle", "BriefReadModel", "brief_read_model_from_orm"]

@@ -9,6 +9,7 @@ from tests.architecture.service_layer_policy import (
     class_loc,
     collect_cross_domain_boundary_violations,
     collect_engine_purity_violations,
+    collect_runtime_wrapper_service_surface_violations,
     collect_service_constructor_dependency_violations,
     collect_service_module_threshold_violations,
     collect_service_result_contract_violations,
@@ -25,6 +26,7 @@ _VIOLATION_COLLECTORS = {
     "service_module_thresholds": collect_service_module_threshold_violations,
     "transport_leakage": collect_transport_leakage_violations,
     "cross_domain_boundaries": collect_cross_domain_boundary_violations,
+    "runtime_wrapper_service_surfaces": collect_runtime_wrapper_service_surface_violations,
 }
 
 _CUTOVER_WAVES = {

@@ -1,4 +1,4 @@
-from src.apps.notifications.services.humanization_service import render_template_notification
+from iris.apps.notifications.services.humanization_service import render_template_notification
 
 
 def test_render_template_notification_uses_shared_catalog_for_ru() -> None:

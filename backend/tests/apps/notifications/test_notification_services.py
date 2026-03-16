@@ -1,15 +1,15 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from iris.apps.notifications.contracts import NotificationHumanizationResult
+from iris.apps.notifications.models import AINotification
+from iris.apps.notifications.services.notification_service import NotificationService
+from iris.apps.notifications.services.side_effects import NotificationSideEffectDispatcher
+from iris.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus
+from iris.core.ai.telemetry import AIExecutionMetadata
+from iris.core.db.uow import SessionUnitOfWork
+from iris.runtime.streams.types import IrisEvent
 from sqlalchemy import select
-from src.apps.notifications.contracts import NotificationHumanizationResult
-from src.apps.notifications.models import AINotification
-from src.apps.notifications.services.notification_service import NotificationService
-from src.apps.notifications.services.side_effects import NotificationSideEffectDispatcher
-from src.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus
-from src.core.ai.telemetry import AIExecutionMetadata
-from src.core.db.uow import SessionUnitOfWork
-from src.runtime.streams.types import IrisEvent
 
 
 @pytest.mark.asyncio
@@ -51,11 +51,11 @@ async def test_notification_service_persists_artifact_and_emits_created_event(
     published: list[tuple[str, dict[str, object]]] = []
 
     monkeypatch.setattr(
-        "src.apps.notifications.services.notification_service.NotificationHumanizationService.generate",
+        "iris.apps.notifications.services.notification_service.NotificationHumanizationService.generate",
         generate,
     )
     monkeypatch.setattr(
-        "src.apps.notifications.services.side_effects.publish_event",
+        "iris.apps.notifications.services.side_effects.publish_event",
         lambda event_type, payload: published.append((event_type, payload)),
     )
 
@@ -135,10 +135,10 @@ async def test_notification_service_is_idempotent_for_same_event(async_db_sessio
         )
     )
     monkeypatch.setattr(
-        "src.apps.notifications.services.notification_service.NotificationHumanizationService.generate",
+        "iris.apps.notifications.services.notification_service.NotificationHumanizationService.generate",
         generate,
     )
-    monkeypatch.setattr("src.apps.notifications.services.side_effects.publish_event", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("iris.apps.notifications.services.side_effects.publish_event", lambda *_args, **_kwargs: None)
 
     event = IrisEvent(
         stream_id="174-0",

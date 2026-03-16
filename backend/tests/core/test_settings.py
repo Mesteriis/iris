@@ -1,6 +1,6 @@
 import pytest
+from iris.core.settings import AppLanguage, Settings
 from pydantic import ValidationError
-from src.core.settings import AppLanguage, Settings
 
 
 def test_settings_accept_supported_language_alias() -> None:

@@ -1,14 +1,14 @@
-from src.apps.integrations.ha.application.services import HABridgeService
-from src.core.settings import AppLanguage, Settings
+from iris.apps.integrations.ha.application.services import HABridgeFacade
+from iris.core.settings import AppLanguage, Settings
 
 
 def test_ha_catalog_and_dashboard_use_shared_ru_catalog_labels() -> None:
     settings = Settings()
     settings.language = AppLanguage.RU
-    service = HABridgeService(settings=settings)
+    facade = HABridgeFacade(settings=settings)
 
-    catalog = service.catalog().model_dump(mode="json")
-    dashboard = service.dashboard().model_dump(mode="json")
+    catalog = facade.catalog().model_dump(mode="json")
+    dashboard = facade.dashboard().model_dump(mode="json")
 
     entity_names = {item["entity_key"]: item["name"] for item in catalog["entities"]}
     command_names = {item["command_key"]: item["name"] for item in catalog["commands"]}

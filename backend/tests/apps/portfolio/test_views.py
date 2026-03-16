@@ -1,9 +1,9 @@
 import importlib.util
 
 import pytest
-from src.apps.portfolio.api.router import build_router as build_portfolio_router
-from src.core.http.launch_modes import DeploymentProfile, LaunchMode
-from src.core.settings import get_settings
+from iris.apps.portfolio.api.router import build_router as build_portfolio_router
+from iris.core.http.launch_modes import DeploymentProfile, LaunchMode
+from iris.core.settings import get_settings
 
 
 @pytest.mark.asyncio
@@ -57,4 +57,4 @@ def test_portfolio_api_router_is_mode_agnostic_and_legacy_views_removed() -> Non
     assert any(path == "/portfolio/positions" and "GET" in methods for path, methods in full_paths)
     assert any(path == "/portfolio/actions" and "GET" in methods for path, methods in full_paths)
     assert any(path == "/portfolio/state" and "GET" in methods for path, methods in full_paths)
-    assert importlib.util.find_spec("src.apps.portfolio.views") is None
+    assert importlib.util.find_spec("iris.apps.portfolio.views") is None

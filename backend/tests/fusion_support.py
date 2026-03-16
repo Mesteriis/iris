@@ -1,11 +1,11 @@
 from datetime import datetime
 
+from iris.apps.indicators.models import CoinMetrics
+from iris.apps.market_data.schemas import CoinCreate
+from iris.apps.patterns.models import PatternRegistry, PatternStatistic
+from iris.apps.signals.models import Signal
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
-from src.apps.indicators.models import CoinMetrics
-from src.apps.market_data.schemas import CoinCreate
-from src.apps.patterns.models import PatternRegistry, PatternStatistic
-from src.apps.signals.models import Signal
 
 from tests.factories.market_data import persist_coin
 

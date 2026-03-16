@@ -1,7 +1,7 @@
 # ruff: noqa: RUF001
 
 
-from src.apps.briefs.api.errors import brief_not_found_error, symbol_not_found_error
+from iris.apps.briefs.api.errors import brief_not_found_error, symbol_not_found_error
 
 
 def test_brief_api_errors_are_localized_from_registry() -> None:

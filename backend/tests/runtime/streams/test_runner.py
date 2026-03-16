@@ -1,4 +1,4 @@
-from src.runtime.streams import runner
+from iris.runtime.streams import runner
 
 
 class _Worker:

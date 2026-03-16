@@ -2,15 +2,15 @@ import multiprocessing
 from datetime import timedelta
 
 import pytest
+from iris.apps.anomalies.models import MarketAnomaly
+from iris.apps.anomalies.tasks.anomaly_enrichment_tasks import anomaly_enrichment_job
+from iris.apps.market_data.models import Coin
+from iris.apps.market_data.sources.base import MarketBar
+from iris.apps.portfolio.models import PortfolioPosition
+from iris.runtime.control_plane.worker import create_topology_dispatcher_consumer
+from iris.runtime.streams.publisher import flush_publisher, publish_event
+from iris.runtime.streams.runner import run_worker_loop
 from sqlalchemy import select
-from src.apps.anomalies.models import MarketAnomaly
-from src.apps.anomalies.tasks.anomaly_enrichment_tasks import anomaly_enrichment_job
-from src.apps.market_data.models import Coin
-from src.apps.market_data.sources.base import MarketBar
-from src.apps.portfolio.models import PortfolioPosition
-from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
-from src.runtime.streams.publisher import flush_publisher, publish_event
-from src.runtime.streams.runner import run_worker_loop
 
 from tests.market_data_support import fetch_candle_points, upsert_base_candles
 

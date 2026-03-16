@@ -1,10 +1,10 @@
 import json
 
 import pytest
+from iris.apps.cross_market.models import CoinRelation
+from iris.apps.market_data.domain import utc_now
+from iris.runtime.streams.publisher import flush_publisher
 from redis import Redis
-from src.apps.cross_market.models import CoinRelation
-from src.apps.market_data.domain import utc_now
-from src.runtime.streams.publisher import flush_publisher
 
 from tests.cross_market_support import (
     DEFAULT_START,

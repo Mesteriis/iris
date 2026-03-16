@@ -82,6 +82,12 @@ nav:
           - ADR 0021: architecture/adr/0021-generated-presentation-artifact-ownership.md
           - ADR 0022: architecture/adr/0022-platform-maturity-additions.md
           - ADR 0023: architecture/adr/0023-documentation-structure-and-naming.md
+          - ADR 0024: architecture/adr/0024-frontend-dashboard-composition-and-route-bootstrapping.md
+          - ADR 0025: architecture/adr/0025-runtime-proxy-registry-for-public-market-sources.md
+          - ADR 0026: architecture/adr/0026-observed-asset-inventory-is-db-owned.md
+          - ADR 0027: architecture/adr/0027-live-market-source-capability-registry-in-redis.md
+          - ADR 0028: architecture/adr/0028-market-data-source-catalog-and-support-tiers.md
+          - ADR 0029: architecture/adr/0029-frontend-dashboard-live-stream-over-normalized-sse.md
       - Governance:
           - Terminology: architecture/terminology.md
           - Complexity Guardrails: architecture/complexity-guardrails.md

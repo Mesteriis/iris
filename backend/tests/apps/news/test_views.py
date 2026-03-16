@@ -2,9 +2,9 @@ import importlib.util
 from datetime import UTC, datetime, timezone
 
 import pytest
-from src.apps.news.api.router import build_router as build_news_router
-from src.apps.news.models import NewsItem, NewsSource
-from src.core.http.launch_modes import DeploymentProfile, LaunchMode
+from iris.apps.news.api.router import build_router as build_news_router
+from iris.apps.news.models import NewsItem, NewsSource
+from iris.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 from tests.apps.conftest import api_path
 
@@ -98,7 +98,7 @@ async def test_news_endpoints(api_app_client, db_session, monkeypatch) -> None:
 
     queued: list[dict[str, object]] = []
 
-    from src.apps.news.tasks import poll_news_source_job
+    from iris.apps.news.tasks import poll_news_source_job
 
     async def fake_kiq(**kwargs):
         queued.append(dict(kwargs))
@@ -183,9 +183,9 @@ async def test_telegram_onboarding_endpoints(api_app_client, monkeypatch) -> Non
             }
         ]
 
-    monkeypatch.setattr("src.apps.news.api.deps.TelegramSessionOnboardingService.request_code", fake_request)
-    monkeypatch.setattr("src.apps.news.api.deps.TelegramSessionOnboardingService.confirm_code", fake_confirm)
-    monkeypatch.setattr("src.apps.news.api.deps.TelegramSessionOnboardingService.list_dialogs", fake_dialogs)
+    monkeypatch.setattr("iris.apps.news.api.deps.TelegramSessionOnboardingService.request_code", fake_request)
+    monkeypatch.setattr("iris.apps.news.api.deps.TelegramSessionOnboardingService.confirm_code", fake_confirm)
+    monkeypatch.setattr("iris.apps.news.api.deps.TelegramSessionOnboardingService.list_dialogs", fake_dialogs)
 
     request_response = await client.post(
         "/news/onboarding/telegram/session/request",
@@ -302,4 +302,4 @@ def test_news_api_router_is_mode_aware_and_legacy_views_removed() -> None:
     assert any(path == "/news/plugins" and "GET" in methods for path, methods in ha_paths)
     assert any(path == "/news/items" and "GET" in methods for path, methods in ha_paths)
 
-    assert importlib.util.find_spec("src.apps.news.views") is None
+    assert importlib.util.find_spec("iris.apps.news.views") is None

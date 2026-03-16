@@ -1,8 +1,8 @@
 from datetime import UTC, datetime, timezone
 
+from iris.apps.patterns.domain.base import PatternDetection
 from polyfactory.factories.dataclass_factory import DataclassFactory
 from polyfactory.fields import Use
-from src.apps.patterns.domain.base import PatternDetection
 
 from tests.factories.base import fake
 

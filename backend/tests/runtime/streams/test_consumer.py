@@ -2,9 +2,9 @@ import asyncio
 from datetime import datetime, timezone
 
 import pytest
+from iris.runtime.streams import consumer
+from iris.runtime.streams.types import IrisEvent, build_event_fields
 from redis.exceptions import RedisError, ResponseError
-from src.runtime.streams import consumer
-from src.runtime.streams.types import IrisEvent, build_event_fields
 
 
 class _FakeAsyncRedis:

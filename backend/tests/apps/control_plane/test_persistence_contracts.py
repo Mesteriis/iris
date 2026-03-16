@@ -1,12 +1,12 @@
 from dataclasses import FrozenInstanceError
 
 import pytest
-from src.apps.control_plane.contracts import AuditActor, DraftChangeCommand, DraftCreateCommand, RouteMutationCommand
-from src.apps.control_plane.enums import EventRouteScope, EventRouteStatus, TopologyAccessMode, TopologyDraftChangeType
-from src.apps.control_plane.query_services import EventRegistryQueryService, TopologyDraftQueryService
-from src.apps.control_plane.services import RouteManagementService, TopologyDraftService
-from src.core.db.persistence import PERSISTENCE_LOGGER
-from src.core.db.uow import SessionUnitOfWork
+from iris.apps.control_plane.contracts import AuditActor, DraftChangeCommand, DraftCreateCommand, RouteMutationCommand
+from iris.apps.control_plane.enums import EventRouteScope, EventRouteStatus, TopologyAccessMode, TopologyDraftChangeType
+from iris.apps.control_plane.query_services import EventRegistryQueryService, TopologyDraftQueryService
+from iris.apps.control_plane.services import RouteManagementService, TopologyDraftService
+from iris.core.db.persistence import PERSISTENCE_LOGGER
+from iris.core.db.uow import SessionUnitOfWork
 
 
 @pytest.mark.asyncio

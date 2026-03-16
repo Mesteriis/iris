@@ -1,9 +1,9 @@
 from datetime import UTC, datetime, timezone
 
 import pytest
-from src.apps.control_plane.cache import TopologyCacheManager, TopologySnapshotCodec
-from src.apps.control_plane.contracts import EventConsumerSnapshot, EventDefinitionSnapshot, TopologySnapshot
-from src.runtime.streams.types import IrisEvent
+from iris.apps.control_plane.cache import TopologyCacheManager, TopologySnapshotCodec
+from iris.apps.control_plane.contracts import EventConsumerSnapshot, EventDefinitionSnapshot, TopologySnapshot
+from iris.runtime.streams.types import IrisEvent
 
 
 class FakeAsyncCache:

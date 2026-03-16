@@ -1,6 +1,6 @@
 import pytest
-from src.apps.news.exceptions import InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError
-from src.apps.news.plugins import (
+from iris.apps.news.exceptions import InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError
+from iris.apps.news.plugins import (
     DiscordBotNewsPlugin,
     TelegramUserNewsPlugin,
     TruthSocialUnsupportedPlugin,

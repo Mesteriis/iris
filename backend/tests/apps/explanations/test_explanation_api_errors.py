@@ -1,7 +1,7 @@
 # ruff: noqa: RUF001
 
 
-from src.apps.explanations.api.errors import (
+from iris.apps.explanations.api.errors import (
     decision_not_found_error,
     explanation_not_found_error,
     signal_not_found_error,

@@ -4,14 +4,14 @@ from typing import ClassVar
 
 import httpx
 import pytest
-from src.apps.market_data import clients, events
-from src.apps.market_data.sources.base import (
+from iris.apps.market_data import clients, events
+from iris.apps.market_data.sources.base import (
     BaseMarketSource,
     MarketBar,
     RateLimitedMarketSourceError,
     TemporaryMarketSourceError,
 )
-from src.apps.market_data.sources.rate_limits import RateLimitPolicy
+from iris.apps.market_data.sources.rate_limits import RateLimitPolicy
 
 from tests.factories.market_data import CoinCreateFactory
 
@@ -99,7 +99,7 @@ async def test_market_source_registry_resolution_helpers(monkeypatch) -> None:
             return canonical_symbol == "BTCUSD_EVT" or fallback
 
     monkeypatch.setattr(
-        "src.apps.market_data.sources.source_capability_registry.get_market_source_capability_registry",
+        "iris.apps.market_data.sources.source_capability_registry.get_market_source_capability_registry",
         lambda: FakeRegistry(),
     )
 
@@ -125,7 +125,7 @@ async def test_market_source_rate_limit_helpers(monkeypatch) -> None:
         async def clear_cooldown(self, name: str) -> None:
             calls.append(("clear_cooldown", name))
 
-    monkeypatch.setattr("src.apps.market_data.sources.base.get_rate_limit_manager", lambda: FakeRateLimitManager())
+    monkeypatch.setattr("iris.apps.market_data.sources.base.get_rate_limit_manager", lambda: FakeRateLimitManager())
 
     assert await source.is_rate_limited() is True
     await source.set_rate_limit(12)
@@ -152,7 +152,7 @@ async def test_market_source_request_success_and_transport_errors(monkeypatch) -
         assert kwargs["cost"] == 2
         return response
 
-    monkeypatch.setattr("src.apps.market_data.sources.base.rate_limited_get", fake_rate_limited_get)
+    monkeypatch.setattr("iris.apps.market_data.sources.base.rate_limited_get", fake_rate_limited_get)
     assert (
         await source.request(
             "https://example.com/data",
@@ -167,14 +167,14 @@ async def test_market_source_request_success_and_transport_errors(monkeypatch) -
     async def fake_raise_rate_limit(*args, **kwargs):
         raise RateLimitedMarketSourceError("dummy", 7, "dummy rate limited")
 
-    monkeypatch.setattr("src.apps.market_data.sources.base.rate_limited_get", fake_raise_rate_limit)
+    monkeypatch.setattr("iris.apps.market_data.sources.base.rate_limited_get", fake_raise_rate_limit)
     with pytest.raises(RateLimitedMarketSourceError, match="dummy rate limited"):
         await source.request("https://example.com/data")
 
     async def fake_raise_http(*args, **kwargs):
         raise httpx.ConnectError("boom")
 
-    monkeypatch.setattr("src.apps.market_data.sources.base.rate_limited_get", fake_raise_http)
+    monkeypatch.setattr("iris.apps.market_data.sources.base.rate_limited_get", fake_raise_http)
     with pytest.raises(TemporaryMarketSourceError, match="dummy transport error"):
         await source.request("https://example.com/data")
 
@@ -195,8 +195,8 @@ async def test_market_source_uses_proxy_registry_when_direct_bucket_is_limited(m
         async def has_available_proxy(self) -> bool:
             return True
 
-    monkeypatch.setattr("src.apps.market_data.sources.base.get_rate_limit_manager", lambda: FakeRateLimitManager())
-    monkeypatch.setattr("src.apps.market_data.sources.base.get_free_proxy_registry", lambda: FakeRegistry())
+    monkeypatch.setattr("iris.apps.market_data.sources.base.get_rate_limit_manager", lambda: FakeRateLimitManager())
+    monkeypatch.setattr("iris.apps.market_data.sources.base.get_free_proxy_registry", lambda: FakeRegistry())
 
     assert await source.is_rate_limited() is False
 
@@ -230,10 +230,10 @@ async def test_market_source_request_prefers_proxy_pool(monkeypatch) -> None:
         calls.append(("direct", "used"))
         return response
 
-    monkeypatch.setattr("src.apps.market_data.sources.base.get_rate_limit_manager", lambda: FakeRateLimitManager())
-    monkeypatch.setattr("src.apps.market_data.sources.base.get_free_proxy_registry", lambda: FakeRegistry())
+    monkeypatch.setattr("iris.apps.market_data.sources.base.get_rate_limit_manager", lambda: FakeRateLimitManager())
+    monkeypatch.setattr("iris.apps.market_data.sources.base.get_free_proxy_registry", lambda: FakeRegistry())
     monkeypatch.setattr(
-        "src.apps.market_data.sources.base.get_settings",
+        "iris.apps.market_data.sources.base.get_settings",
         lambda: SimpleNamespace(free_proxy_pool_max_proxy_attempts=2),
     )
     monkeypatch.setattr(source, "_request_via_proxy", fake_request_via_proxy)
@@ -254,7 +254,7 @@ async def test_market_source_raise_rate_limited_and_retry_after(monkeypatch) -> 
     set_calls: list[int] = []
 
     monkeypatch.setattr(
-        "src.apps.market_data.sources.base.get_rate_limit_policy",
+        "iris.apps.market_data.sources.base.get_rate_limit_policy",
         lambda name: RateLimitPolicy(fallback_retry_after_seconds=9),
     )
 

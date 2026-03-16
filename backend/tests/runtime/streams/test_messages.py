@@ -2,8 +2,8 @@ from datetime import UTC, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
+from iris.runtime.streams import messages
 from redis.exceptions import RedisError, ResponseError
-from src.runtime.streams import messages
 
 
 class _FakeRedis:

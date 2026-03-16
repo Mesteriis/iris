@@ -2,17 +2,17 @@ import multiprocessing
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
-from redis import Redis
-from src.apps.patterns.domain.scheduler import (
+from iris.apps.patterns.domain.scheduler import (
     analysis_interval,
     assign_activity_bucket,
     calculate_activity_score,
     should_request_analysis,
 )
-from src.core.settings import get_settings
-from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
-from src.runtime.streams.publisher import flush_publisher, publish_event
-from src.runtime.streams.runner import run_worker_loop
+from iris.core.settings import get_settings
+from iris.runtime.control_plane.worker import create_topology_dispatcher_consumer
+from iris.runtime.streams.publisher import flush_publisher, publish_event
+from iris.runtime.streams.runner import run_worker_loop
+from redis import Redis
 
 
 def _run_topology_dispatcher() -> None:

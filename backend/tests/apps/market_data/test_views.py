@@ -4,18 +4,18 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
-from src.apps.market_data.api.command_endpoints import (
+from iris.apps.market_data.api.command_endpoints import (
     create_coin_endpoint,
     create_coin_history,
     delete_coin_endpoint,
 )
-from src.apps.market_data.api.deps import MarketDataBackfillTrigger
-from src.apps.market_data.api.job_endpoints import run_coin_job_endpoint
-from src.apps.market_data.api.read_endpoints import read_coin_history
-from src.apps.market_data.api.router import build_router as build_market_data_router
-from src.core.http.launch_modes import DeploymentProfile, LaunchMode
-from src.core.http.operation_store import OperationDispatchResult
-from src.core.http.operations import OperationStatus, OperationStatusResponse
+from iris.apps.market_data.api.deps import MarketDataBackfillTrigger
+from iris.apps.market_data.api.job_endpoints import run_coin_job_endpoint
+from iris.apps.market_data.api.read_endpoints import read_coin_history
+from iris.apps.market_data.api.router import build_router as build_market_data_router
+from iris.core.http.launch_modes import DeploymentProfile, LaunchMode
+from iris.core.http.operation_store import OperationDispatchResult
+from iris.core.http.operations import OperationStatus, OperationStatusResponse
 
 from tests.factories.market_data import CoinCreateFactory, PriceHistoryCreateFactory
 
@@ -25,7 +25,7 @@ async def test_market_data_endpoints(api_app_client, seeded_market, monkeypatch)
     app, client = api_app_client
     queued: list[dict[str, object]] = []
 
-    from src.apps.market_data.tasks import run_coin_history_job
+    from iris.apps.market_data.tasks import run_coin_history_job
 
     async def fake_kiq(**kwargs):
         queued.append(dict(kwargs))
@@ -353,4 +353,4 @@ def test_market_data_api_router_is_mode_agnostic_and_legacy_views_removed() -> N
     assert any(path == "/coins" and "GET" in methods for path, methods in full_paths)
     assert any(path == "/coins/{symbol}/jobs/run" and "POST" in methods for path, methods in full_paths)
     assert any(path == "/coins/{symbol}/history" and "POST" in methods for path, methods in full_paths)
-    assert importlib.util.find_spec("src.apps.market_data.views") is None
+    assert importlib.util.find_spec("iris.apps.market_data.views") is None

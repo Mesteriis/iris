@@ -2,10 +2,10 @@ import os
 import time
 from typing import Any
 
+from iris.core.settings import get_settings
+from iris.runtime.streams.consumer import EventConsumer, EventConsumerConfig
+from iris.runtime.streams.types import IrisEvent
 from redis import Redis
-from src.core.settings import get_settings
-from src.runtime.streams.consumer import EventConsumer, EventConsumerConfig
-from src.runtime.streams.types import IrisEvent
 
 
 def recording_worker_loop(

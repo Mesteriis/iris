@@ -20,14 +20,14 @@ This is not cosmetic cleanup. Since persistence and HTTP were already standardiz
 
 ## Current State
 
-Persistence, HTTP, and planned service-layer governance are already standardized.
+Persistence, HTTP, and service-layer governance are standardized.
 
-As of 2026-03-14:
+As of 2026-03-16:
 
 - all stages from `docs/delivery/archive/service-layer-execution-plan.md` were completed;
-- planned hotspot domains were moved to the final service/engine form;
+- planned hotspot domains were moved to thin service entrypoints plus dedicated runtime/support modules;
 - architecture CI, generated scorecard, ADR package, runtime policy docs, and performance budgets exist in the repository;
-- remaining service-layer debt is localized rather than smeared across all hotspots.
+- the service-layer scorecard reports `0` outstanding policy violations across the scanned domains.
 
 Sections `0-20` in the historical audit explain why the refactor was required. Sections `21-26` in the original working version captured the executed end state. This normalized English version keeps the architectural conclusions.
 

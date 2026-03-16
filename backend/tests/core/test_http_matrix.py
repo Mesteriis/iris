@@ -1,5 +1,5 @@
-import src.core.bootstrap.app as bootstrap_app_module
-import src.core.http.matrix as matrix_module
+import iris.core.bootstrap.app as bootstrap_app_module
+import iris.core.http.matrix as matrix_module
 
 
 def test_http_mode_matrix_tracks_mode_limited_categories() -> None:

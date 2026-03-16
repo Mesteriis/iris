@@ -1,13 +1,13 @@
-from sqlalchemy import select
-from src.apps.control_plane.enums import EventRouteScope, EventRouteStatus
-from src.apps.control_plane.models import (
+from iris.apps.control_plane.enums import EventRouteScope, EventRouteStatus
+from iris.apps.control_plane.models import (
     EventConsumer,
     EventDefinition,
     EventRoute,
     EventRouteAuditLog,
     TopologyConfigVersion,
 )
-from src.runtime.streams.router import WORKER_EVENT_TYPES
+from iris.runtime.streams.router import WORKER_EVENT_TYPES
+from sqlalchemy import select
 
 
 def test_event_control_plane_seed_matches_legacy_worker_routes(db_session) -> None:

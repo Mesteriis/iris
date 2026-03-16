@@ -5,15 +5,15 @@ import sys
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
+import iris.core.bootstrap.app as bootstrap_app_module
+import iris.core.bootstrap.lifespan as lifespan_module
+import iris.core.bootstrap.prestart as prestart_module
+import iris.core.db.session as session_module
+import iris.core.db.uow as uow_module
+import iris.core.http.openapi as openapi_module
+import iris.core.settings.base as settings_base_module
+import iris.main as main_module
 import pytest
-import src.core.bootstrap.app as bootstrap_app_module
-import src.core.bootstrap.lifespan as lifespan_module
-import src.core.bootstrap.prestart as prestart_module
-import src.core.db.session as session_module
-import src.core.db.uow as uow_module
-import src.core.http.openapi as openapi_module
-import src.core.settings.base as settings_base_module
-import src.main as main_module
 from fastapi import FastAPI
 
 
@@ -39,7 +39,7 @@ def test_bootstrap_app_builds_config_runs_migrations_and_enters_deferred_lifespa
         yield
         entered.append("closed")
 
-    monkeypatch.setattr("src.core.bootstrap.lifespan.lifespan", _fake_lifespan)
+    monkeypatch.setattr("iris.core.bootstrap.lifespan.lifespan", _fake_lifespan)
     app = bootstrap_app_module.create_app()
     assert app.title == bootstrap_app_module.settings.app_name
     assert callable(app.state.run_migrations)
@@ -378,7 +378,7 @@ def test_main_run_invokes_uvicorn(monkeypatch) -> None:
     calls: list[tuple[str, str, int]] = []
     monkeypatch.setattr(main_module.uvicorn, "run", lambda target, host, port: calls.append((target, host, port)))
     main_module.run()
-    assert calls == [("src.main:app", main_module.settings.api_host, main_module.settings.api_port)]
+    assert calls == [("iris.main:app", main_module.settings.api_host, main_module.settings.api_port)]
 
 
 def test_prestart_waits_for_dependencies_and_runs_migrations(monkeypatch) -> None:
@@ -412,8 +412,8 @@ def test_settings_validator_and_main_module_entrypoint(monkeypatch) -> None:
 
     calls: list[tuple[str, str, int]] = []
     monkeypatch.setattr("uvicorn.run", lambda target, host, port: calls.append((target, host, port)))
-    original_main = sys.modules.pop("src.main", None)
-    runpy.run_module("src.main", run_name="__main__")
+    original_main = sys.modules.pop("iris.main", None)
+    runpy.run_module("iris.main", run_name="__main__")
     if original_main is not None:
-        sys.modules["src.main"] = original_main
+        sys.modules["iris.main"] = original_main
     assert calls

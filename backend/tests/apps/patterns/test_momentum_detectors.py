@@ -2,9 +2,9 @@ import importlib
 from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from src.apps.market_data.candles import CandlePoint
+from iris.apps.market_data.candles import CandlePoint
 
-momentum = importlib.import_module("src.apps.patterns.domain.detectors.momentum")
+momentum = importlib.import_module("iris.apps.patterns.domain.detectors.momentum")
 
 
 def _candles(count: int, *, start_price: float = 100.0) -> list[CandlePoint]:

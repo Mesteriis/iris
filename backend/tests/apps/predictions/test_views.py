@@ -2,8 +2,8 @@ import importlib.util
 from datetime import timedelta
 
 import pytest
-from src.apps.predictions.api.router import build_router as build_predictions_router
-from src.core.http.launch_modes import DeploymentProfile, LaunchMode
+from iris.apps.predictions.api.router import build_router as build_predictions_router
+from iris.core.http.launch_modes import DeploymentProfile, LaunchMode
 
 from tests.factories.base import json_utc
 
@@ -46,4 +46,4 @@ def test_predictions_api_router_is_mode_agnostic_and_legacy_views_removed() -> N
 
     assert full_paths == ha_paths
     assert any(path == "/predictions" and "GET" in methods for path, methods in full_paths)
-    assert importlib.util.find_spec("src.apps.predictions.views") is None
+    assert importlib.util.find_spec("iris.apps.predictions.views") is None

@@ -18,6 +18,8 @@ The eight directions below are required additions that must strengthen the exist
 
 ## Decision
 
+The decision is accepted as a platform target. Component-level status markers below track rollout maturity of each accepted direction, not the acceptance state of the ADR itself.
+
 ### 1. Capability / Feature Registry ⏳
 
 **Status:** Not started
@@ -104,7 +106,7 @@ So the system can reconstruct sequences of actions, explain why state changed, a
 
 ### 5. Unified Error Catalog ✅
 
-**Status:** Implemented — `PLATFORM_ERROR_REGISTRY` in `src/core/errors/catalog.py` provides error codes, message keys, severity, retryability, and HTTP mapping
+**Status:** Implemented — `PLATFORM_ERROR_REGISTRY` in `iris/core/errors/catalog.py` provides error codes, message keys, severity, retryability, and HTTP mapping
 
 **Description**
 
@@ -248,7 +250,7 @@ These eight directions define the minimum maturity set after which IRIS can be p
 | 2 | Health / Readiness / Diagnostics | ⚠️ Partial | `/system/health`, source health endpoints exist |
 | 3 | Job Control Plane | ⚠️ Partial | TaskIQ is used, unified control plane not implemented |
 | 4 | Audit Trail / Event Timeline | ✅ Done | `EventRouteAuditLog` in `control_plane` |
-| 5 | Unified Error Catalog | ✅ Done | `PLATFORM_ERROR_REGISTRY` in `src/core/errors/` |
+| 5 | Unified Error Catalog | ✅ Done | `PLATFORM_ERROR_REGISTRY` in `iris/core/errors/` |
 | 6 | Policy / Rules Layer Lite | ⚠️ Partial | `AnomalyPolicyEngine` exists |
 | 7 | Explanation Layer | ✅ Done | full explanations app |
 | 8 | Config Governance | ⚠️ Partial | `pydantic-settings`, no effective config display |

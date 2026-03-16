@@ -1,7 +1,7 @@
 import pytest
+from iris.apps.cross_market.cache import read_cached_correlation
+from iris.apps.cross_market.models import CoinRelation
 from sqlalchemy import select
-from src.apps.cross_market.cache import read_cached_correlation
-from src.apps.cross_market.models import CoinRelation
 
 from tests.cross_market_support import (
     DEFAULT_START,

@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from src.runtime import scheduler as scheduler_pkg
-from src.runtime.scheduler import runner
+from iris.runtime import scheduler as scheduler_pkg
+from iris.runtime.scheduler import runner
 
 
 async def _fast_sleep(_seconds: float) -> None:

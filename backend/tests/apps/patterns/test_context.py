@@ -1,9 +1,9 @@
 from datetime import UTC, datetime, timezone
 
-from src.apps.patterns.domain.base import PatternDetection
-from src.apps.patterns.domain.detectors.continuation import FlagDetector
-from src.apps.patterns.domain.detectors.structural import HeadShouldersDetector
-from src.apps.patterns.domain.pattern_context import apply_pattern_context, dependencies_satisfied
+from iris.apps.patterns.domain.base import PatternDetection
+from iris.apps.patterns.domain.detectors.continuation import FlagDetector
+from iris.apps.patterns.domain.detectors.structural import HeadShouldersDetector
+from iris.apps.patterns.domain.pattern_context import apply_pattern_context, dependencies_satisfied
 
 
 def test_pattern_dependency_filter() -> None:
