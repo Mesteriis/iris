@@ -97,6 +97,9 @@ const filteredRows = computed(() => {
   });
 });
 
+const readyRows = computed(() => filteredRows.value.filter((row) => row.price_current !== null && row.price_current !== undefined));
+const pendingRows = computed(() => filteredRows.value.filter((row) => row.price_current === null || row.price_current === undefined));
+
 function buildRowSignature(row: (typeof assetRows.value)[number]): string {
   return JSON.stringify({
     price_current: row.price_current ?? null,
@@ -355,11 +358,16 @@ onBeforeUnmount(() => {
     </section>
 
     <section class="surface-card assets-stage">
-      <div v-if="coinStore.isBootstrapping" class="surface-state">Loading assets...</div>
+      <div v-if="!coinStore.hasDashboardSnapshot && coinStore.isBootstrapping" class="surface-state">
+        Loading assets...
+      </div>
+      <div v-else-if="!coinStore.hasDashboardSnapshot && coinStore.dashboardError" class="surface-state surface-state--error">
+        {{ coinStore.dashboardError }}
+      </div>
       <div v-else-if="filteredRows.length === 0" class="surface-state">No assets returned for the current filter.</div>
-      <div v-else class="asset-card-grid">
+      <div v-else-if="readyRows.length > 0" class="asset-card-grid">
         <article
-          v-for="row in filteredRows"
+          v-for="row in readyRows"
           :key="row.symbol"
           class="asset-card"
           :class="[
@@ -430,6 +438,26 @@ onBeforeUnmount(() => {
           </div>
         </article>
       </div>
+      <div v-else class="surface-state">Quotes are loading for the current filter.</div>
+
+      <section v-if="pendingRows.length > 0" class="assets-pending">
+        <div class="assets-pending__header">
+          <strong>Awaiting first quote</strong>
+          <span>{{ pendingRows.length }}</span>
+        </div>
+        <div class="assets-pending__list">
+          <RouterLink
+            v-for="row in pendingRows"
+            :key="`${row.symbol}-pending`"
+            class="assets-pending__item"
+            :title="`${row.name} · waiting for market data`"
+            :to="`/assets/${row.symbol}`"
+          >
+            <span>{{ assetPrimaryLabel(row) }}</span>
+            <small>{{ assetSecondaryLabel(row) }}</small>
+          </RouterLink>
+        </div>
+      </section>
     </section>
 
     <UiBaseModal

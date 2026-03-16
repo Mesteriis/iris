@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from src.apps.market_data.sources import source_capability_registry as registry_module
 from src.apps.market_data.sources.source_capability_registry import (
@@ -92,3 +93,42 @@ async def test_source_capability_registry_loads_existing_redis_payload(monkeypat
 
     assert registry.resolve_provider_symbol("yahoo", "BTCUSD") == "BTC-USD"
     assert registry.supports_canonical_symbol("yahoo", "BTCUSD") is True
+
+
+@pytest.mark.asyncio
+async def test_source_capability_registry_logs_rate_limit_without_leaking_query(monkeypatch) -> None:
+    events: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def fake_warning(message: str, *args, **kwargs) -> None:
+        events.append((message, args, kwargs))
+
+    def fake_exception(message: str, *args, **kwargs) -> None:  # pragma: no cover - should not be called
+        raise AssertionError(message)
+
+    registry = MarketSourceCapabilityRegistry()
+    registry._client = object()
+    monkeypatch.setattr(registry_module.LOGGER, "warning", fake_warning)
+    monkeypatch.setattr(registry_module.LOGGER, "exception", fake_exception)
+
+    async def failing_discoverer(client, settings):
+        del client, settings
+        request = httpx.Request(
+            "GET",
+            "https://api.polygon.io/v3/reference/tickers?apiKey=secret-key&cursor=next-page",
+        )
+        response = httpx.Response(429, request=request)
+        raise httpx.HTTPStatusError("rate limited", request=request, response=response)
+
+    failing_discoverer.__name__ = "_discover_polygon"
+
+    snapshot = await registry._discover_with_guard(failing_discoverer)
+
+    assert snapshot.source_name == "polygon"
+    assert snapshot.status == "error"
+    assert snapshot.error == "upstream rate limited (429)"
+    assert len(events) == 1
+    message, args, kwargs = events[0]
+    rendered = message % args
+    assert "apiKey" not in rendered
+    assert "?" not in rendered
+    assert kwargs["extra"]["source_capability_registry"]["url"] == "https://api.polygon.io/v3/reference/tickers"

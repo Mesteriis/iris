@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -9,6 +9,7 @@ from src.apps.patterns.models import MarketCycle, PatternFeature
 from src.apps.patterns.query_builders import signal_select as _signal_select
 from src.apps.patterns.query_services import PatternQueryService
 from src.apps.patterns.services import PatternAdminService
+from src.apps.patterns.task_service_base import PatternTaskBase
 from src.apps.patterns.task_services import PatternMarketStructureService, PatternRealtimeService
 from src.apps.signals.models import Signal
 from src.core.db.uow import SessionUnitOfWork
@@ -20,6 +21,70 @@ from tests.patterns_support import seed_pattern_api_state
 @pytest.fixture(autouse=True)
 def isolated_event_stream() -> None:
     yield
+
+
+class _PatternTaskHarness(PatternTaskBase):
+    def __init__(self, uow: SessionUnitOfWork) -> None:
+        super().__init__(uow, service_name="PatternTaskHarness")
+
+
+@pytest.mark.asyncio
+async def test_pattern_task_base_deduplicates_conflicting_signal_rows(async_db_session, db_session) -> None:
+    coin = create_test_coin(db_session, symbol="DEDUPE_EVT", name="Dedupe Test")
+    candle_timestamp = datetime(2026, 3, 16, 12, 0, tzinfo=UTC)
+
+    async with SessionUnitOfWork(async_db_session) as uow:
+        service = _PatternTaskHarness(uow)
+        created = await service._upsert_signals(
+            rows=[
+                {
+                    "coin_id": int(coin.id),
+                    "timeframe": 15,
+                    "signal_type": "pattern_bull_flag",
+                    "confidence": 0.55,
+                    "priority_score": 0.1,
+                    "context_score": 0.8,
+                    "regime_alignment": 0.9,
+                    "market_regime": None,
+                    "candle_timestamp": candle_timestamp,
+                },
+                {
+                    "coin_id": int(coin.id),
+                    "timeframe": 15,
+                    "signal_type": "pattern_bull_flag",
+                    "confidence": 0.81,
+                    "priority_score": 0.4,
+                    "context_score": 0.95,
+                    "regime_alignment": 1.0,
+                    "market_regime": "bull_trend",
+                    "candle_timestamp": candle_timestamp,
+                },
+            ]
+        )
+        await uow.commit()
+
+    stored = (
+        (
+            await async_db_session.execute(
+                select(Signal).where(
+                    Signal.coin_id == int(coin.id),
+                    Signal.timeframe == 15,
+                    Signal.signal_type == "pattern_bull_flag",
+                    Signal.candle_timestamp == candle_timestamp,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    assert created != 0
+    assert len(stored) == 1
+    assert stored[0].confidence == pytest.approx(0.81)
+    assert stored[0].priority_score == pytest.approx(0.4)
+    assert stored[0].context_score == pytest.approx(0.95)
+    assert stored[0].regime_alignment == pytest.approx(1.0)
+    assert stored[0].market_regime == "bull_trend"
 
 
 @pytest.mark.asyncio

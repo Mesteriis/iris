@@ -146,6 +146,35 @@ def _parse_timestamp(value: str | None) -> datetime | None:
     return parsed
 
 
+def _sanitize_request_url(value: httpx.URL | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        return str(value.copy_with(query=None))
+    except Exception:  # pragma: no cover - defensive fallback
+        return str(value).split("?", 1)[0]
+
+
+def _classify_discovery_error(exc: Exception) -> tuple[str, dict[str, object]]:
+    if isinstance(exc, httpx.HTTPStatusError):
+        status_code = int(exc.response.status_code)
+        context = {
+            "status_code": status_code,
+            "url": _sanitize_request_url(exc.request.url),
+        }
+        if status_code == 429:
+            return "upstream rate limited (429)", context
+        return f"upstream http error ({status_code})", context
+    if isinstance(exc, httpx.HTTPError):
+        return (
+            "upstream transport error",
+            {
+                "error_type": exc.__class__.__name__,
+            },
+        )
+    return str(exc), {}
+
+
 def _normalize_symbol_token(value: str) -> str:
     normalized = re.sub(r"[^A-Z0-9]", "", value.strip().upper())
     return BASE_ALIASES.get(normalized, QUOTE_ALIASES.get(normalized, normalized))
@@ -968,8 +997,23 @@ class MarketSourceCapabilityRegistry:
             assert self._client is not None
             return await discoverer(self._client, self.settings)
         except Exception as exc:  # pragma: no cover - runtime shield
-            LOGGER.exception("Market source capability discovery failed for %s.", source_name)
-            return _error_snapshot(source_name, discovery_mode="live_listing", error=str(exc))
+            error_message, context = _classify_discovery_error(exc)
+            if isinstance(exc, httpx.HTTPError):
+                LOGGER.warning(
+                    "Market source capability discovery degraded for %s: %s.",
+                    source_name,
+                    error_message,
+                    extra={
+                        "source_capability_registry": {
+                            "event": "market_source_capability.discovery.degraded",
+                            "source_name": source_name,
+                            **context,
+                        }
+                    },
+                )
+            else:
+                LOGGER.exception("Market source capability discovery failed for %s.", source_name)
+            return _error_snapshot(source_name, discovery_mode="live_listing", error=error_message)
 
     async def _load_from_redis(self) -> None:
         raw = await (await get_async_lock_redis()).get(REDIS_KEY)

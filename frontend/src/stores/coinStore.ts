@@ -77,6 +77,7 @@ export const useCoinStore = defineStore("coins", () => {
   const createCoinSuccess = ref<string>("");
   const jobRunError = ref<string>("");
   const jobRunSuccess = ref<string>("");
+  const hasDashboardSnapshot = ref(false);
   const runningJobSymbols = ref<Record<string, boolean>>({});
   const lastDashboardRefreshAt = ref<string | null>(null);
   const liveSignalCounts = ref<Record<string, number>>({});
@@ -420,6 +421,7 @@ export const useCoinStore = defineStore("coins", () => {
           return map;
         }, new Map()),
       );
+      hasDashboardSnapshot.value = true;
       lastDashboardRefreshAt.value = new Date().toISOString();
     } catch (err) {
       dashboardError.value = getErrorMessage(err, "Unable to load dashboard.");
@@ -429,13 +431,15 @@ export const useCoinStore = defineStore("coins", () => {
   }
 
   async function bootstrapDashboard() {
-    if (coins.value.length > 0 && metrics.value.length > 0 && status.value) {
+    if (hasDashboardSnapshot.value && status.value) {
       ensureDashboardStreamConnected();
       return;
     }
 
     await refreshDashboard();
-    ensureDashboardStreamConnected();
+    if (hasDashboardSnapshot.value) {
+      ensureDashboardStreamConnected();
+    }
   }
 
   function upsertCoin(nextCoin: Coin) {
@@ -699,6 +703,7 @@ export const useCoinStore = defineStore("coins", () => {
     fetchCoins,
     fetchAssetContext,
     fetchHistory,
+    hasDashboardSnapshot,
     hasHistory,
     history,
     historyError,

@@ -22,6 +22,57 @@ from src.apps.signals.models import Signal, SignalHistory, Strategy
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
 
+_BULK_UPSERT_BATCH_SIZE = 2000
+
+
+def _float_or_zero(value: object | None) -> float:
+    if value is None:
+        return 0.0
+    return float(value)
+
+
+def _dedupe_signal_upsert_rows(rows: Sequence[dict[str, object]]) -> list[dict[str, object]]:
+    deduped: dict[tuple[int, int, object, str], dict[str, object]] = {}
+    for row in rows:
+        key = (
+            int(row["coin_id"]),
+            int(row["timeframe"]),
+            row["candle_timestamp"],
+            str(row["signal_type"]),
+        )
+        candidate = dict(row)
+        current = deduped.get(key)
+        if current is None:
+            deduped[key] = candidate
+            continue
+
+        candidate_confidence = _float_or_zero(candidate.get("confidence"))
+        current_confidence = _float_or_zero(current.get("confidence"))
+        merged = dict(current) if current_confidence >= candidate_confidence else dict(candidate)
+        merged["confidence"] = max(current_confidence, candidate_confidence)
+        merged["priority_score"] = max(_float_or_zero(current.get("priority_score")), _float_or_zero(candidate.get("priority_score")))
+        merged["context_score"] = max(_float_or_zero(current.get("context_score")), _float_or_zero(candidate.get("context_score")))
+        merged["regime_alignment"] = max(
+            _float_or_zero(current.get("regime_alignment")),
+            _float_or_zero(candidate.get("regime_alignment")),
+        )
+        if merged.get("market_regime") is None:
+            merged["market_regime"] = candidate.get("market_regime") or current.get("market_regime")
+        deduped[key] = merged
+    return list(deduped.values())
+
+
+def _dedupe_conflict_rows(
+    rows: Sequence[dict[str, object]],
+    *,
+    key_fields: tuple[str, ...],
+) -> list[dict[str, object]]:
+    deduped: dict[tuple[object, ...], dict[str, object]] = {}
+    for row in rows:
+        key = tuple(row[field] for field in key_fields)
+        deduped[key] = dict(row)
+    return list(deduped.values())
+
 
 class PatternTaskBase(PersistenceComponent):
     def __init__(self, uow: BaseAsyncUnitOfWork, *, service_name: str) -> None:
@@ -180,93 +231,110 @@ class PatternTaskBase(PersistenceComponent):
     async def _upsert_signals(self, *, rows: Sequence[dict[str, object]]) -> int:
         if not rows:
             return 0
-        stmt = insert(Signal).values(list(rows))
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["coin_id", "timeframe", "candle_timestamp", "signal_type"],
-            set_={
-                "confidence": stmt.excluded.confidence,
-                "market_regime": stmt.excluded.market_regime,
-            },
-        )
-        result = await self.session.execute(stmt)
+        deduped_rows = _dedupe_signal_upsert_rows(rows)
+        created = 0
+        for offset in range(0, len(deduped_rows), _BULK_UPSERT_BATCH_SIZE):
+            batch = deduped_rows[offset : offset + _BULK_UPSERT_BATCH_SIZE]
+            stmt = insert(Signal).values(batch)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["coin_id", "timeframe", "candle_timestamp", "signal_type"],
+                set_={
+                    "confidence": stmt.excluded.confidence,
+                    "market_regime": stmt.excluded.market_regime,
+                },
+            )
+            result = await self.session.execute(stmt)
+            created += int(result.rowcount or 0)
         await self._uow.flush()
-        return int(result.rowcount or 0)
+        return created
 
     async def _upsert_signal_history(self, *, rows: Sequence[dict[str, object]]) -> None:
         if not rows:
             return
-        stmt = insert(SignalHistory).values(list(rows))
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["coin_id", "timeframe", "signal_type", "candle_timestamp"],
-            set_={
-                "confidence": stmt.excluded.confidence,
-                "market_regime": stmt.excluded.market_regime,
-                "profit_after_24h": stmt.excluded.profit_after_24h,
-                "profit_after_72h": stmt.excluded.profit_after_72h,
-                "maximum_drawdown": stmt.excluded.maximum_drawdown,
-                "result_return": stmt.excluded.result_return,
-                "result_drawdown": stmt.excluded.result_drawdown,
-                "evaluated_at": stmt.excluded.evaluated_at,
-            },
+        deduped_rows = _dedupe_conflict_rows(
+            rows,
+            key_fields=("coin_id", "timeframe", "signal_type", "candle_timestamp"),
         )
-        await self.session.execute(stmt)
+        for offset in range(0, len(deduped_rows), _BULK_UPSERT_BATCH_SIZE):
+            batch = deduped_rows[offset : offset + _BULK_UPSERT_BATCH_SIZE]
+            stmt = insert(SignalHistory).values(batch)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["coin_id", "timeframe", "signal_type", "candle_timestamp"],
+                set_={
+                    "confidence": stmt.excluded.confidence,
+                    "market_regime": stmt.excluded.market_regime,
+                    "profit_after_24h": stmt.excluded.profit_after_24h,
+                    "profit_after_72h": stmt.excluded.profit_after_72h,
+                    "maximum_drawdown": stmt.excluded.maximum_drawdown,
+                    "result_return": stmt.excluded.result_return,
+                    "result_drawdown": stmt.excluded.result_drawdown,
+                    "evaluated_at": stmt.excluded.evaluated_at,
+                },
+            )
+            await self.session.execute(stmt)
         await self._uow.flush()
 
     async def _upsert_pattern_statistics(self, *, rows: Sequence[dict[str, object]]) -> None:
         if not rows:
             return
-        stmt = insert(PatternStatistic).values(list(rows))
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["pattern_slug", "timeframe", "market_regime"],
-            set_={
-                "sample_size": stmt.excluded.sample_size,
-                "total_signals": stmt.excluded.total_signals,
-                "successful_signals": stmt.excluded.successful_signals,
-                "success_rate": stmt.excluded.success_rate,
-                "avg_return": stmt.excluded.avg_return,
-                "avg_drawdown": stmt.excluded.avg_drawdown,
-                "temperature": stmt.excluded.temperature,
-                "enabled": stmt.excluded.enabled,
-                "last_evaluated_at": stmt.excluded.last_evaluated_at,
-                "updated_at": stmt.excluded.updated_at,
-            },
-        )
-        await self.session.execute(stmt)
+        for offset in range(0, len(rows), _BULK_UPSERT_BATCH_SIZE):
+            batch = list(rows[offset : offset + _BULK_UPSERT_BATCH_SIZE])
+            stmt = insert(PatternStatistic).values(batch)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["pattern_slug", "timeframe", "market_regime"],
+                set_={
+                    "sample_size": stmt.excluded.sample_size,
+                    "total_signals": stmt.excluded.total_signals,
+                    "successful_signals": stmt.excluded.successful_signals,
+                    "success_rate": stmt.excluded.success_rate,
+                    "avg_return": stmt.excluded.avg_return,
+                    "avg_drawdown": stmt.excluded.avg_drawdown,
+                    "temperature": stmt.excluded.temperature,
+                    "enabled": stmt.excluded.enabled,
+                    "last_evaluated_at": stmt.excluded.last_evaluated_at,
+                    "updated_at": stmt.excluded.updated_at,
+                },
+            )
+            await self.session.execute(stmt)
         await self._uow.flush()
 
     async def _replace_discovered_patterns(self, *, rows: Sequence[dict[str, object]]) -> None:
         await self.session.execute(delete(DiscoveredPattern))
         if rows:
-            stmt = insert(DiscoveredPattern).values(list(rows))
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["structure_hash", "timeframe"],
-                set_={
-                    "sample_size": stmt.excluded.sample_size,
-                    "avg_return": stmt.excluded.avg_return,
-                    "avg_drawdown": stmt.excluded.avg_drawdown,
-                    "confidence": stmt.excluded.confidence,
-                },
-            )
-            await self.session.execute(stmt)
+            for offset in range(0, len(rows), _BULK_UPSERT_BATCH_SIZE):
+                batch = list(rows[offset : offset + _BULK_UPSERT_BATCH_SIZE])
+                stmt = insert(DiscoveredPattern).values(batch)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["structure_hash", "timeframe"],
+                    set_={
+                        "sample_size": stmt.excluded.sample_size,
+                        "avg_return": stmt.excluded.avg_return,
+                        "avg_drawdown": stmt.excluded.avg_drawdown,
+                        "confidence": stmt.excluded.confidence,
+                    },
+                )
+                await self.session.execute(stmt)
         await self._uow.flush()
 
     async def _replace_sector_metrics(self, *, timeframe: int, rows: Sequence[dict[str, object]]) -> int:
         await self.session.execute(delete(SectorMetric).where(SectorMetric.timeframe == timeframe))
         created = 0
         if rows:
-            stmt = insert(SectorMetric).values(list(rows))
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["sector_id", "timeframe"],
-                set_={
-                    "sector_strength": stmt.excluded.sector_strength,
-                    "relative_strength": stmt.excluded.relative_strength,
-                    "capital_flow": stmt.excluded.capital_flow,
-                    "volatility": stmt.excluded.volatility,
-                    "updated_at": stmt.excluded.updated_at,
-                },
-            )
-            result = await self.session.execute(stmt)
-            created = int(result.rowcount or 0)
+            for offset in range(0, len(rows), _BULK_UPSERT_BATCH_SIZE):
+                batch = list(rows[offset : offset + _BULK_UPSERT_BATCH_SIZE])
+                stmt = insert(SectorMetric).values(batch)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["sector_id", "timeframe"],
+                    set_={
+                        "sector_strength": stmt.excluded.sector_strength,
+                        "relative_strength": stmt.excluded.relative_strength,
+                        "capital_flow": stmt.excluded.capital_flow,
+                        "volatility": stmt.excluded.volatility,
+                        "updated_at": stmt.excluded.updated_at,
+                    },
+                )
+                result = await self.session.execute(stmt)
+                created += int(result.rowcount or 0)
         await self._uow.flush()
         return created
 

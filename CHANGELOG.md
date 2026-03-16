@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Frontend `Assets` surface now renders from a mandatory first dashboard snapshot and then patches live state via SSE; the page was also compacted into card-based operator UI with pending-quote handling instead of rendering broken empty tiles during bootstrap.
+
+### Fixed
+- Async operation result reads now return typed payloads again instead of failing on localized `result` envelopes, restoring `/api/v1/operations/{operation_id}/result` as the shared backend diagnostic surface.
+- Pattern/bootstrap signal persistence now batches and de-duplicates conflicting `signals` upsert rows before `ON CONFLICT DO UPDATE`, preventing both PostgreSQL parameter-limit failures and duplicate-row `CardinalityViolation` crashes during large scans.
+- Market source capability discovery now classifies expected upstream `429`/transport degradation as short sanitized warnings without traceback or leaked query-string API keys, while still preserving stale registry snapshots.
+- Redis stream consumers now treat `UNBLOCKED the stream key no longer exists` as a normal recovery path by re-creating the consumer group instead of spamming worker logs with repeat warning noise.
+
 ### Added
 - Shared i18n descriptor contracts in `core/i18n` plus catalog-backed deterministic localization for `notifications` and `explanations`; descriptor metadata is now persisted with those artifacts and re-rendered at read time using the active backend locale instead of treating stored text as canonical.
 - `notifications` and `explanations` now use canonical `content_kind + content_json` presentation envelopes, one-row-per-entity storage identity and locale-independent unique keys; generated text is stored explicitly as presentation snapshot content instead of implicit text-first row state.

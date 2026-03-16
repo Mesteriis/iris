@@ -46,7 +46,15 @@ def localize_operation_result(
     *,
     locale: str | None = None,
 ) -> OperationResultResponse:
-    payload = localize_operation_status(item, locale=locale).model_dump(mode="python")
+    payload = _to_payload(item)
+    message, localized_locale = _localize_message(
+        message_key=payload.get("error_message_key"),
+        message_params=payload.get("error_message_params"),
+        locale=locale,
+    )
+    if message is not None:
+        payload["error_message"] = message
+        payload["error_locale"] = localized_locale
     return OperationResultResponse.model_validate(payload)
 
 

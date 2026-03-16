@@ -175,6 +175,29 @@ async def test_event_consumer_iteration_helpers_and_async_handler(monkeypatch) -
 
 
 @pytest.mark.asyncio
+async def test_event_consumer_recovers_when_stream_key_disappears(monkeypatch) -> None:
+    fake_redis = _FakeAsyncRedis()
+    fake_redis.group_effects = [None, None]
+    fake_redis.autoclaim_effects = [
+        ResponseError("UNBLOCKED the stream key no longer exists"),
+        ("0-0", [], []),
+    ]
+    fake_redis.readgroup_effects = [
+        ResponseError("UNBLOCKED the stream key no longer exists"),
+        [],
+    ]
+
+    monkeypatch.setattr(consumer.Redis, "from_url", lambda *args, **kwargs: fake_redis)
+    instance = consumer.EventConsumer(
+        consumer.EventConsumerConfig(group_name="runtime-test", consumer_name="worker-missing-stream"),
+        handler=lambda event: None,
+    )
+
+    assert await instance._iter_stale_messages() == []
+    assert await instance._iter_new_messages() == []
+
+
+@pytest.mark.asyncio
 async def test_event_consumer_raise_paths_and_run_async_processing(monkeypatch) -> None:
     fake_redis = _FakeAsyncRedis()
     fake_redis.autoclaim_effects = [ResponseError("OTHER")]

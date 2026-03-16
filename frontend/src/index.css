@@ -961,6 +961,62 @@ button {
   padding-top: 0.9rem;
 }
 
+.assets-pending {
+  margin-top: 1rem;
+  padding-top: 0.95rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.assets-pending__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: rgba(203, 213, 225, 0.86);
+}
+
+.assets-pending__header strong {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.assets-pending__header span {
+  color: var(--text-dim);
+  font-size: 0.76rem;
+}
+
+.assets-pending__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.assets-pending__item {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 7.4rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  background: rgba(8, 15, 29, 0.52);
+  color: rgba(226, 232, 240, 0.9);
+  text-decoration: none;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.assets-pending__item small {
+  color: var(--text-dim);
+  font-size: 0.7rem;
+}
+
+.assets-pending__item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(11, 19, 35, 0.68);
+}
+
 .assets-page .field {
   gap: 0.35rem;
 }

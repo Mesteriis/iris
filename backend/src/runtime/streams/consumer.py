@@ -79,6 +79,15 @@ class EventConsumer:
             if "BUSYGROUP" not in str(exc):
                 raise
 
+    @staticmethod
+    def _is_missing_group_error(exc: ResponseError) -> bool:
+        return "NOGROUP" in str(exc)
+
+    @staticmethod
+    def _is_missing_stream_unblocked_error(exc: ResponseError) -> bool:
+        normalized = str(exc).upper()
+        return "UNBLOCKED" in normalized and "STREAM KEY NO LONGER EXISTS" in normalized
+
     def stop(self) -> None:
         self._stop_requested = True
 
@@ -103,7 +112,7 @@ class EventConsumer:
                 count=self._config.batch_size,
             )
         except ResponseError as exc:
-            if "NOGROUP" in str(exc):
+            if self._is_missing_group_error(exc) or self._is_missing_stream_unblocked_error(exc):
                 await self._ensure_group()
                 return []
             raise
@@ -122,7 +131,7 @@ class EventConsumer:
                 block=self._config.block_milliseconds,
             )
         except ResponseError as exc:
-            if "NOGROUP" in str(exc):
+            if self._is_missing_group_error(exc) or self._is_missing_stream_unblocked_error(exc):
                 await self._ensure_group()
                 return []
             raise
