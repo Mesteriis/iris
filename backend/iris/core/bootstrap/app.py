@@ -28,7 +28,7 @@ settings = get_settings()
 def get_alembic_config() -> Config:
     alembic_path = Path(__file__).resolve().parents[3] / "alembic.ini"
     config = Config(str(alembic_path))
-    config.set_main_option("script_location", str(Path(__file__).resolve().parents[3] / "src" / "migrations"))
+    config.set_main_option("script_location", str(Path(__file__).resolve().parents[3] / "iris" / "migrations"))
     config.set_main_option("sqlalchemy.url", settings.database_url)
     return config
 

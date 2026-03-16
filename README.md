@@ -93,7 +93,7 @@ In embedded and dev modes the `backend` container is self-contained:
 
 In dev mode:
 
-- `backend/iris`, `backend/src` (migrations), `backend/tests`, and the main backend config files are mounted from the host
+- `backend/iris`, `backend/tests`, and the main backend config files are mounted from the host
 - source/config changes restart the whole backend container, so API, scheduler, and workers restart together
 - dependency/image changes such as `pyproject.toml`, `uv.lock`, `Dockerfile`, `.env`, or `entrypoint.sh` trigger a container rebuild
 

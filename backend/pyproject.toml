@@ -51,7 +51,7 @@ asyncio_mode = "auto"
 target-version = "py314"
 line-length = 120
 src = ["iris", "tests"]
-extend-exclude = ["src/migrations"]
+extend-exclude = ["iris/migrations"]
 
 [tool.ruff.lint]
 select = ["E9", "F811", "F821", "F822", "F823", "B", "I", "UP", "SIM", "C4", "RET", "RUF", "PERF"]

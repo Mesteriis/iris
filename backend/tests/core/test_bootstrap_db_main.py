@@ -19,7 +19,7 @@ from fastapi import FastAPI
 
 def test_bootstrap_app_builds_config_runs_migrations_and_enters_deferred_lifespan(monkeypatch) -> None:
     config = bootstrap_app_module.get_alembic_config()
-    assert config.get_main_option("script_location").endswith("/backend/src/migrations")
+    assert config.get_main_option("script_location").endswith("/backend/iris/migrations")
     assert config.get_main_option("sqlalchemy.url") == bootstrap_app_module.settings.database_url
 
     upgrade_calls: list[tuple[str, str]] = []

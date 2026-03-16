@@ -12,7 +12,6 @@ services:
       - "${REDIS_HOST_PORT:-56379}:6379"
     volumes:
       - ./backend/iris:/app/iris
-      - ./backend/src:/app/src
       - ./backend/tests:/app/tests
       - ./backend/alembic.ini:/app/alembic.ini:ro
       - ./backend/pyproject.toml:/app/pyproject.toml:ro
@@ -23,8 +22,6 @@ services:
       watch:
         - action: restart
           path: ./backend/iris
-        - action: restart
-          path: ./backend/src
         - action: restart
           path: ./backend/tests
         - action: restart

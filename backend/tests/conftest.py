@@ -182,7 +182,7 @@ def settings():
 def migrated_database(settings) -> None:
     backend_root = Path(__file__).resolve().parents[1]
     config = Config(str(backend_root / "alembic.ini"))
-    config.set_main_option("script_location", str(backend_root / "src" / "migrations"))
+    config.set_main_option("script_location", str(backend_root / "iris" / "migrations"))
     config.set_main_option("sqlalchemy.url", settings.database_url)
     command.upgrade(config, "head")
     _snapshot_ai_prompt_baseline()
