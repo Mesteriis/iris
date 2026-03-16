@@ -7,10 +7,9 @@ Create Date: 2026-03-11 00:55:00
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
-
 
 revision: str = "20260311_000005"
 down_revision: str | None = "20260310_000004"
@@ -134,57 +133,57 @@ DEFAULT_ASSETS: list[dict[str, object]] = [
         "source": "default",
         "enabled": True,
         "sort_order": 80,
-        "candles_config": _candles(("15m", 5760), ("1h", 8760), ("4h", 4380), ("1d", 1095)),
+        "candles_config": _candles(("1d", 1095)),
     },
     {
         "symbol": "DJI",
         "name": "Dow Jones Industrial Average",
         "asset_type": "index",
         "theme": "macro",
-        "source": "yahoo",
+        "source": "default",
         "enabled": True,
         "sort_order": 85,
-        "candles_config": _candles(("15m", 5760), ("1h", 8760), ("4h", 4380), ("1d", 1095)),
+        "candles_config": _candles(("1d", 1095)),
     },
     {
         "symbol": "GSPC",
         "name": "S&P 500",
         "asset_type": "index",
         "theme": "macro",
-        "source": "yahoo",
+        "source": "default",
         "enabled": True,
         "sort_order": 86,
-        "candles_config": _candles(("15m", 5760), ("1h", 8760), ("4h", 4380), ("1d", 1095)),
+        "candles_config": _candles(("1d", 1095)),
     },
     {
         "symbol": "NDX",
         "name": "Nasdaq 100",
         "asset_type": "index",
         "theme": "macro",
-        "source": "yahoo",
+        "source": "default",
         "enabled": True,
         "sort_order": 87,
-        "candles_config": _candles(("15m", 5760), ("1h", 8760), ("4h", 4380), ("1d", 1095)),
+        "candles_config": _candles(("1d", 1095)),
     },
     {
         "symbol": "VIX",
         "name": "CBOE Volatility Index",
         "asset_type": "index",
         "theme": "volatility",
-        "source": "yahoo",
+        "source": "default",
         "enabled": True,
         "sort_order": 88,
-        "candles_config": _candles(("15m", 5760), ("1h", 8760), ("4h", 4380), ("1d", 1095)),
+        "candles_config": _candles(("1d", 1095)),
     },
     {
         "symbol": "TNX",
         "name": "US 10Y Treasury Yield",
         "asset_type": "index",
         "theme": "rates",
-        "source": "yahoo",
+        "source": "default",
         "enabled": True,
         "sort_order": 89,
-        "candles_config": _candles(("15m", 5760), ("1h", 8760), ("4h", 4380), ("1d", 1095)),
+        "candles_config": _candles(("1d", 1095)),
     },
     {
         "symbol": "USDRUB",
@@ -231,20 +230,20 @@ DEFAULT_ASSETS: list[dict[str, object]] = [
         "name": "DAX 40",
         "asset_type": "index",
         "theme": "europe",
-        "source": "yahoo",
+        "source": "default",
         "enabled": True,
         "sort_order": 106,
-        "candles_config": _candles(("15m", 5760), ("1h", 8760), ("4h", 4380), ("1d", 1095)),
+        "candles_config": _candles(("1d", 1095)),
     },
     {
         "symbol": "STOXX50E",
         "name": "Euro Stoxx 50",
         "asset_type": "index",
         "theme": "europe",
-        "source": "yahoo",
+        "source": "default",
         "enabled": True,
         "sort_order": 108,
-        "candles_config": _candles(("15m", 5760), ("1h", 8760), ("4h", 4380), ("1d", 1095)),
+        "candles_config": _candles(("1h", 8760), ("4h", 4380), ("1d", 1095)),
     },
     {
         "symbol": "XAUUSD",
@@ -264,7 +263,7 @@ DEFAULT_ASSETS: list[dict[str, object]] = [
         "source": "default",
         "enabled": True,
         "sort_order": 120,
-        "candles_config": _candles(("15m", 5760), ("1h", 8760), ("4h", 4380), ("1d", 1095)),
+        "candles_config": _candles(("1d", 1095)),
     },
     {
         "symbol": "NATGASUSD",
@@ -274,7 +273,7 @@ DEFAULT_ASSETS: list[dict[str, object]] = [
         "source": "default",
         "enabled": True,
         "sort_order": 130,
-        "candles_config": _candles(("15m", 5760), ("1h", 8760), ("4h", 4380), ("1d", 1095)),
+        "candles_config": _candles(("1d", 1095)),
     },
     {
         "symbol": "BRENTUSD",
@@ -284,7 +283,7 @@ DEFAULT_ASSETS: list[dict[str, object]] = [
         "source": "default",
         "enabled": True,
         "sort_order": 140,
-        "candles_config": _candles(("15m", 5760), ("1h", 8760), ("4h", 4380), ("1d", 1095)),
+        "candles_config": _candles(("1d", 1095)),
     },
     {
         "symbol": "WTIUSD",
@@ -294,7 +293,7 @@ DEFAULT_ASSETS: list[dict[str, object]] = [
         "source": "default",
         "enabled": True,
         "sort_order": 150,
-        "candles_config": _candles(("15m", 5760), ("1h", 8760), ("4h", 4380), ("1d", 1095)),
+        "candles_config": _candles(("1d", 1095)),
     },
     {
         "symbol": "URALSUSD",

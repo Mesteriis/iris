@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 
 from sqlalchemy import select
@@ -190,7 +188,12 @@ class MarketDataQueryService(AsyncQueryService):
         stmt = (
             select(Coin)
             .where(Coin.deleted_at.is_(None), Coin.enabled.is_(True))
-            .order_by(Coin.sort_order.asc(), Coin.symbol.asc())
+            .order_by(
+                Coin.next_history_sync_at.asc().nullsfirst(),
+                Coin.last_history_sync_at.asc().nullsfirst(),
+                Coin.sort_order.asc(),
+                Coin.symbol.asc(),
+            )
         )
         if symbol is not None:
             stmt = stmt.where(Coin.symbol == symbol.strip().upper())

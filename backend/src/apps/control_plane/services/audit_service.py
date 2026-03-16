@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.control_plane.contracts import AuditActor
 from src.apps.control_plane.models import EventRouteAuditLog
 from src.apps.control_plane.read_models import (

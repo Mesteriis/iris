@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.hypothesis_engine.constants import (
     AI_EVENT_WEIGHTS_UPDATED,
     WEIGHT_DECAY,

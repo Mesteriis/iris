@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.market_structure.query_services import MarketStructureQueryService
 from src.apps.market_structure.services import (
     MarketStructureService,

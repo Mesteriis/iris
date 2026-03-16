@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import httpx
 
@@ -38,17 +38,17 @@ KUCOIN_INTERVALS: dict[str, str] = {
 
 class KucoinMarketSource(BaseMarketSource):
     name = "kucoin"
-    asset_types = {"crypto"}
-    supported_intervals = {"15m", "1h", "4h", "1d"}
+    asset_types: ClassVar[set[str]] = {"crypto"}
+    supported_intervals: ClassVar[set[str]] = {"15m", "1h", "4h", "1d"}
     base_url = "https://api.kucoin.com/api/v1/market/candles"
 
-    def get_symbol(self, coin: "Coin") -> str | None:
-        return KUCOIN_SYMBOLS.get(coin.symbol)
+    def get_symbol(self, coin: Coin) -> str | None:
+        return self.resolve_provider_symbol(coin.symbol, fallback=KUCOIN_SYMBOLS.get(coin.symbol))
 
     def bars_per_request(self, interval: str) -> int:
         return 500
 
-    async def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
+    async def fetch_bars(self, coin: Coin, interval: str, start: datetime, end: datetime) -> list[MarketBar]:
         symbol = self.get_symbol(coin)
         if symbol is None:
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol}.")

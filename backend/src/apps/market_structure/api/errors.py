@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import HTTPException, status
 
 from src.apps.market_structure.exceptions import (

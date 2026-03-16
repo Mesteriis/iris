@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from src.apps.hypothesis_engine.api.contracts import (

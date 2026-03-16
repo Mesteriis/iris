@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.cross_market.engines import best_lagged_correlation as _best_lagged_correlation
 from src.apps.cross_market.engines import close_returns as _close_returns
 from src.apps.cross_market.engines import pearson as _pearson

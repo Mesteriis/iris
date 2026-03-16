@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 MARKET_STRUCTURE_PLUGIN_BINANCE_USDM = "binance_usdm"
 MARKET_STRUCTURE_PLUGIN_BYBIT_DERIVATIVES = "bybit_derivatives"
 MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH = "manual_push"

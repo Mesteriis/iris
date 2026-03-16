@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.patterns.schemas import (
     CoinRegimeRead,
     DiscoveredPatternRead,

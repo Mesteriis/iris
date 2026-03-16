@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime, timezone
 
 import httpx
@@ -11,7 +9,7 @@ from src.apps.market_data.sources.base import RateLimitedMarketSourceError
 
 
 class FakePipeline:
-    def __init__(self, redis: "FakeRedis") -> None:
+    def __init__(self, redis: FakeRedis) -> None:
         self.redis = redis
         self.operations: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
 
@@ -232,7 +230,7 @@ async def test_rate_limit_manager_wait_for_slot(monkeypatch) -> None:
     assert sleeps == [0.3, 0.4, 0.2]
 
     sleeps.clear()
-    
+
     async def zero_cooldown(_source_name: str) -> float:
         return 0.0
 
@@ -347,3 +345,22 @@ async def test_rate_limited_get_success_rate_limit_and_http_error(monkeypatch) -
     error_client = FakeClient(httpx.ConnectError("boom"))
     with pytest.raises(httpx.ConnectError):
         await rate_limits.rate_limited_get("coinbase", error_client, "https://example.com")
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_get_supports_distinct_rate_limit_identity(monkeypatch) -> None:
+    manager = FakeManager()
+    monkeypatch.setattr(rate_limits, "get_rate_limit_manager", lambda: manager)
+
+    client = FakeClient(_response(status_code=429, payload={"detail": "slow"}, headers={"Retry-After": "9"}))
+    with pytest.raises(RateLimitedMarketSourceError) as exc_info:
+        await rate_limits.rate_limited_get(
+            "yahoo",
+            client,
+            "https://example.com",
+            rate_limit_identity="yahoo:proxy:http://1.1.1.1:8080",
+        )
+
+    assert exc_info.value.source == "yahoo"
+    assert manager.wait_calls == [("yahoo:proxy:http://1.1.1.1:8080", rate_limits.get_rate_limit_policy("yahoo"), None)]
+    assert manager.cooldown_calls == [("yahoo:proxy:http://1.1.1.1:8080", 9)]

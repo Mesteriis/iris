@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.cross_market.integrations.market_data import CrossMarketMarketDataAdapter
 from src.apps.cross_market.query_services import CrossMarketQueryService
 from src.apps.cross_market.repositories import CoinRelationRepository, SectorMetricRepository

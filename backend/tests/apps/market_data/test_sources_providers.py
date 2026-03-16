@@ -1,20 +1,25 @@
-from __future__ import annotations
-
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import httpx
 import pytest
-
 from src.apps.market_data.sources.alphavantage import AlphaVantageForexMarketSource
-from src.apps.market_data.sources.base import RateLimitedMarketSourceError, TemporaryMarketSourceError, UnsupportedMarketSourceQuery
+from src.apps.market_data.sources.base import (
+    RateLimitedMarketSourceError,
+    TemporaryMarketSourceError,
+    UnsupportedMarketSourceQuery,
+)
 from src.apps.market_data.sources.binance import BinanceMarketSource
 from src.apps.market_data.sources.coinbase import CoinbaseMarketSource
+from src.apps.market_data.sources.eia import EiaEnergyMarketSource
+from src.apps.market_data.sources.fred import FredMacroMarketSource
 from src.apps.market_data.sources.kraken import KrakenMarketSource
 from src.apps.market_data.sources.kucoin import KucoinMarketSource
 from src.apps.market_data.sources.moex import MOEX_PAGE_SIZE, MoexIndexMarketSource
 from src.apps.market_data.sources.polygon import PolygonMarketSource
+from src.apps.market_data.sources.stooq import StooqMarketSource
 from src.apps.market_data.sources.twelvedata import TwelveDataMarketSource
 from src.apps.market_data.sources.yfinance import YahooMarketSource
+
 from tests.factories.base import fake
 from tests.factories.market_data import CoinCreateFactory
 
@@ -38,11 +43,26 @@ def _response(
     )
 
 
+def _text_response(
+    *,
+    status_code: int = 200,
+    payload: str = "",
+    headers: dict[str, str] | None = None,
+    url: str = "https://example.com",
+) -> httpx.Response:
+    return httpx.Response(
+        status_code,
+        text=payload,
+        headers=headers,
+        request=httpx.Request("GET", url),
+    )
+
+
 @pytest.mark.asyncio
 async def test_binance_market_source_parses_payload_and_errors(monkeypatch) -> None:
     source = BinanceMarketSource()
     coin = _coin(symbol="BTCUSD", asset_type="crypto")
-    start = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
     end = start + timedelta(minutes=30)
 
     assert source.get_symbol(coin) == "BTCUSDT"
@@ -79,7 +99,7 @@ async def test_binance_market_source_parses_payload_and_errors(monkeypatch) -> N
 async def test_coinbase_market_source_parses_payload_and_errors(monkeypatch) -> None:
     source = CoinbaseMarketSource()
     coin = _coin(symbol="BTCUSD", asset_type="crypto")
-    start = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
     end = start + timedelta(minutes=30)
 
     assert source.get_symbol(coin) == "BTC-USD"
@@ -117,7 +137,7 @@ async def test_coinbase_market_source_parses_payload_and_errors(monkeypatch) -> 
 async def test_kraken_market_source_parses_payload_and_errors(monkeypatch) -> None:
     source = KrakenMarketSource()
     coin = _coin(symbol="BTCUSD", asset_type="crypto")
-    start = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
     end = start + timedelta(hours=1)
 
     assert source.get_symbol(coin) == "XXBTZUSD"
@@ -164,7 +184,7 @@ async def test_kraken_market_source_parses_payload_and_errors(monkeypatch) -> No
 async def test_kucoin_market_source_parses_payload_and_errors(monkeypatch) -> None:
     source = KucoinMarketSource()
     coin = _coin(symbol="BTCUSD", asset_type="crypto")
-    start = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
     end = start + timedelta(minutes=30)
 
     assert source.get_symbol(coin) == "BTC-USDT"
@@ -206,7 +226,7 @@ async def test_kucoin_market_source_parses_payload_and_errors(monkeypatch) -> No
 async def test_polygon_market_source_supports_parses_and_resamples(monkeypatch) -> None:
     source = PolygonMarketSource()
     coin = _coin(symbol="EURUSD", asset_type="forex")
-    start = datetime(2026, 3, 12, 8, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 8, 0, tzinfo=UTC)
     end = start + timedelta(hours=8)
 
     source.api_key = ""
@@ -304,7 +324,7 @@ async def test_twelvedata_market_source_symbol_resolution_and_errors(monkeypatch
     )
     source = TwelveDataMarketSource()
     coin = _coin(symbol="DJI", asset_type="index")
-    start = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
     end = start + timedelta(hours=1)
 
     source.api_key = ""
@@ -312,12 +332,12 @@ async def test_twelvedata_market_source_symbol_resolution_and_errors(monkeypatch
     source.api_key = "twelve-key"
     assert source.supports_coin(coin, "1h") is True
     assert source.get_symbol(coin) == "DJI"
-    assert source.get_symbol(_coin(symbol="COPPER", asset_type="metal")) == "COPPER"
+    assert source.get_symbol(_coin(symbol="COPPER", asset_type="metal")) is None
     assert source.bars_per_request("1h") == 5000
     assert source.allows_terminal_gap(coin) is True
     assert source._candidate_symbols(coin) == ["DJI", "^DJI"]
     assert source._candidate_symbols(_coin(symbol="XAUUSD", asset_type="metal")) == ["XAU/USD"]
-    assert source._candidate_symbols(_coin(symbol="COPPER", asset_type="metal")) == ["COPPER"]
+    assert source._candidate_symbols(_coin(symbol="COPPER", asset_type="metal")) == []
 
     async def success_request(*args, **kwargs):
         assert kwargs["params"]["symbol"] == "DJI"
@@ -399,7 +419,7 @@ async def test_twelvedata_market_source_symbol_resolution_and_errors(monkeypatch
 async def test_yahoo_market_source_parses_payload_and_resamples(monkeypatch) -> None:
     source = YahooMarketSource()
     coin = _coin(symbol="BTCUSD", asset_type="crypto")
-    start = datetime(2026, 3, 12, 8, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 8, 0, tzinfo=UTC)
     end = start + timedelta(hours=8)
 
     assert source.get_symbol(coin) == "BTC-USD"
@@ -484,10 +504,60 @@ async def test_yahoo_market_source_parses_payload_and_resamples(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
+async def test_stooq_market_source_parses_daily_csv_and_errors(monkeypatch) -> None:
+    source = StooqMarketSource()
+    coin = _coin(symbol="DJI", asset_type="index")
+    start = datetime(2026, 3, 11, 0, 0, tzinfo=UTC)
+    end = datetime(2026, 3, 13, 0, 0, tzinfo=UTC)
+
+    assert source.get_symbol(coin) == "^dji"
+    assert source.supports_coin(coin, "1d") is True
+    assert source.supports_coin(coin, "1h") is False
+    assert source.bars_per_request("1d") == 50_000
+    assert source.allows_terminal_gap(coin) is True
+
+    async def success_request(url: str, **kwargs):
+        assert url == source.base_url
+        assert kwargs["params"] == {"s": "^dji", "i": "d"}
+        return _text_response(
+            payload=(
+                "Date,Open,High,Low,Close,Volume\n"
+                "2026-03-10,100,101,99,100.5,10\n"
+                "2026-03-11,101,102,100,101.5,11\n"
+                "2026-03-12,102,103,101,102.5,12\n"
+            )
+        )
+
+    monkeypatch.setattr(source, "request", success_request)
+    bars = await source.fetch_bars(coin, "1d", start, end)
+    assert [bar.timestamp for bar in bars] == [start, start + timedelta(days=1)]
+    assert bars[0].volume == 11.0
+
+    with pytest.raises(UnsupportedMarketSourceQuery):
+        await source.fetch_bars(_coin(symbol="VIX", asset_type="index"), "1d", start, end)
+
+    monkeypatch.setattr(source, "request", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=_text_response(status_code=404)))
+    with pytest.raises(UnsupportedMarketSourceQuery, match="stooq rejected params"):
+        await source.fetch_bars(coin, "1d", start, end)
+
+    monkeypatch.setattr(source, "request", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=_text_response(status_code=500)))
+    with pytest.raises(TemporaryMarketSourceError, match="stooq http error: 500"):
+        await source.fetch_bars(coin, "1d", start, end)
+
+    monkeypatch.setattr(source, "request", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=_text_response(payload="No data")))
+    with pytest.raises(UnsupportedMarketSourceQuery, match="stooq returned no data"):
+        await source.fetch_bars(coin, "1d", start, end)
+
+    monkeypatch.setattr(source, "request", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=_text_response(payload="bad,payload\nx")))
+    with pytest.raises(TemporaryMarketSourceError, match="stooq returned an unexpected payload"):
+        await source.fetch_bars(coin, "1d", start, end)
+
+
+@pytest.mark.asyncio
 async def test_alpha_vantage_market_source_parses_payload_and_errors(monkeypatch) -> None:
     source = AlphaVantageForexMarketSource()
     coin = _coin(symbol="EURUSD", asset_type="forex")
-    start = datetime(2026, 3, 12, 0, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 0, 0, tzinfo=UTC)
     end = start + timedelta(days=1)
 
     source.api_key = ""
@@ -570,10 +640,154 @@ async def test_alpha_vantage_market_source_parses_payload_and_errors(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_alpha_vantage_market_source_supports_special_series(monkeypatch) -> None:
+    source = AlphaVantageForexMarketSource()
+    energy_coin = _coin(symbol="WTIUSD", asset_type="energy")
+    rates_coin = _coin(symbol="TNX", asset_type="index")
+    start = datetime(2026, 3, 1, 0, 0, tzinfo=UTC)
+    end = start + timedelta(days=14)
+
+    source.api_key = "alpha-key"
+    assert source.get_symbol(energy_coin) == "WTI"
+    assert source.get_symbol(rates_coin) == "TREASURY_YIELD:10YEAR"
+    assert source.supports_coin(energy_coin, "1d") is True
+    assert source.supports_coin(energy_coin, "1h") is False
+    assert source.supports_coin(rates_coin, "1d") is True
+
+    series_payload = {
+        "name": "Crude Oil Prices WTI",
+        "interval": "daily",
+        "unit": "dollars per barrel",
+        "data": [
+            {"date": "2026-03-05", "value": "94.65"},
+            {"date": "2026-03-04", "value": "."},
+            {"date": "2026-03-03", "value": "93.10"},
+        ],
+    }
+    parsed = source._parse_numeric_series_payload(series_payload, start, end)
+    assert [bar.close for bar in parsed] == [93.10, 94.65]
+
+    captured: list[dict[str, str]] = []
+
+    async def fake_request_payload(params: dict[str, str]) -> dict[str, object]:
+        captured.append(params)
+        return series_payload
+
+    monkeypatch.setattr(source, "_request_payload", fake_request_payload)
+    bars = await source.fetch_bars(energy_coin, "1d", start, end)
+    assert len(bars) == 2
+    assert captured[0]["function"] == "WTI"
+
+    bars = await source.fetch_bars(rates_coin, "1d", start, end)
+    assert len(bars) == 2
+    assert captured[1]["function"] == "TREASURY_YIELD"
+    assert captured[1]["maturity"] == "10year"
+
+    with pytest.raises(UnsupportedMarketSourceQuery, match="does not support WTIUSD with interval 1h"):
+        await source.fetch_bars(energy_coin, "1h", start, end)
+
+
+@pytest.mark.asyncio
+async def test_fred_market_source_parses_payload_and_errors(monkeypatch) -> None:
+    source = FredMacroMarketSource()
+    coin = _coin(symbol="VIX", asset_type="index")
+    start = datetime(2026, 3, 1, 0, 0, tzinfo=UTC)
+    end = start + timedelta(days=7)
+
+    source.api_key = ""
+    assert source.supports_coin(coin, "1d") is False
+    source.api_key = "fred-key"
+    assert source.supports_coin(coin, "1d") is True
+    assert source.supports_coin(coin, "1h") is False
+    assert source.get_symbol(coin) == "VIXCLS"
+    assert source.get_symbol(_coin(symbol="BTCUSD", asset_type="crypto")) is None
+
+    async def success_request(url: str, **kwargs):
+        assert kwargs["params"]["series_id"] == "VIXCLS"
+        assert kwargs["params"]["api_key"] == "fred-key"
+        return _response(
+            payload={
+                "observations": [
+                    {"date": "2026-03-01", "value": "18.25"},
+                    {"date": "2026-03-02", "value": "."},
+                    {"date": "2026-03-03", "value": "19.10"},
+                ]
+            },
+            url=url,
+        )
+
+    monkeypatch.setattr(source, "request", success_request)
+    bars = await source.fetch_bars(coin, "1d", start, end)
+    assert [bar.close for bar in bars] == [18.25, 19.10]
+
+    with pytest.raises(UnsupportedMarketSourceQuery):
+        await source.fetch_bars(_coin(symbol="BTCUSD", asset_type="crypto"), "1d", start, end)
+    with pytest.raises(UnsupportedMarketSourceQuery, match="only supports daily history"):
+        await source.fetch_bars(coin, "1h", start, end)
+
+    monkeypatch.setattr(source, "request", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=_response(status_code=404, payload={"error_message": "bad series"})))
+    with pytest.raises(UnsupportedMarketSourceQuery, match="bad series"):
+        await source.fetch_bars(coin, "1d", start, end)
+
+    monkeypatch.setattr(source, "request", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=_response(status_code=500)))
+    with pytest.raises(TemporaryMarketSourceError, match="fred http error: 500"):
+        await source.fetch_bars(coin, "1d", start, end)
+
+
+@pytest.mark.asyncio
+async def test_eia_market_source_parses_payload_and_errors(monkeypatch) -> None:
+    source = EiaEnergyMarketSource()
+    coin = _coin(symbol="WTIUSD", asset_type="energy")
+    start = datetime(2026, 3, 1, 0, 0, tzinfo=UTC)
+    end = start + timedelta(days=7)
+
+    source.api_key = ""
+    assert source.supports_coin(coin, "1d") is False
+    source.api_key = "eia-key"
+    assert source.supports_coin(coin, "1d") is True
+    assert source.supports_coin(coin, "1h") is False
+    assert source.get_symbol(coin) == "PET.RWTC.D"
+    assert source.get_symbol(_coin(symbol="BTCUSD", asset_type="crypto")) is None
+
+    async def success_request(url: str, **kwargs):
+        assert url.endswith("/PET.RWTC.D")
+        assert kwargs["params"]["api_key"] == "eia-key"
+        return _response(
+            payload={
+                "response": {
+                    "data": [
+                        {"period": "2026-03-01", "value": 94.65},
+                        {"period": "2026-03-02", "value": "."},
+                        {"period": "2026-03-03", "value": "93.10"},
+                    ]
+                }
+            },
+            url=url,
+        )
+
+    monkeypatch.setattr(source, "request", success_request)
+    bars = await source.fetch_bars(coin, "1d", start, end)
+    assert [bar.close for bar in bars] == [94.65, 93.10]
+
+    with pytest.raises(UnsupportedMarketSourceQuery):
+        await source.fetch_bars(_coin(symbol="BTCUSD", asset_type="crypto"), "1d", start, end)
+    with pytest.raises(UnsupportedMarketSourceQuery, match="only supports daily history"):
+        await source.fetch_bars(coin, "1h", start, end)
+
+    monkeypatch.setattr(source, "request", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=_response(status_code=404, payload={"error": "bad series"})))
+    with pytest.raises(UnsupportedMarketSourceQuery, match="bad series"):
+        await source.fetch_bars(coin, "1d", start, end)
+
+    monkeypatch.setattr(source, "request", lambda *args, **kwargs: __import__("asyncio").sleep(0, result=_response(status_code=500)))
+    with pytest.raises(TemporaryMarketSourceError, match="eia http error: 500"):
+        await source.fetch_bars(coin, "1d", start, end)
+
+
+@pytest.mark.asyncio
 async def test_moex_market_source_paginates_and_resamples(monkeypatch) -> None:
     source = MoexIndexMarketSource()
     coin = _coin(symbol="IMOEX", asset_type="index")
-    start = datetime(2026, 3, 12, 8, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 8, 0, tzinfo=UTC)
     end = start + timedelta(hours=4)
 
     assert source.get_symbol(coin) == "IMOEX"

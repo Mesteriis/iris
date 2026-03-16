@@ -1,6 +1,5 @@
 # ruff: noqa: RUF001
 
-from __future__ import annotations
 
 from src.apps.news.api.errors import news_source_not_found_error, telegram_request_code_error
 from src.apps.news.exceptions import TelegramOnboardingError

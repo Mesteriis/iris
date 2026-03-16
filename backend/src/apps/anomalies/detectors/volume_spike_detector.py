@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import statistics
 from collections.abc import Sequence
 

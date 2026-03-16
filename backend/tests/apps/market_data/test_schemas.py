@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import timezone
 
 from src.apps.market_data.schemas import PriceHistoryCreate

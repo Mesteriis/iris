@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 PREDICTION_MOVE_THRESHOLD = 0.015

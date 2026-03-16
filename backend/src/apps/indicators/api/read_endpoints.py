@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter, Query, Request, Response
 
 from src.apps.indicators.api.contracts import CoinMetricsRead, MarketCycleRead, MarketFlowRead, MarketRadarRead

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.market_data.domain import ensure_utc
 from src.apps.patterns.domain.semantics import (
     is_cluster_signal,

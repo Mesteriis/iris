@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.predictions.services.results import PredictionCreationBatch, PredictionEvaluationBatch
 from src.core.db.persistence import PERSISTENCE_LOGGER
 

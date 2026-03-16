@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -37,7 +35,7 @@ class NewsSource(Base):
         onupdate=func.now(),
     )
 
-    items: Mapped[list["NewsItem"]] = relationship(
+    items: Mapped[list[NewsItem]] = relationship(
         "NewsItem",
         back_populates="source",
         cascade="all, delete-orphan",
@@ -72,8 +70,8 @@ class NewsItem(Base):
     relevance_score: Mapped[float | None] = mapped_column(Float(53), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    source: Mapped["NewsSource"] = relationship("NewsSource", back_populates="items")
-    links: Mapped[list["NewsItemLink"]] = relationship(
+    source: Mapped[NewsSource] = relationship("NewsSource", back_populates="items")
+    links: Mapped[list[NewsItemLink]] = relationship(
         "NewsItemLink",
         back_populates="item",
         cascade="all, delete-orphan",
@@ -97,7 +95,7 @@ class NewsItemLink(Base):
     confidence: Mapped[float] = mapped_column(Float(53), nullable=False, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    item: Mapped["NewsItem"] = relationship("NewsItem", back_populates="links")
+    item: Mapped[NewsItem] = relationship("NewsItem", back_populates="links")
 
 
 __all__ = ["NewsItem", "NewsItemLink", "NewsSource"]

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import uvicorn
 
 from src.core.bootstrap import create_app

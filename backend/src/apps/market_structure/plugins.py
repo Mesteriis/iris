@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -66,7 +64,7 @@ class MarketStructureFetchResult:
 class MarketStructureSourcePlugin(ABC):
     descriptor: MarketStructurePluginDescriptor
 
-    def __init__(self, source: "MarketStructureSource") -> None:
+    def __init__(self, source: MarketStructureSource) -> None:
         self.source = source
         self.credentials = dict(source.credentials_json or {})
         self.settings = dict(source.settings_json or {})
@@ -123,7 +121,7 @@ def list_registered_market_structure_plugins() -> dict[str, type[MarketStructure
     return dict(sorted(_REGISTRY.items()))
 
 
-def create_market_structure_plugin(source: "MarketStructureSource") -> MarketStructureSourcePlugin:
+def create_market_structure_plugin(source: MarketStructureSource) -> MarketStructureSourcePlugin:
     plugin_cls = get_market_structure_plugin(source.plugin_name)
     if plugin_cls is None:
         raise ValueError(f"Unsupported market structure plugin '{source.plugin_name}'.")

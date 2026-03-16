@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter, status
 
 from src.apps.market_data.api.contracts import CoinCreate, CoinRead, PriceHistoryCreate, PriceHistoryRead

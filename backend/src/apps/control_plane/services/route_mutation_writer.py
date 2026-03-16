@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.control_plane.contracts import RouteMutationCommand
 from src.apps.control_plane.exceptions import (
     EventConsumerNotFound,

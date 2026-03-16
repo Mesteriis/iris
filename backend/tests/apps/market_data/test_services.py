@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -87,13 +85,6 @@ async def _create_price_history(async_db_session, coin: Coin, payload) -> dict[s
         "price": item.price,
         "volume": item.volume,
     }
-
-
-async def _sync_watched_assets(async_db_session) -> list[str]:
-    async with SessionUnitOfWork(async_db_session) as uow:
-        items = await MarketDataService(uow).sync_watched_assets()
-        await uow.commit()
-        return items
 
 
 async def _sync_coin_history_backfill(
@@ -305,10 +296,14 @@ async def test_market_data_async_services_history_helpers(async_db_session, seed
 
 
 @pytest.mark.asyncio
-async def test_market_data_async_services_sync_queries_and_watched_assets(async_db_session, monkeypatch) -> None:
+async def test_market_data_async_services_sync_queries(async_db_session, monkeypatch) -> None:
     fixed_now = datetime(2026, 3, 12, 1, 30, tzinfo=UTC)
     monkeypatch.setattr("src.apps.market_data.query_services.utc_now", lambda: fixed_now)
 
+    await _create_coin(
+        async_db_session,
+        CoinCreateFactory.build(symbol="DUE_NOW_EVT", name="Due Now Event Test", theme="payments"),
+    )
     pending = await _create_coin(
         async_db_session,
         CoinCreateFactory.build(symbol="XRPUSD_EVT", name="Ripple Event Test", theme="payments"),
@@ -319,7 +314,6 @@ async def test_market_data_async_services_sync_queries_and_watched_assets(async_
     due_at = await MarketDataQueryService(async_db_session).get_next_pending_backfill_due_at()
     assert due_at == fixed_now
 
-    assert "XRPUSD_EVT" in await MarketDataQueryService(async_db_session).list_coin_symbols_pending_backfill()
     assert await MarketDataQueryService(async_db_session).list_coin_symbols_pending_backfill(symbol="xrpusd_evt") == [
         "XRPUSD_EVT"
     ]
@@ -338,39 +332,57 @@ async def test_market_data_async_services_sync_queries_and_watched_assets(async_
     )
     assert "XRPUSD_EVT" in await MarketDataQueryService(async_db_session).list_coin_symbols_ready_for_latest_sync()
 
-    monkeypatch.setattr(
-        "src.apps.market_data.command_support.WATCHED_ASSETS",
-        [
-            {
-                "symbol": "DOGEUSD_EVT",
-                "name": "Doge Event Test",
-                "asset_type": "crypto",
-                "theme": "memes",
-                "source": "fixture",
-                "enabled": True,
-                "order": 9,
-                "candles": [{"interval": "15m", "retention_bars": 200}],
-            },
-            {
-                "symbol": "AVAXUSD_EVT",
-                "name": "Avalanche Event Test",
-                "asset_type": "crypto",
-                "theme": "layer1",
-                "source": "fixture",
-                "enabled": True,
-                "order": 10,
-                "candles": [{"interval": "15m", "retention_bars": 200}],
-            },
-        ],
+
+@pytest.mark.asyncio
+async def test_market_data_pending_backfill_prefers_due_and_stale_coins(async_db_session, monkeypatch) -> None:
+    fixed_now = datetime(2026, 3, 12, 1, 30, tzinfo=UTC)
+    monkeypatch.setattr("src.apps.market_data.query_services.utc_now", lambda: fixed_now)
+
+    newest = await _create_coin(
+        async_db_session,
+        CoinCreateFactory.build(symbol="NEWEST_EVT", name="Newest Due", sort_order=30),
     )
-    deleted = await _create_coin(async_db_session, CoinCreateFactory.build(symbol="DOGEUSD_EVT", name="Doge Event Test"))
-    deleted.deleted_at = fixed_now
+    newest.last_history_sync_at = fixed_now - timedelta(minutes=5)
+    newest.next_history_sync_at = fixed_now + timedelta(hours=2)
+
+    oldest = await _create_coin(
+        async_db_session,
+        CoinCreateFactory.build(symbol="OLDEST_EVT", name="Oldest Due", sort_order=40),
+    )
+    oldest.last_history_sync_at = fixed_now - timedelta(hours=3)
+    oldest.next_history_sync_at = fixed_now
+
+    await _create_coin(
+        async_db_session,
+        CoinCreateFactory.build(symbol="NEVER_EVT", name="Never Synced", sort_order=50),
+    )
+
+    skipped = await _create_coin(
+        async_db_session,
+        CoinCreateFactory.build(symbol="DONE_EVT", name="Done", sort_order=10),
+    )
+    skipped.history_backfill_completed_at = fixed_now
+    await async_db_session.commit()
+    await _create_price_history(
+        async_db_session,
+        skipped,
+        PriceHistoryCreateFactory.build(
+            interval="15m",
+            timestamp=fixed_now - timedelta(minutes=15),
+            price=100.0,
+            volume=10.0,
+        ),
+    )
+
     await async_db_session.commit()
 
-    synced = await _sync_watched_assets(async_db_session)
-    assert "AVAXUSD_EVT" in synced
-    doge = await _get_coin(async_db_session, "DOGEUSD_EVT", include_deleted=True)
-    assert doge is not None and doge.deleted_at is not None
+    pending_symbols = await MarketDataQueryService(async_db_session).list_coin_symbols_pending_backfill()
+    scoped_symbols = [symbol for symbol in pending_symbols if symbol in {"NEVER_EVT", "OLDEST_EVT", "NEWEST_EVT", "DONE_EVT"}]
+    assert scoped_symbols[:3] == [
+        "NEVER_EVT",
+        "OLDEST_EVT",
+        "NEWEST_EVT",
+    ]
 
 
 @pytest.mark.asyncio
@@ -420,7 +432,7 @@ async def test_market_data_async_services_sync_history_branches(async_db_session
 
     class Carousel:
         async def fetch_history_window(self, *_args, **_kwargs):
-            return SimpleNamespace(bars=[bar], completed=False, error="source_backoff")
+            return SimpleNamespace(bars=[bar], completed=False, error="source_backoff", retry_after_seconds=300)
 
     monkeypatch.setattr("src.apps.market_data.services.get_market_source_carousel", lambda: Carousel())
 
@@ -428,7 +440,7 @@ async def test_market_data_async_services_sync_history_branches(async_db_session
     coin = await _get_coin(async_db_session, "MATICUSD_EVT")
     assert coin is not None
     assert backoff.status == "backoff"
-    assert coin.next_history_sync_at == now + timedelta(hours=1)
+    assert coin.next_history_sync_at == now + timedelta(minutes=5)
     assert coin.last_history_sync_error == "source_backoff"
 
     coin.next_history_sync_at = now + timedelta(hours=2)
@@ -525,52 +537,41 @@ async def test_market_data_async_services_additional_edge_branches(async_db_sess
     watch_coin.last_history_sync_error = "old"
     await async_db_session.commit()
 
-    monkeypatch.setattr(
-        "src.apps.market_data.command_support.WATCHED_ASSETS",
-        [
-            {
-                "symbol": "WATCH_EVT",
-                "name": "Watch Coin Updated",
-                "asset_type": "stock",
-                "theme": "macro",
-                "source": "manual",
-                "enabled": True,
-                "order": 11,
-                "candles": [{"interval": "15m", "retention_bars": 120}],
-            }
-        ],
+    updated_watch_coin = await _create_coin(
+        async_db_session,
+        CoinCreateFactory.build(
+            symbol="WATCH_EVT",
+            name="Watch Coin Updated",
+            asset_type="stock",
+            theme="macro",
+            source="manual",
+            sort_order=11,
+            candles=[{"interval": "15m", "retention_bars": 120}],
+        ),
     )
-    synced = await _sync_watched_assets(async_db_session)
-    await async_db_session.refresh(watch_coin)
-    assert "WATCH_EVT" in synced
-    assert watch_coin.asset_type == "stock"
-    assert watch_coin.history_backfill_completed_at is None
-    assert watch_coin.last_history_sync_error is None
+    assert updated_watch_coin.asset_type == "stock"
+    assert updated_watch_coin.history_backfill_completed_at is None
+    assert updated_watch_coin.last_history_sync_error is None
 
-    watch_coin.history_backfill_completed_at = datetime(2026, 3, 12, 9, 0, tzinfo=UTC)
-    watch_coin.last_history_sync_at = datetime(2026, 3, 12, 9, 15, tzinfo=UTC)
-    watch_coin.next_history_sync_at = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
-    watch_coin.last_history_sync_error = "preserve"
+    updated_watch_coin.history_backfill_completed_at = datetime(2026, 3, 12, 9, 0, tzinfo=UTC)
+    updated_watch_coin.last_history_sync_at = datetime(2026, 3, 12, 9, 15, tzinfo=UTC)
+    updated_watch_coin.next_history_sync_at = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
+    updated_watch_coin.last_history_sync_error = "preserve"
     await async_db_session.commit()
-    monkeypatch.setattr(
-        "src.apps.market_data.command_support.WATCHED_ASSETS",
-        [
-            {
-                "symbol": "WATCH_EVT",
-                "name": "Watch Coin Updated",
-                "asset_type": "stock",
-                "theme": "macro",
-                "source": "manual",
-                "enabled": True,
-                "order": 11,
-                "candles": [{"interval": "15m", "retention_bars": 120}],
-            }
-        ],
+    preserved_watch_coin = await _create_coin(
+        async_db_session,
+        CoinCreateFactory.build(
+            symbol="WATCH_EVT",
+            name="Watch Coin Renamed",
+            asset_type="stock",
+            theme="macro",
+            source="manual",
+            sort_order=11,
+            candles=[{"interval": "15m", "retention_bars": 120}],
+        ),
     )
-    await _sync_watched_assets(async_db_session)
-    await async_db_session.refresh(watch_coin)
-    assert watch_coin.history_backfill_completed_at is not None
-    assert watch_coin.last_history_sync_error == "preserve"
+    assert preserved_watch_coin.history_backfill_completed_at is not None
+    assert preserved_watch_coin.last_history_sync_error == "preserve"
 
     monkeypatch.setattr(
         "src.apps.market_data.query_services.MarketDataQueryService._has_base_candle",
@@ -578,12 +579,12 @@ async def test_market_data_async_services_additional_edge_branches(async_db_sess
     )
     assert await MarketDataQueryService(async_db_session).list_coin_symbols_ready_for_latest_sync() == []
 
-    latest = await _get_latest_candle_timestamp_async(async_db_session, coin_id=int(watch_coin.id), timeframe=15)
+    latest = await _get_latest_candle_timestamp_async(async_db_session, coin_id=int(preserved_watch_coin.id), timeframe=15)
     if latest is None:
         latest = datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
         await _create_price_history(
             async_db_session,
-            watch_coin,
+            preserved_watch_coin,
             PriceHistoryCreateFactory.build(interval="15m", timestamp=latest, price=123.0, volume=5.0),
         )
     older_bar = MarketBar(
@@ -596,7 +597,7 @@ async def test_market_data_async_services_additional_edge_branches(async_db_sess
         source="fixture",
     )
     monkeypatch.setattr("src.apps.market_data.services._refresh_continuous_aggregate_range_async", lambda **kwargs: __import__("asyncio").sleep(0))
-    assert await _upsert_base_candles(async_db_session, coin_id=int(watch_coin.id), interval="15m", bars=[older_bar]) is None
+    assert await _upsert_base_candles(async_db_session, coin_id=int(preserved_watch_coin.id), interval="15m", bars=[older_bar]) is None
     one_hour_bar = MarketBar(
         timestamp=latest,
         open=120.0,
@@ -606,7 +607,8 @@ async def test_market_data_async_services_additional_edge_branches(async_db_sess
         volume=6.0,
         source="fixture",
     )
-    assert await _upsert_base_candles(async_db_session, coin_id=int(watch_coin.id), interval="1h", bars=[one_hour_bar]) == latest
+    assert await _upsert_base_candles(async_db_session, coin_id=int(preserved_watch_coin.id), interval="1h", bars=[one_hour_bar]) == latest
+
 
 @pytest.mark.asyncio
 async def test_market_data_async_services_sync_history_progress_update_and_latest_none(monkeypatch) -> None:

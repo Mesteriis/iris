@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Mapping
 
 from src.apps.control_plane.contracts import AuditActor

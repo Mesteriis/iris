@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.news.contracts import (
     NewsItemLinkRead,
     NewsItemRead,

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import httpx
 
-from src.core.settings import get_settings
 from src.apps.market_data.domain import ensure_utc, normalize_interval
 from src.apps.market_data.sources.base import (
     BaseMarketSource,
@@ -13,6 +12,7 @@ from src.apps.market_data.sources.base import (
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
 )
+from src.core.settings import get_settings
 
 if TYPE_CHECKING:
     from src.apps.market_data.models import Coin
@@ -44,8 +44,8 @@ TWELVE_DATA_SYMBOL_CANDIDATES: dict[str, list[str]] = {
 
 class TwelveDataMarketSource(BaseMarketSource):
     name = "twelvedata"
-    asset_types = {"forex", "index", "metal"}
-    supported_intervals = {"15m", "1h", "4h", "1d"}
+    asset_types: ClassVar[set[str]] = {"forex", "index", "metal"}
+    supported_intervals: ClassVar[set[str]] = {"15m", "1h", "4h", "1d"}
     base_url = "https://api.twelvedata.com/time_series"
 
     def __init__(self) -> None:
@@ -55,35 +55,41 @@ class TwelveDataMarketSource(BaseMarketSource):
         if self.api_key:
             self.client.headers.update({"Authorization": f"apikey {self.api_key}"})
 
-    def supports_coin(self, coin: "Coin", interval: str) -> bool:
+    def supports_coin(self, coin: Coin, interval: str) -> bool:
         if not self.api_key:
             return False
         return super().supports_coin(coin, interval)
 
-    def get_symbol(self, coin: "Coin") -> str | None:
+    def get_symbol(self, coin: Coin) -> str | None:
         resolved = self._resolved_symbols.get(coin.symbol)
         if resolved:
             return resolved
 
         candidates = TWELVE_DATA_SYMBOL_CANDIDATES.get(coin.symbol)
         if candidates:
-            return candidates[0]
-        return coin.symbol if coin.asset_type in self.asset_types else None
+            fallback = candidates[0]
+        else:
+            normalized_source = (coin.source or "").strip().lower()
+            fallback = coin.symbol if normalized_source == self.name and coin.asset_type in self.asset_types else None
+        return self.resolve_provider_symbol(coin.symbol, fallback=fallback)
 
     def bars_per_request(self, interval: str) -> int:
         del interval
         return 5000
 
-    def allows_terminal_gap(self, coin: "Coin") -> bool:
+    def allows_terminal_gap(self, coin: Coin) -> bool:
         del coin
         return True
 
-    def _candidate_symbols(self, coin: "Coin") -> list[str]:
+    def _candidate_symbols(self, coin: Coin) -> list[str]:
+        resolved_symbol = self.get_symbol(coin)
         candidates = TWELVE_DATA_SYMBOL_CANDIDATES.get(coin.symbol)
         if candidates:
-            return candidates
-        symbol = self.get_symbol(coin)
-        return [symbol] if symbol else []
+            ordered = list(candidates)
+            if resolved_symbol and resolved_symbol not in ordered:
+                ordered.insert(0, resolved_symbol)
+            return ordered
+        return [resolved_symbol] if resolved_symbol else []
 
     async def _request_symbol(
         self,
@@ -146,7 +152,7 @@ class TwelveDataMarketSource(BaseMarketSource):
         bars.sort(key=lambda bar: bar.timestamp)
         return [bar for bar in bars if ensure_utc(start) <= bar.timestamp <= ensure_utc(end)]
 
-    async def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
+    async def fetch_bars(self, coin: Coin, interval: str, start: datetime, end: datetime) -> list[MarketBar]:
         last_error: str | None = None
         for candidate in self._candidate_symbols(coin):
             try:

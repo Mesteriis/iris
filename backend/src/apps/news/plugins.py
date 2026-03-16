@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
@@ -59,7 +57,7 @@ class NewsFetchResult:
 class NewsSourcePlugin(ABC):
     descriptor: NewsPluginDescriptor
 
-    def __init__(self, source: "NewsSource") -> None:
+    def __init__(self, source: NewsSource) -> None:
         self.source = source
         self.credentials = dict(source.credentials_json or {})
         self.settings = dict(source.settings_json or {})
@@ -107,7 +105,7 @@ def list_registered_news_plugins() -> dict[str, type[NewsSourcePlugin]]:
     return dict(sorted(_REGISTRY.items()))
 
 
-def create_news_plugin(source: "NewsSource") -> NewsSourcePlugin:
+def create_news_plugin(source: NewsSource) -> NewsSourcePlugin:
     plugin_cls = get_news_plugin(source.plugin_name)
     if plugin_cls is None:
         raise ValueError(f"Unsupported news plugin '{source.plugin_name}'.")

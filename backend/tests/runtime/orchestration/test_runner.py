@@ -1,10 +1,7 @@
-from __future__ import annotations
-
 import asyncio
 from types import SimpleNamespace
 
 import pytest
-
 from src.runtime.orchestration import runner
 
 
@@ -66,12 +63,20 @@ async def test_serve_taskiq_worker_listener_finishes_first(monkeypatch) -> None:
             calls.append("listen")
             return "done"
 
+    class FakeSourceCapabilityRegistry:
+        async def start(self) -> None:
+            calls.append("registry_start")
+
+        async def stop(self) -> None:
+            calls.append("registry_stop")
+
     monkeypatch.setattr(runner, "_load_worker_broker", lambda group_name: FakeBroker())
     monkeypatch.setattr(runner, "Receiver", FakeReceiver)
+    monkeypatch.setattr(runner, "get_market_source_capability_registry", lambda: FakeSourceCapabilityRegistry())
 
     await runner._serve_taskiq_worker("taskiq-general", _StopFlag())
 
-    assert calls == ["startup", "receiver:False", "listen", "shutdown"]
+    assert calls == ["startup", "registry_start", "receiver:False", "listen", "registry_stop", "shutdown"]
 
 
 @pytest.mark.asyncio
@@ -96,8 +101,16 @@ async def test_serve_taskiq_worker_stop_flag_finishes_first(monkeypatch) -> None
             calls.append("listen")
             return "stopped"
 
+    class FakeSourceCapabilityRegistry:
+        async def start(self) -> None:
+            calls.append("registry_start")
+
+        async def stop(self) -> None:
+            calls.append("registry_stop")
+
     monkeypatch.setattr(runner, "_load_worker_broker", lambda group_name: FakeBroker())
     monkeypatch.setattr(runner, "Receiver", FakeReceiver)
+    monkeypatch.setattr(runner, "get_market_source_capability_registry", lambda: FakeSourceCapabilityRegistry())
     original_wait = runner.asyncio.wait
 
     async def fake_wait(tasks, *, return_when):
@@ -110,7 +123,7 @@ async def test_serve_taskiq_worker_stop_flag_finishes_first(monkeypatch) -> None
 
     await runner._serve_taskiq_worker("taskiq-general", _StopFlag(initially_set=True))
 
-    assert calls == ["startup", "receiver:False", "listen", "shutdown"]
+    assert calls == ["startup", "registry_start", "receiver:False", "listen", "registry_stop", "shutdown"]
 
 
 def test_run_group_with_stop_wraps_async_worker(monkeypatch) -> None:

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 from src.core.i18n import (
     CONTENT_KIND_DESCRIPTOR_BUNDLE,

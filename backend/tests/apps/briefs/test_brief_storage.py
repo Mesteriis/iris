@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.briefs.contracts import BriefArtifactResult
 from src.apps.briefs.services.brief_service import _brief_storage_fields
 from src.core.ai.contracts import AICapability, AIContextFormat, AIValidationStatus

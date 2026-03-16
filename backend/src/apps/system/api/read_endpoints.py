@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter, Request
 
 from src.apps.system.api.contracts import HealthRead, SystemStatusRead

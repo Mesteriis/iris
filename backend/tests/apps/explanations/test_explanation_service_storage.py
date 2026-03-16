@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.explanations.contracts import ExplanationArtifactResult
 from src.apps.explanations.services.explanation_service import _explanation_storage_fields
 from src.apps.explanations.services.generation_service import TEMPLATE_DEGRADED_STRATEGY

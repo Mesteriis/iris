@@ -1,10 +1,9 @@
-from __future__ import annotations
-
 from collections.abc import Mapping
 
 from src.apps.market_data.query_services import MarketDataQueryService
 from src.apps.market_data.results import MarketDataHistorySyncResult
-from src.apps.market_data.services import MarketDataHistorySyncService, MarketDataService
+from src.apps.market_data.services import MarketDataHistorySyncService
+from src.apps.market_data.sources.source_capability_registry import get_market_source_capability_registry
 from src.apps.patterns.tasks import patterns_bootstrap_scan
 from src.core.db.uow import AsyncUnitOfWork, BaseAsyncUnitOfWork
 from src.core.http.operation_store import OperationStore, run_tracked_operation
@@ -14,6 +13,7 @@ from src.runtime.orchestration.locks import async_redis_task_lock
 HISTORY_BACKFILL_LOCK_TIMEOUT_SECONDS = 3600
 HISTORY_REFRESH_LOCK_TIMEOUT_SECONDS = 900
 COIN_HISTORY_LOCK_TIMEOUT_SECONDS = 1800
+SOURCE_CAPABILITY_REFRESH_LOCK_TIMEOUT_SECONDS = 3500
 
 
 async def get_next_history_backfill_due_at():
@@ -113,8 +113,6 @@ async def _run_history_backfill(*, symbol: str | None = None) -> dict[str, objec
 
         async with AsyncUnitOfWork() as uow:
             query_service = MarketDataQueryService(uow.session)
-            await MarketDataService(uow).sync_watched_assets()
-            await uow.commit()
             coin_symbols = await query_service.list_coin_symbols_pending_backfill(symbol=symbol)
             items: list[dict[str, object]] = []
             for coin_symbol in coin_symbols:
@@ -159,6 +157,21 @@ async def _run_latest_history_sync() -> dict[str, object]:
                 "history_points_created": sum(int(item["created"]) for item in items),
                 "items": items,
             }
+
+
+async def _refresh_market_source_capability_map() -> dict[str, object]:
+    async with async_redis_task_lock(
+        "iris:tasklock:market_source_capability_refresh",
+        timeout=SOURCE_CAPABILITY_REFRESH_LOCK_TIMEOUT_SECONDS,
+    ) as acquired:
+        if not acquired:
+            return {
+                "status": "skipped",
+                "reason": "market_source_capability_refresh_in_progress",
+            }
+        registry = get_market_source_capability_registry()
+        await registry.start()
+        return await registry.refresh_once()
 
 
 async def _run_manual_coin_history_job(
@@ -214,6 +227,11 @@ async def backfill_observed_coins_history(symbol: str | None = None) -> dict[str
 @broker.task
 async def refresh_observed_coins_history() -> dict[str, object]:
     return await _run_latest_history_sync()
+
+
+@broker.task
+async def refresh_market_source_capability_map() -> dict[str, object]:
+    return await _refresh_market_source_capability_map()
 
 
 @broker.task

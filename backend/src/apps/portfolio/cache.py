@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import json
 from functools import lru_cache
@@ -14,7 +12,7 @@ from src.core.settings import get_settings
 PORTFOLIO_STATE_CACHE_KEY = "iris:portfolio:state"
 PORTFOLIO_BALANCES_CACHE_KEY = "iris:portfolio:balances"
 PORTFOLIO_CACHE_TTL_SECONDS = 60 * 60 * 24
-_ASYNC_PORTFOLIO_CACHE_CLIENTS: "WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedis]" = WeakKeyDictionary()
+_ASYNC_PORTFOLIO_CACHE_CLIENTS: WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedis] = WeakKeyDictionary()
 
 
 # NOTE:

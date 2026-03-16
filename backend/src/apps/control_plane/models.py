@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Any, TYPE_CHECKING
 
@@ -35,7 +33,7 @@ class EventDefinition(Base):
         onupdate=func.now(),
     )
 
-    routes: Mapped[list["EventRoute"]] = relationship(
+    routes: Mapped[list[EventRoute]] = relationship(
         "EventRoute",
         back_populates="event_definition",
         cascade="all, delete-orphan",
@@ -71,7 +69,7 @@ class EventConsumer(Base):
         onupdate=func.now(),
     )
 
-    routes: Mapped[list["EventRoute"]] = relationship(
+    routes: Mapped[list[EventRoute]] = relationship(
         "EventRoute",
         back_populates="consumer",
         cascade="all, delete-orphan",
@@ -94,7 +92,7 @@ class TopologyConfigVersion(Base):
     snapshot_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    drafts: Mapped[list["TopologyDraft"]] = relationship(
+    drafts: Mapped[list[TopologyDraft]] = relationship(
         "TopologyDraft",
         foreign_keys="TopologyDraft.base_version_id",
         back_populates="base_version",
@@ -132,22 +130,22 @@ class TopologyDraft(Base):
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    base_version: Mapped["TopologyConfigVersion | None"] = relationship(
+    base_version: Mapped[TopologyConfigVersion | None] = relationship(
         "TopologyConfigVersion",
         foreign_keys=[base_version_id],
         back_populates="drafts",
     )
-    applied_version: Mapped["TopologyConfigVersion | None"] = relationship(
+    applied_version: Mapped[TopologyConfigVersion | None] = relationship(
         "TopologyConfigVersion",
         foreign_keys=[applied_version_id],
     )
-    changes: Mapped[list["TopologyDraftChange"]] = relationship(
+    changes: Mapped[list[TopologyDraftChange]] = relationship(
         "TopologyDraftChange",
         back_populates="draft",
         cascade="all, delete-orphan",
         order_by="TopologyDraftChange.id",
     )
-    audit_logs: Mapped[list["EventRouteAuditLog"]] = relationship(
+    audit_logs: Mapped[list[EventRouteAuditLog]] = relationship(
         "EventRouteAuditLog",
         back_populates="draft",
         order_by="EventRouteAuditLog.created_at",
@@ -190,9 +188,9 @@ class EventRoute(Base):
         onupdate=func.now(),
     )
 
-    event_definition: Mapped["EventDefinition"] = relationship("EventDefinition", back_populates="routes")
-    consumer: Mapped["EventConsumer"] = relationship("EventConsumer", back_populates="routes")
-    audit_logs: Mapped[list["EventRouteAuditLog"]] = relationship(
+    event_definition: Mapped[EventDefinition] = relationship("EventDefinition", back_populates="routes")
+    consumer: Mapped[EventConsumer] = relationship("EventConsumer", back_populates="routes")
+    audit_logs: Mapped[list[EventRouteAuditLog]] = relationship(
         "EventRouteAuditLog",
         back_populates="route",
         cascade="all, delete-orphan",
@@ -215,7 +213,7 @@ class TopologyDraftChange(Base):
     created_by: Mapped[str] = mapped_column(String(128), nullable=False, default="system", server_default="system")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    draft: Mapped["TopologyDraft"] = relationship("TopologyDraft", back_populates="changes")
+    draft: Mapped[TopologyDraft] = relationship("TopologyDraft", back_populates="changes")
 
 
 class EventRouteAuditLog(Base):
@@ -242,9 +240,9 @@ class EventRouteAuditLog(Base):
     context_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    route: Mapped["EventRoute | None"] = relationship("EventRoute", back_populates="audit_logs")
-    draft: Mapped["TopologyDraft | None"] = relationship("TopologyDraft", back_populates="audit_logs")
-    topology_version: Mapped["TopologyConfigVersion | None"] = relationship("TopologyConfigVersion")
+    route: Mapped[EventRoute | None] = relationship("EventRoute", back_populates="audit_logs")
+    draft: Mapped[TopologyDraft | None] = relationship("TopologyDraft", back_populates="audit_logs")
+    topology_version: Mapped[TopologyConfigVersion | None] = relationship("TopologyConfigVersion")
 
 
 __all__ = [

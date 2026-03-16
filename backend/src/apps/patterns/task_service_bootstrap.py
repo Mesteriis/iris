@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from sqlalchemy import func, select
 
 from src.apps.market_data.query_services import MarketDataQueryService

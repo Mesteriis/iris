@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.signals.engines import evaluate_signal_history_batch
 from src.apps.signals.engines.contracts import SignalHistoryCandleInput, SignalHistorySignalInput

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -35,9 +33,9 @@ class MarketPrediction(Base):
     evaluation_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
 
-    leader_coin: Mapped["Coin"] = relationship("Coin", foreign_keys=[leader_coin_id], back_populates="leader_predictions")
-    target_coin: Mapped["Coin"] = relationship("Coin", foreign_keys=[target_coin_id], back_populates="target_predictions")
-    result: Mapped["PredictionResult | None"] = relationship(
+    leader_coin: Mapped[Coin] = relationship("Coin", foreign_keys=[leader_coin_id], back_populates="leader_predictions")
+    target_coin: Mapped[Coin] = relationship("Coin", foreign_keys=[target_coin_id], back_populates="target_predictions")
+    result: Mapped[PredictionResult | None] = relationship(
         "PredictionResult",
         back_populates="prediction",
         cascade="all, delete-orphan",
@@ -62,7 +60,7 @@ class PredictionResult(Base):
         server_default=func.now(),
     )
 
-    prediction: Mapped["MarketPrediction"] = relationship("MarketPrediction", back_populates="result")
+    prediction: Mapped[MarketPrediction] = relationship("MarketPrediction", back_populates="result")
 
 
 __all__ = ["MarketPrediction", "PredictionResult"]

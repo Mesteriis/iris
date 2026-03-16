@@ -66,6 +66,7 @@ Notes:
 
 - `.env.example` defaults to `localhost:55432` and `localhost:56379`, which match the ports exposed by the embedded/dev backend compose files.
 - TimescaleDB support is required. Plain PostgreSQL is not sufficient for the full migration set.
+- Market-data API key setup is documented in [Market Data API Keys](market-data-api-keys.md).
 
 3. Run prestart:
 
@@ -116,4 +117,5 @@ uvx --with mkdocs-material mkdocs build
 
 - `backend/.env.example` is configured for host-side development against the published embedded/dev Docker ports.
 - The default local setup does not require production market-data credentials to boot the product.
+- Official key acquisition links for credentialed providers live in [Market Data API Keys](market-data-api-keys.md).
 - The repository includes mode/profile-aware HTTP exposure, so not every route is available in every runtime profile.

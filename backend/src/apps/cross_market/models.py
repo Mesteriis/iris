@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -24,8 +22,8 @@ class Sector(Base):
         server_default=func.now(),
     )
 
-    coins: Mapped[list["Coin"]] = relationship("Coin", back_populates="sector")
-    metrics: Mapped[list["SectorMetric"]] = relationship(
+    coins: Mapped[list[Coin]] = relationship("Coin", back_populates="sector")
+    metrics: Mapped[list[SectorMetric]] = relationship(
         "SectorMetric",
         back_populates="sector",
         cascade="all, delete-orphan",
@@ -51,7 +49,7 @@ class SectorMetric(Base):
         server_default=func.now(),
     )
 
-    sector: Mapped["Sector"] = relationship("Sector", back_populates="metrics")
+    sector: Mapped[Sector] = relationship("Sector", back_populates="metrics")
 
 
 class CoinRelation(Base):
@@ -72,8 +70,8 @@ class CoinRelation(Base):
         server_default=func.now(),
     )
 
-    leader_coin: Mapped["Coin"] = relationship("Coin", foreign_keys=[leader_coin_id], back_populates="leading_relations")
-    follower_coin: Mapped["Coin"] = relationship(
+    leader_coin: Mapped[Coin] = relationship("Coin", foreign_keys=[leader_coin_id], back_populates="leading_relations")
+    follower_coin: Mapped[Coin] = relationship(
         "Coin",
         foreign_keys=[follower_coin_id],
         back_populates="following_relations",

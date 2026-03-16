@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.core.i18n import (
     MessageDescriptor,
     dump_message_descriptor,

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter
 
 from src.apps.hypothesis_engine.api import job_endpoints, read_endpoints, stream_endpoints

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter
 
 from src.apps.briefs.api.router import build_router as build_briefs_router

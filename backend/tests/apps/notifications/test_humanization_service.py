@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.notifications.services.humanization_service import render_template_notification
 
 

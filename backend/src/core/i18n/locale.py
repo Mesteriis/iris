@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.core.i18n.contracts import LocalePolicy, LocaleResolution
 
 DEFAULT_LOCALE_POLICY = LocalePolicy()

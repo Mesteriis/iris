@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter
 
 from src.apps.news.api import command_endpoints, job_endpoints, onboarding_endpoints, read_endpoints

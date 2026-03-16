@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.market_structure.contracts import (
     ManualMarketStructureIngestRequest,
     MarketStructureSnapshotRead,

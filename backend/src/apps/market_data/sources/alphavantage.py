@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import httpx
 
-from src.core.settings import get_settings
 from src.apps.market_data.domain import align_timestamp, ensure_utc, normalize_interval
 from src.apps.market_data.sources.base import (
     BaseMarketSource,
@@ -14,6 +14,7 @@ from src.apps.market_data.sources.base import (
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
 )
+from src.core.settings import get_settings
 
 if TYPE_CHECKING:
     from src.apps.market_data.models import Coin
@@ -25,6 +26,34 @@ ALPHA_VANTAGE_FOREX_PAIRS: dict[str, tuple[str, str]] = {
     "USDRUB": ("USD", "RUB"),
 }
 
+ALPHA_VANTAGE_SPECIAL_SERIES: dict[str, dict[str, object]] = {
+    "BRENTUSD": {
+        "function": "BRENT",
+        "interval": "daily",
+        "provider_symbol": "BRENT",
+        "supported_intervals": {"1d"},
+    },
+    "NATGASUSD": {
+        "function": "NATURAL_GAS",
+        "interval": "daily",
+        "provider_symbol": "NATURAL_GAS",
+        "supported_intervals": {"1d"},
+    },
+    "TNX": {
+        "function": "TREASURY_YIELD",
+        "interval": "daily",
+        "maturity": "10year",
+        "provider_symbol": "TREASURY_YIELD:10YEAR",
+        "supported_intervals": {"1d"},
+    },
+    "WTIUSD": {
+        "function": "WTI",
+        "interval": "daily",
+        "provider_symbol": "WTI",
+        "supported_intervals": {"1d"},
+    },
+}
+
 ALPHA_VANTAGE_INTRADAY_INTERVALS: dict[str, str] = {
     "15m": "15min",
     "1h": "60min",
@@ -32,26 +61,69 @@ ALPHA_VANTAGE_INTRADAY_INTERVALS: dict[str, str] = {
 }
 
 
-class AlphaVantageForexMarketSource(BaseMarketSource):
+@dataclass(frozen=True, slots=True)
+class AlphaVantageQuery:
+    kind: str
+    provider_symbol: str
+    supported_intervals: frozenset[str]
+    function: str | None = None
+    base_symbol: str | None = None
+    quote_symbol: str | None = None
+    interval: str | None = None
+    maturity: str | None = None
+
+
+class AlphaVantageMarketSource(BaseMarketSource):
     name = "alphavantage"
-    asset_types = {"forex"}
-    supported_intervals = {"1d"}
+    asset_types: ClassVar[set[str]] = {"forex", "energy", "index"}
+    supported_intervals: ClassVar[set[str]] = {"15m", "1h", "4h", "1d"}
     base_url = "https://www.alphavantage.co/query"
 
     def __init__(self) -> None:
         super().__init__()
         self.api_key = get_settings().alpha_vantage_api_key.strip()
 
-    def supports_coin(self, coin: "Coin", interval: str) -> bool:
+    def supports_coin(self, coin: Coin, interval: str) -> bool:
         if not self.api_key:
             return False
-        return super().supports_coin(coin, interval)
+        query = self._resolve_query(coin)
+        return query is not None and normalize_interval(interval) in query.supported_intervals
 
-    def get_symbol(self, coin: "Coin") -> str | None:
+    def _resolve_pair(self, coin: Coin) -> tuple[str, str] | None:
         pair = ALPHA_VANTAGE_FOREX_PAIRS.get(coin.symbol)
-        if pair is None:
+        if pair is not None:
+            return pair
+        normalized_symbol = coin.symbol.strip().upper()
+        if len(normalized_symbol) == 6 and self.supports_canonical_symbol(normalized_symbol):
+            return normalized_symbol[:3], normalized_symbol[3:]
+        return None
+
+    def _resolve_query(self, coin: Coin) -> AlphaVantageQuery | None:
+        pair = self._resolve_pair(coin)
+        if pair is not None:
+            return AlphaVantageQuery(
+                kind="fx",
+                provider_symbol=f"{pair[0]}/{pair[1]}",
+                supported_intervals=frozenset({"15m", "1h", "4h", "1d"}),
+                base_symbol=pair[0],
+                quote_symbol=pair[1],
+            )
+
+        spec = ALPHA_VANTAGE_SPECIAL_SERIES.get(coin.symbol)
+        if spec is None:
             return None
-        return f"{pair[0]}/{pair[1]}"
+        return AlphaVantageQuery(
+            kind="series",
+            provider_symbol=str(spec["provider_symbol"]),
+            supported_intervals=frozenset(str(item) for item in spec["supported_intervals"]),
+            function=str(spec["function"]),
+            interval=str(spec["interval"]) if spec.get("interval") is not None else None,
+            maturity=str(spec["maturity"]) if spec.get("maturity") is not None else None,
+        )
+
+    def get_symbol(self, coin: Coin) -> str | None:
+        query = self._resolve_query(coin)
+        return query.provider_symbol if query is not None else None
 
     def bars_per_request(self, interval: str) -> int:
         normalized_interval = normalize_interval(interval)
@@ -59,7 +131,7 @@ class AlphaVantageForexMarketSource(BaseMarketSource):
             return 5000
         return 100
 
-    def allows_terminal_gap(self, coin: "Coin") -> bool:
+    def allows_terminal_gap(self, coin: Coin) -> bool:
         del coin
         return True
 
@@ -167,13 +239,64 @@ class AlphaVantageForexMarketSource(BaseMarketSource):
         bars.sort(key=lambda bar: bar.timestamp)
         return [bar for bar in bars if ensure_utc(start) <= bar.timestamp <= ensure_utc(end)]
 
-    async def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
-        pair = ALPHA_VANTAGE_FOREX_PAIRS.get(coin.symbol)
-        if pair is None:
+    def _parse_numeric_series_payload(
+        self,
+        payload: dict[str, object],
+        start: datetime,
+        end: datetime,
+    ) -> list[MarketBar]:
+        data = payload.get("data")
+        if not isinstance(data, list):
+            return []
+
+        bars: list[MarketBar] = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            date_raw = str(item.get("date") or "").strip()
+            value_raw = str(item.get("value") or "").strip()
+            if not date_raw or not value_raw or value_raw == ".":
+                continue
+            try:
+                timestamp = ensure_utc(datetime.fromisoformat(f"{date_raw}T00:00:00"))
+                value = float(value_raw)
+            except ValueError:
+                continue
+            bars.append(
+                MarketBar(
+                    timestamp=timestamp,
+                    open=value,
+                    high=value,
+                    low=value,
+                    close=value,
+                    volume=None,
+                    source=self.name,
+                ),
+            )
+        bars.sort(key=lambda bar: bar.timestamp)
+        return [bar for bar in bars if ensure_utc(start) <= bar.timestamp <= ensure_utc(end)]
+
+    async def fetch_bars(self, coin: Coin, interval: str, start: datetime, end: datetime) -> list[MarketBar]:
+        query = self._resolve_query(coin)
+        if query is None:
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol}.")
 
         normalized_interval = normalize_interval(interval)
-        base_symbol, quote_symbol = pair
+        if normalized_interval not in query.supported_intervals:
+            raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol} with interval {normalized_interval}.")
+
+        if query.kind == "series":
+            params = {"function": str(query.function), "apikey": self.api_key}
+            if query.interval is not None:
+                params["interval"] = query.interval
+            if query.maturity is not None:
+                params["maturity"] = query.maturity
+            payload = await self._request_payload(params)
+            return self._parse_numeric_series_payload(payload, start, end)
+
+        assert query.base_symbol is not None
+        assert query.quote_symbol is not None
+        base_symbol, quote_symbol = query.base_symbol, query.quote_symbol
 
         if normalized_interval == "1d":
             payload = await self._request_payload(
@@ -220,3 +343,13 @@ class AlphaVantageForexMarketSource(BaseMarketSource):
                 )
             )
         return [bar for bar in resampled if ensure_utc(start) <= bar.timestamp <= ensure_utc(end)]
+
+
+AlphaVantageForexMarketSource = AlphaVantageMarketSource
+
+__all__ = [
+    "ALPHA_VANTAGE_FOREX_PAIRS",
+    "ALPHA_VANTAGE_SPECIAL_SERIES",
+    "AlphaVantageForexMarketSource",
+    "AlphaVantageMarketSource",
+]

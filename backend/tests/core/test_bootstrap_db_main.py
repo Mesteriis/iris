@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import logging
 import runpy
@@ -180,6 +178,20 @@ async def test_lifespan_orchestrates_startup_and_shutdown(monkeypatch) -> None:
         async def close(self) -> None:
             events.append("carousel_close")
 
+    class _ProxyRegistry:
+        async def start(self) -> None:
+            events.append("proxy_registry_start")
+
+        async def stop(self) -> None:
+            events.append("proxy_registry_stop")
+
+    class _SourceCapabilityRegistry:
+        async def start(self) -> None:
+            events.append("source_capability_registry_start")
+
+        async def stop(self) -> None:
+            events.append("source_capability_registry_stop")
+
     async def _fake_to_thread(func, *args):
         events.append(("to_thread", getattr(func, "__name__", repr(func))))
         return func(*args)
@@ -215,6 +227,8 @@ async def test_lifespan_orchestrates_startup_and_shutdown(monkeypatch) -> None:
     monkeypatch.setattr(lifespan_module, "reset_event_publisher", lambda: events.append("reset_publisher"))
     monkeypatch.setattr(lifespan_module, "close_async_task_lock_client", _close_lock_client)
     monkeypatch.setattr(lifespan_module, "get_market_source_carousel", lambda: _Carousel())
+    monkeypatch.setattr(lifespan_module, "get_free_proxy_registry", lambda: _ProxyRegistry())
+    monkeypatch.setattr(lifespan_module, "get_market_source_capability_registry", lambda: _SourceCapabilityRegistry())
 
     scheduler_task = asyncio.create_task(asyncio.sleep(0))
 
@@ -239,6 +253,8 @@ async def test_lifespan_orchestrates_startup_and_shutdown(monkeypatch) -> None:
     assert "wait_redis" in events
     assert "broker_startup" in events
     assert "analytics_startup" in events
+    assert "source_capability_registry_start" in events
+    assert "proxy_registry_start" in events
     assert ("stop_taskiq", "taskiq_stop", ("taskiq_worker",)) in events
     assert ("stop_streams", "stream_stop", ("stream_worker",)) in events
     assert "analytics_shutdown" in events
@@ -246,6 +262,8 @@ async def test_lifespan_orchestrates_startup_and_shutdown(monkeypatch) -> None:
     assert "reset_bus" in events
     assert "reset_publisher" in events
     assert "close_lock_client" in events
+    assert "source_capability_registry_stop" in events
+    assert "proxy_registry_stop" in events
     assert "carousel_close" in events
 
 

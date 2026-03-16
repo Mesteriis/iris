@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import UTC, datetime, timezone
 
 from src.apps.control_plane.contracts import RouteFilters, RouteShadow, RouteThrottle

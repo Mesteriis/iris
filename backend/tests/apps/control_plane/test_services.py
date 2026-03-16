@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 from sqlalchemy import select
 from src.apps.control_plane.contracts import (

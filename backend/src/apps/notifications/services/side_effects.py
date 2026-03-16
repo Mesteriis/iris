@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.notifications.contracts import NotificationCreationResult
 from src.runtime.streams.publisher import publish_event
 

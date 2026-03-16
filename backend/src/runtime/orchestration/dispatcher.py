@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 async def enqueue_task(task: object, *args: Any, **kwargs: Any) -> None:

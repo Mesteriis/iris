@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import inspect
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager

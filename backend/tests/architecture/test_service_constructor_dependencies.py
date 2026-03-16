@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.architecture.service_layer_baseline import EXPECTED_SERVICE_CONSTRUCTOR_DEPENDENCY_VIOLATIONS
 from tests.architecture.service_layer_policy import (
     assert_policy_matches_baseline,

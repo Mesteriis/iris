@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import httpx
 
-from src.core.settings import get_settings
 from src.apps.market_data.domain import align_timestamp, ensure_utc, normalize_interval
 from src.apps.market_data.sources.base import (
     BaseMarketSource,
@@ -14,6 +13,7 @@ from src.apps.market_data.sources.base import (
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
 )
+from src.core.settings import get_settings
 
 if TYPE_CHECKING:
     from src.apps.market_data.models import Coin
@@ -41,31 +41,31 @@ POLYGON_INTERVALS: dict[str, tuple[int, str]] = {
 
 class PolygonMarketSource(BaseMarketSource):
     name = "polygon"
-    asset_types = {"forex", "index"}
-    supported_intervals = {"15m", "1h", "4h", "1d"}
+    asset_types: ClassVar[set[str]] = {"forex", "index"}
+    supported_intervals: ClassVar[set[str]] = {"15m", "1h", "4h", "1d"}
     base_url = "https://api.polygon.io/v2/aggs/ticker"
 
     def __init__(self) -> None:
         super().__init__()
         self.api_key = get_settings().polygon_api_key.strip()
 
-    def supports_coin(self, coin: "Coin", interval: str) -> bool:
+    def supports_coin(self, coin: Coin, interval: str) -> bool:
         if not self.api_key:
             return False
         return super().supports_coin(coin, interval)
 
-    def get_symbol(self, coin: "Coin") -> str | None:
-        return POLYGON_SYMBOLS.get(coin.symbol)
+    def get_symbol(self, coin: Coin) -> str | None:
+        return self.resolve_provider_symbol(coin.symbol, fallback=POLYGON_SYMBOLS.get(coin.symbol))
 
     def bars_per_request(self, interval: str) -> int:
         del interval
         return 50_000
 
-    def allows_terminal_gap(self, coin: "Coin") -> bool:
+    def allows_terminal_gap(self, coin: Coin) -> bool:
         del coin
         return True
 
-    async def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
+    async def fetch_bars(self, coin: Coin, interval: str, start: datetime, end: datetime) -> list[MarketBar]:
         symbol = self.get_symbol(coin)
         if symbol is None:
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol}.")

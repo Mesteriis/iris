@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.signals.schemas import (
     BacktestSummaryRead,
     CoinBacktestsRead,

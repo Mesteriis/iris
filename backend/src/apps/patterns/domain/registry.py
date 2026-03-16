@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from src.apps.patterns.domain.detectors import build_pattern_detectors

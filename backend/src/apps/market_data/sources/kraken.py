@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import httpx
 
@@ -32,17 +32,17 @@ KRAKEN_INTERVALS: dict[str, int] = {
 
 class KrakenMarketSource(BaseMarketSource):
     name = "kraken"
-    asset_types = {"crypto"}
-    supported_intervals = {"15m", "1h", "4h", "1d"}
+    asset_types: ClassVar[set[str]] = {"crypto"}
+    supported_intervals: ClassVar[set[str]] = {"15m", "1h", "4h", "1d"}
     base_url = "https://api.kraken.com/0/public/OHLC"
 
-    def get_symbol(self, coin: "Coin") -> str | None:
-        return KRAKEN_SYMBOLS.get(coin.symbol)
+    def get_symbol(self, coin: Coin) -> str | None:
+        return self.resolve_provider_symbol(coin.symbol, fallback=KRAKEN_SYMBOLS.get(coin.symbol))
 
     def bars_per_request(self, interval: str) -> int:
         return 720
 
-    async def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
+    async def fetch_bars(self, coin: Coin, interval: str, start: datetime, end: datetime) -> list[MarketBar]:
         symbol = self.get_symbol(coin)
         if symbol is None:
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol}.")
@@ -69,7 +69,7 @@ class KrakenMarketSource(BaseMarketSource):
             raise TemporaryMarketSourceError(f"{self.name} api error: {payload['error']}")
 
         result = payload.get("result", {})
-        pair_key = next((key for key in result.keys() if key != "last"), None)
+        pair_key = next((key for key in result if key != "last"), None)
         if pair_key is None:
             return []
 

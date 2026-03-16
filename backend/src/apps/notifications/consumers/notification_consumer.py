@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.notifications.constants import SUPPORTED_NOTIFICATION_SOURCE_EVENTS
 from src.apps.notifications.services import NotificationService, NotificationSideEffectDispatcher
 from src.core.db.session import AsyncSessionLocal

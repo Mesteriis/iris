@@ -53,6 +53,7 @@ extra:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
+  - Market Data API Keys: market-data-api-keys.md
   - Open Source: open-source.md
   - Architecture:
       - Overview: architecture/index.md

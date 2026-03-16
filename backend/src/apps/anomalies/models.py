@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -61,7 +59,7 @@ class MarketAnomaly(Base):
         onupdate=func.now(),
     )
 
-    coin: Mapped["Coin"] = relationship("Coin")
+    coin: Mapped[Coin] = relationship("Coin")
 
 
 class MarketStructureSnapshot(Base):
@@ -117,7 +115,7 @@ class MarketStructureSnapshot(Base):
         onupdate=func.now(),
     )
 
-    coin: Mapped["Coin"] = relationship("Coin")
+    coin: Mapped[Coin] = relationship("Coin")
 
 
 __all__ = ["MarketAnomaly", "MarketStructureSnapshot"]

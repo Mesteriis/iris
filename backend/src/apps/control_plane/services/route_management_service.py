@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.control_plane.contracts import AuditActor, RouteMutationCommand, RouteStatusChangeCommand
 from src.apps.control_plane.engines.route_engine import route_to_snapshot
 from src.apps.control_plane.models import EventRoute

@@ -1,8 +1,7 @@
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Any
+from collections.abc import Mapping
 
 from src.apps.control_plane.enums import (
     EventRouteScope,
@@ -59,7 +58,7 @@ class RouteFilters:
         return payload
 
     @classmethod
-    def from_json(cls, payload: Mapping[str, Any] | None) -> "RouteFilters":
+    def from_json(cls, payload: Mapping[str, Any] | None) -> RouteFilters:
         raw = dict(payload or {})
         return cls(
             symbol=_normalized_strings(raw.get("symbol")),
@@ -81,7 +80,7 @@ class RouteThrottle:
         return {"limit": int(self.limit), "window_seconds": int(self.window_seconds)}
 
     @classmethod
-    def from_json(cls, payload: Mapping[str, Any] | None) -> "RouteThrottle":
+    def from_json(cls, payload: Mapping[str, Any] | None) -> RouteThrottle:
         raw = dict(payload or {})
         if raw.get("limit") is None:
             return cls()
@@ -104,7 +103,7 @@ class RouteShadow:
         }
 
     @classmethod
-    def from_json(cls, payload: Mapping[str, Any] | None) -> "RouteShadow":
+    def from_json(cls, payload: Mapping[str, Any] | None) -> RouteShadow:
         raw = dict(payload or {})
         return cls(
             enabled=bool(raw.get("enabled", False)),

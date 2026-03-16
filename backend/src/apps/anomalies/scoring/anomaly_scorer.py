@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Mapping
 
 from src.apps.anomalies.constants import DETECTOR_WEIGHTS, SEVERITY_BANDS

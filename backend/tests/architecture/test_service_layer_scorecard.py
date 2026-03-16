@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.architecture.service_layer_scorecard import (
     build_service_layer_scorecard,
     render_service_layer_scorecard,

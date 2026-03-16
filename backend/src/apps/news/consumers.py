@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.news.pipeline import NewsCorrelationService, NewsNormalizationService
 from src.core.db.session import AsyncSessionLocal
 from src.core.db.uow import AsyncUnitOfWork

@@ -1,6 +1,5 @@
 # ruff: noqa: RUF001
 
-from __future__ import annotations
 
 from src.apps.market_structure.api.errors import (
     market_structure_ingest_result_to_http,

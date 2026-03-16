@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter, Query
 
 from src.apps.signals.api.contracts import CoinFinalSignalRead, FinalSignalRead

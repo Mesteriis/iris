@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import importlib
 from datetime import datetime, timezone
 

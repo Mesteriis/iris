@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.patterns.domain.lifecycle import PatternLifecycleState
 from src.apps.patterns.query_services import PatternQueryService
 from src.apps.patterns.read_models import PatternFeatureReadModel, PatternReadModel

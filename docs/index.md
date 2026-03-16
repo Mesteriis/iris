@@ -14,6 +14,7 @@ hide:
       </p>
       <div class="iris-home__actions">
         <a class="md-button md-button--primary" href="getting-started/">Get started</a>
+        <a class="md-button" href="market-data-api-keys/">Market data keys</a>
         <a class="md-button" href="architecture/">Read architecture</a>
         <a class="md-button" href="_generated/">View generated API docs</a>
       </div>

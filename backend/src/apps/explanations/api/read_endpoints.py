@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter, Request, Response
 
 from src.apps.explanations.api.contracts import ExplanationRead

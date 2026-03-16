@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 AI_EVENT_HYPOTHESIS_CREATED = "hypothesis_created"
 AI_EVENT_HYPOTHESIS_EVALUATED = "hypothesis_evaluated"
 AI_EVENT_INSIGHT = "ai_insight"

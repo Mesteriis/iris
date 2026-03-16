@@ -1,6 +1,7 @@
 import json
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Any
 
 from pydantic import Field, field_validator
@@ -49,10 +50,16 @@ class Settings(BaseSettings):
         default="redis://redis:6379/0",
         alias="REDIS_URL",
     )
+    runtime_data_dir: str = Field(
+        default_factory=lambda: str(Path(__file__).resolve().parents[3] / ".runtime"),
+        alias="IRIS_RUNTIME_DATA_DIR",
+    )
     event_stream_name: str = Field(default="iris_events", alias="EVENT_STREAM_NAME")
     polygon_api_key: str = Field(default="", alias="POLYGON_API_KEY")
     twelve_data_api_key: str = Field(default="", alias="TWELVE_DATA_API_KEY")
     alpha_vantage_api_key: str = Field(default="", alias="ALPHA_VANTAGE_API_KEY")
+    fred_api_key: str = Field(default="", alias="FRED_API_KEY")
+    eia_api_key: str = Field(default="", alias="EIA_API_KEY")
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default=[
             "http://localhost:3000",
@@ -74,6 +81,39 @@ class Settings(BaseSettings):
     taskiq_prediction_evaluation_interval_seconds: int = 600
     taskiq_hypothesis_eval_interval_seconds: int = 600
     taskiq_news_poll_interval_seconds: int = 180
+    market_source_capability_refresh_on_startup: bool = Field(
+        default=True,
+        alias="IRIS_MARKET_SOURCE_CAPABILITY_REFRESH_ON_STARTUP",
+    )
+    market_source_capability_refresh_interval_seconds: int = Field(
+        default=3600,
+        alias="IRIS_MARKET_SOURCE_CAPABILITY_REFRESH_INTERVAL_SECONDS",
+    )
+    free_proxy_pool_enabled: bool = Field(default=True, alias="IRIS_FREE_PROXY_POOL_ENABLED")
+    free_proxy_pool_source_urls: Annotated[list[str], NoDecode] = Field(
+        default=[
+            "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+            "https://raw.githubusercontent.com/fyvri/fresh-proxy-list/archive/storage/classic/http.json",
+        ],
+        alias="IRIS_FREE_PROXY_POOL_SOURCE_URLS",
+    )
+    free_proxy_pool_probe_urls: Annotated[list[str], NoDecode] = Field(
+        default=[
+            "https://finance.yahoo.com/robots.txt",
+            "https://stooq.com/robots.txt",
+        ],
+        alias="IRIS_FREE_PROXY_POOL_PROBE_URLS",
+    )
+    free_proxy_pool_refresh_interval_seconds: int = Field(default=1800, alias="IRIS_FREE_PROXY_POOL_REFRESH_INTERVAL_SECONDS")
+    free_proxy_pool_validation_batch_size: int = Field(default=32, alias="IRIS_FREE_PROXY_POOL_VALIDATION_BATCH_SIZE")
+    free_proxy_pool_max_entries: int = Field(default=400, alias="IRIS_FREE_PROXY_POOL_MAX_ENTRIES")
+    free_proxy_pool_request_timeout_seconds: float = Field(
+        default=8.0,
+        alias="IRIS_FREE_PROXY_POOL_REQUEST_TIMEOUT_SECONDS",
+    )
+    free_proxy_pool_persist_interval_seconds: int = Field(default=300, alias="IRIS_FREE_PROXY_POOL_PERSIST_INTERVAL_SECONDS")
+    free_proxy_pool_max_proxy_attempts: int = Field(default=3, alias="IRIS_FREE_PROXY_POOL_MAX_PROXY_ATTEMPTS")
+    free_proxy_pool_min_rating: float = Field(default=0.2, alias="IRIS_FREE_PROXY_POOL_MIN_RATING")
     taskiq_general_worker_processes: int = 1
     taskiq_analytics_worker_processes: int = 1
     event_worker_block_milliseconds: int = 1000
@@ -119,6 +159,15 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @field_validator("free_proxy_pool_source_urls", "free_proxy_pool_probe_urls", mode="before")
+    @classmethod
+    def normalize_string_lists(cls, value: str | list[str] | None) -> list[str]:
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return [str(item).strip() for item in value if str(item).strip()]
 
     @field_validator("api_root_prefix", "api_version_prefix", mode="before")
     @classmethod

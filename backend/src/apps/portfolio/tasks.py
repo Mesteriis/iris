@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.portfolio.serializers import portfolio_sync_result_payload
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
 from src.core.db.uow import AsyncUnitOfWork

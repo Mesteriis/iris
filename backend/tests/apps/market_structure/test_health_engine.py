@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -124,4 +122,3 @@ def test_apply_market_structure_alert_transition_fires_only_on_new_state() -> No
         now=datetime(2026, 3, 12, 12, 1, tzinfo=UTC),
     )
     assert repeated_alert is None
-

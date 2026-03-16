@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 BULLISH_PATTERN_SLUGS = {
     "inverse_head_shoulders",
     "double_bottom",

@@ -1,6 +1,5 @@
 # ruff: noqa: RUF001
 
-from __future__ import annotations
 
 from src.apps.control_plane.api.errors import control_plane_error_to_http, invalid_access_mode_error
 from src.apps.control_plane.exceptions import TopologyDraftConcurrencyConflict

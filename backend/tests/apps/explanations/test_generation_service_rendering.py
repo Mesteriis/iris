@@ -1,6 +1,5 @@
 # ruff: noqa: RUF001
 
-from __future__ import annotations
 
 from src.apps.explanations.contracts import ExplainKind
 from src.apps.explanations.services.generation_service import render_deterministic_explanation

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.notifications.constants import (
     PROMPT_TASK_NOTIFICATION_HUMANIZE,
 )

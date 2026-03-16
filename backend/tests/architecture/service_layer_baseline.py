@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.architecture.service_layer_policy import ArchitectureViolation
 
 EXPECTED_ENGINE_PURITY_VIOLATIONS: tuple[ArchitectureViolation, ...] = ()

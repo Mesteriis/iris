@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 from contextlib import asynccontextmanager
 
@@ -7,6 +5,8 @@ from fastapi import FastAPI
 
 from src.apps.integrations.ha.bridge.runtime import HABridgeRuntime
 from src.apps.market_data.clients import get_market_source_carousel
+from src.apps.market_data.sources.proxy_registry import get_free_proxy_registry
+from src.apps.market_data.sources.source_capability_registry import get_market_source_capability_registry
 from src.core.db.session import wait_for_database
 from src.core.settings import get_settings
 from src.runtime.orchestration.broker import analytics_broker, broker
@@ -35,6 +35,10 @@ async def lifespan(app: FastAPI):
     await broker.startup()
     await analytics_broker.startup()
     await ha_bridge_runtime.ensure_started()
+    source_capability_registry = get_market_source_capability_registry()
+    await source_capability_registry.start()
+    free_proxy_registry = get_free_proxy_registry()
+    await free_proxy_registry.start()
     # NOTE:
     # Worker process spawning is an infrequent process-management step kept
     # synchronous intentionally because it does not live on the request path.
@@ -54,6 +58,8 @@ async def lifespan(app: FastAPI):
     app.state.taskiq_worker_processes = taskiq_worker_processes
     app.state.event_worker_stop_event = worker_stop_event
     app.state.event_worker_processes = worker_processes
+    app.state.market_source_capability_registry = source_capability_registry
+    app.state.free_proxy_registry = free_proxy_registry
 
     try:
         yield
@@ -68,4 +74,6 @@ async def lifespan(app: FastAPI):
         await asyncio.to_thread(reset_message_bus)
         await asyncio.to_thread(reset_event_publisher)
         await close_async_task_lock_client()
+        await source_capability_registry.stop()
+        await free_proxy_registry.stop()
         await get_market_source_carousel().close()

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.predictions.services import PredictionService, PredictionSideEffectDispatcher
 from src.core.db.uow import AsyncUnitOfWork
 from src.runtime.orchestration.broker import analytics_broker

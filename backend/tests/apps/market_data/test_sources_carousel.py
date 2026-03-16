@@ -1,9 +1,6 @@
-from __future__ import annotations
-
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-
 from src.apps.market_data import sources as carousel_module
 from src.apps.market_data.sources import MarketFetchResult, MarketSourceCarousel, get_market_source_carousel
 from src.apps.market_data.sources.base import (
@@ -13,6 +10,7 @@ from src.apps.market_data.sources.base import (
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
 )
+
 from tests.factories.market_data import CoinCreateFactory
 
 
@@ -69,7 +67,7 @@ class FakeSource:
         return result
 
 
-def _coin(*, symbol: str = "BTCUSD_EVT", asset_type: str = "crypto", source: str = "default"):
+def _coin(*, symbol: str = "BTCUSD", asset_type: str = "crypto", source: str = "default"):
     return CoinCreateFactory.build(symbol=symbol, asset_type=asset_type, source=source)
 
 
@@ -96,12 +94,17 @@ def _bars(start: datetime, count: int, *, interval_minutes: int = 15, source: st
 async def test_market_source_carousel_provider_order_close_and_singleton() -> None:
     carousel = MarketSourceCarousel()
     coin_sets = [
-        (_coin(asset_type="crypto"), ["binance", "kucoin", "kraken", "coinbase", "yahoo"]),
-        (_coin(symbol="DJI", asset_type="index"), ["moex", "polygon", "twelvedata", "yahoo"]),
+        (_coin(symbol="BTCUSD", asset_type="crypto"), ["binance", "kucoin", "kraken", "coinbase", "yahoo"]),
+        (_coin(symbol="DJI", asset_type="index"), ["stooq", "polygon", "twelvedata", "yahoo"]),
+        (_coin(symbol="DXY", asset_type="index"), ["fred", "polygon", "twelvedata", "yahoo"]),
+        (_coin(symbol="TNX", asset_type="index"), ["fred", "polygon", "twelvedata", "alphavantage", "yahoo"]),
+        (_coin(symbol="GDAXI", asset_type="index"), ["stooq", "twelvedata", "yahoo"]),
         (_coin(symbol="EURUSD", asset_type="forex"), ["polygon", "twelvedata", "alphavantage", "yahoo"]),
-        (_coin(symbol="XAUUSD", asset_type="metal"), ["twelvedata", "yahoo"]),
-        (_coin(symbol="WTIUSD", asset_type="energy"), ["yahoo"]),
-        (_coin(asset_type="crypto", source="coinbase"), ["coinbase", "binance", "kucoin", "kraken", "yahoo"]),
+        (_coin(symbol="XAUUSD", asset_type="metal"), ["yahoo", "twelvedata"]),
+        (_coin(symbol="XAGUSD", asset_type="metal"), ["stooq", "yahoo", "twelvedata"]),
+        (_coin(symbol="WTIUSD", asset_type="energy"), ["eia", "alphavantage", "yahoo"]),
+        (_coin(symbol="IMOEX", asset_type="index"), ["moex"]),
+        (_coin(symbol="BTCUSD", asset_type="crypto", source="coinbase"), ["coinbase", "binance", "kucoin", "kraken", "yahoo"]),
     ]
 
     for coin, expected in coin_sets:
@@ -132,21 +135,21 @@ async def test_market_source_carousel_handles_no_supported_provider() -> None:
     result = await carousel.fetch_history_window(
         coin,
         "15m",
-        datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc),
-        datetime(2026, 3, 12, 10, 30, tzinfo=timezone.utc),
+        datetime(2026, 3, 12, 10, 0, tzinfo=UTC),
+        datetime(2026, 3, 12, 10, 30, tzinfo=UTC),
     )
 
     assert result == MarketFetchResult(
         bars=[],
         completed=False,
         source_names=[],
-        error="No market source supports BTCUSD_EVT with interval 15m.",
+        error="No market source supports BTCUSD with interval 15m.",
     )
 
 
 @pytest.mark.asyncio
 async def test_market_source_carousel_success_and_cursor_rotation(monkeypatch) -> None:
-    start = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
     end = start + timedelta(minutes=30)
     first_source = FakeSource("first", results=[_bars(start, 3, source="first")], bars_per_request=3)
     second_source = FakeSource("second", results=[_bars(start, 3, source="second")], bars_per_request=3)
@@ -163,13 +166,13 @@ async def test_market_source_carousel_success_and_cursor_rotation(monkeypatch) -
     assert second_result.completed is True
     assert [bar.source for bar in second_result.bars] == ["second", "second", "second"]
     assert carousel._cursor[(coin.symbol, "15m")] == 0
-    assert first_source.clear_calls == 1
-    assert second_source.clear_calls == 1
+    assert first_source.clear_calls == 0
+    assert second_source.clear_calls == 0
 
 
 @pytest.mark.asyncio
 async def test_market_source_carousel_skips_rate_limited_and_provider_errors(monkeypatch) -> None:
-    start = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
     end = start + timedelta(minutes=30)
     bars = _bars(start, 3, source="success")
     carousel = MarketSourceCarousel()
@@ -196,7 +199,7 @@ async def test_market_source_carousel_skips_rate_limited_and_provider_errors(mon
 
 @pytest.mark.asyncio
 async def test_market_source_carousel_allows_terminal_gap(monkeypatch) -> None:
-    start = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
     end = start + timedelta(minutes=30)
     source = FakeSource(
         "yahoo",
@@ -217,7 +220,7 @@ async def test_market_source_carousel_allows_terminal_gap(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_market_source_carousel_exhausts_when_sources_do_not_advance(monkeypatch) -> None:
-    start = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
     end = start + timedelta(minutes=30)
     stale_bar = _bars(start - timedelta(minutes=15), 1, source="stale")
     source = FakeSource("stale", results=[stale_bar, stale_bar, stale_bar], bars_per_request=2)
@@ -229,12 +232,12 @@ async def test_market_source_carousel_exhausts_when_sources_do_not_advance(monke
 
     assert result.completed is False
     assert result.bars == []
-    assert result.error == "stale did not advance cursor for BTCUSD_EVT."
+    assert result.error == "stale did not advance cursor for BTCUSD."
 
 
 @pytest.mark.asyncio
 async def test_market_source_carousel_exhausts_on_empty_provider_windows(monkeypatch) -> None:
-    start = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
     end = start + timedelta(minutes=30)
     source = FakeSource("empty", results=[[], [], []], bars_per_request=2)
     carousel = MarketSourceCarousel()
@@ -244,4 +247,4 @@ async def test_market_source_carousel_exhausts_on_empty_provider_windows(monkeyp
     result = await carousel.fetch_history_window(_coin(), "15m", start, end)
 
     assert result.completed is False
-    assert result.error == "empty returned no bars for BTCUSD_EVT."
+    assert result.error == "empty returned no bars for BTCUSD."

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from redis.asyncio import Redis as AsyncRedis
 
 from src.core.settings import Settings, get_settings

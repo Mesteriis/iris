@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -10,7 +8,6 @@ from src.apps.market_data.command_support import (
     _create_or_update_coin_async,
     _create_price_history_async_internal,
     _delete_coin_async,
-    _sync_watched_assets_async_internal,
 )
 from src.apps.market_data.history_sync import (
     _calculate_backfill_progress_async,
@@ -70,9 +67,6 @@ class MarketDataService:
         if coin is None:
             return None
         return await _create_price_history_async_internal(self._uow, coin, payload)
-
-    async def sync_watched_assets(self) -> list[str]:
-        return await _sync_watched_assets_async_internal(self._uow)
 
 
 class MarketDataHistorySyncService:
@@ -211,8 +205,9 @@ async def _sync_coin_history_async(
                 last_progress_percent = progress_percent
 
         if not fetch_result.completed:
+            retry_after_seconds = max(int(fetch_result.retry_after_seconds or 3600), 1)
             coin.last_history_sync_at = now
-            coin.next_history_sync_at = now + timedelta(hours=1)
+            coin.next_history_sync_at = now + timedelta(seconds=retry_after_seconds)
             coin.last_history_sync_error = (fetch_result.error or "Market source carousel exhausted.")[:255]
             return MarketDataHistorySyncResult(
                 status="backoff",

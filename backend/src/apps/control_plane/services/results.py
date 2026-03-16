@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from src.apps.control_plane.read_models import TopologyDraftReadModel

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.core.ai.contracts import AICapability, AICapabilityPolicy, AIContextFormat
 from src.core.ai.provider_registry import build_provider_registry
 from src.core.ai.settings import build_capability_overrides

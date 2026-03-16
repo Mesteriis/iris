@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.market_data.repositories import CandleRepository
 from src.core.db.uow import BaseAsyncUnitOfWork
 

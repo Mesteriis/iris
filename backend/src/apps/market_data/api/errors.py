@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import HTTPException, status
 
 from src.core.errors import DuplicateRequestError, ResourceNotFoundError, ValidationFailedError

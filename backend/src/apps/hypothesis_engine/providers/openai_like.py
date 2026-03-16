@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.core.ai.contracts import AICapability, AIProviderConfig, AIProviderKind
 from src.core.ai.providers.openai_like import OpenAILikeProvider as CoreOpenAILikeProvider
 

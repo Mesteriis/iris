@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.market_data.domain import utc_now
 from src.apps.market_structure.contracts import (
     MarketStructureSourceCreate,

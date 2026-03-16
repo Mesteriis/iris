@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import httpx
 
@@ -60,9 +60,10 @@ YAHOO_CHUNK_DAYS: dict[str, int] = {
 
 class YahooMarketSource(BaseMarketSource):
     name = "yahoo"
-    asset_types = {"crypto", "forex", "index", "metal", "energy"}
-    supported_intervals = {"15m", "1h", "4h", "1d"}
+    asset_types: ClassVar[set[str]] = {"crypto", "forex", "index", "metal", "energy"}
+    supported_intervals: ClassVar[set[str]] = {"15m", "1h", "4h", "1d"}
     base_url = "https://query2.finance.yahoo.com/v8/finance/chart"
+    proxy_pool_mode = "preferred"
 
     def __init__(self) -> None:
         super().__init__()
@@ -78,17 +79,17 @@ class YahooMarketSource(BaseMarketSource):
             }
         )
 
-    def get_symbol(self, coin: "Coin") -> str | None:
-        return YAHOO_SYMBOLS.get(coin.symbol)
+    def get_symbol(self, coin: Coin) -> str | None:
+        return self.resolve_provider_symbol(coin.symbol, fallback=YAHOO_SYMBOLS.get(coin.symbol))
 
     def bars_per_request(self, interval: str) -> int:
         days = YAHOO_CHUNK_DAYS[normalize_interval(interval)]
         return max(int(days * timedelta(days=1) / interval_delta(interval)), 1)
 
-    def allows_terminal_gap(self, coin: "Coin") -> bool:
+    def allows_terminal_gap(self, coin: Coin) -> bool:
         return coin.asset_type != "crypto"
 
-    async def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
+    async def fetch_bars(self, coin: Coin, interval: str, start: datetime, end: datetime) -> list[MarketBar]:
         symbol = self.get_symbol(coin)
         if symbol is None:
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol}.")

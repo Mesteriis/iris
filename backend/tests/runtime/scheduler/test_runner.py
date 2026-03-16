@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -248,6 +246,7 @@ async def test_periodic_schedulers_wait_when_disabled(monkeypatch, function: str
         (runner.schedule_portfolio_sync, "taskiq_portfolio_sync_interval_seconds", runner.portfolio_tasks.portfolio_sync_job),
         (runner.schedule_prediction_evaluation, "taskiq_prediction_evaluation_interval_seconds", runner.prediction_tasks.prediction_evaluation_job),
         (runner.schedule_news_poll, "taskiq_news_poll_interval_seconds", runner.news_tasks.poll_enabled_news_sources_job),
+        (runner.schedule_market_source_capability_refresh, "market_source_capability_refresh_interval_seconds", runner.market_data_tasks.refresh_market_source_capability_map),
         (runner.schedule_hypothesis_evaluation, "taskiq_hypothesis_eval_interval_seconds", runner.hypothesis_tasks.evaluate_hypotheses_job),
         (runner.schedule_market_structure_snapshot_poll, "taskiq_market_structure_snapshot_poll_interval_seconds", runner.market_structure_tasks.poll_enabled_market_structure_sources_job),
         (runner.schedule_market_structure_health_refresh, "taskiq_market_structure_health_interval_seconds", runner.market_structure_tasks.refresh_market_structure_source_health_job),
@@ -269,11 +268,32 @@ async def test_periodic_schedulers_enqueue_one_cycle(monkeypatch, function, sett
     monkeypatch.setattr(runner.asyncio, "sleep", _fast_sleep)
     monkeypatch.setattr(runner.asyncio, "wait_for", fake_wait_for)
     monkeypatch.setattr(runner.settings, setting_name, 1)
+    if function is runner.schedule_market_source_capability_refresh:
+        monkeypatch.setattr(runner.settings, "market_source_capability_refresh_on_startup", False)
     monkeypatch.setattr(runner, "enqueue_task", fake_enqueue)
 
     await function(stop_event)
 
     assert calls == [task]
+
+
+@pytest.mark.asyncio
+async def test_market_source_capability_scheduler_enqueues_startup_refresh(monkeypatch) -> None:
+    stop_event = asyncio.Event()
+    calls: list[object] = []
+
+    async def fake_enqueue(enqueued_task: object) -> None:
+        calls.append(enqueued_task)
+        stop_event.set()
+
+    monkeypatch.setattr(runner.asyncio, "sleep", _fast_sleep)
+    monkeypatch.setattr(runner.settings, "market_source_capability_refresh_on_startup", True)
+    monkeypatch.setattr(runner.settings, "market_source_capability_refresh_interval_seconds", 3600)
+    monkeypatch.setattr(runner, "enqueue_task", fake_enqueue)
+
+    await runner.schedule_market_source_capability_refresh(stop_event)
+
+    assert calls == [runner.market_data_tasks.refresh_market_source_capability_map]
 
 
 def test_start_scheduler_assigns_created_tasks(monkeypatch) -> None:
@@ -295,8 +315,9 @@ def test_start_scheduler_assigns_created_tasks(monkeypatch) -> None:
 
     assert tuple(tasks) == tuple(created_tasks)
     assert app.state.taskiq_backfill_task is created_tasks[0]
-    assert app.state.taskiq_prediction_evaluation_task is created_tasks[-5]
-    assert app.state.taskiq_news_poll_task is created_tasks[-4]
+    assert app.state.taskiq_prediction_evaluation_task is created_tasks[-6]
+    assert app.state.taskiq_news_poll_task is created_tasks[-5]
+    assert app.state.taskiq_market_source_capability_refresh_task is created_tasks[-4]
     assert app.state.taskiq_hypothesis_evaluation_task is created_tasks[-3]
     assert app.state.taskiq_market_structure_snapshot_poll_task is created_tasks[-2]
     assert app.state.taskiq_market_structure_health_task is created_tasks[-1]

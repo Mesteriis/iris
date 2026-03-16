@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.patterns.domain.cycle import _detect_cycle_phase
 from src.apps.patterns.domain.semantics import (
     BEARISH_PATTERN_SLUGS,

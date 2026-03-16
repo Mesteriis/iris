@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import httpx
 
@@ -34,21 +34,21 @@ MOEX_PAGE_SIZE = 500
 
 class MoexIndexMarketSource(BaseMarketSource):
     name = "moex"
-    asset_types = {"index"}
-    supported_intervals = {"1h", "4h", "1d"}
+    asset_types: ClassVar[set[str]] = {"index"}
+    supported_intervals: ClassVar[set[str]] = {"1h", "4h", "1d"}
     base_url = "https://iss.moex.com/iss/engines/stock/markets/index/securities"
 
-    def get_symbol(self, coin: "Coin") -> str | None:
-        return MOEX_SYMBOLS.get(coin.symbol)
+    def get_symbol(self, coin: Coin) -> str | None:
+        return self.resolve_provider_symbol(coin.symbol, fallback=MOEX_SYMBOLS.get(coin.symbol))
 
     def bars_per_request(self, interval: str) -> int:
         return MOEX_PAGE_SIZE
 
-    def allows_terminal_gap(self, coin: "Coin") -> bool:
+    def allows_terminal_gap(self, coin: Coin) -> bool:
         del coin
         return True
 
-    async def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
+    async def fetch_bars(self, coin: Coin, interval: str, start: datetime, end: datetime) -> list[MarketBar]:
         symbol = self.get_symbol(coin)
         if symbol is None:
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol}.")

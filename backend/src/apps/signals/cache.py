@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import json
 from dataclasses import dataclass
@@ -15,7 +13,7 @@ from src.apps.market_data.domain import ensure_utc
 
 DECISION_CACHE_PREFIX = "iris:decision"
 DECISION_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
-_ASYNC_DECISION_CACHE_CLIENTS: "WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedis]" = WeakKeyDictionary()
+_ASYNC_DECISION_CACHE_CLIENTS: WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedis] = WeakKeyDictionary()
 
 
 # NOTE:

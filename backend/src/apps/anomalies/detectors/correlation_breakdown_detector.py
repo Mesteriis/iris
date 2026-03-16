@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 from src.apps.anomalies.constants import ANOMALY_TYPE_CORRELATION_BREAKDOWN

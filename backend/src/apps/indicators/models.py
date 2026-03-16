@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -59,7 +57,7 @@ class CoinMetrics(Base):
         server_default=func.now(),
     )
 
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="metrics")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="metrics")
 
 
 class FeatureSnapshot(Base):
@@ -82,7 +80,7 @@ class FeatureSnapshot(Base):
     pattern_density: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cluster_score: Mapped[float] = mapped_column(Float(53), nullable=False, default=0.0)
 
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="feature_snapshots")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="feature_snapshots")
 
 
 class IndicatorCache(Base):
@@ -114,7 +112,7 @@ class IndicatorCache(Base):
         server_default=func.now(),
     )
 
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="indicator_cache")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="indicator_cache")
 
 
 __all__ = ["CoinMetrics", "FeatureSnapshot", "IndicatorCache"]

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.hypothesis_engine.contracts import (
     HypothesisCreationResult,
     HypothesisEvaluationBatchResult,

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.market_data import candles as market_data_candles
@@ -26,7 +24,6 @@ from src.apps.market_data.repositories import (
     SignalRepository,
 )
 from src.core.db.uow import BaseAsyncUnitOfWork
-from src.core.watched_assets import WATCHED_ASSETS
 
 
 def _normalized_coin_values(payload: object) -> dict[str, object]:
@@ -171,56 +168,9 @@ async def _create_price_history_async_internal(
     )
 
 
-async def _sync_watched_assets_async_internal(
-    uow: BaseAsyncUnitOfWork,
-) -> list[str]:
-    db = uow.session
-    coins = CoinRepository(db)
-    for raw_asset in WATCHED_ASSETS:
-        asset = coin_create_input_from_payload(
-            {
-                "symbol": str(raw_asset["symbol"]),
-                "name": str(raw_asset["name"]),
-                "asset_type": str(raw_asset["asset_type"]),
-                "theme": str(raw_asset["theme"]),
-                "source": str(raw_asset["source"]),
-                "enabled": bool(raw_asset["enabled"]),
-                "sort_order": int(raw_asset["order"]),
-                "candles": raw_asset["candles"],
-            }
-        )
-        existing = await coins.get_by_symbol(asset.symbol, include_deleted=True)
-        if existing is not None and existing.deleted_at is not None:
-            continue
-        if existing is None:
-            await _create_or_update_coin_async(uow, asset)
-            continue
-
-        normalized = _normalized_coin_values(asset)
-        sync_settings_changed = (
-            existing.asset_type != normalized["asset_type"]
-            or existing.source != normalized["source"]
-            or existing.candles_config != normalized["candles_config"]
-        )
-        was_deleted = existing.deleted_at is not None
-        existing.name = normalized["name"]
-        existing.asset_type = normalized["asset_type"]
-        existing.theme = normalized["theme"]
-        existing.sector_code = normalized["sector_code"]
-        existing.source = normalized["source"]
-        existing.enabled = normalized["enabled"]
-        existing.sort_order = normalized["sort_order"]
-        existing.candles_config = normalized["candles_config"]
-        existing.deleted_at = None
-        if was_deleted or sync_settings_changed:
-            _reset_history_sync_state(existing)
-    return [coin.symbol for coin in await CoinRepository(db).list()]
-
-
 __all__ = [
     "_coin_read_after_write",
     "_create_or_update_coin_async",
     "_create_price_history_async_internal",
     "_delete_coin_async",
-    "_sync_watched_assets_async_internal",
 ]

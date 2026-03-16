@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 ANOMALY_TYPE_PRICE_SPIKE = "price_spike"
 ANOMALY_TYPE_VOLUME_SPIKE = "volume_spike"
 ANOMALY_TYPE_VOLATILITY_REGIME_BREAK = "volatility_regime_break"

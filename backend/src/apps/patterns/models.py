@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -36,7 +34,7 @@ class MarketCycle(Base):
         server_default=func.now(),
     )
 
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="market_cycles")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="market_cycles")
 
 
 class PatternFeature(Base):
@@ -65,7 +63,7 @@ class PatternRegistry(Base):
         server_default=func.now(),
     )
 
-    statistics: Mapped[list["PatternStatistic"]] = relationship(
+    statistics: Mapped[list[PatternStatistic]] = relationship(
         "PatternStatistic",
         back_populates="pattern",
         cascade="all, delete-orphan",
@@ -96,7 +94,7 @@ class PatternStatistic(Base):
         server_default=func.now(),
     )
 
-    pattern: Mapped["PatternRegistry"] = relationship("PatternRegistry", back_populates="statistics")
+    pattern: Mapped[PatternRegistry] = relationship("PatternRegistry", back_populates="statistics")
 
 
 __all__ = [

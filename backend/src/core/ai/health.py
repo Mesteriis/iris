@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.core.ai.capabilities import ai_capability_is_available
 from src.core.ai.contracts import AICapability, AIHealthState
 from src.core.settings import Settings, get_settings

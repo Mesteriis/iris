@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter
 
 from src.apps.system.api.contracts import OperationEventResponse, OperationResultResponse, OperationStatusResponse

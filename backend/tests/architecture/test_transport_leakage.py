@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from tests.architecture.service_layer_baseline import EXPECTED_TRANSPORT_LEAKAGE_VIOLATIONS
 from tests.architecture.service_layer_policy import (
     assert_policy_matches_baseline,

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from sqlalchemy import select
 
 from src.apps.indicators.models import CoinMetrics

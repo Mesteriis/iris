@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from sqlalchemy import and_, func, select
 
 from src.apps.cross_market.models import Sector

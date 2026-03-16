@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Mapping
 
 from src.core.i18n.locale import normalize_locale, resolve_locale

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.explanations.contracts import ExplainKind, ExplanationGenerationResult
 from src.apps.explanations.language import resolve_effective_language
 from src.apps.explanations.services import ExplanationService

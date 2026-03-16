@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.portfolio.support import calculate_position_size, calculate_stops
 
 

@@ -1,7 +1,5 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics

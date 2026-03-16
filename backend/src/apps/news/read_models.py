@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -158,4 +156,3 @@ def news_item_read_model_from_orm(item) -> NewsItemReadModel:
         relevance_score=float(item.relevance_score) if item.relevance_score is not None else None,
         links=ordered_links,
     )
-

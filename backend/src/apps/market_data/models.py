@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -44,101 +42,101 @@ class Coin(Base):
         server_default=func.now(),
     )
 
-    candles: Mapped[list["Candle"]] = relationship(
+    candles: Mapped[list[Candle]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="Candle.timestamp",
     )
-    sector: Mapped["Sector | None"] = relationship("Sector", back_populates="coins")
-    metrics: Mapped["CoinMetrics | None"] = relationship(
+    sector: Mapped[Sector | None] = relationship("Sector", back_populates="coins")
+    metrics: Mapped[CoinMetrics | None] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         uselist=False,
     )
-    indicator_cache: Mapped[list["IndicatorCache"]] = relationship(
+    indicator_cache: Mapped[list[IndicatorCache]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="IndicatorCache.timestamp",
     )
-    feature_snapshots: Mapped[list["FeatureSnapshot"]] = relationship(
+    feature_snapshots: Mapped[list[FeatureSnapshot]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="FeatureSnapshot.timestamp",
     )
-    signals: Mapped[list["Signal"]] = relationship(
+    signals: Mapped[list[Signal]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="Signal.candle_timestamp",
     )
-    signal_history: Mapped[list["SignalHistory"]] = relationship(
+    signal_history: Mapped[list[SignalHistory]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="SignalHistory.candle_timestamp",
     )
-    market_cycles: Mapped[list["MarketCycle"]] = relationship(
+    market_cycles: Mapped[list[MarketCycle]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="MarketCycle.timeframe",
     )
-    investment_decisions: Mapped[list["InvestmentDecision"]] = relationship(
+    investment_decisions: Mapped[list[InvestmentDecision]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="InvestmentDecision.created_at",
     )
-    market_decisions: Mapped[list["MarketDecision"]] = relationship(
+    market_decisions: Mapped[list[MarketDecision]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="MarketDecision.created_at",
     )
-    leading_relations: Mapped[list["CoinRelation"]] = relationship(
+    leading_relations: Mapped[list[CoinRelation]] = relationship(
         "CoinRelation",
         foreign_keys="CoinRelation.leader_coin_id",
         back_populates="leader_coin",
         cascade="all, delete-orphan",
         order_by="CoinRelation.updated_at",
     )
-    following_relations: Mapped[list["CoinRelation"]] = relationship(
+    following_relations: Mapped[list[CoinRelation]] = relationship(
         "CoinRelation",
         foreign_keys="CoinRelation.follower_coin_id",
         back_populates="follower_coin",
         cascade="all, delete-orphan",
         order_by="CoinRelation.updated_at",
     )
-    leader_predictions: Mapped[list["MarketPrediction"]] = relationship(
+    leader_predictions: Mapped[list[MarketPrediction]] = relationship(
         "MarketPrediction",
         foreign_keys="MarketPrediction.leader_coin_id",
         back_populates="leader_coin",
         cascade="all, delete-orphan",
         order_by="MarketPrediction.created_at",
     )
-    target_predictions: Mapped[list["MarketPrediction"]] = relationship(
+    target_predictions: Mapped[list[MarketPrediction]] = relationship(
         "MarketPrediction",
         foreign_keys="MarketPrediction.target_coin_id",
         back_populates="target_coin",
         cascade="all, delete-orphan",
         order_by="MarketPrediction.created_at",
     )
-    portfolio_balances: Mapped[list["PortfolioBalance"]] = relationship(
+    portfolio_balances: Mapped[list[PortfolioBalance]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="PortfolioBalance.updated_at",
     )
-    portfolio_positions: Mapped[list["PortfolioPosition"]] = relationship(
+    portfolio_positions: Mapped[list[PortfolioPosition]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="PortfolioPosition.opened_at",
     )
-    portfolio_actions: Mapped[list["PortfolioAction"]] = relationship(
+    portfolio_actions: Mapped[list[PortfolioAction]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="PortfolioAction.created_at",
     )
-    risk_metrics: Mapped[list["RiskMetric"]] = relationship(
+    risk_metrics: Mapped[list[RiskMetric]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="RiskMetric.timeframe",
     )
-    final_signals: Mapped[list["FinalSignal"]] = relationship(
+    final_signals: Mapped[list[FinalSignal]] = relationship(
         back_populates="coin",
         cascade="all, delete-orphan",
         order_by="FinalSignal.created_at",
@@ -161,7 +159,7 @@ class Candle(Base):
     close: Mapped[float] = mapped_column(Float(53), nullable=False)
     volume: Mapped[float | None] = mapped_column(Float(53), nullable=True)
 
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="candles")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="candles")
 
 
 __all__ = ["Coin", "Candle"]

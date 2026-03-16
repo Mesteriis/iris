@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.portfolio.read_models import PortfolioStateReadModel, portfolio_state_payload
 from src.apps.portfolio.results import (
     PortfolioActionEvaluationResult,

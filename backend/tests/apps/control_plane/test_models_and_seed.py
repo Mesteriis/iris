@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from sqlalchemy import select
 
 from src.apps.control_plane.enums import EventRouteScope, EventRouteStatus

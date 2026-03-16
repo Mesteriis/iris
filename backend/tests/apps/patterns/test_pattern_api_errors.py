@@ -1,6 +1,5 @@
 # ruff: noqa: RUF001
 
-from __future__ import annotations
 
 from src.apps.patterns.api.errors import PatternNotFoundError, pattern_coin_not_found_error, pattern_error_to_http
 

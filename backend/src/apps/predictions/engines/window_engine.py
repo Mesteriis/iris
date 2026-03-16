@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.predictions.engines.contracts import PredictionWindowInput
 from src.apps.predictions.support import PREDICTION_MOVE_THRESHOLD, PredictionOutcome
 

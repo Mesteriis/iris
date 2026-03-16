@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.portfolio.engines.contracts import PortfolioRebalancePlan
 from src.apps.portfolio.support import calculate_stops
 

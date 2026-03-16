@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 from src.apps.cross_market.models import SectorMetric
 

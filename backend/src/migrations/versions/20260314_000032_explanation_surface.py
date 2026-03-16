@@ -5,7 +5,6 @@ Revises: 20260314_000031
 Create Date: 2026-03-14 00:32:00.000000
 """
 
-from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op

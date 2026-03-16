@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from src.apps.portfolio.clients import BinancePlugin, BybitPlugin, ExchangePlugin, create_exchange_plugin, get_exchange_plugin, list_registered_exchanges, register_exchange

@@ -1,6 +1,5 @@
 # ruff: noqa: RUF001
 
-from __future__ import annotations
 
 from src.apps.briefs.api.errors import brief_not_found_error, symbol_not_found_error
 

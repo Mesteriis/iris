@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime, timedelta
 
 from src.apps.market_data.domain import ensure_utc, utc_now

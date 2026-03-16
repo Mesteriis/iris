@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections import Counter, defaultdict
 from difflib import unified_diff
 from pathlib import Path

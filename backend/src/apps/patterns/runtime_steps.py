@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.market_data.domain import utc_now
 from src.apps.patterns.engines import PatternCycleEngineInput, compute_pattern_market_cycle
 from src.apps.patterns.query_services import PatternQueryService

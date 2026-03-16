@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.anomalies.constants import (
     ANOMALY_SOURCE_MARKET_STRUCTURE_SCAN,
     ANOMALY_SOURCE_SECTOR_SCAN,

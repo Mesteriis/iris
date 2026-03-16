@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 from collections import deque
 from collections.abc import Iterable

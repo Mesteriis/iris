@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter, Query
 
 from src.apps.patterns.api.contracts import (

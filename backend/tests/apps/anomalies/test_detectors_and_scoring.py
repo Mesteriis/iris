@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime, timedelta, timezone
 
 from src.apps.anomalies.detectors import (

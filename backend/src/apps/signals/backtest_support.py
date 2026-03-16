@@ -1,9 +1,8 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from datetime import datetime
 from math import sqrt
-from typing import Any, Sequence
+from typing import Any
+from collections.abc import Sequence
 
 
 @dataclass(slots=True, frozen=True)

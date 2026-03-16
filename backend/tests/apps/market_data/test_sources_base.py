@@ -1,10 +1,9 @@
-from __future__ import annotations
-
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from typing import ClassVar
 
 import httpx
 import pytest
-
 from src.apps.market_data import clients, events
 from src.apps.market_data.sources.base import (
     BaseMarketSource,
@@ -13,13 +12,14 @@ from src.apps.market_data.sources.base import (
     TemporaryMarketSourceError,
 )
 from src.apps.market_data.sources.rate_limits import RateLimitPolicy
+
 from tests.factories.market_data import CoinCreateFactory
 
 
 class DummyMarketSource(BaseMarketSource):
     name = "dummy"
-    asset_types = {"crypto"}
-    supported_intervals = {"15m"}
+    asset_types: ClassVar[set[str]] = {"crypto"}
+    supported_intervals: ClassVar[set[str]] = {"15m"}
 
     def get_symbol(self, coin) -> str | None:
         return coin.symbol if coin.symbol.startswith("BTC") else None
@@ -54,7 +54,7 @@ async def test_market_source_exports_and_base_methods(monkeypatch) -> None:
     base_source = BaseMarketSource()
     supported_coin = CoinCreateFactory.build(symbol="BTCUSD_EVT", asset_type="crypto")
     unsupported_coin = CoinCreateFactory.build(symbol="EURUSD_EVT", asset_type="forex")
-    start = datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 10, 0, tzinfo=UTC)
     end = start + timedelta(minutes=30)
 
     assert clients.BaseMarketSource is BaseMarketSource
@@ -64,6 +64,8 @@ async def test_market_source_exports_and_base_methods(monkeypatch) -> None:
     assert source.supports_coin(supported_coin, "1h") is False
     assert source._limit_for_range("15m", start, end) == 3
     assert source.allows_terminal_gap(supported_coin) is False
+    assert source.resolve_provider_symbol("BTCUSD_EVT", fallback="BTCUSDT") == "BTCUSDT"
+    assert source.supports_canonical_symbol("BTCUSD_EVT", fallback=True) is True
 
     aclose_calls: list[str] = []
 
@@ -81,6 +83,30 @@ async def test_market_source_exports_and_base_methods(monkeypatch) -> None:
     with pytest.raises(NotImplementedError):
         base_source.bars_per_request("15m")
     await base_source.close()
+
+
+@pytest.mark.asyncio
+async def test_market_source_registry_resolution_helpers(monkeypatch) -> None:
+    source = DummyMarketSource()
+
+    class FakeRegistry:
+        def resolve_provider_symbol(self, source_name: str, canonical_symbol: str, *, fallback: str | None = None) -> str | None:
+            assert source_name == "dummy"
+            return "BTC-PROVIDER" if canonical_symbol == "BTCUSD_EVT" else fallback
+
+        def supports_canonical_symbol(self, source_name: str, canonical_symbol: str, *, fallback: bool = False) -> bool:
+            assert source_name == "dummy"
+            return canonical_symbol == "BTCUSD_EVT" or fallback
+
+    monkeypatch.setattr(
+        "src.apps.market_data.sources.source_capability_registry.get_market_source_capability_registry",
+        lambda: FakeRegistry(),
+    )
+
+    assert source.resolve_provider_symbol("BTCUSD_EVT", fallback="fallback") == "BTC-PROVIDER"
+    assert source.resolve_provider_symbol("ETHUSD_EVT", fallback="fallback") == "fallback"
+    assert source.supports_canonical_symbol("BTCUSD_EVT") is True
+    assert source.supports_canonical_symbol("ETHUSD_EVT", fallback=False) is False
 
 
 @pytest.mark.asyncio
@@ -120,7 +146,7 @@ async def test_market_source_request_success_and_transport_errors(monkeypatch) -
     async def fake_rate_limited_get(*args, **kwargs) -> httpx.Response:
         assert args[0] == "dummy"
         assert kwargs["params"] == {"limit": 10}
-        assert kwargs["headers"] == {"X-Test": "1"}
+        assert kwargs["headers"]["X-Test"] == "1"
         assert kwargs["rate_limit_statuses"] == {418}
         assert kwargs["fallback_retry_after_seconds"] == 13
         assert kwargs["cost"] == 2
@@ -151,6 +177,75 @@ async def test_market_source_request_success_and_transport_errors(monkeypatch) -
     monkeypatch.setattr("src.apps.market_data.sources.base.rate_limited_get", fake_raise_http)
     with pytest.raises(TemporaryMarketSourceError, match="dummy transport error"):
         await source.request("https://example.com/data")
+
+
+@pytest.mark.asyncio
+async def test_market_source_uses_proxy_registry_when_direct_bucket_is_limited(monkeypatch) -> None:
+    class ProxyDummyMarketSource(DummyMarketSource):
+        proxy_pool_mode = "preferred"
+
+    source = ProxyDummyMarketSource()
+
+    class FakeRateLimitManager:
+        async def is_rate_limited(self, name: str) -> bool:
+            assert name == "dummy"
+            return True
+
+    class FakeRegistry:
+        async def has_available_proxy(self) -> bool:
+            return True
+
+    monkeypatch.setattr("src.apps.market_data.sources.base.get_rate_limit_manager", lambda: FakeRateLimitManager())
+    monkeypatch.setattr("src.apps.market_data.sources.base.get_free_proxy_registry", lambda: FakeRegistry())
+
+    assert await source.is_rate_limited() is False
+
+
+@pytest.mark.asyncio
+async def test_market_source_request_prefers_proxy_pool(monkeypatch) -> None:
+    class ProxyDummyMarketSource(DummyMarketSource):
+        proxy_pool_mode = "preferred"
+
+    source = ProxyDummyMarketSource()
+    response = _response(payload={"ok": True})
+    calls: list[tuple[str, str]] = []
+
+    class FakeRateLimitManager:
+        async def cooldown_seconds(self, name: str) -> float:
+            assert name == "dummy"
+            return 0.0
+
+    class FakeRegistry:
+        async def get_best_proxies(self, *, limit: int) -> list[str]:
+            assert limit == 2
+            return ["http://1.1.1.1:8080", "http://2.2.2.2:8080"]
+
+    async def fake_request_via_proxy(proxy_url: str, *args, **kwargs) -> httpx.Response:
+        calls.append(("proxy", proxy_url))
+        if proxy_url.endswith("8080") and "1.1.1.1" in proxy_url:
+            raise httpx.ConnectError("boom")
+        return response
+
+    async def fake_request_direct(*args, **kwargs) -> httpx.Response:
+        calls.append(("direct", "used"))
+        return response
+
+    monkeypatch.setattr("src.apps.market_data.sources.base.get_rate_limit_manager", lambda: FakeRateLimitManager())
+    monkeypatch.setattr("src.apps.market_data.sources.base.get_free_proxy_registry", lambda: FakeRegistry())
+    monkeypatch.setattr(
+        "src.apps.market_data.sources.base.get_settings",
+        lambda: SimpleNamespace(free_proxy_pool_max_proxy_attempts=2),
+    )
+    monkeypatch.setattr(source, "_request_via_proxy", fake_request_via_proxy)
+    monkeypatch.setattr(source, "_request_direct", fake_request_direct)
+
+    result = await source.request("https://example.com/data", headers={"X-Test": "1"})
+
+    assert result is response
+    assert calls == [
+        ("proxy", "http://1.1.1.1:8080"),
+        ("proxy", "http://2.2.2.2:8080"),
+    ]
 
 
 @pytest.mark.asyncio

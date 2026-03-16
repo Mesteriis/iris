@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 import os
 import queue
@@ -230,7 +228,7 @@ def register_default_receivers() -> None:
         bus.start_console_receiver(receiver_name)
 
 
-def _coin_payload(coin: "Coin") -> dict[str, Any]:
+def _coin_payload(coin: Coin) -> dict[str, Any]:
     return {
         "coin_id": coin.id,
         "coin_name": coin.name,
@@ -239,7 +237,7 @@ def _coin_payload(coin: "Coin") -> dict[str, Any]:
 
 
 def publish_coin_history_progress_message(
-    coin: "Coin",
+    coin: Coin,
     *,
     progress_percent: float,
     loaded_points: int,
@@ -262,7 +260,7 @@ def publish_coin_history_progress_message(
 
 
 def publish_coin_history_loaded_message(
-    coin: "Coin",
+    coin: Coin,
     *,
     total_points: int,
 ) -> None:
@@ -280,7 +278,7 @@ def publish_coin_history_loaded_message(
     )
 
 
-def publish_coin_analysis_messages(coin: "Coin") -> None:
+def publish_coin_analysis_messages(coin: Coin) -> None:
     bus = get_message_bus()
     ready_message = AnalysisMessage(
         topic="coin.ready_for_analysis",
@@ -301,7 +299,7 @@ def publish_coin_analysis_messages(coin: "Coin") -> None:
 
 
 def publish_investment_decision_message(
-    coin: "Coin",
+    coin: Coin,
     *,
     timeframe: int,
     decision: str,
@@ -329,7 +327,7 @@ def publish_investment_decision_message(
 
 
 def publish_investment_signal_message(
-    coin: "Coin",
+    coin: Coin,
     *,
     timeframe: int,
     decision: str,

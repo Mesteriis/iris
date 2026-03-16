@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import logging
 from collections.abc import Sequence
@@ -211,6 +209,28 @@ async def schedule_news_poll(stop_event: asyncio.Event) -> None:
             await enqueue_task(news_tasks.poll_enabled_news_sources_job)
 
 
+async def schedule_market_source_capability_refresh(stop_event: asyncio.Event) -> None:
+    await asyncio.sleep(1)
+    if stop_event.is_set():
+        return
+
+    if settings.market_source_capability_refresh_on_startup:
+        LOGGER.info("Queueing startup market source capability refresh task.")
+        await enqueue_task(market_data_tasks.refresh_market_source_capability_map)
+
+    interval = settings.market_source_capability_refresh_interval_seconds
+    if interval <= 0:
+        await stop_event.wait()
+        return
+
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+        except TimeoutError:
+            LOGGER.info("Queueing hourly market source capability refresh task.")
+            await enqueue_task(market_data_tasks.refresh_market_source_capability_map)
+
+
 async def schedule_hypothesis_evaluation(stop_event: asyncio.Event) -> None:
     await asyncio.sleep(1)
     if stop_event.is_set():
@@ -281,6 +301,7 @@ def start_scheduler(
         asyncio.create_task(schedule_portfolio_sync(finish_event)),
         asyncio.create_task(schedule_prediction_evaluation(finish_event)),
         asyncio.create_task(schedule_news_poll(finish_event)),
+        asyncio.create_task(schedule_market_source_capability_refresh(finish_event)),
     ]
     if hypothesis_evaluation_surfaces_enabled(settings):
         hypothesis_task = asyncio.create_task(schedule_hypothesis_evaluation(finish_event))
@@ -301,6 +322,7 @@ def start_scheduler(
         app.state.taskiq_portfolio_sync_task,
         app.state.taskiq_prediction_evaluation_task,
         app.state.taskiq_news_poll_task,
+        app.state.taskiq_market_source_capability_refresh_task,
         *remaining,
     ) = tasks
     if hypothesis_evaluation_surfaces_enabled(settings):

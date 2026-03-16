@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 import asyncio
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from src.apps.market_data.domain import ensure_utc, interval_delta, latest_completed_timestamp, normalize_interval
+from src.apps.market_data.sources.alphavantage import AlphaVantageMarketSource
 from src.apps.market_data.sources.base import (
     BaseMarketSource,
     MarketBar,
@@ -14,18 +14,30 @@ from src.apps.market_data.sources.base import (
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
 )
-from src.apps.market_data.sources.alphavantage import AlphaVantageForexMarketSource
 from src.apps.market_data.sources.binance import BinanceMarketSource
 from src.apps.market_data.sources.coinbase import CoinbaseMarketSource
+from src.apps.market_data.sources.eia import EiaEnergyMarketSource
+from src.apps.market_data.sources.fred import FredMacroMarketSource
 from src.apps.market_data.sources.kraken import KrakenMarketSource
 from src.apps.market_data.sources.kucoin import KucoinMarketSource
 from src.apps.market_data.sources.moex import MoexIndexMarketSource
 from src.apps.market_data.sources.polygon import PolygonMarketSource
+from src.apps.market_data.sources.rate_limits import get_rate_limit_manager
+from src.apps.market_data.sources.stooq import StooqMarketSource
 from src.apps.market_data.sources.twelvedata import TwelveDataMarketSource
 from src.apps.market_data.sources.yfinance import YahooMarketSource
 
 if TYPE_CHECKING:
     from src.apps.market_data.models import Coin
+
+
+DEFAULT_PROVIDER_CHAIN_BY_ASSET_TYPE: dict[str, tuple[str, ...]] = {
+    "crypto": ("binance", "kucoin", "kraken", "coinbase", "yahoo"),
+    "index": ("moex", "stooq", "fred", "polygon", "twelvedata", "alphavantage", "yahoo"),
+    "forex": ("polygon", "twelvedata", "alphavantage", "yahoo"),
+    "metal": ("stooq", "yahoo", "twelvedata"),
+    "energy": ("eia", "alphavantage", "yahoo"),
+}
 
 
 @dataclass(slots=True)
@@ -34,6 +46,7 @@ class MarketFetchResult:
     completed: bool
     source_names: list[str]
     error: str | None = None
+    retry_after_seconds: int | None = None
 
 
 class MarketSourceCarousel:
@@ -44,9 +57,12 @@ class MarketSourceCarousel:
             "kraken": KrakenMarketSource(),
             "coinbase": CoinbaseMarketSource(),
             "moex": MoexIndexMarketSource(),
+            "eia": EiaEnergyMarketSource(),
+            "fred": FredMacroMarketSource(),
             "polygon": PolygonMarketSource(),
+            "stooq": StooqMarketSource(),
             "twelvedata": TwelveDataMarketSource(),
-            "alphavantage": AlphaVantageForexMarketSource(),
+            "alphavantage": AlphaVantageMarketSource(),
             "yahoo": YahooMarketSource(),
         }
         self._cursor: dict[tuple[str, str], int] = {}
@@ -56,26 +72,23 @@ class MarketSourceCarousel:
         for source in self.sources.values():
             await source.close()
 
-    def provider_names_for_coin(self, coin: "Coin") -> list[str]:
-        preferred = coin.source.strip().lower() if coin.source else "default"
-        if coin.asset_type == "crypto":
-            names = ["binance", "kucoin", "kraken", "coinbase", "yahoo"]
-        elif coin.asset_type == "index":
-            names = ["moex", "polygon", "twelvedata", "yahoo"]
-        elif coin.asset_type == "forex":
-            names = ["polygon", "twelvedata", "alphavantage", "yahoo"]
-        elif coin.asset_type == "metal":
-            names = ["twelvedata", "yahoo"]
-        else:
-            names = ["yahoo"]
-
-        if preferred != "default" and preferred in names:
-            names = [preferred, *[name for name in names if name != preferred]]
-        return names
+    def provider_names_for_coin(self, coin: Coin) -> list[str]:
+        chain = list(DEFAULT_PROVIDER_CHAIN_BY_ASSET_TYPE.get(coin.asset_type, ("yahoo",)))
+        normalized_preferred = (coin.source or "").strip().lower()
+        if normalized_preferred and normalized_preferred != "default" and normalized_preferred in self.sources:
+            if normalized_preferred in chain:
+                chain = [normalized_preferred, *[source_name for source_name in chain if source_name != normalized_preferred]]
+            else:
+                chain = [normalized_preferred, *chain]
+        return [
+            source_name
+            for source_name in chain
+            if source_name in self.sources and self.sources[source_name].supports_coin_identity(coin)
+        ]
 
     async def fetch_history_window(
         self,
-        coin: "Coin",
+        coin: Coin,
         interval: str,
         start: datetime,
         end: datetime,
@@ -100,6 +113,7 @@ class MarketSourceCarousel:
         attempts_without_progress = 0
         collected: dict[datetime, MarketBar] = {}
         last_error: str | None = None
+        retry_after_seconds: int | None = None
         source_names_used: list[str] = []
 
         while current <= last_available:
@@ -111,6 +125,9 @@ class MarketSourceCarousel:
                 source_names_used.append(source_name)
 
                 if await source.is_rate_limited():
+                    cooldown_seconds = await get_rate_limit_manager().cooldown_seconds(source_name)
+                    if cooldown_seconds > 0:
+                        retry_after_seconds = max(retry_after_seconds or 0, max(math.ceil(cooldown_seconds), 1))
                     last_error = f"{source_name} is temporarily rate limited."
                     continue
 
@@ -121,6 +138,7 @@ class MarketSourceCarousel:
                     )
                     bars = await source.fetch_bars(coin, normalized_interval, current, request_end)
                 except RateLimitedMarketSourceError as exc:
+                    retry_after_seconds = max(retry_after_seconds or 0, max(int(exc.retry_after_seconds), 1))
                     last_error = str(exc)
                     continue
                 except UnsupportedMarketSourceQuery as exc:
@@ -145,8 +163,6 @@ class MarketSourceCarousel:
                         )
                     last_error = f"{source_name} returned no bars for {coin.symbol}."
                     continue
-
-                await source.clear_rate_limit()
                 next_current = current
                 for bar in bars:
                     bar_timestamp = ensure_utc(bar.timestamp)
@@ -177,6 +193,7 @@ class MarketSourceCarousel:
                     completed=False,
                     source_names=source_names_used,
                     error=last_error or f"Exhausted market source carousel for {coin.symbol}.",
+                    retry_after_seconds=retry_after_seconds,
                 )
 
         return MarketFetchResult(

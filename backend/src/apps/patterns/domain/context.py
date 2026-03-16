@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.indicators.models import CoinMetrics
 from src.apps.patterns.models import MarketCycle
 from src.apps.cross_market.models import SectorMetric

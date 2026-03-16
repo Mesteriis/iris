@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 from src.core.i18n import TranslationCatalogError, load_catalog, render_translation_coverage, validate_catalogs
 

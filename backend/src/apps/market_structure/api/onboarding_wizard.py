@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.market_structure.constants import (
     MARKET_STRUCTURE_PLUGIN_BINANCE_USDM,
     MARKET_STRUCTURE_PLUGIN_BYBIT_DERIVATIVES,

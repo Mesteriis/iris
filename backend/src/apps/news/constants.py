@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 NEWS_SOURCE_PLUGIN_X = "x"
 NEWS_SOURCE_PLUGIN_TELEGRAM_USER = "telegram_user"
 NEWS_SOURCE_PLUGIN_DISCORD_BOT = "discord_bot"

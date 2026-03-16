@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from src.apps.explanations.api.contracts import ExplanationJobAcceptedRead, ExplanationRead

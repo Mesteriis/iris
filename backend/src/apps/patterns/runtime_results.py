@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from src.apps.patterns.engines.contracts import PatternSignalInsertSpec

@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 from bisect import bisect_left
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.market_data.candles import CandlePoint, candle_close_timestamp, timeframe_delta

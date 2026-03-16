@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import UTC, datetime, timedelta, timezone
 
 from src.apps.predictions.engines import PredictionWindowCandleInput, PredictionWindowInput, evaluate_prediction_window

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import src.core.bootstrap.app as bootstrap_app_module
 import src.core.http.matrix as matrix_module
 

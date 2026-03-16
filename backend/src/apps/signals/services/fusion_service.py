@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.signals.engines import SignalFusionEngineResult, run_signal_fusion
 from src.apps.signals.engines.contracts import SignalFusionInput
 from src.apps.signals.fusion_support import FUSION_NEWS_TIMEFRAMES, MATERIAL_CONFIDENCE_DELTA

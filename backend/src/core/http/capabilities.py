@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from difflib import unified_diff
 from enum import StrEnum

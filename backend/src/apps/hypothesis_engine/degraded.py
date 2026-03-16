@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from src.apps.hypothesis_engine.constants import DEFAULT_HYPOTHESIS_HORIZON_MIN, DEFAULT_TARGET_MOVE

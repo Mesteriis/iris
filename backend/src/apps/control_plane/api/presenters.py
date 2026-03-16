@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from src.apps.ai_prompt_registry import ensure_ai_prompt_policy_loaded

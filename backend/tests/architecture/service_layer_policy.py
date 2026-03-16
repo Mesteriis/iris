@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Service-layer governance is anchored by the ADR package:
 

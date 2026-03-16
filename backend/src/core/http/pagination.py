@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 DEFAULT_PAGE_LIMIT = 50
 MAX_PAGE_LIMIT = 500
 DEFAULT_SORT_ORDER = "asc"

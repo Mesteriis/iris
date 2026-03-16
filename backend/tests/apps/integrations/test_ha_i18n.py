@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.integrations.ha.application.services import HABridgeService
 from src.core.settings import AppLanguage, Settings
 

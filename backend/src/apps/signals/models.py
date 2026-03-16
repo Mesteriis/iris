@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -46,7 +44,7 @@ class Signal(Base):
         server_default=func.now(),
     )
 
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="signals")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="signals")
 
 
 class SignalHistory(Base):
@@ -77,7 +75,7 @@ class SignalHistory(Base):
     result_drawdown: Mapped[float | None] = mapped_column(Float(53), nullable=True)
     evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="signal_history")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="signal_history")
 
 
 class FinalSignal(Base):
@@ -100,7 +98,7 @@ class FinalSignal(Base):
         server_default=func.now(),
     )
 
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="final_signals")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="final_signals")
 
 
 class InvestmentDecision(Base):
@@ -123,7 +121,7 @@ class InvestmentDecision(Base):
         server_default=func.now(),
     )
 
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="investment_decisions")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="investment_decisions")
 
 
 class MarketDecision(Base):
@@ -145,7 +143,7 @@ class MarketDecision(Base):
         server_default=func.now(),
     )
 
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="market_decisions")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="market_decisions")
 
 
 class RiskMetric(Base):
@@ -162,7 +160,7 @@ class RiskMetric(Base):
         server_default=func.now(),
     )
 
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="risk_metrics")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="risk_metrics")
 
 
 class Strategy(Base):
@@ -178,13 +176,13 @@ class Strategy(Base):
         server_default=func.now(),
     )
 
-    rules: Mapped[list["StrategyRule"]] = relationship(
+    rules: Mapped[list[StrategyRule]] = relationship(
         "StrategyRule",
         back_populates="strategy",
         cascade="all, delete-orphan",
         order_by="StrategyRule.pattern_slug",
     )
-    performance: Mapped["StrategyPerformance | None"] = relationship(
+    performance: Mapped[StrategyPerformance | None] = relationship(
         "StrategyPerformance",
         back_populates="strategy",
         cascade="all, delete-orphan",
@@ -202,7 +200,7 @@ class StrategyRule(Base):
     cycle: Mapped[str] = mapped_column(String(32), nullable=False, default="*")
     min_confidence: Mapped[float] = mapped_column(Float(53), nullable=False, default=0.0)
 
-    strategy: Mapped["Strategy"] = relationship("Strategy", back_populates="rules")
+    strategy: Mapped[Strategy] = relationship("Strategy", back_populates="rules")
 
 
 class StrategyPerformance(Base):
@@ -220,7 +218,7 @@ class StrategyPerformance(Base):
         server_default=func.now(),
     )
 
-    strategy: Mapped["Strategy"] = relationship("Strategy", back_populates="performance")
+    strategy: Mapped[Strategy] = relationship("Strategy", back_populates="performance")
 
 
 __all__ = [

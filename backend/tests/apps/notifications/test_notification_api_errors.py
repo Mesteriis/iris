@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.notifications.api.errors import notification_not_found_error
 
 

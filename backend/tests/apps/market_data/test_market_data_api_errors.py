@@ -1,6 +1,5 @@
 # ruff: noqa: RUF001
 
-from __future__ import annotations
 
 from src.apps.market_data.api.errors import (
     MarketDataCoinConflictError,

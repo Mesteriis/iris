@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import importlib.util
 from datetime import timedelta
 from types import SimpleNamespace

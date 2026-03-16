@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from src.apps.cross_market.engines import CrossMarketLeaderDetectionInput, evaluate_market_leader

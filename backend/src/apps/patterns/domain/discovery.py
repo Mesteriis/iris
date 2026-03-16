@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from hashlib import sha1
 
 DISCOVERY_WINDOW_BARS = 24

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 AI_EVENT_NOTIFICATION_CREATED = "notification_created"
 
 PROMPT_TASK_NOTIFICATION_HUMANIZE = "notification_humanize"

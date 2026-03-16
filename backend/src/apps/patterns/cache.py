@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import json
 from functools import lru_cache
@@ -13,7 +11,7 @@ from src.apps.patterns.domain.regime import RegimeRead
 
 REGIME_CACHE_PREFIX = "iris:regime"
 REGIME_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
-_ASYNC_REGIME_CACHE_CLIENTS: "WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedis]" = WeakKeyDictionary()
+_ASYNC_REGIME_CACHE_CLIENTS: WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedis] = WeakKeyDictionary()
 
 
 # NOTE:

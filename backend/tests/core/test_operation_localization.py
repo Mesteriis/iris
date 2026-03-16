@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 from src.core.http.operation_localization import dispatch_result_message_fields, localize_operation_status

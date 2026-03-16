@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.hypothesis_engine.constants import SUPPORTED_HYPOTHESIS_SOURCE_EVENTS
 from src.apps.hypothesis_engine.services import HypothesisService, HypothesisSideEffectDispatcher
 from src.core.db.session import AsyncSessionLocal

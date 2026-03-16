@@ -144,6 +144,7 @@ Notes:
 
 - `.env.example` defaults to `localhost:55432` and `localhost:56379`, which match the ports exposed by the Docker Compose backend container.
 - TimescaleDB support is required. Plain PostgreSQL is not sufficient for the full migration set.
+- Market-data provider key acquisition is documented in [`docs/market-data-api-keys.md`](docs/market-data-api-keys.md).
 
 3. Run prestart and tests:
 
@@ -175,6 +176,7 @@ Primary documentation entrypoints:
 - Docs landing page: [`docs/index.md`](docs/index.md)
 - Architecture overview: [`docs/architecture/index.md`](docs/architecture/index.md)
 - ADR index: [`docs/architecture/adr/index.md`](docs/architecture/adr/index.md)
+- Market-data key setup: [`docs/market-data-api-keys.md`](docs/market-data-api-keys.md)
 - Home Assistant docs: [`docs/home-assistant/index.md`](docs/home-assistant/index.md)
 - Generated HTTP governance artifacts:
   - [`docs/_generated/http-availability-matrix.md`](docs/_generated/http-availability-matrix.md)

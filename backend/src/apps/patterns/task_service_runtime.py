@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime, timedelta
 
 from src.apps.patterns.domain.base import PatternDetection

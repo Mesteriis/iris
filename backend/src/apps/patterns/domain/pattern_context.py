@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.patterns.domain.base import PatternDetection, PatternDetector
 from src.apps.patterns.domain.regime import detect_market_regime
 from src.apps.patterns.domain.semantics import pattern_bias

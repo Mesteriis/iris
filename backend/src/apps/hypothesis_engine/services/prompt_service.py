@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.ai_prompt_registry import ensure_ai_prompt_policy_loaded
 from src.apps.hypothesis_engine.constants import FORBIDDEN_PROMPT_INFRA_KEYS
 from src.apps.hypothesis_engine.contracts import PromptCacheInvalidation, PromptMutationResult, PromptRecord

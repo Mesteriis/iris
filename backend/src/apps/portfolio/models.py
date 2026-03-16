@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -31,13 +29,13 @@ class ExchangeAccount(Base):
         server_default=func.now(),
     )
 
-    balances: Mapped[list["PortfolioBalance"]] = relationship(
+    balances: Mapped[list[PortfolioBalance]] = relationship(
         "PortfolioBalance",
         back_populates="exchange_account",
         cascade="all, delete-orphan",
         order_by="PortfolioBalance.updated_at",
     )
-    positions: Mapped[list["PortfolioPosition"]] = relationship(
+    positions: Mapped[list[PortfolioPosition]] = relationship(
         "PortfolioPosition",
         back_populates="exchange_account",
         cascade="all, delete-orphan",
@@ -64,8 +62,8 @@ class PortfolioAction(Base):
         server_default=func.now(),
     )
 
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="portfolio_actions")
-    decision: Mapped["MarketDecision"] = relationship("MarketDecision")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="portfolio_actions")
+    decision: Mapped[MarketDecision] = relationship("MarketDecision")
 
 
 class PortfolioBalance(Base):
@@ -90,8 +88,8 @@ class PortfolioBalance(Base):
         server_default=func.now(),
     )
 
-    exchange_account: Mapped["ExchangeAccount"] = relationship("ExchangeAccount", back_populates="balances")
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="portfolio_balances")
+    exchange_account: Mapped[ExchangeAccount] = relationship("ExchangeAccount", back_populates="balances")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="portfolio_balances")
 
 
 class PortfolioPosition(Base):
@@ -123,8 +121,8 @@ class PortfolioPosition(Base):
     )
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    coin: Mapped["Coin"] = relationship("Coin", back_populates="portfolio_positions")
-    exchange_account: Mapped["ExchangeAccount | None"] = relationship("ExchangeAccount", back_populates="positions")
+    coin: Mapped[Coin] = relationship("Coin", back_populates="portfolio_positions")
+    exchange_account: Mapped[ExchangeAccount | None] = relationship("ExchangeAccount", back_populates="positions")
 
 
 class PortfolioState(Base):

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter, Query, status
 
 from src.apps.explanations.api.contracts import ExplanationJobAcceptedRead

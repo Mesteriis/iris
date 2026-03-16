@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Iterable
 
 from src.core.ai.contracts import AICapability, AIProviderConfig, AIProviderKind

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Iterable
 
 from src.apps.control_plane.engines.contracts import TopologyDiffPreviewItem

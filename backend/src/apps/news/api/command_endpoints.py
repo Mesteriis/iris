@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter, status
 
 from src.apps.news.api.contracts import NewsSourceCreate, NewsSourceRead, NewsSourceUpdate

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.core.i18n.contracts import LocalePolicy
 from src.core.i18n.locale import normalize_locale
 from src.core.settings import Settings, get_settings

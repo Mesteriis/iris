@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 from collections.abc import AsyncGenerator
 
@@ -45,7 +43,7 @@ SessionLocal = sessionmaker(
 )
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[AsyncSession]:
     db = AsyncSessionLocal()
     try:
         yield db

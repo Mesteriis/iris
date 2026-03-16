@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.hypothesis_engine.services import EvaluationService, HypothesisSideEffectDispatcher
 from src.apps.market_data.domain import utc_now
 from src.core.db.uow import AsyncUnitOfWork

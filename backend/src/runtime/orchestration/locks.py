@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 import asyncio
 from contextlib import asynccontextmanager
 from threading import Lock
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import LockError

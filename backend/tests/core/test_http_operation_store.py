@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 from redis.asyncio import Redis as AsyncRedis
 from src.core.http.operation_store import OperationStore, dispatch_background_operation, run_tracked_operation

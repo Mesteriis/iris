@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -122,9 +120,6 @@ async def test_market_data_tasks_run_history_and_manual_jobs(monkeypatch) -> Non
 
     monkeypatch.setattr(tasks, "async_redis_task_lock", lambda *args, **kwargs: _async_lock(True))
 
-    async def fake_sync_watched_assets(self):
-        return []
-
     async def fake_list_pending(self, *, symbol=None):
         del symbol
         return ["BTCUSD_EVT", "MISSING_EVT"]
@@ -136,7 +131,6 @@ async def test_market_data_tasks_run_history_and_manual_jobs(monkeypatch) -> Non
         del include_deleted
         return coin if symbol.strip().upper() == "BTCUSD_EVT" else None
 
-    monkeypatch.setattr(tasks.MarketDataService, "sync_watched_assets", fake_sync_watched_assets)
     monkeypatch.setattr(tasks.MarketDataQueryService, "list_coin_symbols_pending_backfill", fake_list_pending)
     monkeypatch.setattr(tasks.MarketDataQueryService, "list_coin_symbols_ready_for_latest_sync", fake_list_ready)
     monkeypatch.setattr(tasks.MarketDataQueryService, "get_coin_read_by_symbol", fake_get_coin)

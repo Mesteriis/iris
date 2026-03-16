@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.briefs.contracts import BriefGenerationResult, BriefKind, build_scope_key
 from src.apps.briefs.language import resolve_effective_language
 from src.apps.briefs.services import BriefService

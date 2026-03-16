@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.core.http.deps import build_request_locale_policy, resolve_request_locale
 from src.core.settings import Settings
 from starlette.requests import Request

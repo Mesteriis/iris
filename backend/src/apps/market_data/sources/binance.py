@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import httpx
 
@@ -31,18 +31,18 @@ BINANCE_SYMBOLS: dict[str, str] = {
 
 class BinanceMarketSource(BaseMarketSource):
     name = "binance"
-    asset_types = {"crypto"}
-    supported_intervals = {"15m", "1h", "4h", "1d"}
+    asset_types: ClassVar[set[str]] = {"crypto"}
+    supported_intervals: ClassVar[set[str]] = {"15m", "1h", "4h", "1d"}
     base_url = "https://api.binance.com/api/v3/klines"
-    rate_limit_status_codes = {418, 429}
+    rate_limit_status_codes: ClassVar[set[int]] = {418, 429}
 
-    def get_symbol(self, coin: "Coin") -> str | None:
-        return BINANCE_SYMBOLS.get(coin.symbol)
+    def get_symbol(self, coin: Coin) -> str | None:
+        return self.resolve_provider_symbol(coin.symbol, fallback=BINANCE_SYMBOLS.get(coin.symbol))
 
     def bars_per_request(self, interval: str) -> int:
         return 1000
 
-    async def fetch_bars(self, coin: "Coin", interval: str, start: datetime, end: datetime) -> list[MarketBar]:
+    async def fetch_bars(self, coin: Coin, interval: str, start: datetime, end: datetime) -> list[MarketBar]:
         symbol = self.get_symbol(coin)
         if symbol is None:
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol}.")

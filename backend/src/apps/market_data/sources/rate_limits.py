@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import math
 from dataclasses import dataclass
@@ -9,8 +7,8 @@ from threading import Lock
 import httpx
 from redis.exceptions import RedisError, WatchError
 
-from src.runtime.orchestration.locks import get_async_lock_redis
 from src.apps.market_data.domain import utc_now
+from src.runtime.orchestration.locks import get_async_lock_redis
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,12 +273,14 @@ async def rate_limited_get(
     rate_limit_statuses: set[int] | None = None,
     fallback_retry_after_seconds: int | None = None,
     cost: int | None = None,
+    rate_limit_identity: str | None = None,
 ) -> httpx.Response:
     from src.apps.market_data.sources.base import RateLimitedMarketSourceError
 
     policy = get_rate_limit_policy(source_name)
     manager = get_rate_limit_manager()
-    await manager.wait_for_slot(source_name, policy, cost=cost)
+    identity = rate_limit_identity or source_name
+    await manager.wait_for_slot(identity, policy, cost=cost)
 
     try:
         response = await client.get(url, params=params, headers=headers)
@@ -293,7 +293,7 @@ async def rate_limited_get(
             response,
             fallback_retry_after_seconds or policy.fallback_retry_after_seconds,
         )
-        await manager.set_cooldown(source_name, retry_after_seconds)
+        await manager.set_cooldown(identity, retry_after_seconds)
         raise RateLimitedMarketSourceError(
             source_name,
             retry_after_seconds,

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter
 
 from src.apps.integrations.ha.api import read_endpoints, websocket_endpoints

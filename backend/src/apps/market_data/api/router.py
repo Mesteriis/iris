@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from fastapi import APIRouter
 
 from src.apps.market_data.api import command_endpoints, job_endpoints, read_endpoints

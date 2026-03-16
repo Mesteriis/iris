@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.cross_market.engines.contracts import (
     CrossMarketSectorMomentumAggregateInput,
     CrossMarketSectorMomentumEngineResult,

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.portfolio.action_support import PortfolioActionCoordinator, apply_portfolio_rebalance
 from src.apps.portfolio.cache import cache_portfolio_balances_async, cache_portfolio_state_async
 from src.apps.portfolio.clients import create_exchange_plugin

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.signals.cache import cache_market_decision_snapshot_async
 from src.apps.signals.services.results import SignalFusionBatchResult, SignalFusionResult
 from src.runtime.streams.publisher import publish_event

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.core.ai.contracts import AICapability
 from src.core.ai.prompt_policy import (
     PromptTaskPolicy,

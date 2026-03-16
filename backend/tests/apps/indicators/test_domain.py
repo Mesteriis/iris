@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 import src.apps.indicators.domain as indicator_domain

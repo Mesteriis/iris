@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import multiprocessing
 import signal
@@ -7,6 +5,7 @@ from dataclasses import dataclass
 
 from taskiq.receiver import Receiver
 
+from src.apps.market_data.sources.source_capability_registry import get_market_source_capability_registry
 from src.core.settings import get_settings
 
 settings = get_settings()
@@ -26,8 +25,8 @@ TASKIQ_WORKER_GROUPS = (
 
 def _load_worker_broker(group_name: str):
     if group_name == "taskiq-general":
-        from src.apps.market_structure import tasks as market_structure_tasks
         from src.apps.market_data import tasks as market_data_tasks
+        from src.apps.market_structure import tasks as market_structure_tasks
         from src.apps.news import tasks as news_tasks
         from src.apps.portfolio import tasks as portfolio_tasks
         from src.runtime.orchestration.broker import broker
@@ -57,7 +56,9 @@ async def _watch_stop_flag(stop_flag, finish_event: asyncio.Event) -> None:
 async def _serve_taskiq_worker(group_name: str, stop_flag) -> None:
     broker = _load_worker_broker(group_name)
     finish_event = asyncio.Event()
+    source_capability_registry = get_market_source_capability_registry()
     await broker.startup()
+    await source_capability_registry.start()
     receiver = Receiver(broker=broker, run_startup=False)
     listener_task = asyncio.create_task(receiver.listen(finish_event))
     watcher_task = asyncio.create_task(_watch_stop_flag(stop_flag, finish_event))
@@ -75,6 +76,7 @@ async def _serve_taskiq_worker(group_name: str, stop_flag) -> None:
         finish_event.set()
         watcher_task.cancel()
         await asyncio.gather(watcher_task, return_exceptions=True)
+        await source_capability_registry.stop()
         await broker.shutdown()
 
 

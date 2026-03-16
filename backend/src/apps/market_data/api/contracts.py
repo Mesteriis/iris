@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Literal
 
 from src.apps.market_data.schemas import CoinCreate, CoinRead, PriceHistoryCreate, PriceHistoryRead

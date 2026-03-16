@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from src.apps.notifications.contracts import NotificationHumanizationResult
 from src.apps.notifications.services.humanization_service import TEMPLATE_DEGRADED_STRATEGY
 from src.apps.notifications.services.notification_service import _notification_storage_fields
