@@ -1,9 +1,13 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
     "target": "ES2020",
     "useDefineForClassFields": true,
     "module": "ESNext",
     "moduleResolution": "Node",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "strict": true,
     "jsx": "preserve",
     "resolveJsonModule": true,

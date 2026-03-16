@@ -495,6 +495,61 @@ export interface ControlPlaneRouteShadow {
   observe_only: boolean;
 }
 
+export interface ControlPlaneEventDefinition {
+  id: number;
+  event_type: string;
+  display_name: string;
+  domain: string;
+  description: string;
+  is_control_event: boolean;
+  payload_schema_json: Record<string, unknown>;
+  routing_hints_json: Record<string, unknown>;
+}
+
+export interface ControlPlaneConsumer {
+  id: number;
+  consumer_key: string;
+  display_name: string;
+  domain: string;
+  description: string;
+  implementation_key: string;
+  delivery_mode: string;
+  delivery_stream: string;
+  supports_shadow: boolean;
+  compatible_event_types_json: string[];
+  supported_filter_fields_json: string[];
+  supported_scopes_json: string[];
+  settings_json: Record<string, unknown>;
+}
+
+export interface ControlPlaneCompatibleConsumer {
+  consumer_key: string;
+  display_name: string;
+  domain: string;
+  supports_shadow: boolean;
+  supported_filter_fields: string[];
+  supported_scopes: string[];
+}
+
+export interface ControlPlaneRoute {
+  id: number;
+  route_key: string;
+  event_type: string;
+  consumer_key: string;
+  status: ControlPlaneRouteStatus;
+  scope_type: ControlPlaneRouteScope;
+  scope_value: string | null;
+  environment: string;
+  filters: ControlPlaneRouteFilters;
+  throttle: ControlPlaneRouteThrottle;
+  shadow: ControlPlaneRouteShadow;
+  notes: string | null;
+  priority: number;
+  system_managed: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 export interface ControlPlaneNode {
   id: string;
   node_type: "event" | "consumer";
@@ -578,6 +633,19 @@ export interface ControlPlaneDraftDiffItem {
   after: Record<string, unknown>;
 }
 
+export interface ControlPlaneAuditEntry {
+  id: number;
+  route_key_snapshot: string;
+  action: string;
+  actor: string;
+  actor_mode: ControlPlaneAccessMode;
+  reason: string | null;
+  before_json: Record<string, unknown>;
+  after_json: Record<string, unknown>;
+  context_json: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface ControlPlaneDraftLifecycle {
   draft: ControlPlaneDraft;
   published_version_number: number | null;
@@ -648,7 +716,7 @@ function buildControlPlaneHeaders(context?: Partial<ControlPlaneHeaders>): Recor
 }
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api/v1",
   timeout: 10000,
 });
 
@@ -821,13 +889,31 @@ export const irisApi = {
     return response.data;
   },
   async getStatus(): Promise<SystemStatus> {
-    const response = await api.get<SystemStatus>("/status");
+    const response = await api.get<SystemStatus>("/system/status");
     return response.data;
   },
   async getCoinHistory(symbol: string, interval: CandleInterval): Promise<PriceHistoryPoint[]> {
     const response = await api.get<PriceHistoryPoint[]>(`/coins/${symbol}/history`, {
       params: { interval },
     });
+    return response.data;
+  },
+  async listControlPlaneEvents(): Promise<ControlPlaneEventDefinition[]> {
+    const response = await api.get<ControlPlaneEventDefinition[]>("/control-plane/registry/events");
+    return response.data;
+  },
+  async listControlPlaneConsumers(): Promise<ControlPlaneConsumer[]> {
+    const response = await api.get<ControlPlaneConsumer[]>("/control-plane/registry/consumers");
+    return response.data;
+  },
+  async listControlPlaneCompatibleConsumers(eventType: string): Promise<ControlPlaneCompatibleConsumer[]> {
+    const response = await api.get<ControlPlaneCompatibleConsumer[]>(
+      `/control-plane/registry/events/${eventType}/compatible-consumers`,
+    );
+    return response.data;
+  },
+  async listControlPlaneRoutes(): Promise<ControlPlaneRoute[]> {
+    const response = await api.get<ControlPlaneRoute[]>("/control-plane/routes");
     return response.data;
   },
   async getControlPlaneGraph(): Promise<ControlPlaneGraph> {
@@ -873,6 +959,12 @@ export const irisApi = {
   ): Promise<ControlPlaneDraftLifecycle> {
     const response = await api.post<ControlPlaneDraftLifecycle>(`/control-plane/drafts/${draftId}/discard`, null, {
       headers: buildControlPlaneHeaders(context),
+    });
+    return response.data;
+  },
+  async listControlPlaneAudit(limit = 50): Promise<ControlPlaneAuditEntry[]> {
+    const response = await api.get<ControlPlaneAuditEntry[]>("/control-plane/audit", {
+      params: { limit },
     });
     return response.data;
   },

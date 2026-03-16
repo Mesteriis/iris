@@ -16,14 +16,14 @@ import {
   formatTrend,
   timeframeToLabel,
 } from "../utils/format";
+import { decisionTone, formatFusionDecision, predictionTone } from "../features/dashboard/lib/presentation";
 
 const route = useRoute();
 const coinStore = useCoinStore();
-const fallbackIntervals: CandleInterval[] = ["15m", "1h", "4h", "1d"];
 
 const symbol = computed(() => String(route.params.symbol || "").toUpperCase());
 const coin = computed(
-  () => coinStore.enabledCoins.find((item) => item.symbol === symbol.value) ?? null,
+  () => coinStore.coins.find((item) => item.symbol === symbol.value) ?? null,
 );
 const metric = computed(() => coinStore.metricsBySymbol.get(symbol.value) ?? null);
 const patternSignals = computed(() => coinStore.activePatternSignals);
@@ -34,15 +34,18 @@ const cycles = computed(() => coinStore.activeCycles);
 const crossMarketRelations = computed(() => coinStore.activeCrossMarketRelations);
 const predictionJournal = computed(() => coinStore.activePredictionJournal);
 const intervalOptions = computed<CandleInterval[]>(() => {
-  const configured = (coin.value?.candles ?? [])
-    .map((entry) => entry.interval)
-    .filter((entry): entry is CandleInterval => fallbackIntervals.includes(entry as CandleInterval));
-  return configured.length > 0 ? configured : fallbackIntervals;
+  const configured = (coin.value?.candles ?? []).map((entry) => entry.interval);
+  return [...new Set(configured)];
 });
 
 async function loadPage() {
   await coinStore.bootstrapDashboard();
   if (symbol.value) {
+    if (intervalOptions.value.length === 0) {
+      coinStore.history = [];
+      await coinStore.fetchAssetContext(symbol.value);
+      return;
+    }
     const nextInterval = intervalOptions.value.includes(coinStore.activeInterval)
       ? coinStore.activeInterval
       : intervalOptions.value[intervalOptions.value.length - 1];
@@ -59,42 +62,9 @@ async function runCoinJob() {
     return;
   }
   const queued = await coinStore.runCoinJob(symbol.value, "auto", true);
-  if (queued) {
+  if (queued && intervalOptions.value.length > 0) {
     await coinStore.fetchHistory(symbol.value, coinStore.activeInterval);
   }
-}
-
-function formatFusionDecision(decision: string | null | undefined): string {
-  if (!decision) {
-    return "WATCH";
-  }
-  return decision.replace(/_/g, " ");
-}
-
-function decisionTone(decision: string | null | undefined): string {
-  if (decision === "BUY") {
-    return "bullish";
-  }
-  if (decision === "SELL") {
-    return "bearish";
-  }
-  if (decision === "HOLD") {
-    return "sideways";
-  }
-  return "pending";
-}
-
-function predictionTone(status: string | null | undefined): string {
-  if (status === "confirmed") {
-    return "bullish";
-  }
-  if (status === "failed") {
-    return "bearish";
-  }
-  if (status === "expired") {
-    return "sideways";
-  }
-  return "pending";
 }
 
 onMounted(loadPage);
@@ -106,7 +76,7 @@ watch(symbol, loadPage);
     <div class="surface-card surface-card--hero">
       <div class="section-head">
         <div>
-          <RouterLink class="section-head__eyebrow link-back" to="/">Back to board</RouterLink>
+          <RouterLink class="section-head__eyebrow link-back" to="/">Back to assets</RouterLink>
           <h2>{{ coinStore.activeCoin?.name || metric?.name || symbol }}</h2>
           <p>
             Long-term structure, precomputed indicators and non-repainting signals for
@@ -155,7 +125,7 @@ watch(symbol, loadPage);
           <p class="section-head__eyebrow">History</p>
           <h3>Price and flow</h3>
         </div>
-        <div class="interval-switcher" role="tablist" aria-label="History intervals">
+        <div v-if="intervalOptions.length > 0" class="interval-switcher" role="tablist" aria-label="History intervals">
           <button
             v-for="interval in intervalOptions"
             :key="interval"
@@ -169,7 +139,10 @@ watch(symbol, loadPage);
         </div>
       </div>
 
-      <div v-if="coinStore.isHistoryLoading" class="surface-state">Loading candle history...</div>
+      <div v-if="intervalOptions.length === 0" class="surface-state">
+        No candle intervals are configured for {{ symbol }} on the backend yet.
+      </div>
+      <div v-else-if="coinStore.isHistoryLoading" class="surface-state">Loading candle history...</div>
       <div v-else-if="coinStore.historyError" class="surface-state surface-state--error">
         {{ coinStore.historyError }}
       </div>

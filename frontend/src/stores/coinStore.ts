@@ -137,7 +137,7 @@ export const useCoinStore = defineStore("coins", () => {
       }),
   );
   const activeCoin = computed(() =>
-    enabledCoins.value.find((coin) => coin.symbol === activeSymbol.value) ?? null,
+    coins.value.find((coin) => coin.symbol === activeSymbol.value) ?? null,
   );
   const activeMetrics = computed(() => metricsBySymbol.value.get(activeSymbol.value) ?? null);
   const activeSignals = computed(
@@ -455,41 +455,58 @@ export const useCoinStore = defineStore("coins", () => {
     await refreshDashboard();
   }
 
+  async function loadAssetContext(symbol: string) {
+    const normalizedSymbol = symbol.toUpperCase();
+    const [patternRows, regime, cycleRows, backtests, marketDecision] = await Promise.all([
+      irisApi.listCoinPatterns(symbol, 120),
+      irisApi.getCoinRegime(symbol),
+      irisApi.listMarketCycles(symbol),
+      irisApi.getCoinBacktests(symbol, 16),
+      irisApi.getCoinMarketDecision(symbol),
+    ]);
+
+    activeSymbol.value = normalizedSymbol;
+    coinPatternHistory.value = {
+      ...coinPatternHistory.value,
+      [normalizedSymbol]: patternRows,
+    };
+    coinRegimes.value = {
+      ...coinRegimes.value,
+      [normalizedSymbol]: regime,
+    };
+    coinMarketDecisions.value = {
+      ...coinMarketDecisions.value,
+      [normalizedSymbol]: marketDecision,
+    };
+    coinBacktests.value = {
+      ...coinBacktests.value,
+      [normalizedSymbol]: backtests,
+    };
+    marketCycles.value = [
+      ...marketCycles.value.filter((item) => item.symbol.toUpperCase() !== normalizedSymbol),
+      ...cycleRows,
+    ];
+  }
+
+  async function fetchAssetContext(symbol: string) {
+    historyError.value = "";
+    try {
+      await loadAssetContext(symbol);
+      return true;
+    } catch (err) {
+      historyError.value = getErrorMessage(err, "Unable to load asset context.");
+      return false;
+    }
+  }
+
   async function fetchHistory(symbol: string, interval = activeInterval.value) {
     isHistoryLoading.value = true;
     historyError.value = "";
     activeSymbol.value = symbol.toUpperCase();
     activeInterval.value = interval;
     try {
-      const [historyRows, patternRows, regime, cycleRows, backtests, marketDecision] = await Promise.all([
-        irisApi.getCoinHistory(symbol, interval),
-        irisApi.listCoinPatterns(symbol, 120),
-        irisApi.getCoinRegime(symbol),
-        irisApi.listMarketCycles(symbol),
-        irisApi.getCoinBacktests(symbol, 16),
-        irisApi.getCoinMarketDecision(symbol),
-      ]);
+      const [historyRows] = await Promise.all([irisApi.getCoinHistory(symbol, interval), loadAssetContext(symbol)]);
       history.value = historyRows;
-      coinPatternHistory.value = {
-        ...coinPatternHistory.value,
-        [symbol.toUpperCase()]: patternRows,
-      };
-      coinRegimes.value = {
-        ...coinRegimes.value,
-        [symbol.toUpperCase()]: regime,
-      };
-      coinMarketDecisions.value = {
-        ...coinMarketDecisions.value,
-        [symbol.toUpperCase()]: marketDecision,
-      };
-      coinBacktests.value = {
-        ...coinBacktests.value,
-        [symbol.toUpperCase()]: backtests,
-      };
-      marketCycles.value = [
-        ...marketCycles.value.filter((item) => item.symbol.toUpperCase() !== symbol.toUpperCase()),
-        ...cycleRows,
-      ];
     } catch (err) {
       history.value = [];
       historyError.value = getErrorMessage(err, "Unable to load price history.");
@@ -573,6 +590,7 @@ export const useCoinStore = defineStore("coins", () => {
     enabledCoinsCount,
     activePatternsCount,
     fetchCoins,
+    fetchAssetContext,
     fetchHistory,
     hasHistory,
     history,

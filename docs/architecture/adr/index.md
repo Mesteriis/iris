@@ -41,6 +41,11 @@ Starting with ADR 0023, files and paths follow one naming rule: `adr/<number>-<d
 | 0021 | [Generated Presentation Artifact Ownership](0021-generated-presentation-artifact-ownership.md) | Proposed | 2026-03-15 |
 | 0022 | [Platform Maturity Additions](0022-platform-maturity-additions.md) | Accepted | 2026-03-01 |
 | 0023 | [Documentation Structure and Naming](0023-documentation-structure-and-naming.md) | Accepted | 2026-03-15 |
+| 0024 | [Frontend Dashboard Composition and Route-Owned Bootstrapping](0024-frontend-dashboard-composition-and-route-bootstrapping.md) | Accepted | 2026-03-15 |
+| 0025 | [Runtime Proxy Registry for Public Market Sources](0025-runtime-proxy-registry-for-public-market-sources.md) | Accepted | 2026-03-16 |
+| 0026 | [Observed Asset Inventory Is DB-Owned](0026-observed-asset-inventory-is-db-owned.md) | Accepted | 2026-03-16 |
+| 0027 | [Live Market-Source Capability Registry in Redis](0027-live-market-source-capability-registry-in-redis.md) | Accepted | 2026-03-16 |
+| 0028 | [Market Data Source Catalog and Support Tiers](0028-market-data-source-catalog-and-support-tiers.md) | Accepted | 2026-03-16 |
 
 ## Related Documents
 

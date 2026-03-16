@@ -1,6 +1,6 @@
 export function formatCurrency(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
-    return "No data";
+    return "—";
   }
 
   const abs = Math.abs(value);
@@ -15,7 +15,7 @@ export function formatCurrency(value: number | null | undefined): string {
 
 export function formatCompactNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
-    return "No data";
+    return "—";
   }
 
   return new Intl.NumberFormat("en-US", {
@@ -26,7 +26,7 @@ export function formatCompactNumber(value: number | null | undefined): string {
 
 export function formatPercent(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
-    return "No data";
+    return "—";
   }
 
   const sign = value > 0 ? "+" : "";
@@ -35,7 +35,7 @@ export function formatPercent(value: number | null | undefined, digits = 2): str
 
 export function formatCurrencyDelta(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
-    return "No data";
+    return "—";
   }
 
   const sign = value > 0 ? "+" : "";
@@ -44,7 +44,7 @@ export function formatCurrencyDelta(value: number | null | undefined): string {
 
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) {
-    return "No data";
+    return "—";
   }
 
   return new Intl.DateTimeFormat("en-GB", {

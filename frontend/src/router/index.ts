@@ -8,19 +8,62 @@ const router = createRouter({
   routes: [
     {
       path: "/",
-      name: "coins",
-      component: () => import("../pages/Coins.vue"),
+      name: "assets",
+      component: () => import("../pages/Assets.vue"),
       meta: {
-        title: "Long-horizon market board",
+        title: "Assets",
+        description: "All tracked quotes and instruments currently available in IRIS.",
+        hideShellHeader: true,
       },
     },
     {
-      path: "/coins/:symbol",
-      name: "coin-history",
+      path: "/market",
+      name: "market",
+      component: () => import("../pages/Market.vue"),
+      meta: {
+        title: "Market",
+        description: "Signal, radar, and cross-market intelligence surfaces.",
+        hideShellHeader: true,
+      },
+    },
+    {
+      path: "/portfolio",
+      name: "portfolio",
+      component: () => import("../pages/Portfolio.vue"),
+      meta: {
+        title: "Portfolio",
+        description: "Positions, actions, risk, and current portfolio state.",
+        hideShellHeader: true,
+      },
+    },
+    {
+      path: "/research",
+      name: "research",
+      component: () => import("../pages/Research.vue"),
+      meta: {
+        title: "Research",
+        description: "Strategies, backtests, pattern health, and discovery outputs.",
+        hideShellHeader: true,
+      },
+    },
+    {
+      path: "/runtime",
+      name: "runtime",
+      component: () => import("../pages/Runtime.vue"),
+      meta: {
+        title: "Runtime",
+        description: "System health, background jobs, provider cooldowns, and live stream surfaces.",
+        hideShellHeader: true,
+      },
+    },
+    {
+      path: "/assets/:symbol",
+      name: "asset-detail",
       component: () => import("../pages/CoinHistory.vue"),
       props: true,
       meta: {
-        title: "Coin analysis desk",
+        title: "Asset analysis desk",
+        description: "Detailed asset view with history, indicators, decisions, and context.",
       },
     },
     {
@@ -28,7 +71,9 @@ const router = createRouter({
       name: "control-plane",
       component: () => import("../pages/ControlPlane.vue"),
       meta: {
-        title: "Event control plane",
+        title: "Control plane",
+        description: "Event registry, routes, drafts, and runtime observability for the event graph.",
+        hideShellHeader: true,
       },
     },
   ],
