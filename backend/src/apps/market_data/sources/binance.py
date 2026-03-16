@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING, ClassVar
 
@@ -11,6 +9,7 @@ from src.apps.market_data.sources.base import (
     MarketBar,
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
+    http_query_params,
 )
 
 if TYPE_CHECKING:
@@ -50,13 +49,13 @@ class BinanceMarketSource(BaseMarketSource):
         normalized_interval = normalize_interval(interval)
         current = ensure_utc(start)
         limit = min(self._limit_for_range(normalized_interval, current, end), self.bars_per_request(normalized_interval))
-        params = {
-            "symbol": symbol,
-            "interval": normalized_interval,
-            "startTime": int(current.timestamp() * 1000),
-            "endTime": int(ensure_utc(end).timestamp() * 1000),
-            "limit": limit,
-        }
+        params = http_query_params(
+            symbol=symbol,
+            interval=normalized_interval,
+            startTime=int(current.timestamp() * 1000),
+            endTime=int(ensure_utc(end).timestamp() * 1000),
+            limit=limit,
+        )
 
         try:
             response = await self.request(self.base_url, params=params)

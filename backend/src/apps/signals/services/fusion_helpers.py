@@ -123,4 +123,4 @@ async def cross_market_alignment_weight(
             weight += 0.05
         elif sector_trend in {"bullish", "bearish"}:
             weight -= 0.04
-    return _clamp(weight, 0.75, 1.35)
+    return float(_clamp(weight, 0.75, 1.35))

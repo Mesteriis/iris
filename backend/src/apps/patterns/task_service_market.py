@@ -1,14 +1,19 @@
 from collections import defaultdict
-from datetime import timedelta
+from collections.abc import Sequence
+from datetime import datetime, timedelta
+from typing import Any, Protocol, cast
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, false, func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.apps.cross_market.models import Sector, SectorMetric
 from src.apps.indicators.models import CoinMetrics
+from src.apps.market_data.candles import CandlePoint
 from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.market_data.models import Coin
+from src.apps.market_data.repositories import CoinRepository
 from src.apps.patterns.domain.cycle import _detect_cycle_phase
 from src.apps.patterns.domain.discovery import (
     DISCOVERY_HORIZON,
@@ -34,10 +39,54 @@ from src.apps.patterns.domain.strategy import (
 )
 from src.apps.patterns.models import MarketCycle
 from src.apps.signals.models import Signal, Strategy, StrategyPerformance, StrategyRule
+from src.core.db.uow import BaseAsyncUnitOfWork
+
+
+def _float_value(value: object) -> float:
+    if isinstance(value, int | float | str):
+        return float(value)
+    return float(cast(Any, value))
+
+
+class _PatternMarketDiscoveryTask(Protocol):
+    @property
+    def session(self) -> AsyncSession: ...
+
+    _uow: BaseAsyncUnitOfWork
+    _coins: CoinRepository
+
+    async def _coin_bar_return(self, *, coin_id: int, timeframe: int) -> tuple[float | None, float | None]: ...
+
+    async def _feature_enabled(self, feature_slug: str) -> bool: ...
+
+    async def _fetch_candle_points(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        limit: int,
+    ) -> list[CandlePoint]: ...
+
+    async def _fetch_candle_points_between(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> list[CandlePoint]: ...
+
+    async def _replace_sector_metrics(self, *, timeframe: int, rows: Sequence[dict[str, object]]) -> int: ...
+
+    async def _replace_discovered_patterns(self, *, rows: Sequence[dict[str, object]]) -> None: ...
 
 
 class PatternMarketDiscoveryMixin:
-    async def _refresh_sector_metrics(self, *, timeframe: int | None = None) -> dict[str, object]:
+    async def _refresh_sector_metrics(
+        self: _PatternMarketDiscoveryTask,
+        *,
+        timeframe: int | None = None,
+    ) -> dict[str, object]:
         sectors = (await self.session.execute(select(Sector).order_by(Sector.name.asc()))).scalars().all()
         if not sectors:
             return {"status": "skipped", "reason": "sectors_not_found"}
@@ -63,7 +112,7 @@ class PatternMarketDiscoveryMixin:
                 await self.session.execute(
                     select(CoinMetrics).where(CoinMetrics.coin_id.in_([int(coin.id) for coin in coins]))
                     if coins
-                    else select(CoinMetrics).where(False)
+                    else select(CoinMetrics).where(false())
                 )
             )
             .scalars()
@@ -114,11 +163,16 @@ class PatternMarketDiscoveryMixin:
                 )
             market_return = sum(market_returns) / len(market_returns) if market_returns else 0.0
             for row in sector_rows:
-                row["relative_strength"] = float(row["sector_strength"]) - market_return
+                row["relative_strength"] = _float_value(row["sector_strength"]) - market_return
             created += await self._replace_sector_metrics(timeframe=current_timeframe, rows=sector_rows)
         return {"status": "ok", "updated": created}
 
-    async def _coin_bar_return(self, *, coin_id: int, timeframe: int) -> tuple[float | None, float | None]:
+    async def _coin_bar_return(
+        self: _PatternMarketDiscoveryTask,
+        *,
+        coin_id: int,
+        timeframe: int,
+    ) -> tuple[float | None, float | None]:
         candles = await self._fetch_candle_points(coin_id=coin_id, timeframe=timeframe, limit=25)
         if len(candles) < 2:
             return None, None
@@ -130,7 +184,7 @@ class PatternMarketDiscoveryMixin:
         volatility = (sum((value - mean_close) ** 2 for value in closes) / len(closes)) ** 0.5 if closes else 0.0
         return change, (volatility / current if current else 0.0)
 
-    async def _refresh_market_cycles(self) -> dict[str, object]:
+    async def _refresh_market_cycles(self: _PatternMarketDiscoveryTask) -> dict[str, object]:
         coins = await self._coins.list(enabled_only=True)
         items = []
         for coin in coins:
@@ -217,7 +271,7 @@ class PatternMarketDiscoveryMixin:
         await self._uow.flush()
         return {"status": "ok", "items": items, "cycles": len(items)}
 
-    async def _refresh_discovered_patterns(self) -> dict[str, object]:
+    async def _refresh_discovered_patterns(self: _PatternMarketDiscoveryTask) -> dict[str, object]:
         if not await self._feature_enabled("pattern_discovery_engine"):
             return {"status": "skipped", "reason": "pattern_discovery_disabled"}
 
@@ -277,7 +331,7 @@ class PatternMarketDiscoveryMixin:
         await self._replace_discovered_patterns(rows=rows)
         return {"status": "ok", "patterns": len(rows)}
 
-    async def _refresh_strategies(self) -> dict[str, object]:
+    async def _refresh_strategies(self: _PatternMarketDiscoveryTask) -> dict[str, object]:
         cutoff = utc_now() - timedelta(days=STRATEGY_LOOKBACK_DAYS)
         signals = (
             (
@@ -295,7 +349,7 @@ class PatternMarketDiscoveryMixin:
             .scalars()
             .all()
         )
-        grouped: dict[tuple[int, int], dict[object, list[Signal]]] = defaultdict(lambda: defaultdict(list))
+        grouped: dict[tuple[int, int], dict[datetime, list[Signal]]] = defaultdict(lambda: defaultdict(list))
         for signal in signals:
             grouped[(int(signal.coin_id), int(signal.timeframe))][ensure_utc(signal.candle_timestamp)].append(signal)
 

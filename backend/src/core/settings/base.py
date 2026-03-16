@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     app_version: str = Field(default="2026.03.15", alias="IRIS_VERSION")
     app_env: str = "development"
     language: AppLanguage = Field(default=AppLanguage.EN, alias="IRIS_LANGUAGE")
-    api_host: str = "0.0.0.0"
+    api_host: str = "0.0.0.0"  # nosec B104 - intended default bind target for containerized runtime
     api_port: int = 8000
     api_root_prefix: str = Field(default="/api", alias="IRIS_API_ROOT_PREFIX")
     api_version_prefix: str = Field(default="/v1", alias="IRIS_API_VERSION_PREFIX")
@@ -163,7 +163,7 @@ class Settings(BaseSettings):
     @field_validator("free_proxy_pool_source_urls", "free_proxy_pool_probe_urls", mode="before")
     @classmethod
     def normalize_string_lists(cls, value: str | list[str] | None) -> list[str]:
-        if value in (None, ""):
+        if value is None or value == "":
             return []
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
@@ -180,7 +180,7 @@ class Settings(BaseSettings):
     @field_validator("ai_providers", mode="before")
     @classmethod
     def normalize_ai_providers(cls, value: str | list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-        if value in (None, ""):
+        if value is None or value == "":
             return []
         if isinstance(value, str):
             parsed = json.loads(value)
@@ -192,7 +192,7 @@ class Settings(BaseSettings):
     @field_validator("ai_capabilities", mode="before")
     @classmethod
     def normalize_ai_capabilities(cls, value: str | dict[str, Any] | None) -> dict[str, Any]:
-        if value in (None, ""):
+        if value is None or value == "":
             return {}
         if isinstance(value, str):
             parsed = json.loads(value)

@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta, timezone
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta, timezone
 
 from polyfactory.factories.dataclass_factory import DataclassFactory
 from polyfactory.factories.pydantic_factory import ModelFactory
@@ -7,13 +7,13 @@ from polyfactory.fields import Use
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
-
 from src.apps.indicators.models import CoinMetrics
+from src.apps.market_data.candles import CandlePoint
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Coin
-from src.apps.market_data.candles import CandlePoint
 from src.apps.market_data.schemas import CoinCreate, PriceHistoryCreate
 from src.apps.market_data.support import serialize_candles
+
 from tests.factories.base import fake
 
 
@@ -48,7 +48,7 @@ class PriceHistoryCreateFactory(ModelFactory[PriceHistoryCreate]):
     __check_model__ = False
 
     interval = Use(lambda: fake.random_element(elements=("15m", "1h")))
-    timestamp = Use(lambda: datetime.now(timezone.utc))
+    timestamp = Use(lambda: datetime.now(UTC))
     price = Use(lambda: round(fake.pyfloat(min_value=10, max_value=200000, positive=True), 2))
     volume = Use(lambda: round(fake.pyfloat(min_value=1, max_value=100000, positive=True), 2))
 
@@ -56,7 +56,7 @@ class PriceHistoryCreateFactory(ModelFactory[PriceHistoryCreate]):
 class CandlePointFactory(DataclassFactory[CandlePoint]):
     __check_model__ = False
 
-    timestamp = Use(lambda: datetime.now(timezone.utc))
+    timestamp = Use(lambda: datetime.now(UTC))
     open = Use(lambda: round(fake.pyfloat(min_value=10, max_value=200000, positive=True), 4))
     high = Use(lambda: round(fake.pyfloat(min_value=10, max_value=200000, positive=True), 4))
     low = Use(lambda: round(fake.pyfloat(min_value=10, max_value=200000, positive=True), 4))
@@ -71,7 +71,7 @@ def build_candle_points(
     timeframe_minutes: int = 15,
     start: datetime | None = None,
 ) -> list[CandlePoint]:
-    base = start or datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+    base = start or datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
     series: list[CandlePoint] = []
     previous_close = float(closes[0]) if closes else 100.0
     for index, close in enumerate(closes):

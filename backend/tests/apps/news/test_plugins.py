@@ -1,5 +1,4 @@
 import pytest
-
 from src.apps.news.exceptions import InvalidNewsSourceConfigurationError, UnsupportedNewsPluginError
 from src.apps.news.plugins import (
     DiscordBotNewsPlugin,
@@ -19,7 +18,7 @@ def test_built_in_news_plugins_are_registered() -> None:
 
 
 def test_x_plugin_requires_token() -> None:
-    with pytest.raises(InvalidNewsSourceConfigurationError, match="bearer_token or credentials.access_token"):
+    with pytest.raises(InvalidNewsSourceConfigurationError, match=r"bearer_token or credentials\.access_token"):
         XNewsPlugin.validate_configuration(
             credentials={},
             settings={"user_id": "12345"},

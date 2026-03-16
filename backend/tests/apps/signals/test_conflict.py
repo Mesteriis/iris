@@ -1,9 +1,9 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
-
 from src.apps.signals.services import SignalFusionService
 from src.core.db.uow import SessionUnitOfWork
+
 from tests.fusion_support import create_test_coin, insert_signals, replace_pattern_statistics
 
 
@@ -18,7 +18,7 @@ async def _evaluate_market_decision(async_db_session, **kwargs):
 async def test_signal_fusion_conflicting_stack_returns_hold(async_db_session, db_session) -> None:
     coin = create_test_coin(db_session, symbol="ETHUSD_EVT", name="Ethereum Event Test")
     coin_id = int(coin.id)
-    timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=timezone.utc)
+    timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=UTC)
     replace_pattern_statistics(
         db_session,
         timeframe=15,

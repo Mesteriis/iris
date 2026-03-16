@@ -49,12 +49,12 @@ class PatternSignalRepository(AsyncRepository):
         self._log_debug("repo.insert_pattern_signals", mode="write", bulk=True, count=len(rows))
         if not rows:
             return 0
-        stmt = insert(Signal).values(rows)
-        stmt = stmt.on_conflict_do_nothing(
+        insert_stmt = insert(Signal).values(rows)
+        stmt = insert_stmt.on_conflict_do_nothing(
             index_elements=["coin_id", "timeframe", "candle_timestamp", "signal_type"],
-        )
+        ).returning(Signal.id)
         result = await self.session.execute(stmt)
-        return int(result.rowcount or 0)
+        return len(result.all())
 
 
 class PatternMarketCycleRepository(AsyncRepository):

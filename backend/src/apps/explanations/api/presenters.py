@@ -10,6 +10,7 @@ from src.core.i18n import (
     CONTENT_KIND_DESCRIPTOR_BUNDLE,
     CONTENT_KIND_GENERATED_TEXT,
     ContentPayloadValidationError,
+    MessageDescriptor,
     content_descriptor,
     content_descriptors,
     content_kind,
@@ -34,7 +35,7 @@ def explanation_read(item: Any, *, locale: str | None = None) -> ExplanationRead
     context_json = thaw_json_value(item.context_json)
     title_descriptor = None
     explanation_descriptor = None
-    bullet_descriptors: tuple = ()
+    bullet_descriptors: tuple[MessageDescriptor, ...] = ()
     title = None
     explanation = None
     bullets: list[str] = []

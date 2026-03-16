@@ -6,9 +6,17 @@ from src.apps.market_structure.contracts import (
     MarketStructureSourceRead,
     MarketStructureSourceUpdate,
 )
+from src.apps.market_structure.models import MarketStructureSource
 from src.apps.market_structure.query_services import MarketStructureQueryService
+from src.apps.market_structure.read_models import MarketStructurePluginReadModel, MarketStructureSourceReadModel
 from src.apps.market_structure.repositories import MarketStructureSourceRepository
 from src.apps.market_structure.services.polling_service import MarketStructurePollingService
+from src.apps.market_structure.services.results import (
+    MarketStructureIngestResult,
+    MarketStructurePollBatchResult,
+    MarketStructurePollSourceResult,
+    MarketStructureRefreshHealthResult,
+)
 from src.apps.market_structure.services.source_command_service import MarketStructureSourceCommandService
 from src.core.db.uow import BaseAsyncUnitOfWork
 
@@ -20,13 +28,13 @@ class MarketStructureService:
         self._commands = MarketStructureSourceCommandService(uow)
         self._polling = MarketStructurePollingService(uow)
 
-    async def list_plugins(self):
+    async def list_plugins(self) -> tuple[MarketStructurePluginReadModel, ...]:
         return await self._queries.list_plugins()
 
-    async def list_sources(self):
+    async def list_sources(self) -> tuple[MarketStructureSourceReadModel, ...]:
         return await self._queries.list_sources()
 
-    async def get_source(self, source_id: int):
+    async def get_source(self, source_id: int) -> MarketStructureSource | None:
         return await self._sources.get_by_id(source_id)
 
     async def read_source_health(self, source_id: int) -> MarketStructureSourceHealthRead | None:
@@ -35,7 +43,7 @@ class MarketStructureService:
             return None
         return MarketStructureSourceHealthRead.model_validate(item)
 
-    async def refresh_source_health(self, *, emit_events: bool = True):
+    async def refresh_source_health(self, *, emit_events: bool = True) -> MarketStructureRefreshHealthResult:
         return await self._polling.refresh_source_health(emit_events=emit_events)
 
     async def create_source(self, payload: MarketStructureSourceCreate) -> MarketStructureSourceRead:
@@ -61,10 +69,10 @@ class MarketStructureService:
         items = await self._queries.list_snapshots(coin_symbol=coin_symbol, venue=venue, limit=limit)
         return [MarketStructureSnapshotRead.model_validate(item) for item in items]
 
-    async def poll_source(self, *, source_id: int, limit: int = 1):
+    async def poll_source(self, *, source_id: int, limit: int = 1) -> MarketStructurePollSourceResult:
         return await self._polling.poll_source(source_id=source_id, limit=limit)
 
-    async def poll_enabled_sources(self, *, limit_per_source: int = 1):
+    async def poll_enabled_sources(self, *, limit_per_source: int = 1) -> MarketStructurePollBatchResult:
         return await self._polling.poll_enabled_sources(limit_per_source=limit_per_source)
 
     async def ingest_manual_snapshots(
@@ -73,7 +81,7 @@ class MarketStructureService:
         source_id: int,
         payload: ManualMarketStructureIngestRequest,
         ingest_token: str | None = None,
-    ):
+    ) -> MarketStructureIngestResult:
         return await self._polling.ingest_manual_snapshots(
             source_id=source_id,
             payload=payload,
@@ -86,7 +94,7 @@ class MarketStructureService:
         source_id: int,
         payload: dict[str, object],
         ingest_token: str | None = None,
-    ):
+    ) -> MarketStructureIngestResult:
         return await self._polling.ingest_native_webhook_payload(
             source_id=source_id,
             payload=dict(payload),

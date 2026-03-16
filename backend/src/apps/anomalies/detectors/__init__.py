@@ -8,8 +8,8 @@ from src.apps.anomalies.detectors.price_spike_detector import PriceSpikeDetector
 from src.apps.anomalies.detectors.price_volume_divergence_detector import PriceVolumeDivergenceDetector
 from src.apps.anomalies.detectors.relative_divergence_detector import RelativeDivergenceDetector
 from src.apps.anomalies.detectors.synchronous_move_detector import SynchronousMoveDetector
-from src.apps.anomalies.detectors.volume_spike_detector import VolumeSpikeDetector
 from src.apps.anomalies.detectors.volatility_break_detector import VolatilityBreakDetector
+from src.apps.anomalies.detectors.volume_spike_detector import VolumeSpikeDetector
 
 __all__ = [
     "CompressionExpansionDetector",
@@ -22,6 +22,6 @@ __all__ = [
     "PriceVolumeDivergenceDetector",
     "RelativeDivergenceDetector",
     "SynchronousMoveDetector",
-    "VolumeSpikeDetector",
     "VolatilityBreakDetector",
+    "VolumeSpikeDetector",
 ]

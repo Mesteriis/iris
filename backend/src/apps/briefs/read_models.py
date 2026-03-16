@@ -39,7 +39,7 @@ class BriefContextBundle:
     refs_json: dict[str, Any]
 
 
-def brief_read_model_from_orm(item) -> BriefReadModel:
+def brief_read_model_from_orm(item: Any) -> BriefReadModel:
     return BriefReadModel(
         id=int(item.id),
         brief_kind=BriefKind(str(item.brief_kind)),

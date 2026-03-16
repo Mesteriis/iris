@@ -1,6 +1,3 @@
-# ruff: noqa: RUF001
-
-
 import pytest
 from src.core.errors import (
     DuplicateErrorCodeError,

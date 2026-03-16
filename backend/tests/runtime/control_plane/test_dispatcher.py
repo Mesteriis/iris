@@ -1,7 +1,6 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
-
 from src.apps.control_plane.contracts import (
     EventConsumerSnapshot,
     EventDefinitionSnapshot,
@@ -12,7 +11,12 @@ from src.apps.control_plane.contracts import (
     TopologySnapshot,
 )
 from src.apps.control_plane.enums import EventRouteScope, EventRouteStatus
-from src.runtime.control_plane.dispatcher import InMemoryRouteThrottle, RouteDeliveryPublisher, TopologyDispatcher, TopologyRouteEvaluator
+from src.runtime.control_plane.dispatcher import (
+    InMemoryRouteThrottle,
+    RouteDeliveryPublisher,
+    TopologyDispatcher,
+    TopologyRouteEvaluator,
+)
 from src.runtime.streams.types import IrisEvent
 
 
@@ -36,7 +40,7 @@ def _event(
         event_type=event_type,
         coin_id=coin_id,
         timeframe=timeframe,
-        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
         payload=payload or {},
     )
 
@@ -44,7 +48,7 @@ def _event(
 def _snapshot(*routes: EventRouteSnapshot, supports_shadow: bool = False) -> TopologySnapshot:
     return TopologySnapshot(
         version_number=1,
-        created_at=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+        created_at=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
         events={
             "signal_created": EventDefinitionSnapshot(event_type="signal_created", domain="signals"),
             "market_regime_changed": EventDefinitionSnapshot(event_type="market_regime_changed", domain="indicators"),

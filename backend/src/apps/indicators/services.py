@@ -1,3 +1,4 @@
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 
 from src.apps.indicators.analysis_scheduler_service import AnalysisSchedulerService
@@ -40,7 +41,12 @@ from src.apps.indicators.service_support import (
     regime_for_timeframe,
     upsert_indicator_coin_metrics,
 )
-from src.apps.market_data.candles import AGGREGATE_VIEW_BY_TIMEFRAME, BASE_TIMEFRAME_MINUTES, TIMEFRAME_INTERVALS
+from src.apps.market_data.candles import (
+    AGGREGATE_VIEW_BY_TIMEFRAME,
+    BASE_TIMEFRAME_MINUTES,
+    TIMEFRAME_INTERVALS,
+    CandlePoint,
+)
 from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.patterns.domain.regime import calculate_regime_map, primary_regime, serialize_regime_map
 from src.core.db.uow import BaseAsyncUnitOfWork
@@ -211,13 +217,13 @@ class IndicatorAnalyticsService:
         base_timeframe: int,
         primary: TimeframeSnapshot | None,
         base_snapshot: TimeframeSnapshot | None,
-        base_candles: list[object],
+        base_candles: Sequence[CandlePoint],
         volume_24h: float | None,
         volume_change_24h: float | None,
         volatility: float | None,
         refresh_market_cap: bool,
         market_regime: str | None,
-        market_regime_details: dict[str, object] | None,
+        market_regime_details: Mapping[str, object] | None,
     ) -> IndicatorMetricsUpdate:
         return await upsert_indicator_coin_metrics(
             coin=coin,  # type: ignore[arg-type]

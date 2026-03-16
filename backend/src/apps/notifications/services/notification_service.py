@@ -14,6 +14,7 @@ from src.apps.notifications.constants import (
 from src.apps.notifications.contracts import (
     NotificationCreationResult,
     NotificationCreationStatus,
+    NotificationHumanizationResult,
     NotificationPendingEvent,
 )
 from src.apps.notifications.models import AINotification
@@ -171,7 +172,11 @@ class NotificationService(PersistenceComponent):
 __all__ = ["NotificationService"]
 
 
-def _notification_storage_fields(humanized, *, rendered_locale: str) -> dict[str, object]:
+def _notification_storage_fields(
+    humanized: NotificationHumanizationResult,
+    *,
+    rendered_locale: str,
+) -> dict[str, object]:
     content_kind, content_json = _notification_content_payload(humanized, rendered_locale=rendered_locale)
     return {
         "content_kind": content_kind,
@@ -179,7 +184,11 @@ def _notification_storage_fields(humanized, *, rendered_locale: str) -> dict[str
     }
 
 
-def _notification_content_payload(humanized, *, rendered_locale: str) -> tuple[str, dict[str, object]]:
+def _notification_content_payload(
+    humanized: NotificationHumanizationResult,
+    *,
+    rendered_locale: str,
+) -> tuple[str, dict[str, object]]:
     if humanized.title_descriptor is not None or humanized.message_descriptor is not None:
         return (
             CONTENT_KIND_DESCRIPTOR_BUNDLE,

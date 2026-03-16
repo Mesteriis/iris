@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING, ClassVar
 
@@ -11,6 +9,7 @@ from src.apps.market_data.sources.base import (
     MarketBar,
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
+    http_query_params,
 )
 
 if TYPE_CHECKING:
@@ -52,11 +51,11 @@ class KrakenMarketSource(BaseMarketSource):
         if ensure_utc(end) - ensure_utc(start) > max_span:
             raise UnsupportedMarketSourceQuery(f"{self.name} cannot backfill that far for {coin.symbol}.")
 
-        params = {
-            "pair": symbol,
-            "interval": KRAKEN_INTERVALS[normalized_interval],
-            "since": int(ensure_utc(start).timestamp()),
-        }
+        params = http_query_params(
+            pair=symbol,
+            interval=KRAKEN_INTERVALS[normalized_interval],
+            since=int(ensure_utc(start).timestamp()),
+        )
 
         try:
             response = await self.request(self.base_url, params=params)

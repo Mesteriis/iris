@@ -1,10 +1,7 @@
-from __future__ import annotations
-
 from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
-
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.sources import proxy_registry as proxy_registry_module
 from src.apps.market_data.sources.proxy_registry import FreeProxyRegistry, ProxyRecord

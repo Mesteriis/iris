@@ -1,9 +1,11 @@
+from typing import Any
+
 from sqlalchemy import func, select
 
 from src.apps.signals.models import FinalSignal, InvestmentDecision, MarketDecision
 
 
-def latest_decisions_subquery():
+def latest_decisions_subquery() -> Any:
     return (
         select(
             InvestmentDecision.id.label("id"),
@@ -25,7 +27,7 @@ def latest_decisions_subquery():
     )
 
 
-def latest_market_decisions_subquery():
+def latest_market_decisions_subquery() -> Any:
     return (
         select(
             MarketDecision.id.label("id"),
@@ -46,7 +48,7 @@ def latest_market_decisions_subquery():
     )
 
 
-def latest_final_signals_subquery():
+def latest_final_signals_subquery() -> Any:
     return (
         select(
             FinalSignal.id.label("id"),

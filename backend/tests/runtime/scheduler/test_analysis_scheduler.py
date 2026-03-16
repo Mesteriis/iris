@@ -1,19 +1,18 @@
 import multiprocessing
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from redis import Redis
-
-from src.core.settings import get_settings
-from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
-from src.runtime.streams.publisher import flush_publisher, publish_event
-from src.runtime.streams.runner import run_worker_loop
 from src.apps.patterns.domain.scheduler import (
     analysis_interval,
     assign_activity_bucket,
     calculate_activity_score,
     should_request_analysis,
 )
+from src.core.settings import get_settings
+from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
+from src.runtime.streams.publisher import flush_publisher, publish_event
+from src.runtime.streams.runner import run_worker_loop
 
 
 def _run_topology_dispatcher() -> None:
@@ -61,7 +60,7 @@ def test_activity_score_and_bucket_assignment() -> None:
 
 
 def test_scheduler_decisions_by_bucket() -> None:
-    timestamp = datetime(2026, 3, 11, 14, 0, tzinfo=timezone.utc)
+    timestamp = datetime(2026, 3, 11, 14, 0, tzinfo=UTC)
     assert should_request_analysis(
         timeframe=15,
         timestamp=timestamp,

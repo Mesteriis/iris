@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import inspect
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from types import TracebackType
 from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,7 +61,12 @@ class BaseAsyncUnitOfWork(AbstractAsyncContextManager["BaseAsyncUnitOfWork"]):
         )
         await self._session.flush()
 
-    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        _exc_value: BaseException | None,
+        _traceback: TracebackType | None,
+    ) -> None:
         if exc_type is None:
             if self._transaction_is_open():
                 PERSISTENCE_LOGGER.debug(
@@ -101,7 +109,8 @@ class SessionUnitOfWork(BaseAsyncUnitOfWork):
 
 
 async def get_uow() -> AsyncIterator[AsyncUnitOfWork]:
-    async with AsyncUnitOfWork() as uow:
+    uow = AsyncUnitOfWork()
+    async with uow:
         yield uow
 
 

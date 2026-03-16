@@ -1,11 +1,10 @@
 import pytest
 from sqlalchemy import select
-
 from src.apps.cross_market.models import SectorMetric
-from src.apps.market_data.models import Candle
 from src.apps.market_data.candles import candle_close_timestamp
-from src.apps.patterns.models import DiscoveredPattern, PatternFeature
+from src.apps.market_data.models import Candle
 from src.apps.patterns.domain.strategy import StrategyCandidate
+from src.apps.patterns.models import DiscoveredPattern, PatternFeature
 from src.apps.patterns.task_services import (
     PatternDiscoveryService,
     PatternSignalContextService,
@@ -13,6 +12,7 @@ from src.apps.patterns.task_services import (
 )
 from src.apps.signals.models import FinalSignal, InvestmentDecision, Signal, Strategy
 from src.core.db.uow import SessionUnitOfWork
+
 from tests.fusion_support import insert_signals
 from tests.patterns_support import seed_pattern_api_state, seed_pattern_catalog_metadata
 

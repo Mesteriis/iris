@@ -1,8 +1,11 @@
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import timedelta
+from typing import Any, Protocol, cast
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.patterns.domain.lifecycle import resolve_lifecycle_state
@@ -27,11 +30,35 @@ from src.apps.patterns.models import PatternRegistry
 from src.apps.signals.history_support import SIGNAL_HISTORY_LOOKBACK_DAYS
 from src.apps.signals.models import SignalHistory
 from src.apps.signals.services import SignalHistoryService
+from src.core.db.uow import BaseAsyncUnitOfWork
+
+
+def _float_value(value: object) -> float:
+    if isinstance(value, int | float | str):
+        return float(value)
+    return float(cast(Any, value))
+
+
+def _int_value(value: object) -> int:
+    if isinstance(value, int | str):
+        return int(value)
+    return int(cast(Any, value))
+
+
+class _PatternHistoryStatisticsTask(Protocol):
+    @property
+    def session(self) -> AsyncSession: ...
+
+    _uow: BaseAsyncUnitOfWork
+
+    async def _ensure_catalog_metadata(self) -> None: ...
+
+    async def _upsert_pattern_statistics(self, *, rows: Sequence[dict[str, object]]) -> None: ...
 
 
 class PatternHistoryStatisticsMixin:
     async def _refresh_signal_history(
-        self,
+        self: _PatternHistoryStatisticsTask,
         *,
         lookback_days: int = SIGNAL_HISTORY_LOOKBACK_DAYS,
         coin_id: int | None = None,
@@ -46,7 +73,11 @@ class PatternHistoryStatisticsMixin:
         )
         return dict(asdict(result))
 
-    async def _refresh_pattern_statistics(self, *, emit_events: bool = True) -> dict[str, object]:
+    async def _refresh_pattern_statistics(
+        self: _PatternHistoryStatisticsTask,
+        *,
+        emit_events: bool = True,
+    ) -> dict[str, object]:
         from src.apps.patterns.domain.registry import PATTERN_CATALOG
 
         await self._ensure_catalog_metadata()
@@ -156,16 +187,19 @@ class PatternHistoryStatisticsMixin:
                     rows.append(entry_row)
                     if market_regime == GLOBAL_MARKET_REGIME:
                         entry_rows.append(entry_row)
-            temps = [float(row["temperature"]) for row in entry_rows]
-            aggregate_sample_size = sum(int(row["sample_size"]) for row in entry_rows)
+            temps = [_float_value(row["temperature"]) for row in entry_rows]
+            aggregate_sample_size = sum(_int_value(row["sample_size"]) for row in entry_rows)
             aggregate_success_rate = (
-                sum(float(row["success_rate"]) * int(row["sample_size"]) for row in entry_rows) / aggregate_sample_size
+                sum(_float_value(row["success_rate"]) * _int_value(row["sample_size"]) for row in entry_rows)
+                / aggregate_sample_size
                 if aggregate_sample_size
                 else 0.0
             )
             aggregate_temp = sum(temps) / len(temps) if temps else 0.0
             representative_timeframe = (
-                int(max(entry_rows, key=lambda row: int(row["sample_size"]))["timeframe"]) if entry_rows else 15
+                _int_value(max(entry_rows, key=lambda row: _int_value(row["sample_size"]))["timeframe"])
+                if entry_rows
+                else 15
             )
             registry_row = await self.session.get(PatternRegistry, entry.slug)
             registry_enabled = bool(registry_row.enabled) if registry_row is not None else True
@@ -198,37 +232,37 @@ class PatternHistoryStatisticsMixin:
                     publish_pattern_state_event(
                         "pattern_enabled",
                         pattern_slug=registry_row.slug,
-                        timeframe=int(update["timeframe"]),
-                        success_rate=float(update["success_rate"]),
-                        total_signals=int(update["sample_size"]),
+                        timeframe=_int_value(update["timeframe"]),
+                        success_rate=_float_value(update["success_rate"]),
+                        total_signals=_int_value(update["sample_size"]),
                         timestamp=utc_now(),
                     )
                 elif became_disabled:
                     publish_pattern_state_event(
                         "pattern_disabled",
                         pattern_slug=registry_row.slug,
-                        timeframe=int(update["timeframe"]),
-                        success_rate=float(update["success_rate"]),
-                        total_signals=int(update["sample_size"]),
+                        timeframe=_int_value(update["timeframe"]),
+                        success_rate=_float_value(update["success_rate"]),
+                        total_signals=_int_value(update["sample_size"]),
                         timestamp=utc_now(),
                     )
-            if int(update["sample_size"]) >= MIN_SAMPLE_FOR_DEGRADE:
-                if float(update["success_rate"]) > BOOST_SUCCESS_RATE:
+            if _int_value(update["sample_size"]) >= MIN_SAMPLE_FOR_DEGRADE:
+                if _float_value(update["success_rate"]) > BOOST_SUCCESS_RATE:
                     publish_pattern_state_event(
                         "pattern_boosted",
                         pattern_slug=registry_row.slug,
-                        timeframe=int(update["timeframe"]),
-                        success_rate=float(update["success_rate"]),
-                        total_signals=int(update["sample_size"]),
+                        timeframe=_int_value(update["timeframe"]),
+                        success_rate=_float_value(update["success_rate"]),
+                        total_signals=_int_value(update["sample_size"]),
                         timestamp=utc_now(),
                     )
-                elif float(update["success_rate"]) < DEGRADE_SUCCESS_RATE:
+                elif _float_value(update["success_rate"]) < DEGRADE_SUCCESS_RATE:
                     publish_pattern_state_event(
                         "pattern_degraded",
                         pattern_slug=registry_row.slug,
-                        timeframe=int(update["timeframe"]),
-                        success_rate=float(update["success_rate"]),
-                        total_signals=int(update["sample_size"]),
+                        timeframe=_int_value(update["timeframe"]),
+                        success_rate=_float_value(update["success_rate"]),
+                        total_signals=_int_value(update["sample_size"]),
                         timestamp=utc_now(),
                     )
         await self._uow.flush()

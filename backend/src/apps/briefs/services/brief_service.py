@@ -1,8 +1,9 @@
+from datetime import datetime
 from typing import Any
 
 from fastapi.encoders import jsonable_encoder
 
-from src.apps.briefs.contracts import BriefGenerationResult, BriefGenerationStatus, BriefKind
+from src.apps.briefs.contracts import BriefArtifactResult, BriefGenerationResult, BriefGenerationStatus, BriefKind
 from src.apps.briefs.language import resolve_effective_language
 from src.apps.briefs.models import AIBrief
 from src.apps.briefs.query_services import BriefQueryService
@@ -127,7 +128,7 @@ class BriefService(PersistenceComponent):
         )
 
 
-def _same_source_snapshot(left, right) -> bool:
+def _same_source_snapshot(left: datetime | None, right: datetime | None) -> bool:
     if left is None and right is None:
         return True
     if left is None or right is None:
@@ -138,7 +139,7 @@ def _same_source_snapshot(left, right) -> bool:
 __all__ = ["BriefService"]
 
 
-def _brief_storage_fields(generated, *, rendered_locale: str) -> dict[str, object]:
+def _brief_storage_fields(generated: BriefArtifactResult, *, rendered_locale: str) -> dict[str, object]:
     return {
         "content_kind": CONTENT_KIND_GENERATED_TEXT,
         "content_json": build_generated_text_content(

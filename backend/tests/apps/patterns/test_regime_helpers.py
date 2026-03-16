@@ -2,7 +2,6 @@ import importlib
 from types import SimpleNamespace
 
 import pytest
-
 from src.apps.patterns.domain.regime import (
     MARKET_REGIMES,
     calculate_regime_map,
@@ -12,6 +11,7 @@ from src.apps.patterns.domain.regime import (
     serialize_regime_map,
 )
 from src.apps.patterns.query_services import PatternQueryService
+
 from tests.cross_market_support import DEFAULT_START, create_cross_market_coin, generate_close_series, seed_candles
 
 

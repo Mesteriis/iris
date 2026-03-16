@@ -31,8 +31,8 @@ from src.apps.indicators.repositories import (
     IndicatorSignalRepository,
 )
 from src.apps.indicators.services import IndicatorAnalyticsService, IndicatorMetricsUpdate
-from src.apps.market_data.models import Coin
 from src.apps.market_data.candles import CandlePoint
+from src.apps.market_data.models import Coin
 from src.apps.signals.models import Signal
 from src.core.db.uow import SessionUnitOfWork
 

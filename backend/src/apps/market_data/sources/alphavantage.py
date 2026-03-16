@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict
 
 import httpx
 
@@ -13,7 +11,9 @@ from src.apps.market_data.sources.base import (
     MarketBar,
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
+    http_query_params,
 )
+from src.apps.market_data.sources.rate_limits import HttpQueryParams, HttpQueryValue
 from src.core.settings import get_settings
 
 if TYPE_CHECKING:
@@ -26,7 +26,16 @@ ALPHA_VANTAGE_FOREX_PAIRS: dict[str, tuple[str, str]] = {
     "USDRUB": ("USD", "RUB"),
 }
 
-ALPHA_VANTAGE_SPECIAL_SERIES: dict[str, dict[str, object]] = {
+
+class AlphaVantageSeriesSpec(TypedDict):
+    function: str
+    interval: str
+    provider_symbol: str
+    supported_intervals: set[str]
+    maturity: NotRequired[str]
+
+
+ALPHA_VANTAGE_SPECIAL_SERIES: dict[str, AlphaVantageSeriesSpec] = {
     "BRENTUSD": {
         "function": "BRENT",
         "interval": "daily",
@@ -59,6 +68,19 @@ ALPHA_VANTAGE_INTRADAY_INTERVALS: dict[str, str] = {
     "1h": "60min",
     "4h": "60min",
 }
+
+
+def _float_or_none(value: object) -> float | None:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,11 +136,11 @@ class AlphaVantageMarketSource(BaseMarketSource):
             return None
         return AlphaVantageQuery(
             kind="series",
-            provider_symbol=str(spec["provider_symbol"]),
-            supported_intervals=frozenset(str(item) for item in spec["supported_intervals"]),
-            function=str(spec["function"]),
-            interval=str(spec["interval"]) if spec.get("interval") is not None else None,
-            maturity=str(spec["maturity"]) if spec.get("maturity") is not None else None,
+            provider_symbol=spec["provider_symbol"],
+            supported_intervals=frozenset(spec["supported_intervals"]),
+            function=spec["function"],
+            interval=spec["interval"],
+            maturity=spec.get("maturity"),
         )
 
     def get_symbol(self, coin: Coin) -> str | None:
@@ -135,7 +157,7 @@ class AlphaVantageMarketSource(BaseMarketSource):
         del coin
         return True
 
-    async def _request_payload(self, params: dict[str, str]) -> dict[str, object]:
+    async def _request_payload(self, params: HttpQueryParams) -> dict[str, object]:
         try:
             response = await self.request(
                 self.base_url,
@@ -146,6 +168,9 @@ class AlphaVantageMarketSource(BaseMarketSource):
             payload = response.json()
         except httpx.HTTPStatusError as exc:
             raise TemporaryMarketSourceError(f"{self.name} http error: {exc.response.status_code}") from exc
+
+        if not isinstance(payload, dict):
+            raise TemporaryMarketSourceError(f"{self.name} returned an unexpected payload.")
 
         if "Note" in payload:
             await self.raise_rate_limited(retry_after_seconds=300, message=f"{self.name} rate limited")
@@ -159,7 +184,57 @@ class AlphaVantageMarketSource(BaseMarketSource):
             raise TemporaryMarketSourceError(information)
         if "Error Message" in payload:
             raise UnsupportedMarketSourceQuery(str(payload["Error Message"]))
-        return payload
+        return {str(key): value for key, value in payload.items()}
+
+    def _parse_intraday_entry(self, timestamp_raw: object, item: dict[object, object]) -> MarketBar | None:
+        try:
+            timestamp = ensure_utc(datetime.fromisoformat(str(timestamp_raw).replace(" ", "T")))
+            open_raw = item["1. open"]
+            high_raw = item["2. high"]
+            low_raw = item["3. low"]
+            close_raw = item["4. close"]
+        except (KeyError, TypeError, ValueError):
+            return None
+        open_value = _float_or_none(open_raw)
+        high_value = _float_or_none(high_raw)
+        low_value = _float_or_none(low_raw)
+        close_value = _float_or_none(close_raw)
+        if open_value is None or high_value is None or low_value is None or close_value is None:
+            return None
+        return MarketBar(
+            timestamp=timestamp,
+            open=open_value,
+            high=high_value,
+            low=low_value,
+            close=close_value,
+            volume=None,
+            source=self.name,
+        )
+
+    def _parse_daily_entry(self, timestamp_raw: object, item: dict[object, object]) -> MarketBar | None:
+        try:
+            timestamp = ensure_utc(datetime.fromisoformat(f"{timestamp_raw}T00:00:00"))
+            open_raw = item["1. open"]
+            high_raw = item["2. high"]
+            low_raw = item["3. low"]
+            close_raw = item["4. close"]
+        except (KeyError, TypeError, ValueError):
+            return None
+        open_value = _float_or_none(open_raw)
+        high_value = _float_or_none(high_raw)
+        low_value = _float_or_none(low_raw)
+        close_value = _float_or_none(close_raw)
+        if open_value is None or high_value is None or low_value is None or close_value is None:
+            return None
+        return MarketBar(
+            timestamp=timestamp,
+            open=open_value,
+            high=high_value,
+            low=low_value,
+            close=close_value,
+            volume=None,
+            source=self.name,
+        )
 
     def _parse_intraday_payload(
         self,
@@ -178,25 +253,10 @@ class AlphaVantageMarketSource(BaseMarketSource):
         for timestamp_raw, item in series.items():
             if not isinstance(item, dict):
                 continue
-            try:
-                timestamp = ensure_utc(datetime.fromisoformat(str(timestamp_raw).replace(" ", "T")))
-                open_raw = item["1. open"]
-                high_raw = item["2. high"]
-                low_raw = item["3. low"]
-                close_raw = item["4. close"]
-            except Exception:
+            bar = self._parse_intraday_entry(timestamp_raw, item)
+            if bar is None:
                 continue
-            bars.append(
-                MarketBar(
-                    timestamp=timestamp,
-                    open=float(open_raw),
-                    high=float(high_raw),
-                    low=float(low_raw),
-                    close=float(close_raw),
-                    volume=None,
-                    source=self.name,
-                ),
-            )
+            bars.append(bar)
         bars.sort(key=lambda bar: bar.timestamp)
         bars = [bar for bar in bars if ensure_utc(start) <= bar.timestamp <= ensure_utc(end)]
         if normalize_interval(interval) == "4h":
@@ -217,25 +277,10 @@ class AlphaVantageMarketSource(BaseMarketSource):
         for timestamp_raw, item in series.items():
             if not isinstance(item, dict):
                 continue
-            try:
-                timestamp = ensure_utc(datetime.fromisoformat(f"{timestamp_raw}T00:00:00"))
-                open_raw = item["1. open"]
-                high_raw = item["2. high"]
-                low_raw = item["3. low"]
-                close_raw = item["4. close"]
-            except Exception:
+            bar = self._parse_daily_entry(timestamp_raw, item)
+            if bar is None:
                 continue
-            bars.append(
-                MarketBar(
-                    timestamp=timestamp,
-                    open=float(open_raw),
-                    high=float(high_raw),
-                    low=float(low_raw),
-                    close=float(close_raw),
-                    volume=None,
-                    source=self.name,
-                ),
-            )
+            bars.append(bar)
         bars.sort(key=lambda bar: bar.timestamp)
         return [bar for bar in bars if ensure_utc(start) <= bar.timestamp <= ensure_utc(end)]
 
@@ -286,7 +331,10 @@ class AlphaVantageMarketSource(BaseMarketSource):
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol} with interval {normalized_interval}.")
 
         if query.kind == "series":
-            params = {"function": str(query.function), "apikey": self.api_key}
+            params: dict[str, HttpQueryValue] = {
+                "function": str(query.function),
+                "apikey": self.api_key,
+            }
             if query.interval is not None:
                 params["interval"] = query.interval
             if query.maturity is not None:
@@ -294,31 +342,31 @@ class AlphaVantageMarketSource(BaseMarketSource):
             payload = await self._request_payload(params)
             return self._parse_numeric_series_payload(payload, start, end)
 
-        assert query.base_symbol is not None
-        assert query.quote_symbol is not None
+        if query.base_symbol is None or query.quote_symbol is None:
+            raise UnsupportedMarketSourceQuery(f"{self.name} does not define FX symbols for {coin.symbol}.")
         base_symbol, quote_symbol = query.base_symbol, query.quote_symbol
 
         if normalized_interval == "1d":
             payload = await self._request_payload(
-                {
-                    "function": "FX_DAILY",
-                    "from_symbol": base_symbol,
-                    "to_symbol": quote_symbol,
-                    "outputsize": "full",
-                    "apikey": self.api_key,
-                }
+                http_query_params(
+                    function="FX_DAILY",
+                    from_symbol=base_symbol,
+                    to_symbol=quote_symbol,
+                    outputsize="full",
+                    apikey=self.api_key,
+                )
             )
             return self._parse_daily_payload(payload, start, end)
 
         payload = await self._request_payload(
-            {
-                "function": "FX_INTRADAY",
-                "from_symbol": base_symbol,
-                "to_symbol": quote_symbol,
-                "interval": ALPHA_VANTAGE_INTRADAY_INTERVALS[normalized_interval],
-                "outputsize": "full",
-                "apikey": self.api_key,
-            }
+            http_query_params(
+                function="FX_INTRADAY",
+                from_symbol=base_symbol,
+                to_symbol=quote_symbol,
+                interval=ALPHA_VANTAGE_INTRADAY_INTERVALS[normalized_interval],
+                outputsize="full",
+                apikey=self.api_key,
+            )
         )
         return self._parse_intraday_payload(payload, normalized_interval, start, end)
 

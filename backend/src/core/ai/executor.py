@@ -139,17 +139,21 @@ class AIExecutor:
                 effective_language=effective_language,
             )
         except Exception as exc:
-            can_fallback = policy.allow_degraded_fallback and request.allow_degraded_fallback and request.degraded_strategy is not None
-            if not can_fallback:
+            degraded_strategy = request.degraded_strategy
+            if (
+                not policy.allow_degraded_fallback
+                or not request.allow_degraded_fallback
+                or degraded_strategy is None
+            ):
                 if isinstance(exc, AIPayloadValidationError):
                     raise AIExecutionError(str(exc), validation_status=exc.status) from exc
                 raise AIExecutionError(str(exc)) from exc
-            degraded_strategy_name = request.degraded_strategy.name
+            degraded_strategy_name = degraded_strategy.name
             fallback_used = True
             validation_status = AIValidationStatus.FALLBACK_APPLIED
             actual_provider = degraded_strategy_name
             model = f"degraded:{degraded_strategy_name}"
-            degraded_payload = await request.degraded_strategy.execute(
+            degraded_payload = await degraded_strategy.execute(
                 capability=request.capability,
                 task=request.task,
                 context=request.context,

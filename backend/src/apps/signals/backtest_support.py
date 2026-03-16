@@ -1,8 +1,8 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from math import sqrt
 from typing import Any
-from collections.abc import Sequence
 
 
 @dataclass(slots=True, frozen=True)
@@ -41,6 +41,7 @@ def serialize_backtest_group(
     returns = [point.result_return for point in points]
     drawdowns = [point.result_drawdown for point in points]
     confidences = [point.confidence for point in points]
+    evaluated_at_values = [point.evaluated_at for point in points if point.evaluated_at is not None]
     symbols = {point.symbol for point in points}
     win_rate = sum(1 for value in returns if value > 0) / sample_size if sample_size else 0.0
     avg_return = sum(returns) / sample_size if sample_size else 0.0
@@ -56,7 +57,7 @@ def serialize_backtest_group(
         "sharpe_ratio": sharpe_ratio(returns),
         "max_drawdown": min(drawdowns) if drawdowns else 0.0,
         "avg_confidence": sum(confidences) / sample_size if sample_size else 0.0,
-        "last_evaluated_at": max((point.evaluated_at for point in points), default=None),
+        "last_evaluated_at": max(evaluated_at_values) if evaluated_at_values else None,
     }
 
 

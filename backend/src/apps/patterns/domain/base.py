@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
-from collections.abc import Sequence
 
 from src.apps.market_data.candles import CandlePoint
 

@@ -15,9 +15,9 @@ from src.apps.anomalies.models import MarketAnomaly, MarketStructureSnapshot
 from src.apps.anomalies.schemas import AnomalyDetectionContext, AnomalyDraft, BenchmarkSeries, MarketStructurePoint
 from src.apps.cross_market.models import CoinRelation, Sector
 from src.apps.indicators.models import CoinMetrics
+from src.apps.market_data.candles import CandlePoint
 from src.apps.market_data.domain import ensure_utc
 from src.apps.market_data.models import Candle, Coin
-from src.apps.market_data.candles import CandlePoint
 from src.apps.portfolio.models import PortfolioPosition
 from src.core.db.persistence import AsyncRepository
 

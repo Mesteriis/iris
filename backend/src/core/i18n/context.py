@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 
+from src.core.i18n.contracts import LocalePolicy, LocaleResolution
 from src.core.i18n.locale import normalize_locale, resolve_locale
 from src.core.i18n.locale_policy import build_locale_policy
 from src.core.settings import Settings
@@ -11,7 +12,7 @@ def normalize_language(value: str | None, *, settings: Settings | None = None) -
     normalized = str(value).strip()
     if not normalized:
         return None
-    policy = build_locale_policy(settings=settings)
+    policy: LocalePolicy = build_locale_policy(settings=settings)
     return normalize_locale(normalized, policy=policy) or policy.fallback_locale
 
 
@@ -32,9 +33,9 @@ def resolve_effective_language(
     *,
     settings: Settings | None = None,
 ) -> str:
-    policy = build_locale_policy(settings=settings)
+    policy: LocalePolicy = build_locale_policy(settings=settings)
     requested = resolve_requested_language(ctx, settings=settings)
-    resolution = resolve_locale(explicit_locale=requested, policy=policy)
+    resolution: LocaleResolution = resolve_locale(explicit_locale=requested, policy=policy)
     return resolution.effective_locale
 
 

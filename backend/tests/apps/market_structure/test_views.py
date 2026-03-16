@@ -1,11 +1,11 @@
 import importlib.util
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
-from tests.apps.conftest import api_path
-
 from src.apps.market_structure.api.router import build_router as build_market_structure_router
 from src.core.http.launch_modes import DeploymentProfile, LaunchMode
+
+from tests.apps.conftest import api_path
 
 
 @pytest.mark.asyncio
@@ -222,7 +222,7 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
         json={
             "snapshots": [
                 {
-                    "timestamp": datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc).isoformat(),
+                    "timestamp": datetime(2026, 3, 12, 12, 0, tzinfo=UTC).isoformat(),
                     "last_price": 3150.0,
                     "liquidations_long": 4000.0,
                 }
@@ -245,7 +245,7 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
         json={
             "snapshots": [
                 {
-                    "timestamp": datetime(2026, 3, 12, 12, 1, tzinfo=timezone.utc).isoformat(),
+                    "timestamp": datetime(2026, 3, 12, 12, 1, tzinfo=UTC).isoformat(),
                     "last_price": 3151.0,
                     "liquidations_long": 4100.0,
                 }
@@ -260,7 +260,7 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
         json={
             "snapshots": [
                 {
-                    "timestamp": datetime(2026, 3, 12, 12, 2, tzinfo=timezone.utc).isoformat(),
+                    "timestamp": datetime(2026, 3, 12, 12, 2, tzinfo=UTC).isoformat(),
                     "last_price": 3152.0,
                     "open_interest": 20800.0,
                     "liquidations_long": 4200.0,
@@ -275,7 +275,7 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
         f"/market-structure/sources/{liqscope_source_id}/webhook/native",
         headers={"X-IRIS-Ingest-Token": rotated_webhook["token"]},
         json={
-            "timestamp": datetime(2026, 3, 12, 12, 3, tzinfo=timezone.utc).isoformat(),
+            "timestamp": datetime(2026, 3, 12, 12, 3, tzinfo=UTC).isoformat(),
             "price": 3153.0,
             "open_interest": 20750.0,
             "liquidations": {"long": 4300.0, "short": 150.0},
@@ -296,7 +296,7 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
         json={
             "data": [
                 {
-                    "time": datetime(2026, 3, 12, 12, 4, tzinfo=timezone.utc).isoformat(),
+                    "time": datetime(2026, 3, 12, 12, 4, tzinfo=UTC).isoformat(),
                     "price": 3154.0,
                     "oi": 20700.0,
                     "funding": 0.0007,
@@ -395,7 +395,7 @@ async def test_market_structure_endpoints(api_app_client, seeded_market, monkeyp
         json={
             "snapshots": [
                 {
-                    "timestamp": datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc).isoformat(),
+                    "timestamp": datetime(2026, 3, 12, 12, 0, tzinfo=UTC).isoformat(),
                     "last_price": 3150.0,
                     "funding_rate": 0.0009,
                     "open_interest": 21000.0,

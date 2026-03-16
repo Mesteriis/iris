@@ -1,9 +1,8 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
 from redis.exceptions import RedisError, ResponseError
-
 from src.runtime.streams import messages
 
 
@@ -102,7 +101,7 @@ def test_message_bus_deserialize_publish_and_receivers(monkeypatch) -> None:
             topic="coin.history.progress",
             text="loaded",
             coin_symbol="BTCUSD",
-            created_at=datetime(2026, 3, 12, 11, 0, tzinfo=timezone.utc),
+            created_at=datetime(2026, 3, 12, 11, 0, tzinfo=UTC),
             payload={"progress": 50},
         )
     )

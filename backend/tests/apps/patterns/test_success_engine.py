@@ -1,7 +1,6 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 from redis import Redis
-
 from src.apps.patterns.domain.base import PatternDetection
 from src.apps.patterns.domain.success import (
     GLOBAL_MARKET_REGIME,
@@ -21,7 +20,7 @@ def _snapshot(
     total_signals: int,
     enabled: bool = True,
 ) -> PatternSuccessSnapshot:
-    successful_signals = int(round(success_rate * total_signals))
+    successful_signals = round(success_rate * total_signals)
     return PatternSuccessSnapshot(
         pattern_slug=slug,
         timeframe=timeframe,
@@ -61,7 +60,7 @@ def test_pattern_success_engine_prefers_regime_specific_statistics() -> None:
         slug="bull_flag",
         signal_type="pattern_bull_flag",
         confidence=0.72,
-        candle_timestamp=datetime(2026, 3, 11, 14, 0, tzinfo=timezone.utc),
+        candle_timestamp=datetime(2026, 3, 11, 14, 0, tzinfo=UTC),
         category="continuation",
         attributes={"regime": "bull_trend"},
     )
@@ -106,7 +105,7 @@ def test_pattern_success_engine_degrades_and_suppresses(settings) -> None:
             slug="head_shoulders",
             signal_type="pattern_head_shoulders",
             confidence=0.8,
-            candle_timestamp=datetime(2026, 3, 11, 15, 0, tzinfo=timezone.utc),
+            candle_timestamp=datetime(2026, 3, 11, 15, 0, tzinfo=UTC),
             category="structural",
             attributes={"regime": "bull_trend"},
         ),
@@ -124,7 +123,7 @@ def test_pattern_success_engine_degrades_and_suppresses(settings) -> None:
             slug="head_shoulders",
             signal_type="pattern_head_shoulders",
             confidence=0.75,
-            candle_timestamp=datetime(2026, 3, 11, 16, 0, tzinfo=timezone.utc),
+            candle_timestamp=datetime(2026, 3, 11, 16, 0, tzinfo=UTC),
             category="structural",
             attributes={"regime": "bear_trend"},
         ),

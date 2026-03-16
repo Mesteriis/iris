@@ -13,6 +13,7 @@ from src.apps.control_plane.api.presenters import (
 )
 from src.apps.hypothesis_engine.api.contracts import AIPromptCreate, AIPromptUpdate
 from src.apps.hypothesis_engine.api.errors import hypothesis_error_to_http
+from src.apps.hypothesis_engine.contracts import PromptMutationResult
 from src.core.ai.contracts import AICapability
 from src.core.http.command_executor import execute_command
 from src.core.http.deps import RequestLocaleDep
@@ -20,7 +21,7 @@ from src.core.http.deps import RequestLocaleDep
 router = APIRouter(tags=["control-plane:admin"])
 
 
-def _prompt_operator_presenter(item) -> AIPromptOperatorRead:
+def _prompt_operator_presenter(item: PromptMutationResult) -> AIPromptOperatorRead:
     prompt = item.prompt
     return ai_prompt_operator_read(
         {

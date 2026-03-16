@@ -93,8 +93,11 @@ def macd_series(
         signal_value = signal_compact[compact_index]
         if signal_value is None:
             continue
+        macd_value = macd_line[series_index]
+        if macd_value is None:
+            continue
         signal_line[series_index] = signal_value
-        histogram[series_index] = macd_line[series_index] - signal_value if macd_line[series_index] is not None else None
+        histogram[series_index] = macd_value - signal_value
     return macd_line, signal_line, histogram
 
 
@@ -140,9 +143,11 @@ def bollinger_bands(
         if mean is None:
             continue
         deviation = pstdev(window)
-        upper[index] = mean + stddev_multiplier * deviation
-        lower[index] = mean - stddev_multiplier * deviation
-        width[index] = ((upper[index] - lower[index]) / mean) if mean != 0 else None
+        upper_value = mean + stddev_multiplier * deviation
+        lower_value = mean - stddev_multiplier * deviation
+        upper[index] = upper_value
+        lower[index] = lower_value
+        width[index] = ((upper_value - lower_value) / mean) if mean != 0 else None
     return upper, middle, lower, width
 
 

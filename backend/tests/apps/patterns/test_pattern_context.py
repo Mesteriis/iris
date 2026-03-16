@@ -1,7 +1,6 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
-
 import src.apps.patterns.domain.pattern_context as pattern_context_module
 from src.apps.patterns.domain.base import PatternDetection, PatternDetector
 from src.apps.patterns.domain.pattern_context import (
@@ -28,7 +27,7 @@ def _detection(slug: str, category: str = "generic", confidence: float = 0.8) ->
         slug=slug,
         signal_type=f"pattern_{slug}",
         confidence=confidence,
-        candle_timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+        candle_timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
         category=category,
         attributes={"origin": "test"},
     )

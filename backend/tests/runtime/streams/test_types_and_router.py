@@ -1,7 +1,6 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
-
 from src.runtime.streams import router
 from src.runtime.streams.types import (
     ANOMALY_SECTOR_WORKER_GROUP,
@@ -9,9 +8,9 @@ from src.runtime.streams.types import (
     FUSION_WORKER_GROUP,
     HYPOTHESIS_WORKER_GROUP,
     INDICATOR_WORKER_GROUP,
-    IrisEvent,
     NEWS_CORRELATION_WORKER_GROUP,
     NEWS_NORMALIZATION_WORKER_GROUP,
+    IrisEvent,
     build_event_fields,
     deserialize_payload,
     parse_stream_message,
@@ -20,7 +19,7 @@ from src.runtime.streams.types import (
 
 
 def test_stream_payload_serialization_and_parsing_round_trip() -> None:
-    timestamp = datetime(2026, 3, 12, 12, 30, tzinfo=timezone.utc)
+    timestamp = datetime(2026, 3, 12, 12, 30, tzinfo=UTC)
     payload = {
         "coin_id": 11,
         "timeframe": 60,

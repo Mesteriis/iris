@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import ParamSpec, TypeVar, cast
+
 from src.apps.market_structure.query_services import MarketStructureQueryService
 from src.apps.market_structure.services import (
     MarketStructureService,
@@ -9,12 +12,23 @@ from src.core.http.operation_store import OperationStore, run_tracked_operation
 from src.runtime.orchestration.broker import broker
 from src.runtime.orchestration.locks import async_redis_task_lock
 
+P = ParamSpec("P")
+R = TypeVar("R")
+
 MARKET_STRUCTURE_SOURCE_POLL_LOCK_TIMEOUT_SECONDS = 120
 MARKET_STRUCTURE_ENABLED_POLL_LOCK_TIMEOUT_SECONDS = 300
 MARKET_STRUCTURE_HEALTH_REFRESH_LOCK_TIMEOUT_SECONDS = 180
 
 
-@broker.task
+def _int_value(value: object) -> int:
+    return int(cast(int | str | bytes | bytearray, value))
+
+
+def _task[**P, R](func: Callable[P, R]) -> Callable[P, R]:
+    return cast(Callable[P, R], broker.task(func))
+
+
+@_task
 async def poll_market_structure_source_job(
     source_id: int,
     limit: int = 1,
@@ -43,7 +57,7 @@ async def poll_market_structure_source_job(
     )
 
 
-@broker.task
+@_task
 async def poll_enabled_market_structure_sources_job(limit_per_source: int = 1) -> dict[str, object]:
     async with async_redis_task_lock(
         "iris:tasklock:market_structure_enabled_poll",
@@ -67,11 +81,11 @@ async def poll_enabled_market_structure_sources_job(limit_per_source: int = 1) -
             "status": "ok",
             "sources": len(source_ids),
             "items": items,
-            "created": sum(int(item.get("created", 0)) for item in items),
+            "created": sum(_int_value(item.get("created") or 0) for item in items),
         }
 
 
-@broker.task
+@_task
 async def refresh_market_structure_source_health_job(
     operation_id: str | None = None,
 ) -> dict[str, object]:

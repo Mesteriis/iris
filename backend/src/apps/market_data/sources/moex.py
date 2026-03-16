@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections import defaultdict
 from datetime import datetime
 from typing import TYPE_CHECKING, ClassVar
@@ -13,6 +11,7 @@ from src.apps.market_data.sources.base import (
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
 )
+from src.apps.market_data.sources.rate_limits import HttpQueryValue
 
 if TYPE_CHECKING:
     from src.apps.market_data.models import Coin
@@ -59,7 +58,7 @@ class MoexIndexMarketSource(BaseMarketSource):
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {coin.symbol} on {interval}.")
 
         url = f"{self.base_url}/{symbol}/candles.json"
-        params = {
+        params: dict[str, HttpQueryValue] = {
             "from": ensure_utc(start).date().isoformat(),
             "till": ensure_utc(end).date().isoformat(),
             "interval": moex_interval,
@@ -69,7 +68,9 @@ class MoexIndexMarketSource(BaseMarketSource):
         page_start = 0
         while True:
             try:
-                response = await self.request(url, params={**params, "start": page_start})
+                page_params: dict[str, HttpQueryValue] = dict(params)
+                page_params["start"] = page_start
+                response = await self.request(url, params=page_params)
                 if response.status_code in {400, 404}:
                     raise UnsupportedMarketSourceQuery(f"{self.name} rejected params for {coin.symbol}.")
                 response.raise_for_status()

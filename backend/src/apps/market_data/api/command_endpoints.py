@@ -9,6 +9,7 @@ from src.apps.market_data.api.errors import (
     market_data_error_to_http,
 )
 from src.apps.market_data.api.presenters import coin_read, price_history_read
+from src.apps.market_data.read_models import CoinReadModel, PriceHistoryReadModel
 from src.core.http.command_executor import execute_command, execute_command_no_content
 from src.core.http.deps import RequestLocaleDep
 
@@ -28,7 +29,7 @@ async def create_coin_endpoint(
     query_service: MarketDataQueryDep,
     request_locale: RequestLocaleDep,
 ) -> CoinRead:
-    async def action() -> CoinRead:
+    async def action() -> CoinReadModel:
         if await query_service.get_coin_read_by_symbol(payload.symbol) is not None:
             raise MarketDataCoinConflictError(payload.symbol)
         commands.backfill_trigger.schedule_after_commit(commands.uow)
@@ -80,7 +81,7 @@ async def create_coin_history(
     query_service: MarketDataQueryDep,
     request_locale: RequestLocaleDep,
 ) -> PriceHistoryRead:
-    async def action() -> PriceHistoryRead:
+    async def action() -> PriceHistoryReadModel:
         coin = await query_service.get_coin_read_by_symbol(symbol)
         if coin is None:
             raise MarketDataCoinNotFoundError(symbol)

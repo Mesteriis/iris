@@ -1,3 +1,6 @@
+from collections.abc import Sequence
+from typing import Protocol
+
 from src.apps.cross_market.engines import best_lagged_correlation as _best_lagged_correlation
 from src.apps.cross_market.engines import close_returns as _close_returns
 from src.apps.cross_market.engines import pearson as _pearson
@@ -10,11 +13,15 @@ MATERIAL_RELATION_DELTA = 0.04
 LEADER_SYMBOLS = ("BTCUSD", "ETHUSD", "SOLUSD")
 
 
+class _ClosePoint(Protocol):
+    close: float
+
+
 def clamp_relation_value(value: float, lower: float, upper: float) -> float:
     return max(lower, min(value, upper))
 
 
-def close_returns(points: list[object]) -> list[float]:
+def close_returns(points: Sequence[_ClosePoint]) -> list[float]:
     return list(_close_returns(tuple(float(point.close) for point in points)))
 
 
@@ -23,8 +30,8 @@ def pearson(values_a: list[float], values_b: list[float]) -> float:
 
 
 def best_lagged_correlation(
-    leader_points: list[object],
-    follower_points: list[object],
+    leader_points: Sequence[_ClosePoint],
+    follower_points: Sequence[_ClosePoint],
     *,
     timeframe: int,
 ) -> tuple[float, int, int]:

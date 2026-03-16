@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, JSON, String, desc, func
+from sqlalchemy import JSON, Boolean, DateTime, Index, Integer, String, desc, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.core.db.session import Base

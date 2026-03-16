@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends, Header, Query
 
@@ -7,7 +7,12 @@ from src.apps.market_structure.query_services import MarketStructureQueryService
 from src.apps.market_structure.services import MarketStructureService, MarketStructureSourceProvisioningService
 from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 from src.core.http.deps import get_operation_store, get_trace_context
-from src.core.http.operation_store import OperationDispatchResult, OperationStore, dispatch_background_operation
+from src.core.http.operation_store import (
+    OperationDispatchResult,
+    OperationStore,
+    TaskiqJob,
+    dispatch_background_operation,
+)
 from src.core.http.tracing import TraceContext
 
 
@@ -35,13 +40,14 @@ class MarketStructureJobDispatcher:
 
     async def dispatch_source_poll(self, *, source_id: int, limit: int) -> OperationDispatchResult:
         from src.apps.market_structure.tasks import poll_market_structure_source_job
+        job = cast(TaskiqJob, poll_market_structure_source_job)
 
         return await dispatch_background_operation(
             store=self.operation_store,
             operation_type="market_structure.source.poll",
             trace_context=self.trace_context,
             deduplication_key=f"source_id:{int(source_id)}:limit:{int(limit)}",
-            dispatch=lambda operation_id: poll_market_structure_source_job.kiq(
+            dispatch=lambda operation_id: job.kiq(
                 source_id=source_id,
                 limit=limit,
                 operation_id=operation_id,
@@ -50,13 +56,14 @@ class MarketStructureJobDispatcher:
 
     async def dispatch_health_refresh(self) -> OperationDispatchResult:
         from src.apps.market_structure.tasks import refresh_market_structure_source_health_job
+        job = cast(TaskiqJob, refresh_market_structure_source_health_job)
 
         return await dispatch_background_operation(
             store=self.operation_store,
             operation_type="market_structure.health.refresh",
             trace_context=self.trace_context,
             deduplication_key="singleton",
-            dispatch=lambda operation_id: refresh_market_structure_source_health_job.kiq(operation_id=operation_id),
+            dispatch=lambda operation_id: job.kiq(operation_id=operation_id),
         )
 
 

@@ -1,9 +1,9 @@
 import pytest
 from sqlalchemy import select
-
 from src.apps.market_data.models import Coin
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
 from src.core.db.uow import SessionUnitOfWork
+
 from tests.portfolio_support import create_exchange_account
 
 

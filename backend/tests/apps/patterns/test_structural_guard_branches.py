@@ -1,5 +1,6 @@
 import src.apps.patterns.domain.detectors.structural as structural_mod
 from src.apps.patterns.domain.utils import Pivot
+
 from tests.factories.market_data import build_candle_points
 
 

@@ -1,17 +1,35 @@
 import asyncio
 import json
 from functools import lru_cache
+from typing import cast
 from weakref import WeakKeyDictionary
 
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 
-from src.core.settings import get_settings
 from src.apps.patterns.domain.regime import RegimeRead
+from src.core.settings import get_settings
 
 REGIME_CACHE_PREFIX = "iris:regime"
 REGIME_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
 _ASYNC_REGIME_CACHE_CLIENTS: WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedis] = WeakKeyDictionary()
+
+
+class _AsyncRegimeCacheClientFactory:
+    def __call__(self) -> AsyncRedis:
+        settings = get_settings()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return cast(AsyncRedis, AsyncRedis.from_url(settings.redis_url, decode_responses=True))
+        client = _ASYNC_REGIME_CACHE_CLIENTS.get(loop)
+        if client is None:
+            client = cast(AsyncRedis, AsyncRedis.from_url(settings.redis_url, decode_responses=True))
+            _ASYNC_REGIME_CACHE_CLIENTS[loop] = client
+        return client
+
+    def cache_clear(self) -> None:
+        _ASYNC_REGIME_CACHE_CLIENTS.clear()
 
 
 # NOTE:
@@ -23,24 +41,7 @@ def get_regime_cache_client() -> Redis:
     return Redis.from_url(settings.redis_url, decode_responses=True)
 
 
-def get_async_regime_cache_client() -> AsyncRedis:
-    settings = get_settings()
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
-    client = _ASYNC_REGIME_CACHE_CLIENTS.get(loop)
-    if client is None:
-        client = AsyncRedis.from_url(settings.redis_url, decode_responses=True)
-        _ASYNC_REGIME_CACHE_CLIENTS[loop] = client
-    return client
-
-
-def _clear_async_regime_cache_clients() -> None:
-    _ASYNC_REGIME_CACHE_CLIENTS.clear()
-
-
-setattr(get_async_regime_cache_client, "cache_clear", _clear_async_regime_cache_clients)
+get_async_regime_cache_client = _AsyncRegimeCacheClientFactory()
 
 
 def regime_cache_key(coin_id: int, timeframe: int) -> str:
@@ -111,13 +112,13 @@ async def cache_regime_snapshot_async(
 
 def read_cached_regime(*, coin_id: int, timeframe: int) -> RegimeRead | None:
     raw = get_regime_cache_client().get(regime_cache_key(coin_id, timeframe))
-    if raw is None:
+    if not isinstance(raw, str):
         return None
     return _parse_regime_payload(raw, fallback_timeframe=timeframe)
 
 
 async def read_cached_regime_async(*, coin_id: int, timeframe: int) -> RegimeRead | None:
     raw = await get_async_regime_cache_client().get(regime_cache_key(coin_id, timeframe))
-    if raw is None:
+    if not isinstance(raw, str):
         return None
     return _parse_regime_payload(raw, fallback_timeframe=timeframe)

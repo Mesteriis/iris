@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from src.apps.patterns.domain.detectors.structural import (
     BroadeningDetector,
@@ -15,6 +15,7 @@ from src.apps.patterns.domain.detectors.structural import (
     WedgeDetector,
     build_structural_detectors,
 )
+
 from tests.factories.market_data import CandlePointFactory, build_candle_points
 
 
@@ -24,7 +25,7 @@ def _candles_from_ohlc(
     highs: list[float] | None = None,
     lows: list[float] | None = None,
 ) -> list:
-    base = datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+    base = datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
     high_values = highs or [value + 1.0 for value in closes]
     low_values = lows or [value - 1.0 for value in closes]
     candles = []
@@ -290,7 +291,7 @@ def test_structural_detectors_cover_real_pattern_shapes() -> None:
         106.0,
         109.0,
     ]
-    ascending_triangle_closes = [(high + low) / 2 for high, low in zip(ascending_triangle_highs, ascending_triangle_lows)]
+    ascending_triangle_closes = [(high + low) / 2 for high, low in zip(ascending_triangle_highs, ascending_triangle_lows, strict=False)]
     ascending_triangle_closes[-1] = 111.0
     _assert_detected(
         TriangleDetector("ascending_triangle"),
@@ -338,7 +339,7 @@ def test_structural_detectors_cover_real_pattern_shapes() -> None:
         102.0,
         99.0,
     ]
-    descending_triangle_closes = [(high + low) / 2 for high, low in zip(descending_triangle_highs, descending_triangle_lows)]
+    descending_triangle_closes = [(high + low) / 2 for high, low in zip(descending_triangle_highs, descending_triangle_lows, strict=False)]
     descending_triangle_closes[-1] = 99.5
     _assert_detected(
         TriangleDetector("descending_triangle"),
@@ -386,7 +387,7 @@ def test_structural_detectors_cover_real_pattern_shapes() -> None:
         104.0,
         109.0,
     ]
-    symmetrical_triangle_closes = [(high + low) / 2 for high, low in zip(symmetrical_triangle_highs, symmetrical_triangle_lows)]
+    symmetrical_triangle_closes = [(high + low) / 2 for high, low in zip(symmetrical_triangle_highs, symmetrical_triangle_lows, strict=False)]
     symmetrical_triangle_closes[-1] = 110.0
     _assert_detected(
         TriangleDetector("symmetrical_triangle"),
@@ -400,7 +401,7 @@ def test_structural_detectors_cover_real_pattern_shapes() -> None:
 
     rising_wedge_highs = [110.0 + 0.8 * index for index in range(15)] + [122.0 + 0.25 * index for index in range(15)]
     rising_wedge_lows = [100.0 + 0.2 * index for index in range(15)] + [108.0 + 0.55 * index for index in range(15)]
-    rising_wedge_closes = [(high + low) / 2 for high, low in zip(rising_wedge_highs, rising_wedge_lows)]
+    rising_wedge_closes = [(high + low) / 2 for high, low in zip(rising_wedge_highs, rising_wedge_lows, strict=False)]
     rising_wedge_closes[-1] = min(rising_wedge_lows[-5:]) - 0.5
     _assert_detected(
         WedgeDetector("rising_wedge"),
@@ -410,7 +411,7 @@ def test_structural_detectors_cover_real_pattern_shapes() -> None:
 
     falling_wedge_highs = [130.0 - 0.2 * index for index in range(15)] + [126.0 - 0.55 * index for index in range(15)]
     falling_wedge_lows = [118.0 - 0.8 * index for index in range(15)] + [110.0 - 0.25 * index for index in range(15)]
-    falling_wedge_closes = [(high + low) / 2 for high, low in zip(falling_wedge_highs, falling_wedge_lows)]
+    falling_wedge_closes = [(high + low) / 2 for high, low in zip(falling_wedge_highs, falling_wedge_lows, strict=False)]
     falling_wedge_closes[-1] = max(falling_wedge_highs[-5:]) + 0.5
     _assert_detected(
         WedgeDetector("falling_wedge"),
@@ -570,7 +571,7 @@ def test_structural_detectors_cover_real_pattern_shapes() -> None:
         68.0,
         66.0,
     ]
-    broadening_top_closes = [(high + low) / 2 for high, low in zip(broadening_top_highs, broadening_top_lows)]
+    broadening_top_closes = [(high + low) / 2 for high, low in zip(broadening_top_highs, broadening_top_lows, strict=False)]
     broadening_top_closes[-1] = 65.0
     _assert_detected(
         BroadeningDetector("broadening_top", "top"),
@@ -646,7 +647,7 @@ def test_structural_detectors_cover_real_pattern_shapes() -> None:
         68.0,
         66.0,
     ]
-    broadening_bottom_closes = [(high + low) / 2 for high, low in zip(broadening_bottom_highs, broadening_bottom_lows)]
+    broadening_bottom_closes = [(high + low) / 2 for high, low in zip(broadening_bottom_highs, broadening_bottom_lows, strict=False)]
     broadening_bottom_closes[-1] = 135.0
     _assert_detected(
         BroadeningDetector("broadening_bottom", "bottom"),
@@ -694,7 +695,7 @@ def test_structural_detectors_cover_real_pattern_shapes() -> None:
         94.0,
         97.0,
     ]
-    expanding_triangle_closes = [(high + low) / 2 for high, low in zip(expanding_triangle_highs, expanding_triangle_lows)]
+    expanding_triangle_closes = [(high + low) / 2 for high, low in zip(expanding_triangle_highs, expanding_triangle_lows, strict=False)]
     expanding_triangle_closes[-1] = 115.0
     _assert_detected(
         ExpandingTriangleDetector(),
@@ -744,7 +745,7 @@ def test_structural_detectors_cover_real_pattern_shapes() -> None:
         107.0,
         119.0,
     ]
-    descending_channel_closes = [(high + low) / 2 for high, low in zip(descending_channel_highs, descending_channel_lows)]
+    descending_channel_closes = [(high + low) / 2 for high, low in zip(descending_channel_highs, descending_channel_lows, strict=False)]
     descending_channel_closes[-1] = 121.0
     _assert_detected(
         ChannelBreakDetector("descending_channel_breakout", "bull"),
@@ -794,7 +795,7 @@ def test_structural_detectors_cover_real_pattern_shapes() -> None:
         115.0,
         104.0,
     ]
-    ascending_channel_closes = [(high + low) / 2 for high, low in zip(ascending_channel_highs, ascending_channel_lows)]
+    ascending_channel_closes = [(high + low) / 2 for high, low in zip(ascending_channel_highs, ascending_channel_lows, strict=False)]
     ascending_channel_closes[-1] = 105.0
     _assert_detected(
         ChannelBreakDetector("ascending_channel_breakdown", "bear"),

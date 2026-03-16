@@ -2,6 +2,10 @@ import asyncio
 import multiprocessing
 import signal
 from dataclasses import dataclass
+from multiprocessing.context import SpawnProcess
+from multiprocessing.synchronize import Event
+from types import FrameType
+from typing import Any
 
 from taskiq.receiver import Receiver
 
@@ -23,7 +27,7 @@ TASKIQ_WORKER_GROUPS = (
 )
 
 
-def _load_worker_broker(group_name: str):
+def _load_worker_broker(group_name: str) -> Any:
     if group_name == "taskiq-general":
         from src.apps.market_data import tasks as market_data_tasks
         from src.apps.market_structure import tasks as market_structure_tasks
@@ -47,13 +51,13 @@ def _load_worker_broker(group_name: str):
     raise ValueError(f"Unsupported TaskIQ worker group '{group_name}'.")
 
 
-async def _watch_stop_flag(stop_flag, finish_event: asyncio.Event) -> None:
+async def _watch_stop_flag(stop_flag: Event, finish_event: asyncio.Event) -> None:
     while not stop_flag.is_set():
         await asyncio.sleep(0.25)
     finish_event.set()
 
 
-async def _serve_taskiq_worker(group_name: str, stop_flag) -> None:
+async def _serve_taskiq_worker(group_name: str, stop_flag: Event) -> None:
     broker = _load_worker_broker(group_name)
     finish_event = asyncio.Event()
     source_capability_registry = get_market_source_capability_registry()
@@ -80,8 +84,8 @@ async def _serve_taskiq_worker(group_name: str, stop_flag) -> None:
         await broker.shutdown()
 
 
-def _run_group_with_stop(group_name: str, stop_flag) -> None:
-    def _stop_handler(signum, frame):  # pragma: no cover
+def _run_group_with_stop(group_name: str, stop_flag: Event) -> None:
+    def _stop_handler(signum: int, frame: FrameType | None) -> None:  # pragma: no cover
         del signum, frame
         stop_flag.set()
 
@@ -90,10 +94,10 @@ def _run_group_with_stop(group_name: str, stop_flag) -> None:
     asyncio.run(_serve_taskiq_worker(group_name, stop_flag))
 
 
-def spawn_taskiq_worker_processes() -> tuple[multiprocessing.synchronize.Event, list[multiprocessing.Process]]:
+def spawn_taskiq_worker_processes() -> tuple[Event, list[SpawnProcess]]:
     ctx = multiprocessing.get_context("spawn")
     stop_event = ctx.Event()
-    processes: list[multiprocessing.Process] = []
+    processes: list[SpawnProcess] = []
     for group in TASKIQ_WORKER_GROUPS:
         for index in range(group.process_count):
             process = ctx.Process(
@@ -108,8 +112,8 @@ def spawn_taskiq_worker_processes() -> tuple[multiprocessing.synchronize.Event, 
 
 
 def stop_taskiq_worker_processes(
-    stop_event,
-    processes: list[multiprocessing.Process],
+    stop_event: Event,
+    processes: list[SpawnProcess],
 ) -> None:
     stop_event.set()
     for process in processes:

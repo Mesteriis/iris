@@ -1,13 +1,12 @@
-from datetime import datetime
-from typing import Any, TYPE_CHECKING
+from __future__ import annotations
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, func
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.db.session import Base
-
-if TYPE_CHECKING:
-    from src.apps.control_plane.models import EventConsumer, EventDefinition, EventRoute, TopologyConfigVersion, TopologyDraft
 
 
 class EventDefinition(Base):

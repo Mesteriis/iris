@@ -1,5 +1,6 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from types import SimpleNamespace
+from typing import cast
 
 from src.apps.market_data import domain as market_data_domain
 from src.apps.market_data import support as market_data_support
@@ -41,6 +42,10 @@ def _coin_message_proxy(coin: Coin) -> SimpleNamespace:
     )
 
 
+def utc_now() -> datetime:
+    return market_data_domain.utc_now()
+
+
 class MarketDataService:
     def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
         self._uow = uow
@@ -61,7 +66,7 @@ class MarketDataService:
         self,
         *,
         symbol: str,
-        payload,
+        payload: object,
     ) -> PriceHistoryReadModel | None:
         coin = await self._coins.get_for_update_by_symbol(symbol)
         if coin is None:
@@ -239,21 +244,28 @@ async def _sync_coin_history_async(
         )
         message_coin = _coin_message_proxy(coin)
         if last_progress_percent != 100.0:
-            uow.add_after_commit_action(
-                lambda coin=message_coin, loaded_points=loaded_points, total_points=total_points: publish_coin_history_progress_message(
-                    coin,
+            def _publish_progress_complete() -> None:
+                publish_coin_history_progress_message(
+                    cast(Coin, message_coin),
                     progress_percent=100.0,
                     loaded_points=loaded_points,
                     total_points=total_points,
                 )
-            )
-        uow.add_after_commit_action(
-            lambda coin=message_coin, total_points=total_points: publish_coin_history_loaded_message(
-                coin,
+
+            uow.add_after_commit_action(_publish_progress_complete)
+
+        def _publish_history_loaded() -> None:
+            publish_coin_history_loaded_message(
+                cast(Coin, message_coin),
                 total_points=total_points,
             )
-        )
-        uow.add_after_commit_action(lambda coin=message_coin: publish_coin_analysis_messages(coin))
+
+        uow.add_after_commit_action(_publish_history_loaded)
+
+        def _publish_analysis_messages() -> None:
+            publish_coin_analysis_messages(cast(Coin, message_coin))
+
+        uow.add_after_commit_action(_publish_analysis_messages)
 
     return MarketDataHistorySyncResult(
         status="ok",

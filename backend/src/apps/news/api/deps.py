@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends
 
@@ -7,7 +7,12 @@ from src.apps.news.query_services import NewsQueryService
 from src.apps.news.services import NewsService, TelegramSessionOnboardingService, TelegramSourceProvisioningService
 from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 from src.core.http.deps import get_operation_store, get_trace_context
-from src.core.http.operation_store import OperationDispatchResult, OperationStore, dispatch_background_operation
+from src.core.http.operation_store import (
+    OperationDispatchResult,
+    OperationStore,
+    TaskiqJob,
+    dispatch_background_operation,
+)
 from src.core.http.tracing import TraceContext
 
 
@@ -30,13 +35,14 @@ class NewsJobDispatcher:
 
     async def dispatch_source_poll(self, *, source_id: int, limit: int) -> OperationDispatchResult:
         from src.apps.news.tasks import poll_news_source_job
+        job = cast(TaskiqJob, poll_news_source_job)
 
         return await dispatch_background_operation(
             store=self.operation_store,
             operation_type="news.source.poll",
             trace_context=self.trace_context,
             deduplication_key=f"source_id:{int(source_id)}:limit:{int(limit)}",
-            dispatch=lambda operation_id: poll_news_source_job.kiq(
+            dispatch=lambda operation_id: job.kiq(
                 source_id=source_id,
                 limit=limit,
                 operation_id=operation_id,

@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import and_, func, select
 
 from src.apps.cross_market.models import Sector
@@ -7,7 +9,7 @@ from src.apps.portfolio.models import PortfolioAction, PortfolioPosition
 from src.apps.signals.models import MarketDecision
 
 
-def latest_market_decisions_subquery():
+def latest_market_decisions_subquery() -> Any:
     return (
         select(
             MarketDecision.coin_id.label("coin_id"),
@@ -25,7 +27,7 @@ def latest_market_decisions_subquery():
     )
 
 
-def portfolio_positions_select():
+def portfolio_positions_select() -> Any:
     latest_decisions = latest_market_decisions_subquery()
     return (
         select(
@@ -66,7 +68,7 @@ def portfolio_positions_select():
     )
 
 
-def portfolio_actions_select():
+def portfolio_actions_select() -> Any:
     return (
         select(
             PortfolioAction.id,

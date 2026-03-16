@@ -26,9 +26,9 @@ class CoinRelationRepository(AsyncRepository):
                 "updated_at": stmt.excluded.updated_at,
             },
         )
-        result = await self.session.execute(stmt)
+        await self.session.execute(stmt)
         await self.session.flush()
-        return int(result.rowcount or 0)
+        return len(rows)
 
 
 class SectorMetricRepository(AsyncRepository):
@@ -53,9 +53,9 @@ class SectorMetricRepository(AsyncRepository):
                 "updated_at": stmt.excluded.updated_at,
             },
         )
-        result = await self.session.execute(stmt)
+        await self.session.execute(stmt)
         await self.session.flush()
-        return int(result.rowcount or 0)
+        return len(rows)
 
 
 __all__ = ["CoinRelationRepository", "SectorMetricRepository"]

@@ -51,14 +51,15 @@ from src.apps.control_plane.repositories import (
     TopologyVersionRepository,
 )
 from src.apps.hypothesis_engine.query_services import HypothesisQueryService
+from src.apps.hypothesis_engine.read_models import PromptReadModel
 from src.apps.market_data.domain import utc_now
 from src.core.ai.capabilities import get_capability_policy
-from src.core.ai.contracts import AICapability
+from src.core.ai.contracts import AICapability, AIProviderConfig
 from src.core.ai.health import capability_health_state
 from src.core.ai.prompt_policy import get_prompt_task_policy, prompt_style_profile
 from src.core.ai.settings import build_provider_configs
 from src.core.db.persistence import AsyncQueryService, freeze_json_value
-from src.core.settings import get_settings
+from src.core.settings import Settings, get_settings
 
 
 def route_snapshot_payload_from_read_model(route: EventRouteReadModel) -> dict[str, Any]:
@@ -590,7 +591,7 @@ class TopologyObservabilityQueryService(AsyncQueryService):
 
 
 class AIOperatorQueryService(AsyncQueryService):
-    def __init__(self, session: AsyncSession, *, settings=None) -> None:
+    def __init__(self, session: AsyncSession, *, settings: Settings | None = None) -> None:
         super().__init__(session, domain="control_plane", service_name="AIOperatorQueryService")
         self._settings = settings or get_settings()
         self._hypothesis_queries = HypothesisQueryService(session)
@@ -692,7 +693,7 @@ class AIOperatorQueryService(AsyncQueryService):
         self,
         capability: AICapability,
         *,
-        providers,
+        providers: tuple[AIProviderConfig, ...],
     ) -> AICapabilityOperatorReadModel:
         policy = get_capability_policy(capability, settings=self._settings)
         configured_providers = tuple(
@@ -712,7 +713,7 @@ class AIOperatorQueryService(AsyncQueryService):
             primary_provider=configured_providers[0] if configured_providers else None,
         )
 
-    def _build_db_prompt_record(self, prompt) -> AIPromptOperatorReadModel:
+    def _build_db_prompt_record(self, prompt: PromptReadModel) -> AIPromptOperatorReadModel:
         policy = get_prompt_task_policy(prompt.task)
         return AIPromptOperatorReadModel(
             id=int(prompt.id),
@@ -746,9 +747,7 @@ class AIOperatorQueryService(AsyncQueryService):
             return False
         if task is not None and prompt.task != task:
             return False
-        if editable is not None and bool(prompt.editable) is not bool(editable):
-            return False
-        return True
+        return not (editable is not None and bool(prompt.editable) is not bool(editable))
 
 
 __all__ = [

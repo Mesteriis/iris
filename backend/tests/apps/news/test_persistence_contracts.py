@@ -1,9 +1,8 @@
 from dataclasses import FrozenInstanceError
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
 from sqlalchemy import select
-
 from src.apps.market_data.models import Coin
 from src.apps.news.models import NewsItem, NewsItemLink
 from src.apps.news.query_services import NewsQueryService
@@ -52,7 +51,7 @@ async def test_news_query_returns_immutable_item_read_models(async_db_session, s
             source_id=created.id,
             plugin_name="x",
             external_id="tweet-immutable",
-            published_at=datetime(2026, 3, 12, 13, 0, tzinfo=timezone.utc),
+            published_at=datetime(2026, 3, 12, 13, 0, tzinfo=UTC),
             author_handle="macrodesk",
             channel_name="Desk Wire",
             content_text="Watching $BTC react to ETF flow",

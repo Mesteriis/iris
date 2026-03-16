@@ -3,10 +3,9 @@ import json
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
-
 import src.apps.signals.cache as signal_cache_module
 import src.apps.signals.query_services as signal_query_module
+from sqlalchemy import select
 from src.apps.patterns.query_builders import signal_select as _signal_select
 from src.apps.signals.cache import (
     DECISION_CACHE_TTL_SECONDS,
@@ -26,6 +25,7 @@ from src.apps.signals.query_services import (
     _cluster_membership_map_async,
     _serialize_signal_rows_async,
 )
+
 from tests.factories.seeds import DecisionSeedFactory, StrategySeedFactory
 
 

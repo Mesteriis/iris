@@ -1,8 +1,10 @@
 import asyncio
 import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from threading import Lock
+from typing import Protocol, cast
 
 import httpx
 from redis.exceptions import RedisError, WatchError
@@ -27,6 +29,41 @@ class RateLimitSnapshot:
     cooldown_seconds: float
     next_available_at: datetime | None
     policy: RateLimitPolicy
+
+
+HttpQueryScalar = str | int | float | bool | None
+HttpQueryValue = HttpQueryScalar | Sequence[HttpQueryScalar]
+HttpQueryParams = Mapping[str, HttpQueryValue]
+
+
+class _RedisPipeline(Protocol):
+    async def watch(self, key: str) -> None: ...
+    async def get(self, key: str) -> object: ...
+    async def pttl(self, key: str) -> int: ...
+    def multi(self) -> None: ...
+    def set(self, key: str, value: int, *, ex: int | None = None, px: int | None = None) -> None:
+        del key, value, ex, px
+
+    def incrby(self, key: str, amount: int) -> None:
+        del key, amount
+
+    async def execute(self) -> None: ...
+    async def reset(self) -> None: ...
+
+
+def _coerce_int(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return 0
 
 
 SOURCE_RATE_LIMIT_POLICIES: dict[str, RateLimitPolicy] = {
@@ -193,12 +230,12 @@ class RedisRateLimitManager:
         redis = await get_async_lock_redis()
 
         while True:
-            pipe = redis.pipeline()
+            pipe = cast(_RedisPipeline, redis.pipeline())
             try:
                 await pipe.watch(key)
                 current_raw = await pipe.get(key)
                 ttl_ms = await pipe.pttl(key)
-                current = int(current_raw) if current_raw is not None else 0
+                current = _coerce_int(current_raw)
                 if current > 0 and current + cost > policy.requests_per_window:
                     await pipe.reset()
                     wait_seconds = max(ttl_ms, 1000) / 1000 if ttl_ms and ttl_ms > 0 else float(policy.window_seconds)
@@ -228,12 +265,12 @@ class RedisRateLimitManager:
         redis = await get_async_lock_redis()
 
         while True:
-            pipe = redis.pipeline()
+            pipe = cast(_RedisPipeline, redis.pipeline())
             try:
                 await pipe.watch(key)
                 now_ms = int(utc_now().timestamp() * 1000)
                 next_allowed_raw = await pipe.get(key)
-                next_allowed_ms = int(next_allowed_raw) if next_allowed_raw is not None else 0
+                next_allowed_ms = _coerce_int(next_allowed_raw)
                 base_ms = max(now_ms, next_allowed_ms)
                 delay_ms = max(base_ms - now_ms, 0)
                 expires_ms = max(interval_ms * 10, 1000)
@@ -268,7 +305,7 @@ async def rate_limited_get(
     client: httpx.AsyncClient,
     url: str,
     *,
-    params: dict[str, object] | None = None,
+    params: HttpQueryParams | None = None,
     headers: dict[str, str] | None = None,
     rate_limit_statuses: set[int] | None = None,
     fallback_retry_after_seconds: int | None = None,

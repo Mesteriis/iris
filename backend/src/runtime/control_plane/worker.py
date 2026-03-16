@@ -3,6 +3,7 @@ from typing import Any
 from redis.asyncio import Redis as AsyncRedis
 
 from src.apps.control_plane.cache import TopologyCacheManager
+from src.apps.control_plane.contracts import EventConsumerSnapshot, EventRouteSnapshot
 from src.apps.control_plane.control_events import CONTROL_EVENT_TYPES
 from src.apps.control_plane.metrics import ControlPlaneMetricsStore
 from src.core.settings import get_settings
@@ -22,7 +23,14 @@ class RedisRouteDeliveryPublisher:
         settings = get_settings()
         self._redis = AsyncRedis.from_url(redis_url or settings.redis_url, decode_responses=True)
 
-    async def publish(self, *, route, consumer, event: IrisEvent, shadow: bool) -> None:
+    async def publish(
+        self,
+        *,
+        route: EventRouteSnapshot,
+        consumer: EventConsumerSnapshot,
+        event: IrisEvent,
+        shadow: bool,
+    ) -> None:
         metadata = {
             **event.metadata,
             "route_key": route.route_key,
@@ -121,8 +129,8 @@ def create_topology_dispatcher_consumer(consumer_name: str | None = None) -> Eve
 
 
 __all__ = [
-    "RedisRouteDeliveryPublisher",
     "TOPOLOGY_DISPATCHER_GROUP",
+    "RedisRouteDeliveryPublisher",
     "TopologyDispatchService",
     "build_delivery_stream_name",
     "create_topology_dispatcher_consumer",

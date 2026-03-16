@@ -1,7 +1,6 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
-
 from src.apps.market_data.domain import (
     align_timestamp,
     ensure_utc,
@@ -16,8 +15,8 @@ def test_market_data_domain_normalizes_intervals_and_utc_values() -> None:
     naive = datetime(2026, 3, 12, 9, 7)
     aware = datetime(2026, 3, 12, 9, 7, tzinfo=timezone(timedelta(hours=2)))
 
-    assert ensure_utc(naive) == datetime(2026, 3, 12, 9, 7, tzinfo=timezone.utc)
-    assert ensure_utc(aware) == datetime(2026, 3, 12, 7, 7, tzinfo=timezone.utc)
+    assert ensure_utc(naive) == datetime(2026, 3, 12, 9, 7, tzinfo=UTC)
+    assert ensure_utc(aware) == datetime(2026, 3, 12, 7, 7, tzinfo=UTC)
     assert normalize_interval(" 1H ") == "1h"
     assert interval_delta("4h") == timedelta(hours=4)
 
@@ -26,17 +25,17 @@ def test_market_data_domain_normalizes_intervals_and_utc_values() -> None:
 
 
 def test_market_data_domain_aligns_completed_windows() -> None:
-    reference = datetime(2026, 3, 12, 9, 7, 31, tzinfo=timezone.utc)
+    reference = datetime(2026, 3, 12, 9, 7, 31, tzinfo=UTC)
 
-    assert align_timestamp(reference, "15m") == datetime(2026, 3, 12, 9, 0, tzinfo=timezone.utc)
-    assert latest_completed_timestamp("15m", reference) == datetime(2026, 3, 12, 8, 45, tzinfo=timezone.utc)
+    assert align_timestamp(reference, "15m") == datetime(2026, 3, 12, 9, 0, tzinfo=UTC)
+    assert latest_completed_timestamp("15m", reference) == datetime(2026, 3, 12, 8, 45, tzinfo=UTC)
     assert history_window_start(
-        datetime(2026, 3, 12, 9, 0, tzinfo=timezone.utc),
+        datetime(2026, 3, 12, 9, 0, tzinfo=UTC),
         "1h",
         5,
-    ) == datetime(2026, 3, 12, 5, 0, tzinfo=timezone.utc)
+    ) == datetime(2026, 3, 12, 5, 0, tzinfo=UTC)
     assert history_window_start(
-        datetime(2026, 3, 12, 9, 0, tzinfo=timezone.utc),
+        datetime(2026, 3, 12, 9, 0, tzinfo=UTC),
         "1d",
         0,
-    ) == datetime(2026, 3, 12, 9, 0, tzinfo=timezone.utc)
+    ) == datetime(2026, 3, 12, 9, 0, tzinfo=UTC)

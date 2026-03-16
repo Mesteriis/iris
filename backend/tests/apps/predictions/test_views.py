@@ -1,5 +1,5 @@
-from datetime import timedelta
 import importlib.util
+from datetime import timedelta
 
 import pytest
 from src.apps.predictions.api.router import build_router as build_predictions_router

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 from src.apps.patterns.domain.success import (
     GLOBAL_MARKET_REGIME,
@@ -10,6 +10,7 @@ from src.apps.patterns.domain.success import (
     normalize_market_regime,
     publish_pattern_state_event,
 )
+
 from tests.factories.patterns import PatternDetectionFactory
 
 
@@ -22,7 +23,7 @@ def _snapshot(
     total_signals: int,
     enabled: bool = True,
 ) -> PatternSuccessSnapshot:
-    successful_signals = int(round(success_rate * total_signals))
+    successful_signals = round(success_rate * total_signals)
     return PatternSuccessSnapshot(
         pattern_slug=slug,
         timeframe=timeframe,
@@ -121,7 +122,7 @@ def test_pattern_success_publish_and_low_confidence_degrade(monkeypatch) -> None
         slug="bull_flag",
         signal_type="pattern_bull_flag",
         confidence=0.36,
-        candle_timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+        candle_timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
         category="continuation",
     )
     adjusted = apply_pattern_success_validation(
@@ -185,7 +186,7 @@ def test_pattern_success_suppressed_and_missing_snapshot_without_events() -> Non
             slug="head_shoulders",
             signal_type="pattern_head_shoulders",
             confidence=0.75,
-            candle_timestamp=datetime(2026, 3, 12, 13, 0, tzinfo=timezone.utc),
+            candle_timestamp=datetime(2026, 3, 12, 13, 0, tzinfo=UTC),
             category="structural",
         ),
         timeframe=15,
@@ -201,7 +202,7 @@ def test_pattern_success_suppressed_and_missing_snapshot_without_events() -> Non
             slug="unknown_pattern",
             signal_type="pattern_unknown_pattern",
             confidence=0.64,
-            candle_timestamp=datetime(2026, 3, 12, 14, 0, tzinfo=timezone.utc),
+            candle_timestamp=datetime(2026, 3, 12, 14, 0, tzinfo=UTC),
             category="structural",
             attributes={"source": "test"},
         ),
@@ -234,7 +235,7 @@ def test_pattern_success_low_confidence_degrade_without_events() -> None:
             slug="bull_flag",
             signal_type="pattern_bull_flag",
             confidence=0.36,
-            candle_timestamp=datetime(2026, 3, 12, 15, 0, tzinfo=timezone.utc),
+            candle_timestamp=datetime(2026, 3, 12, 15, 0, tzinfo=UTC),
             category="continuation",
         ),
         timeframe=15,

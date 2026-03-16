@@ -1,8 +1,8 @@
 from sqlalchemy import func, select
 
-from src.apps.market_data.query_services import MarketDataQueryService
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Coin
+from src.apps.market_data.query_services import MarketDataQueryService
 from src.apps.patterns.domain.base import PatternDetection
 from src.apps.patterns.domain.pattern_context import apply_pattern_context, dependencies_satisfied
 from src.apps.patterns.domain.success import apply_pattern_success_validation
@@ -10,6 +10,22 @@ from src.apps.patterns.domain.utils import current_indicator_map
 from src.apps.patterns.task_service_base import PatternTaskBase
 from src.apps.signals.models import Signal
 from src.core.db.uow import BaseAsyncUnitOfWork
+
+
+def _created_count(item: dict[str, object]) -> int:
+    value = item.get("created", 0)
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return 0
 
 
 class PatternBootstrapService(PatternTaskBase):
@@ -25,7 +41,7 @@ class PatternBootstrapService(PatternTaskBase):
             return {"status": "ok", "coins": 1, "items": [result]}
 
         coin_symbols = await MarketDataQueryService(self.session).list_coin_symbols_ready_for_latest_sync()
-        items = []
+        items: list[dict[str, object]] = []
         for coin_symbol in coin_symbols:
             coin = await self._coins.get_by_symbol(coin_symbol)
             if coin is None:
@@ -34,7 +50,7 @@ class PatternBootstrapService(PatternTaskBase):
         return {
             "status": "ok",
             "coins": len(coin_symbols),
-            "created": sum(int(item.get("created", 0)) for item in items),
+            "created": sum(_created_count(item) for item in items),
             "items": items,
         }
 
@@ -112,7 +128,7 @@ class PatternBootstrapService(PatternTaskBase):
                         )
                         if validated is not None:
                             detections.append(validated)
-            rows = [
+            rows: list[dict[str, object]] = [
                 {
                     "coin_id": int(coin.id),
                     "timeframe": timeframe,

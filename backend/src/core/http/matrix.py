@@ -94,12 +94,7 @@ def render_http_availability_matrix(*, settings: Settings) -> str:
     ]
     for domain, mode_map in matrix.items():
         lines.append(
-            "| `{domain}` | {full} | {local} | {ha} |".format(
-                domain=domain,
-                full=_format_mode_cell(mode_map[LaunchMode.FULL]),
-                local=_format_mode_cell(mode_map[LaunchMode.LOCAL]),
-                ha=_format_mode_cell(mode_map[LaunchMode.HA_ADDON]),
-            )
+            f"| `{domain}` | {_format_mode_cell(mode_map[LaunchMode.FULL])} | {_format_mode_cell(mode_map[LaunchMode.LOCAL])} | {_format_mode_cell(mode_map[LaunchMode.HA_ADDON])} |"
         )
     lines.extend(
         [
@@ -116,13 +111,7 @@ def render_http_availability_matrix(*, settings: Settings) -> str:
         )
         for category in categories:
             lines.append(
-                "| `{domain}` | `{category}` | {full} | {local} | {ha} |".format(
-                    domain=domain,
-                    category=category,
-                    full=mode_map[LaunchMode.FULL].get(category, 0),
-                    local=mode_map[LaunchMode.LOCAL].get(category, 0),
-                    ha=mode_map[LaunchMode.HA_ADDON].get(category, 0),
-                )
+                f"| `{domain}` | `{category}` | {mode_map[LaunchMode.FULL].get(category, 0)} | {mode_map[LaunchMode.LOCAL].get(category, 0)} | {mode_map[LaunchMode.HA_ADDON].get(category, 0)} |"
             )
     lines.append("")
     return "\n".join(lines)

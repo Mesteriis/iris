@@ -1,5 +1,6 @@
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime, timedelta
+from typing import Protocol
 
 from src.apps.indicators.analytics import (
     INDICATOR_VERSION,
@@ -7,10 +8,18 @@ from src.apps.indicators.analytics import (
 )
 from src.apps.indicators.repositories import IndicatorCandleRepository, IndicatorMetricsRepository
 from src.apps.indicators.results import IndicatorMetricsUpdate
-from src.apps.market_data.candles import AGGREGATE_VIEW_BY_TIMEFRAME
+from src.apps.market_data.candles import AGGREGATE_VIEW_BY_TIMEFRAME, CandlePoint
 from src.apps.market_data.models import Coin
 from src.apps.market_data.repositories import TimescaleContinuousAggregateRepository
 from src.core.db.session import async_engine
+
+
+class _RegimeLike(Protocol):
+    @property
+    def regime(self) -> str: ...
+
+    @property
+    def confidence(self) -> float: ...
 
 
 class IndicatorAggregateRefresher:
@@ -34,7 +43,7 @@ class IndicatorAggregateRefresher:
 def regime_for_timeframe(
     *,
     timeframe: int,
-    regime_map: dict[int, object],
+    regime_map: Mapping[int, _RegimeLike],
     fallback: str | None,
 ) -> tuple[str | None, float | None]:
     regime = regime_map.get(timeframe)
@@ -77,17 +86,17 @@ async def upsert_indicator_coin_metrics(
     base_timeframe: int,
     primary: TimeframeSnapshot | None,
     base_snapshot: TimeframeSnapshot | None,
-    base_candles: list[object],
+    base_candles: Sequence[CandlePoint],
     volume_24h: float | None,
     volume_change_24h: float | None,
     volatility: float | None,
     refresh_market_cap: bool,
     market_regime: str | None,
-    market_regime_details: dict[str, object] | None,
+    market_regime_details: Mapping[str, object] | None,
     metrics: IndicatorMetricsRepository,
     activity_fields: Callable[..., tuple[float | None, str | None, int | None]],
-    compute_market_regime: Callable[[TimeframeSnapshot, str, float | None], str],
-    compute_price_change: Callable[[list[object], timedelta], float | None],
+    compute_market_regime: Callable[[TimeframeSnapshot, str, float | None], str | None],
+    compute_price_change: Callable[[Sequence[CandlePoint], timedelta], float | None],
     compute_trend: Callable[[TimeframeSnapshot], str],
     compute_trend_score: Callable[[TimeframeSnapshot, float | None], int],
     fetch_market_cap: Callable[[str], Awaitable[float | None]],
@@ -98,7 +107,7 @@ async def upsert_indicator_coin_metrics(
         return IndicatorMetricsUpdate(
             coin_id=int(coin.id),
             market_regime=market_regime,
-            market_regime_details=market_regime_details,
+            market_regime_details=dict(market_regime_details) if market_regime_details is not None else None,
         )
 
     del base_timeframe
@@ -159,7 +168,7 @@ async def upsert_indicator_coin_metrics(
         activity_bucket=activity_bucket,
         analysis_priority=analysis_priority,
         market_regime=str(payload["market_regime"]) if payload["market_regime"] is not None else None,
-        market_regime_details=market_regime_details,
+        market_regime_details=dict(market_regime_details) if market_regime_details is not None else None,
         price_change_24h=price_change_24h,
         price_change_7d=price_change_7d,
         volatility=volatility,

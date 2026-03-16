@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from src.apps.cross_market.integrations.market_data import CrossMarketMarketDataAdapter
 from src.apps.cross_market.query_services import CrossMarketQueryService
 from src.apps.cross_market.repositories import CoinRelationRepository, SectorMetricRepository
@@ -10,7 +12,12 @@ from src.apps.cross_market.services.results import (
     CrossMarketSectorMomentumResult,
 )
 from src.apps.cross_market.services.sector_flow import refresh_sector_momentum
-from src.apps.cross_market.services.side_effects import CrossMarketSideEffectDispatcher
+from src.apps.cross_market.services.side_effects import (
+    CrossMarketLeaderSideEffect,
+    CrossMarketRelationSideEffect,
+    CrossMarketSectorRotationSideEffect,
+    CrossMarketSideEffectDispatcher,
+)
 from src.apps.predictions.services import PredictionService
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
@@ -44,9 +51,9 @@ class CrossMarketService(PersistenceComponent):
     def _queue_after_commit_side_effects(
         self,
         *,
-        relation_effects,
-        sector_effect,
-        leader_effect,
+        relation_effects: tuple[CrossMarketRelationSideEffect, ...],
+        sector_effect: CrossMarketSectorRotationSideEffect | None,
+        leader_effect: CrossMarketLeaderSideEffect | None,
         timeframe: int,
     ) -> None:
         async def _dispatch() -> None:
@@ -143,7 +150,7 @@ class CrossMarketService(PersistenceComponent):
         follower_coin_id: int,
         timeframe: int,
         emit_events: bool,
-    ) -> tuple[CrossMarketRelationUpdateResult, tuple]:
+    ) -> tuple[CrossMarketRelationUpdateResult, tuple[CrossMarketRelationSideEffect, ...]]:
         return await update_coin_relations(
             service=self,
             follower_coin_id=follower_coin_id,
@@ -156,7 +163,7 @@ class CrossMarketService(PersistenceComponent):
         *,
         timeframe: int,
         emit_events: bool,
-    ) -> tuple[CrossMarketSectorMomentumResult, object | None]:
+    ) -> tuple[CrossMarketSectorMomentumResult, CrossMarketSectorRotationSideEffect | None]:
         return await refresh_sector_momentum(
             service=self,
             timeframe=timeframe,
@@ -170,7 +177,7 @@ class CrossMarketService(PersistenceComponent):
         timeframe: int,
         payload: dict[str, object],
         emit_events: bool,
-    ) -> tuple[CrossMarketLeaderDetectionResult | dict[str, object], object | None, bool]:
+    ) -> tuple[CrossMarketLeaderDetectionResult | dict[str, object], CrossMarketLeaderSideEffect | None, bool]:
         return await detect_market_leader(
             service=self,
             coin_id=coin_id,
@@ -185,12 +192,29 @@ def _coerce_leader_result(
 ) -> CrossMarketLeaderDetectionResult:
     if isinstance(value, CrossMarketLeaderDetectionResult):
         return value
+
+    def _int_value(key: str) -> int | None:
+        raw = value.get(key)
+        if raw is None:
+            return None
+        if isinstance(raw, int | str):
+            return int(raw)
+        return int(cast(Any, raw))
+
+    def _float_value(key: str) -> float | None:
+        raw = value.get(key)
+        if raw is None:
+            return None
+        if isinstance(raw, int | float | str):
+            return float(raw)
+        return float(cast(Any, raw))
+
     return CrossMarketLeaderDetectionResult(
         status=str(value.get("status") or "unknown"),
-        coin_id=int(value["coin_id"]) if value.get("coin_id") is not None else None,
-        leader_coin_id=int(value["leader_coin_id"]) if value.get("leader_coin_id") is not None else None,
+        coin_id=_int_value("coin_id"),
+        leader_coin_id=_int_value("leader_coin_id"),
         direction=str(value["direction"]) if value.get("direction") is not None else None,
-        confidence=float(value["confidence"]) if value.get("confidence") is not None else None,
+        confidence=_float_value("confidence"),
         reason=str(value["reason"]) if value.get("reason") is not None else None,
     )
 

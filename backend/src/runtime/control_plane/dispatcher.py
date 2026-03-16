@@ -232,7 +232,7 @@ class TopologyRouteEvaluator:
             event_metadata = self._resolve_metadata(event)
             for key, expected in route.filters.metadata.items():
                 actual = event_metadata.get(key)
-                if isinstance(expected, (list, tuple, set)):
+                if isinstance(expected, list | tuple | set):
                     if actual not in set(expected):
                         return False
                 elif actual != expected:
@@ -254,8 +254,7 @@ class TopologyRouteEvaluator:
         return None
 
     def _resolve_metadata(self, event: IrisEvent) -> dict[str, object]:
-        payload_metadata = dict(event.metadata)
-        return payload_metadata
+        return dict(event.metadata)
 
     def _is_shadow(self, route: EventRouteSnapshot) -> bool:
         return route.status == EventRouteStatus.SHADOW or route.shadow.enabled

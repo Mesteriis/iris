@@ -1,4 +1,5 @@
 import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from fastapi import Request
@@ -168,7 +169,13 @@ class FrontendDashboardStreamAdapter:
             f"data: {json.dumps(payload, ensure_ascii=True, sort_keys=True)}\n\n"
         )
 
-    async def iter_events(self, *, request: Request, cursor: str | None, once: bool):
+    async def iter_events(
+        self,
+        *,
+        request: Request,
+        cursor: str | None,
+        once: bool,
+    ) -> AsyncIterator[str]:
         client = AsyncRedis.from_url(self._redis_url, decode_responses=True)
         last_id = self._resolve_last_id(request=request, cursor=cursor)
         try:

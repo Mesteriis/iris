@@ -1,6 +1,8 @@
+from datetime import datetime
 from typing import Any
 
 from src.apps.market_data.domain import ensure_utc, utc_now
+from src.apps.market_data.models import Coin
 from src.apps.market_structure.constants import MARKET_STRUCTURE_ALERT_KIND_QUARANTINED
 from src.apps.market_structure.engines.health_engine import (
     market_structure_source_alert_event_payload,
@@ -29,7 +31,7 @@ class MarketStructureServiceSupport:
         self._snapshots = MarketStructureSnapshotRepository(uow.session)
         self._side_effects = MarketStructureSideEffectDispatcher(uow)
 
-    async def _resolve_coin(self, coin_symbol: str):
+    async def _resolve_coin(self, coin_symbol: str) -> Coin:
         coin = await self._coins.get_by_symbol(coin_symbol)
         if coin is None:
             raise InvalidMarketStructureSourceConfigurationError(f"Coin '{coin_symbol.upper()}' was not found.")
@@ -88,7 +90,7 @@ class MarketStructureServiceSupport:
         source: MarketStructureSource,
         *,
         alert_kind: str | None = None,
-        now=None,
+        now: datetime | None = None,
     ) -> None:
         emitted_at = ensure_utc(now or utc_now())
         context = await self._source_event_context(source)
@@ -107,7 +109,7 @@ class MarketStructureServiceSupport:
         if alert_kind == MARKET_STRUCTURE_ALERT_KIND_QUARANTINED:
             self._side_effects.publish_source_quarantined(payload=payload)
 
-    async def _publish_source_deleted(self, source: MarketStructureSource, *, now) -> None:
+    async def _publish_source_deleted(self, source: MarketStructureSource, *, now: datetime) -> None:
         context = await self._source_event_context(source)
         if context is None:
             return

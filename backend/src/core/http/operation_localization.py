@@ -94,4 +94,5 @@ def _localize_message(
 def _to_payload(item: OperationStatusResponse | OperationResultResponse | OperationEventResponse | Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(item, Mapping):
         return dict(item)
-    return item.model_dump(mode="python")
+    payload: dict[str, Any] = item.model_dump(mode="python")
+    return payload

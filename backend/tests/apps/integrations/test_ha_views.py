@@ -69,7 +69,7 @@ async def test_ha_http_endpoints_expose_protocol_surface(api_app_client, seeded_
         "settings.notifications_enabled.set",
         "settings.default_timeframe.set",
     }
-    assert catalog_payload["catalog_version"].startswith("sha1:")
+    assert catalog_payload["catalog_version"].startswith("sha256:")
 
     dashboard = await client.get("/ha/dashboard")
     assert dashboard.status_code == 200

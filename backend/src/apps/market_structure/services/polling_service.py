@@ -2,7 +2,7 @@ from typing import Any
 
 from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.market_structure.constants import DEFAULT_MARKET_STRUCTURE_POLL_LIMIT
-from src.apps.market_structure.contracts import ManualMarketStructureIngestRequest
+from src.apps.market_structure.contracts import ManualMarketStructureIngestRequest, MarketStructureSourceHealthRead
 from src.apps.market_structure.engines.health_engine import (
     apply_market_structure_alert_transition,
     build_market_structure_source_health,
@@ -250,11 +250,11 @@ class MarketStructurePollingService(MarketStructureServiceSupport):
             ingest_token=ingest_token,
         )
 
-    async def read_source_health(self, source_id: int):
+    async def read_source_health(self, source_id: int) -> MarketStructureSourceHealthRead | None:
         item = await self._queries.get_source_health_read_by_id(source_id)
         if item is None:
             return None
-        return build_market_structure_source_health(item)
+        return MarketStructureSourceHealthRead.model_validate(item)
 
 
 __all__ = ["MarketStructurePollingService"]

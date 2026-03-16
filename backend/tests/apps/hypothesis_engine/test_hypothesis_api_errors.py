@@ -1,6 +1,3 @@
-# ruff: noqa: RUF001
-
-
 from src.apps.hypothesis_engine.api.errors import hypothesis_error_to_http
 from src.apps.hypothesis_engine.exceptions import PromptVeilLockedError
 

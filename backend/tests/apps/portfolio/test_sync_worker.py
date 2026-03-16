@@ -1,15 +1,14 @@
 import json
-import pytest
 
+import pytest
 from redis import Redis
 from sqlalchemy import select
-
 from src.apps.market_data.models import Coin
-from src.apps.portfolio.models import PortfolioBalance
-from src.apps.portfolio.models import PortfolioPosition
 from src.apps.portfolio.cache import read_cached_portfolio_balances
+from src.apps.portfolio.models import PortfolioBalance, PortfolioPosition
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
 from src.core.db.uow import SessionUnitOfWork
+
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_exchange_account
 

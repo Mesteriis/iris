@@ -1,15 +1,51 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
-from collections.abc import Mapping
+from typing import Protocol, runtime_checkable
+
+from src.apps.patterns.models import DiscoveredPattern, PatternFeature, PatternRegistry, PatternStatistic
+
+
+@runtime_checkable
+class _SupportsInt(Protocol):
+    def __int__(self) -> int: ...
+
+
+@runtime_checkable
+class _SupportsFloat(Protocol):
+    def __float__(self) -> float: ...
 
 
 def _float_or_none(value: object) -> float | None:
-    return float(value) if value is not None else None
+    return _required_float(value, field_name="value") if value is not None else None
 
 
 def _str_or_none(value: object) -> str | None:
     return str(value) if value is not None else None
+
+
+def _required_int(value: object, *, field_name: str) -> int:
+    if isinstance(value, bool | int | str | bytes | bytearray):
+        return int(value)
+    if isinstance(value, _SupportsInt):
+        return int(value)
+    raise TypeError(f"{field_name} must be int-compatible, got {type(value).__name__}")
+
+
+def _required_float(value: object, *, field_name: str) -> float:
+    if isinstance(value, bool | int | float | str | bytes | bytearray):
+        return float(value)
+    if isinstance(value, _SupportsFloat):
+        return float(value)
+    if isinstance(value, _SupportsInt):
+        return float(int(value))
+    raise TypeError(f"{field_name} must be float-compatible, got {type(value).__name__}")
+
+
+def _required_datetime(value: object, *, field_name: str) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    raise TypeError(f"{field_name} must be datetime, got {type(value).__name__}")
 
 
 @dataclass(slots=True, frozen=True)
@@ -143,7 +179,7 @@ class PatternSignalReadModel:
     cluster_membership: tuple[str, ...]
 
 
-def pattern_statistic_read_model_from_orm(stat) -> PatternStatisticReadModel:
+def pattern_statistic_read_model_from_orm(stat: PatternStatistic) -> PatternStatisticReadModel:
     return PatternStatisticReadModel(
         timeframe=int(stat.timeframe),
         market_regime=str(stat.market_regime),
@@ -160,7 +196,10 @@ def pattern_statistic_read_model_from_orm(stat) -> PatternStatisticReadModel:
     )
 
 
-def pattern_read_model_from_orm(pattern, statistics: tuple[PatternStatisticReadModel, ...]) -> PatternReadModel:
+def pattern_read_model_from_orm(
+    pattern: PatternRegistry,
+    statistics: tuple[PatternStatisticReadModel, ...],
+) -> PatternReadModel:
     return PatternReadModel(
         slug=str(pattern.slug),
         category=str(pattern.category),
@@ -172,7 +211,7 @@ def pattern_read_model_from_orm(pattern, statistics: tuple[PatternStatisticReadM
     )
 
 
-def pattern_feature_read_model_from_orm(feature) -> PatternFeatureReadModel:
+def pattern_feature_read_model_from_orm(feature: PatternFeature) -> PatternFeatureReadModel:
     return PatternFeatureReadModel(
         feature_slug=str(feature.feature_slug),
         enabled=bool(feature.enabled),
@@ -180,7 +219,7 @@ def pattern_feature_read_model_from_orm(feature) -> PatternFeatureReadModel:
     )
 
 
-def discovered_pattern_read_model_from_orm(pattern) -> DiscoveredPatternReadModel:
+def discovered_pattern_read_model_from_orm(pattern: DiscoveredPattern) -> DiscoveredPatternReadModel:
     return DiscoveredPatternReadModel(
         structure_hash=str(pattern.structure_hash),
         timeframe=int(pattern.timeframe),
@@ -206,28 +245,28 @@ def regime_timeframe_read_model(
 
 def sector_read_model_from_mapping(mapping: Mapping[str, object]) -> SectorReadModel:
     return SectorReadModel(
-        id=int(mapping["id"]),
+        id=_required_int(mapping["id"], field_name="id"),
         name=str(mapping["name"]),
         description=_str_or_none(mapping.get("description")),
-        created_at=mapping["created_at"],
-        coin_count=int(mapping["coin_count"]),
+        created_at=_required_datetime(mapping["created_at"], field_name="created_at"),
+        coin_count=_required_int(mapping["coin_count"], field_name="coin_count"),
     )
 
 
 def sector_metric_read_model_from_mapping(mapping: Mapping[str, object]) -> SectorMetricReadModel:
     return SectorMetricReadModel(
-        sector_id=int(mapping["sector_id"]),
+        sector_id=_required_int(mapping["sector_id"], field_name="sector_id"),
         name=str(mapping["name"]),
         description=_str_or_none(mapping.get("description")),
-        timeframe=int(mapping["timeframe"]),
-        sector_strength=float(mapping["sector_strength"]),
-        relative_strength=float(mapping["relative_strength"]),
-        capital_flow=float(mapping["capital_flow"]),
-        avg_price_change_24h=float(mapping["avg_price_change_24h"]),
-        avg_volume_change_24h=float(mapping["avg_volume_change_24h"]),
-        volatility=float(mapping["volatility"]),
+        timeframe=_required_int(mapping["timeframe"], field_name="timeframe"),
+        sector_strength=_required_float(mapping["sector_strength"], field_name="sector_strength"),
+        relative_strength=_required_float(mapping["relative_strength"], field_name="relative_strength"),
+        capital_flow=_required_float(mapping["capital_flow"], field_name="capital_flow"),
+        avg_price_change_24h=_required_float(mapping["avg_price_change_24h"], field_name="avg_price_change_24h"),
+        avg_volume_change_24h=_required_float(mapping["avg_volume_change_24h"], field_name="avg_volume_change_24h"),
+        volatility=_required_float(mapping["volatility"], field_name="volatility"),
         trend=_str_or_none(mapping.get("trend")),
-        updated_at=mapping["updated_at"],
+        updated_at=_required_datetime(mapping["updated_at"], field_name="updated_at"),
     )
 
 
@@ -250,13 +289,13 @@ def sector_narrative_read_model(
 
 def market_cycle_read_model_from_mapping(mapping: Mapping[str, object]) -> MarketCycleReadModel:
     return MarketCycleReadModel(
-        coin_id=int(mapping["coin_id"]),
+        coin_id=_required_int(mapping["coin_id"], field_name="coin_id"),
         symbol=str(mapping["symbol"]),
         name=str(mapping["name"]),
-        timeframe=int(mapping["timeframe"]),
+        timeframe=_required_int(mapping["timeframe"], field_name="timeframe"),
         cycle_phase=str(mapping["cycle_phase"]),
-        confidence=float(mapping["confidence"]),
-        detected_at=mapping["detected_at"],
+        confidence=_required_float(mapping["confidence"], field_name="confidence"),
+        detected_at=_required_datetime(mapping["detected_at"], field_name="detected_at"),
     )
 
 
@@ -267,19 +306,19 @@ def pattern_signal_read_model_from_mapping(
     market_regime: str | None,
 ) -> PatternSignalReadModel:
     return PatternSignalReadModel(
-        id=int(mapping["id"]),
-        coin_id=int(mapping["coin_id"]),
+        id=_required_int(mapping["id"], field_name="id"),
+        coin_id=_required_int(mapping["coin_id"], field_name="coin_id"),
         symbol=str(mapping["symbol"]),
         name=str(mapping["name"]),
         sector=_str_or_none(mapping.get("sector")),
-        timeframe=int(mapping["timeframe"]),
+        timeframe=_required_int(mapping["timeframe"], field_name="timeframe"),
         signal_type=str(mapping["signal_type"]),
-        confidence=float(mapping["confidence"]),
-        priority_score=float(mapping.get("priority_score") or 0.0),
-        context_score=float(mapping.get("context_score") or 0.0),
-        regime_alignment=float(mapping.get("regime_alignment") or 0.0),
-        candle_timestamp=mapping["candle_timestamp"],
-        created_at=mapping["created_at"],
+        confidence=_required_float(mapping["confidence"], field_name="confidence"),
+        priority_score=_required_float(mapping.get("priority_score") or 0.0, field_name="priority_score"),
+        context_score=_required_float(mapping.get("context_score") or 0.0, field_name="context_score"),
+        regime_alignment=_required_float(mapping.get("regime_alignment") or 0.0, field_name="regime_alignment"),
+        candle_timestamp=_required_datetime(mapping["candle_timestamp"], field_name="candle_timestamp"),
+        created_at=_required_datetime(mapping["created_at"], field_name="created_at"),
         market_regime=_str_or_none(market_regime),
         cycle_phase=_str_or_none(mapping.get("cycle_phase")),
         cycle_confidence=_float_or_none(mapping.get("cycle_confidence")),

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -78,4 +80,4 @@ class CoinRelation(Base):
     )
 
 
-__all__ = ["Sector", "SectorMetric", "CoinRelation"]
+__all__ = ["CoinRelation", "Sector", "SectorMetric"]

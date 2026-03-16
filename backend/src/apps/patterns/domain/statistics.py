@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from math import exp, log
 
 from src.apps.market_data.domain import utc_now
@@ -18,7 +19,7 @@ class PatternOutcome:
     drawdown: float
     success: bool
     age_days: int
-    evaluated_at: object | None
+    evaluated_at: datetime | None
 
 
 def calculate_temperature(
@@ -62,9 +63,9 @@ def _rolling_window(
 
 
 __all__ = [
-    "PatternOutcome",
     "STATISTICS_LOOKBACK_DAYS",
     "SUPPORTED_STATISTIC_TIMEFRAMES",
+    "PatternOutcome",
     "_rolling_window",
     "_select_drawdown",
     "_select_return",

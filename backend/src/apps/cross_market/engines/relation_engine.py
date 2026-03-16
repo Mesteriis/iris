@@ -3,12 +3,29 @@ from itertools import pairwise
 
 from src.apps.cross_market.engines.contracts import CrossMarketRelationAnalysisResult
 
+_PEARSON_DEGENERATE_ABS_TOLERANCE = 1e-12
+_PEARSON_DEGENERATE_REL_TOLERANCE = 1e-9
+
 
 def close_returns(closes: tuple[float, ...]) -> tuple[float, ...]:
     returns: list[float] = []
     for previous, current in pairwise(closes):
         returns.append((current - previous) / previous if previous else 0.0)
     return tuple(returns)
+
+
+def _degenerate_pearson(values_a: tuple[float, ...], values_b: tuple[float, ...]) -> float:
+    if all(
+        math.isclose(left, right, rel_tol=_PEARSON_DEGENERATE_REL_TOLERANCE, abs_tol=_PEARSON_DEGENERATE_ABS_TOLERANCE)
+        for left, right in zip(values_a, values_b, strict=False)
+    ):
+        return 1.0
+    if all(
+        math.isclose(left, -right, rel_tol=_PEARSON_DEGENERATE_REL_TOLERANCE, abs_tol=_PEARSON_DEGENERATE_ABS_TOLERANCE)
+        for left, right in zip(values_a, values_b, strict=False)
+    ):
+        return -1.0
+    return 0.0
 
 
 def pearson(values_a: tuple[float, ...], values_b: tuple[float, ...]) -> float:
@@ -19,8 +36,10 @@ def pearson(values_a: tuple[float, ...], values_b: tuple[float, ...]) -> float:
     numerator = sum((left - mean_a) * (right - mean_b) for left, right in zip(values_a, values_b, strict=False))
     denominator_left = math.sqrt(sum((value - mean_a) ** 2 for value in values_a))
     denominator_right = math.sqrt(sum((value - mean_b) ** 2 for value in values_b))
-    if denominator_left == 0 or denominator_right == 0:
-        return 0.0
+    if math.isclose(denominator_left, 0.0, abs_tol=_PEARSON_DEGENERATE_ABS_TOLERANCE) or math.isclose(
+        denominator_right, 0.0, abs_tol=_PEARSON_DEGENERATE_ABS_TOLERANCE
+    ):
+        return _degenerate_pearson(values_a, values_b)
     return numerator / (denominator_left * denominator_right)
 
 

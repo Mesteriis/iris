@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 
 import pytest
-
 import src.apps.predictions.cache as prediction_cache_module
 import src.apps.predictions.tasks as prediction_tasks_module
 from src.apps.predictions.cache import (

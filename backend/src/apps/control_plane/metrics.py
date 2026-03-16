@@ -1,6 +1,7 @@
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from functools import lru_cache
-from typing import Any
+from typing import Protocol, cast
 
 from redis.asyncio import Redis as AsyncRedis
 
@@ -11,9 +12,27 @@ ROUTE_METRIC_KEY_PREFIX = "iris:control_plane:metrics:route"
 CONSUMER_METRIC_KEY_PREFIX = "iris:control_plane:metrics:consumer"
 
 
+class _AsyncHashClient(Protocol):
+    async def hincrby(self, name: str, key: str, amount: int = 1) -> int:
+        del name, key, amount
+        return 0
+
+    async def hset(
+        self,
+        name: str,
+        key: str | None = None,
+        value: str | None = None,
+        mapping: Mapping[str, str] | None = None,
+    ) -> int: ...
+
+    async def hgetall(self, name: str) -> dict[str, str]: ...
+
+    async def hget(self, name: str, key: str) -> str | None: ...
+
+
 @lru_cache(maxsize=1)
 def get_async_control_plane_metrics_client() -> AsyncRedis:
-    return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+    return cast(AsyncRedis, AsyncRedis.from_url(settings.redis_url, decode_responses=True))
 
 
 def route_metric_key(route_key: str) -> str:
@@ -26,7 +45,7 @@ def consumer_metric_key(consumer_key: str) -> str:
 
 class ControlPlaneMetricsStore:
     def __init__(self, client: AsyncRedis | None = None) -> None:
-        self._client = client or get_async_control_plane_metrics_client()
+        self._client: _AsyncHashClient = cast(_AsyncHashClient, client or get_async_control_plane_metrics_client())
 
     async def record_route_dispatch(
         self,
@@ -113,8 +132,8 @@ class ControlPlaneMetricsStore:
 
 __all__ = [
     "CONSUMER_METRIC_KEY_PREFIX",
-    "ControlPlaneMetricsStore",
     "ROUTE_METRIC_KEY_PREFIX",
+    "ControlPlaneMetricsStore",
     "consumer_metric_key",
     "get_async_control_plane_metrics_client",
     "route_metric_key",

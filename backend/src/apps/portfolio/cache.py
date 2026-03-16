@@ -1,7 +1,7 @@
 import asyncio
 import json
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 from weakref import WeakKeyDictionary
 
 from redis import Redis
@@ -15,6 +15,23 @@ PORTFOLIO_CACHE_TTL_SECONDS = 60 * 60 * 24
 _ASYNC_PORTFOLIO_CACHE_CLIENTS: WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedis] = WeakKeyDictionary()
 
 
+class _AsyncPortfolioCacheClientFactory:
+    def __call__(self) -> AsyncRedis:
+        settings = get_settings()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return cast(AsyncRedis, AsyncRedis.from_url(settings.redis_url, decode_responses=True))
+        client = _ASYNC_PORTFOLIO_CACHE_CLIENTS.get(loop)
+        if client is None:
+            client = cast(AsyncRedis, AsyncRedis.from_url(settings.redis_url, decode_responses=True))
+            _ASYNC_PORTFOLIO_CACHE_CLIENTS[loop] = client
+        return client
+
+    def cache_clear(self) -> None:
+        _ASYNC_PORTFOLIO_CACHE_CLIENTS.clear()
+
+
 # NOTE:
 # This synchronous cache client remains intentionally for legacy sync-only code
 # and tests outside the main async request/runtime path.
@@ -24,24 +41,7 @@ def get_portfolio_cache_client() -> Redis:
     return Redis.from_url(settings.redis_url, decode_responses=True)
 
 
-def get_async_portfolio_cache_client() -> AsyncRedis:
-    settings = get_settings()
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
-    client = _ASYNC_PORTFOLIO_CACHE_CLIENTS.get(loop)
-    if client is None:
-        client = AsyncRedis.from_url(settings.redis_url, decode_responses=True)
-        _ASYNC_PORTFOLIO_CACHE_CLIENTS[loop] = client
-    return client
-
-
-def _clear_async_portfolio_cache_clients() -> None:
-    _ASYNC_PORTFOLIO_CACHE_CLIENTS.clear()
-
-
-setattr(get_async_portfolio_cache_client, "cache_clear", _clear_async_portfolio_cache_clients)
+get_async_portfolio_cache_client = _AsyncPortfolioCacheClientFactory()
 
 
 def _serialize_payload(payload: list[dict[str, Any]] | dict[str, Any]) -> str:
@@ -82,14 +82,14 @@ async def cache_portfolio_state_async(payload: dict[str, Any]) -> None:
 
 def read_cached_portfolio_state() -> dict[str, Any] | None:
     raw = get_portfolio_cache_client().get(PORTFOLIO_STATE_CACHE_KEY)
-    if raw is None:
+    if not isinstance(raw, str):
         return None
     return _parse_portfolio_state(raw)
 
 
 async def read_cached_portfolio_state_async() -> dict[str, Any] | None:
     raw = await get_async_portfolio_cache_client().get(PORTFOLIO_STATE_CACHE_KEY)
-    if raw is None:
+    if not isinstance(raw, str):
         return None
     return _parse_portfolio_state(raw)
 
@@ -112,13 +112,13 @@ async def cache_portfolio_balances_async(payload: list[dict[str, Any]]) -> None:
 
 def read_cached_portfolio_balances() -> list[dict[str, Any]] | None:
     raw = get_portfolio_cache_client().get(PORTFOLIO_BALANCES_CACHE_KEY)
-    if raw is None:
+    if not isinstance(raw, str):
         return None
     return _parse_portfolio_balances(raw)
 
 
 async def read_cached_portfolio_balances_async() -> list[dict[str, Any]] | None:
     raw = await get_async_portfolio_cache_client().get(PORTFOLIO_BALANCES_CACHE_KEY)
-    if raw is None:
+    if not isinstance(raw, str):
         return None
     return _parse_portfolio_balances(raw)

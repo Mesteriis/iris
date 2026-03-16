@@ -1,14 +1,14 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
-
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.models import Candle
-from src.apps.patterns.models import DiscoveredPattern, MarketCycle, PatternFeature, PatternRegistry, PatternStatistic
 from src.apps.patterns.domain.registry import PATTERN_CATALOG, SUPPORTED_PATTERN_FEATURES
+from src.apps.patterns.models import DiscoveredPattern, MarketCycle, PatternFeature, PatternRegistry, PatternStatistic
 from src.apps.signals.models import Signal
+
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_sector
 
@@ -64,16 +64,16 @@ def _replace_pattern_stat(
     temperature: float,
 ) -> PatternStatistic:
     row = db.get(PatternStatistic, (pattern_slug, timeframe, market_regime))
-    payload = dict(
-        sample_size=sample_size,
-        total_signals=sample_size,
-        successful_signals=successful_signals,
-        success_rate=success_rate,
-        avg_return=avg_return,
-        avg_drawdown=avg_drawdown,
-        temperature=temperature,
-        enabled=True,
-    )
+    payload = {
+        "sample_size": sample_size,
+        "total_signals": sample_size,
+        "successful_signals": successful_signals,
+        "success_rate": success_rate,
+        "avg_return": avg_return,
+        "avg_drawdown": avg_drawdown,
+        "temperature": temperature,
+        "enabled": True,
+    }
     if row is None:
         row = PatternStatistic(
             pattern_slug=pattern_slug,
@@ -162,7 +162,7 @@ def seed_pattern_catalog_metadata(db: Session, *, include_context_engine: bool =
 
 
 def seed_pattern_api_state(db: Session) -> dict[str, object]:
-    signal_timestamp = datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+    signal_timestamp = datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
     candle_start = signal_timestamp - timedelta(minutes=15 * 39)
     candle_start_60 = signal_timestamp - timedelta(minutes=60 * 29)
     candle_start_240 = signal_timestamp - timedelta(minutes=240 * 1)

@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import HTTPException, status
 
 from src.apps.control_plane.exceptions import (
@@ -29,7 +31,7 @@ _ERROR_DESCRIPTIONS: dict[int, str] = {
 }
 
 
-def control_plane_error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
+def control_plane_error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
     return {
         int(status_code): {
             "model": ApiError,
@@ -66,33 +68,46 @@ def event_definition_not_found_error(*, locale: str, event_type: str) -> HTTPExc
     return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="event definition", locale=locale))
 
 
+def _concurrency_conflict_http_error(
+    exc: TopologyDraftConcurrencyConflict,
+    *,
+    locale: str,
+) -> HTTPException:
+    platform_error = ConcurrencyConflictError(locale=locale)
+    payload = ApiErrorFactory.build_from_platform_error(
+        platform_error,
+        details=[
+            ApiErrorFactory.build_detail(
+                field="resource_id",
+                message_key="error.control_plane.detail.draft_id",
+                locale=locale,
+                value=exc.draft_id,
+            ),
+            ApiErrorFactory.build_detail(
+                field="expected_version",
+                message_key="error.control_plane.detail.expected_version",
+                locale=locale,
+                value=exc.expected_version,
+            ),
+            ApiErrorFactory.build_detail(
+                field="current_version",
+                message_key="error.control_plane.detail.current_version",
+                locale=locale,
+                value=exc.current_version,
+            ),
+        ],
+    ).model_copy(update={"message": str(exc)})
+    return HTTPException(
+        status_code=platform_error.http_status,
+        detail=payload.model_dump(mode="json"),
+    )
+
+
 def control_plane_error_to_http(exc: Exception, *, locale: str) -> HTTPException | None:
     if isinstance(exc, EventRouteCompatibilityError):
         return ApiErrorFactory.from_platform_error(ValidationFailedError(locale=locale))
     if isinstance(exc, TopologyDraftConcurrencyConflict):
-        return ApiErrorFactory.from_platform_error(
-            ConcurrencyConflictError(locale=locale),
-            details=[
-                ApiErrorFactory.build_detail(
-                    field="resource_id",
-                    message_key="error.control_plane.detail.draft_id",
-                    locale=locale,
-                    value=exc.draft_id,
-                ),
-                ApiErrorFactory.build_detail(
-                    field="expected_version",
-                    message_key="error.control_plane.detail.expected_version",
-                    locale=locale,
-                    value=exc.expected_version,
-                ),
-                ApiErrorFactory.build_detail(
-                    field="current_version",
-                    message_key="error.control_plane.detail.current_version",
-                    locale=locale,
-                    value=exc.current_version,
-                ),
-            ],
-        )
+        return _concurrency_conflict_http_error(exc, locale=locale)
     if isinstance(exc, TopologyDraftStateError):
         return ApiErrorFactory.from_platform_error(InvalidStateTransitionError(locale=locale))
     if isinstance(exc, EventRouteNotFound):

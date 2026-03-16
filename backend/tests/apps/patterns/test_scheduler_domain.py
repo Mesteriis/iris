@@ -1,8 +1,7 @@
 import importlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
-
 from src.apps.indicators.repositories import IndicatorMetricsRepository
 from src.apps.indicators.services import AnalysisSchedulerService
 from src.apps.patterns.domain.scheduler import (
@@ -11,12 +10,13 @@ from src.apps.patterns.domain.scheduler import (
     should_request_analysis,
 )
 from src.core.db.uow import SessionUnitOfWork
+
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 
 
 @pytest.mark.asyncio
 async def test_scheduler_helpers_update_analysis_snapshot(async_db_session, db_session) -> None:
-    timestamp = datetime(2026, 3, 12, 10, 15, tzinfo=timezone.utc)
+    timestamp = datetime(2026, 3, 12, 10, 15, tzinfo=UTC)
     assert analysis_priority_for_bucket("HOT") == 100
     assert analysis_priority_for_bucket("unknown") == 5
     assert analysis_interval("HOT", 15).total_seconds() == 900
@@ -33,7 +33,7 @@ async def test_scheduler_helpers_update_analysis_snapshot(async_db_session, db_s
         timeframe=15,
         timestamp=timestamp,
         activity_bucket="WARM",
-        last_analysis_at=datetime(2026, 3, 12, 10, 10, tzinfo=timezone.utc),
+        last_analysis_at=datetime(2026, 3, 12, 10, 10, tzinfo=UTC),
     ) is False
 
     coin = create_test_coin(db_session, symbol="BTCUSD_EVT", name="Bitcoin Event Test")

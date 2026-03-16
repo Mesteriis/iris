@@ -80,7 +80,8 @@ class AIOutputValidator(Protocol):
 
 
 class AIDegradedStrategy(Protocol):
-    name: str
+    @property
+    def name(self) -> str: ...
 
     async def execute(
         self,
@@ -123,6 +124,7 @@ AI_OPERATOR_PROFILES: tuple[DeploymentProfile, ...] = (
 
 
 __all__ = [
+    "AI_OPERATOR_PROFILES",
     "AICapability",
     "AICapabilityPolicy",
     "AIContextFormat",
@@ -133,5 +135,4 @@ __all__ = [
     "AIProviderConfig",
     "AIProviderKind",
     "AIValidationStatus",
-    "AI_OPERATOR_PROFILES",
 ]

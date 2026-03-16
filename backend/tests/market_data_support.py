@@ -4,7 +4,6 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
-
 from src.apps.market_data.candles import CandlePoint, interval_to_timeframe
 from src.apps.market_data.domain import ensure_utc
 from src.apps.market_data.models import Candle, Coin
@@ -47,8 +46,7 @@ def upsert_base_candles(
     )
     db.execute(stmt)
     db.commit()
-    latest_timestamp = max(ensure_utc(bar.timestamp) for bar in bars)
-    return latest_timestamp
+    return max(ensure_utc(bar.timestamp) for bar in bars)
 
 
 def fetch_candle_points(

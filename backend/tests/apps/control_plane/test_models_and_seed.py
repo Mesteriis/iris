@@ -1,7 +1,12 @@
 from sqlalchemy import select
-
 from src.apps.control_plane.enums import EventRouteScope, EventRouteStatus
-from src.apps.control_plane.models import EventConsumer, EventDefinition, EventRoute, EventRouteAuditLog, TopologyConfigVersion
+from src.apps.control_plane.models import (
+    EventConsumer,
+    EventDefinition,
+    EventRoute,
+    EventRouteAuditLog,
+    TopologyConfigVersion,
+)
 from src.runtime.streams.router import WORKER_EVENT_TYPES
 
 

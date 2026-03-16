@@ -7,20 +7,37 @@ import pytest
 from _pytest.fixtures import FixtureLookupError
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select
-
 from src.apps.cross_market.models import CoinRelation, SectorMetric
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.models import Coin
 from src.apps.patterns.models import DiscoveredPattern, MarketCycle, PatternFeature, PatternRegistry, PatternStatistic
 from src.apps.portfolio.models import ExchangeAccount, PortfolioAction, PortfolioPosition, PortfolioState
 from src.apps.predictions.models import MarketPrediction, PredictionResult
-from src.apps.signals.models import FinalSignal, InvestmentDecision, MarketDecision, RiskMetric, Signal, SignalHistory, Strategy, StrategyPerformance, StrategyRule
+from src.apps.signals.models import (
+    FinalSignal,
+    InvestmentDecision,
+    MarketDecision,
+    RiskMetric,
+    Signal,
+    SignalHistory,
+    Strategy,
+    StrategyPerformance,
+    StrategyRule,
+)
 from src.apps.system.schemas import SourceStatusRead
 from src.core.bootstrap.app import create_app
 from src.core.settings import get_settings
+
 from tests.cross_market_support import DEFAULT_START
 from tests.factories.base import json_utc
-from tests.factories.seeds import DecisionSeedFactory, MetricSeedFactory, NarrativeSeedFactory, SectorSeedFactory, SignalSeedFactory, StrategySeedFactory
+from tests.factories.seeds import (
+    DecisionSeedFactory,
+    MetricSeedFactory,
+    NarrativeSeedFactory,
+    SectorSeedFactory,
+    SignalSeedFactory,
+    StrategySeedFactory,
+)
 from tests.portfolio_support import create_exchange_account, create_sector
 
 API_PREFIX = "/api/v1"
@@ -542,4 +559,4 @@ def seeded_api_state(db_session, seeded_market, redis_client, settings):
     }
 
 
-__all__ = ["AliveProcess", "SourceStatusRead", "api_app_client", "json_utc", "seeded_api_state", "get_settings"]
+__all__ = ["AliveProcess", "SourceStatusRead", "api_app_client", "get_settings", "json_utc", "seeded_api_state"]

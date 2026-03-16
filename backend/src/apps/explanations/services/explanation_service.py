@@ -1,8 +1,14 @@
+from datetime import datetime
 from typing import Any
 
 from fastapi.encoders import jsonable_encoder
 
-from src.apps.explanations.contracts import ExplainKind, ExplanationGenerationResult, ExplanationGenerationStatus
+from src.apps.explanations.contracts import (
+    ExplainKind,
+    ExplanationArtifactResult,
+    ExplanationGenerationResult,
+    ExplanationGenerationStatus,
+)
 from src.apps.explanations.language import resolve_effective_language
 from src.apps.explanations.models import AIExplanation
 from src.apps.explanations.query_services import ExplanationQueryService
@@ -133,7 +139,10 @@ class ExplanationService(PersistenceComponent):
         )
 
 
-def _same_subject_snapshot(left, right) -> bool:
+def _same_subject_snapshot(
+    left: datetime | None,
+    right: datetime | None,
+) -> bool:
     if left is None and right is None:
         return True
     if left is None or right is None:
@@ -144,7 +153,11 @@ def _same_subject_snapshot(left, right) -> bool:
 __all__ = ["ExplanationService"]
 
 
-def _explanation_storage_fields(generated, *, rendered_locale: str) -> dict[str, object]:
+def _explanation_storage_fields(
+    generated: ExplanationArtifactResult,
+    *,
+    rendered_locale: str,
+) -> dict[str, object]:
     content_kind, content_json = _explanation_content_payload(generated, rendered_locale=rendered_locale)
     return {
         "content_kind": content_kind,
@@ -152,7 +165,11 @@ def _explanation_storage_fields(generated, *, rendered_locale: str) -> dict[str,
     }
 
 
-def _explanation_content_payload(generated, *, rendered_locale: str) -> tuple[str, dict[str, object]]:
+def _explanation_content_payload(
+    generated: ExplanationArtifactResult,
+    *,
+    rendered_locale: str,
+) -> tuple[str, dict[str, object]]:
     if (
         generated.title_descriptor is not None
         or generated.explanation_descriptor is not None

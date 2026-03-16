@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
+
 from src.core.http.contracts import AnalyticalReadContract
 
 

@@ -1,4 +1,6 @@
+from collections.abc import Mapping
 from datetime import datetime
+from typing import cast
 
 from src.apps.indicators.repositories import (
     FeatureSnapshotPayload,
@@ -14,6 +16,21 @@ from src.apps.market_data.domain import ensure_utc
 from src.apps.patterns.domain.regime import read_regime_details
 from src.apps.patterns.domain.semantics import is_cluster_signal, is_pattern_signal
 from src.core.db.uow import BaseAsyncUnitOfWork
+
+
+def _signal_row_mapping(row: object) -> Mapping[str, object]:
+    mapping = getattr(row, "_mapping", None)
+    if isinstance(mapping, Mapping):
+        return cast(Mapping[str, object], mapping)
+    raise TypeError("Signal row is missing a mapping payload.")
+
+
+def _float_or_zero(value: object | None) -> float:
+    if value is None:
+        return 0.0
+    if isinstance(value, bool | int | float | str):
+        return float(value)
+    return float(cast(int | float | str, value))
 
 
 class FeatureSnapshotService:
@@ -59,12 +76,15 @@ class FeatureSnapshotService:
             timeframe=timeframe,
             timestamp=normalized_timestamp,
         )
-        pattern_density = sum(1 for row in signal_rows if is_pattern_signal(str(row.signal_type)))
-        cluster_score = sum(
-            float(row.priority_score or row.confidence or 0.0)
-            for row in signal_rows
-            if is_cluster_signal(str(row.signal_type))
-        )
+        pattern_density = 0
+        cluster_score = 0.0
+        for row in signal_rows:
+            row_mapping = _signal_row_mapping(row)
+            signal_type = str(row_mapping["signal_type"])
+            if is_pattern_signal(signal_type):
+                pattern_density += 1
+            if is_cluster_signal(signal_type):
+                cluster_score += _float_or_zero(row_mapping.get("priority_score") or row_mapping.get("confidence"))
         regime_snapshot = (
             read_regime_details(metrics.market_regime_details, timeframe)
             if metrics is not None and metrics.market_regime_details

@@ -1,3 +1,5 @@
+from typing import Any, TypedDict
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.market_data import candles as market_data_candles
@@ -26,7 +28,19 @@ from src.apps.market_data.repositories import (
 from src.core.db.uow import BaseAsyncUnitOfWork
 
 
-def _normalized_coin_values(payload: object) -> dict[str, object]:
+class _NormalizedCoinValues(TypedDict):
+    symbol: str
+    name: str
+    asset_type: str
+    theme: str
+    sector_code: str
+    source: str
+    enabled: bool
+    sort_order: int
+    candles_config: list[dict[str, Any]]
+
+
+def _normalized_coin_values(payload: object) -> _NormalizedCoinValues:
     coin_input = coin_create_input_from_payload(payload)
     return {
         "symbol": coin_input.symbol,
@@ -140,8 +154,9 @@ async def _create_price_history_async_internal(
     timestamp = market_data_candles.align_timeframe_timestamp(history_input.timestamp, timeframe)
     close = float(history_input.price)
     volume = float(history_input.volume) if history_input.volume is not None else None
+    coin_id = int(coin.id)
     await CandleRepository(db).upsert_row(
-        coin_id=int(coin.id),
+        coin_id=coin_id,
         timeframe=timeframe,
         timestamp=timestamp,
         open_price=close,
@@ -150,15 +165,16 @@ async def _create_price_history_async_internal(
         close_price=close,
         volume=volume,
     )
-    uow.add_after_commit_action(
-        lambda coin_id=int(coin.id), timeframe=timeframe, timestamp=timestamp: market_data_support.publish_candle_events(
+    def _publish_candle_events() -> None:
+        market_data_support.publish_candle_events(
             coin_id=coin_id,
             timeframe=timeframe,
             timestamp=timestamp,
             created_count=1,
             source="manual",
         )
-    )
+
+    uow.add_after_commit_action(_publish_candle_events)
     return price_history_read_model(
         coin_id=int(coin.id),
         interval=resolved_interval,

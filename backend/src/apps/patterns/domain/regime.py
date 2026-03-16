@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -64,7 +65,7 @@ def detect_market_regime(indicators: dict[str, float | None], volatility: float 
 
 
 def calculate_regime_map(
-    snapshots: dict[int, object],
+    snapshots: Mapping[int, object],
     *,
     volatility: float | None,
     price_change_7d: float | None = None,
@@ -88,14 +89,14 @@ def calculate_regime_map(
     return regimes
 
 
-def primary_regime(regimes: dict[int, RegimeRead]) -> str | None:
+def primary_regime(regimes: Mapping[int, RegimeRead]) -> str | None:
     for timeframe in (1440, 240, 60, 15):
         if timeframe in regimes:
             return regimes[timeframe].regime
     return None
 
 
-def serialize_regime_map(regimes: dict[int, RegimeRead]) -> dict[str, dict[str, float | str]]:
+def serialize_regime_map(regimes: Mapping[int, RegimeRead]) -> dict[str, dict[str, float | str]]:
     return {
         str(timeframe): {
             "regime": item.regime,
@@ -108,16 +109,21 @@ def serialize_regime_map(regimes: dict[int, RegimeRead]) -> dict[str, dict[str, 
 def read_regime_details(regime_details: dict[str, Any] | None, timeframe: int) -> RegimeRead | None:
     if not regime_details:
         return None
-    payload = regime_details.get(str(timeframe))
+    payload: object = regime_details.get(str(timeframe))
     if not isinstance(payload, dict):
         return None
-    regime = payload.get("regime")
-    confidence = payload.get("confidence")
+    regime: object = payload.get("regime")
+    confidence: object = payload.get("confidence")
     if not isinstance(regime, str):
         return None
-    try:
+    if isinstance(confidence, int | float):
         normalized_confidence = float(confidence)
-    except (TypeError, ValueError):
+    elif isinstance(confidence, str):
+        try:
+            normalized_confidence = float(confidence)
+        except ValueError:
+            normalized_confidence = 0.0
+    else:
         normalized_confidence = 0.0
     return RegimeRead(
         timeframe=timeframe,

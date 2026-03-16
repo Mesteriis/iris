@@ -64,8 +64,8 @@ class LeaderDetectionContextReadModel:
 
 __all__ = [
     "ExistingRelationSnapshotReadModel",
-    "LeaderDetectionContextReadModel",
     "LeaderDecisionReadModel",
+    "LeaderDetectionContextReadModel",
     "RelationCandidateReadModel",
     "RelationComputationContextReadModel",
     "SectorLeaderReadModel",

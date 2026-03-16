@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,7 +75,7 @@ class NotificationQueryService(AsyncQueryService):
 __all__ = ["NotificationQueryService"]
 
 
-def _deduplicate_notification_rows(rows: list[AINotification], *, limit: int) -> list[AINotification]:
+def _deduplicate_notification_rows(rows: Sequence[AINotification], *, limit: int) -> list[AINotification]:
     items: list[AINotification] = []
     seen: set[tuple[str, str]] = set()
     for row in rows:

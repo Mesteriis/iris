@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from src.apps.anomalies.detectors import (
     CompressionExpansionDetector,
@@ -10,11 +10,11 @@ from src.apps.anomalies.detectors import (
     PriceSpikeDetector,
     PriceVolumeDivergenceDetector,
     RelativeDivergenceDetector,
-    VolumeSpikeDetector,
     VolatilityBreakDetector,
+    VolumeSpikeDetector,
 )
-from src.apps.anomalies.scoring import AnomalyScorer
 from src.apps.anomalies.schemas import AnomalyDetectionContext, BenchmarkSeries, DetectorFinding, MarketStructurePoint
+from src.apps.anomalies.scoring import AnomalyScorer
 from src.apps.market_data.candles import CandlePoint
 
 
@@ -25,7 +25,7 @@ def _build_candles(
     wick_multiplier: float = 0.012,
 ) -> list[CandlePoint]:
     volumes = volumes or [1000.0 for _ in closes]
-    start = datetime(2026, 3, 12, 9, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 12, 9, 0, tzinfo=UTC)
     candles: list[CandlePoint] = []
     for index, (close, volume) in enumerate(zip(closes, volumes, strict=False)):
         timestamp = start + timedelta(minutes=15 * index)
@@ -272,11 +272,11 @@ def test_correlation_breakdown_detector_detects_decoupling_from_benchmark() -> N
     peers = {
         "FET": _build_candles_from_returns(
             start_price=90.0,
-            returns=baseline_returns + [0.0012, 0.0010, 0.0008, 0.0011, 0.0010, 0.0012],
+            returns=[*baseline_returns, 0.0012, 0.001, 0.0008, 0.0011, 0.001, 0.0012],
         ),
         "TAO": _build_candles_from_returns(
             start_price=80.0,
-            returns=baseline_returns + [0.0010, 0.0011, 0.0010, 0.0012, 0.0009, 0.0011],
+            returns=[*baseline_returns, 0.001, 0.0011, 0.001, 0.0012, 0.0009, 0.0011],
         ),
     }
 
@@ -326,7 +326,7 @@ def test_cross_exchange_dislocation_detector_detects_venue_spread() -> None:
         "binance": _structure_series(
             venue="binance",
             timestamps=timestamps,
-            last_prices=base_prices[:-1] + [base_prices[-1] * 1.022],
+            last_prices=[*base_prices[:-1], base_prices[-1] * 1.022],
             basis_values=[0.0005 for _ in range(11)] + [0.0065],
         ),
         "bybit": _structure_series(

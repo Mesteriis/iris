@@ -1,5 +1,7 @@
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from datetime import datetime
+from typing import Any, Protocol, cast
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +12,7 @@ from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.candles import CandlePoint
 from src.apps.market_data.domain import ensure_utc
 from src.apps.market_data.models import Candle, Coin
-from src.apps.patterns.domain.regime import detect_market_regime, read_regime_details
+from src.apps.patterns.domain.regime import RegimeRead, detect_market_regime, read_regime_details
 from src.apps.patterns.domain.utils import current_indicator_map
 from src.apps.patterns.engines.contracts import (
     PatternCoinMetricsSnapshot,
@@ -47,6 +49,35 @@ from src.apps.patterns.read_models import (
 )
 from src.apps.signals.models import Signal
 from src.core.db.persistence import AsyncQueryService
+
+
+class _SignalRowLike(Protocol):
+    coin_id: object
+    timeframe: object
+    candle_timestamp: datetime
+    market_regime_details: dict[str, Any] | None
+    signal_market_regime: str | None
+    market_regime: str | None
+    _mapping: Mapping[str, object]
+
+
+class _ClusterSignalRowLike(Protocol):
+    coin_id: object
+    timeframe: object
+    candle_timestamp: datetime
+    signal_type: object
+
+
+def _row_int(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        return int(value)
+    raise TypeError(f"Expected int-compatible row value, got {type(value).__name__}")
 
 
 class PatternQueryService(AsyncQueryService):
@@ -122,15 +153,17 @@ class PatternQueryService(AsyncQueryService):
 
     async def cluster_membership_map(
         self,
-        rows: Sequence[object],
-    ) -> dict[tuple[int, int, object], tuple[str, ...]]:
+        rows: Sequence[_SignalRowLike],
+    ) -> dict[tuple[int, int, datetime], tuple[str, ...]]:
         if not rows:
             return {}
-        coin_ids = sorted({int(row.coin_id) for row in rows})
-        timeframes = sorted({int(row.timeframe) for row in rows})
+        coin_ids = sorted({_row_int(row.coin_id) for row in rows})
+        timeframes = sorted({_row_int(row.timeframe) for row in rows})
         timestamps = sorted({row.candle_timestamp for row in rows})
-        cluster_rows = (
-            await self.session.execute(
+        cluster_rows = cast(
+            Sequence[_ClusterSignalRowLike],
+            (
+                await self.session.execute(
                 select(Signal.coin_id, Signal.timeframe, Signal.candle_timestamp, Signal.signal_type).where(
                     Signal.coin_id.in_(coin_ids),
                     Signal.timeframe.in_(timeframes),
@@ -138,27 +171,30 @@ class PatternQueryService(AsyncQueryService):
                     Signal.signal_type.like("pattern_cluster_%"),
                 )
             )
-        ).all()
-        membership: dict[tuple[int, int, object], list[str]] = defaultdict(list)
+            ).all(),
+        )
+        membership: dict[tuple[int, int, datetime], list[str]] = defaultdict(list)
         for row in cluster_rows:
-            membership[(int(row.coin_id), int(row.timeframe), row.candle_timestamp)].append(str(row.signal_type))
+            membership[(_row_int(row.coin_id), _row_int(row.timeframe), row.candle_timestamp)].append(str(row.signal_type))
         return {key: tuple(value) for key, value in membership.items()}
 
     async def serialize_signal_rows(
         self,
-        rows: Sequence[object],
+        rows: Sequence[_SignalRowLike],
     ) -> tuple[PatternSignalReadModel, ...]:
         membership = await self.cluster_membership_map(rows)
         items: list[PatternSignalReadModel] = []
         for row in rows:
-            regime_snapshot = read_regime_details(row.market_regime_details, int(row.timeframe))
+            coin_id = _row_int(row.coin_id)
+            timeframe = _row_int(row.timeframe)
+            regime_snapshot = read_regime_details(row.market_regime_details, timeframe)
             market_regime = row.signal_market_regime or (
                 regime_snapshot.regime if regime_snapshot is not None else row.market_regime
             )
             items.append(
                 pattern_signal_read_model_from_mapping(
-                    row._mapping if hasattr(row, "_mapping") else row,
-                    cluster_membership=membership.get((int(row.coin_id), int(row.timeframe), row.candle_timestamp), ()),
+                    row._mapping,
+                    cluster_membership=membership.get((coin_id, timeframe, row.candle_timestamp), ()),
                     market_regime=market_regime,
                 )
             )
@@ -394,11 +430,12 @@ class PatternQueryService(AsyncQueryService):
             leader = next((item for item in timeframe_items if item.sector is not None), None)
             top_sector = leader.sector.name if leader is not None and leader.sector is not None else None
             top_sector_id = int(leader.sector_id) if leader is not None else None
+            btc_price_change_24h = float(btc_metrics.price_change_24h or 0.0) if btc_metrics is not None else 0.0
             if btc_dominance is None:
                 rotation_state = None
-            elif btc_dominance >= 0.45 and (btc_metrics.price_change_24h or 0.0) >= 0:
+            elif btc_dominance >= 0.45 and btc_price_change_24h >= 0:
                 rotation_state = "btc_dominance_rising"
-            elif btc_dominance < 0.45 and (btc_metrics.price_change_24h or 0.0) < 0:
+            elif btc_dominance < 0.45 and btc_price_change_24h < 0:
                 rotation_state = "btc_dominance_falling"
             else:
                 rotation_state = "sector_leadership_change" if top_sector is not None else None
@@ -542,7 +579,7 @@ class PatternQueryService(AsyncQueryService):
                 .limit(max(limit, 1))
             )
         ).all()
-        items = await self.serialize_signal_rows(rows)
+        items = await self.serialize_signal_rows(cast(Sequence[_SignalRowLike], rows))
         self._log_debug("query.list_coin_patterns.result", mode="read", count=len(items))
         return items
 
@@ -564,24 +601,24 @@ class PatternQueryService(AsyncQueryService):
             ).scalar_one_or_none()
         )
         if not regime_enabled:
-            items = ()
+            items: tuple[RegimeTimeframeReadModel, ...] = ()
         elif metrics is not None and metrics.market_regime_details:
-            items = tuple(
-                item
-                for timeframe in (15, 60, 240, 1440)
-                if (item := read_regime_details(metrics.market_regime_details, timeframe)) is not None
-            )
+            regime_details: list[RegimeRead] = []
+            for timeframe in (15, 60, 240, 1440):
+                detail = read_regime_details(metrics.market_regime_details, timeframe)
+                if detail is not None:
+                    regime_details.append(detail)
             items = tuple(
                 regime_timeframe_read_model(
-                    timeframe=int(item.timeframe),
-                    regime=str(item.regime),
-                    confidence=float(item.confidence),
+                    timeframe=int(detail.timeframe),
+                    regime=str(detail.regime),
+                    confidence=float(detail.confidence),
                 )
-                for item in items
+                for detail in regime_details
             )
         else:
             items = await self.compute_live_regimes(int(coin.id))
-        item = coin_regime_read_model(
+        item: CoinRegimeReadModel = coin_regime_read_model(
             coin_id=int(coin.id),
             symbol=str(coin.symbol),
             canonical_regime=str(metrics.market_regime)
@@ -608,7 +645,7 @@ class PatternQueryService(AsyncQueryService):
                 .order_by(Sector.name.asc())
             )
         ).all()
-        items = tuple(sector_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(sector_read_model_from_mapping(cast(Mapping[str, object], row._mapping)) for row in rows)
         self._log_debug("query.list_sectors.result", mode="read", count=len(items))
         return items
 
@@ -641,7 +678,9 @@ class PatternQueryService(AsyncQueryService):
         rows = (await self.session.execute(stmt)).all()
         narratives = await self.build_sector_narratives()
         item = SectorMetricsReadModel(
-            items=tuple(sector_metric_read_model_from_mapping(row._mapping) for row in rows),
+            items=tuple(
+                sector_metric_read_model_from_mapping(cast(Mapping[str, object], row._mapping)) for row in rows
+            ),
             narratives=tuple(
                 narrative for narrative in narratives if timeframe is None or narrative.timeframe == timeframe
             ),
@@ -686,7 +725,7 @@ class PatternQueryService(AsyncQueryService):
         if timeframe is not None:
             stmt = stmt.where(MarketCycle.timeframe == timeframe)
         rows = (await self.session.execute(stmt)).all()
-        items = tuple(market_cycle_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(market_cycle_read_model_from_mapping(cast(Mapping[str, object], row._mapping)) for row in rows)
         self._log_debug("query.list_market_cycles.result", mode="read", count=len(items))
         return items
 

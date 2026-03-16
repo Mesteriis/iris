@@ -1,9 +1,9 @@
 from collections.abc import Sequence
 
+from src.apps.indicators.domain import atr_series, bollinger_bands
+from src.apps.market_data.candles import CandlePoint
 from src.apps.patterns.domain.base import PatternDetection, PatternDetector
 from src.apps.patterns.domain.utils import average, clamp, closes, signal_timestamp, volume_ratio
-from src.apps.market_data.candles import CandlePoint
-from src.apps.indicators.domain import atr_series, bollinger_bands
 
 
 class _VolatilityDetector(PatternDetector):
@@ -19,6 +19,18 @@ class _VolatilityDetector(PatternDetector):
                 category=self.category,
             )
         ]
+
+
+def _band_walk_matches(prices: Sequence[float], band: Sequence[float | None], *, direction: str) -> bool:
+    for index in range(len(prices) - 4, len(prices)):
+        level = band[index]
+        if level is None:
+            return False
+        if direction == "bull" and prices[index] < level * 0.985:
+            return False
+        if direction == "bear" and prices[index] > level * 1.015:
+            return False
+    return True
 
 
 class BollingerSqueezeDetector(_VolatilityDetector):
@@ -189,16 +201,10 @@ class BandWalkDetector(_VolatilityDetector):
             return []
         upper, _, lower, _ = bollinger_bands(prices, period=20)
         if self.direction == "bull":
-            if not all(
-                upper[index] is not None and prices[index] >= float(upper[index]) * 0.985
-                for index in range(len(prices) - 4, len(prices))
-            ):
+            if not _band_walk_matches(prices, upper, direction="bull"):
                 return []
             return self._emit(candles, 0.67)
-        if not all(
-            lower[index] is not None and prices[index] <= float(lower[index]) * 1.015
-            for index in range(len(prices) - 4, len(prices))
-        ):
+        if not _band_walk_matches(prices, lower, direction="bear"):
             return []
         return self._emit(candles, 0.67)
 

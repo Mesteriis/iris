@@ -44,7 +44,7 @@ class IdempotencyPolicy(StrEnum):
 class AuthPolicy(StrEnum):
     PUBLIC = "public"
     OPERATOR = "operator"
-    WEBHOOK_TOKEN = "webhook_token"
+    WEBHOOK_TOKEN = "webhook_token"  # nosec B105 - auth policy identifier, not a secret
     EMBEDDED = "embedded"
 
 
@@ -158,21 +158,7 @@ def render_http_capability_catalog(*, settings: Settings) -> str:
     ]
     rows.extend(
         [
-            "| `{operation_id}` | `{method}` | `{path}` | `{domain}` | `{category}` | `{audience}` | `{execution}` | `{idempotency}` | {operation_resource} | `{auth}` | {full} | {local} | {ha} |".format(
-                operation_id=capability.operation_id,
-                method=capability.method,
-                path=capability.path,
-                domain=capability.domain,
-                category=capability.category,
-                audience=capability.audience.value,
-                execution=capability.execution_model.value,
-                idempotency=capability.idempotency_policy.value,
-                operation_resource=_yes_no(capability.operation_resource_required),
-                auth=capability.auth_policy.value,
-                full=_yes_no(capability.full),
-                local=_yes_no(capability.local),
-                ha=_yes_no(capability.ha_addon),
-            )
+            f"| `{capability.operation_id}` | `{capability.method}` | `{capability.path}` | `{capability.domain}` | `{capability.category}` | `{capability.audience.value}` | `{capability.execution_model.value}` | `{capability.idempotency_policy.value}` | {_yes_no(capability.operation_resource_required)} | `{capability.auth_policy.value}` | {_yes_no(capability.full)} | {_yes_no(capability.local)} | {_yes_no(capability.ha_addon)} |"
             for capability in build_http_capability_catalog(settings=settings)
         ]
     )

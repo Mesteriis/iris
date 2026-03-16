@@ -1,12 +1,12 @@
 import importlib.util
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
-from tests.apps.conftest import api_path
-
 from src.apps.news.api.router import build_router as build_news_router
 from src.apps.news.models import NewsItem, NewsSource
 from src.core.http.launch_modes import DeploymentProfile, LaunchMode
+
+from tests.apps.conftest import api_path
 
 
 @pytest.mark.asyncio
@@ -75,7 +75,7 @@ async def test_news_endpoints(api_app_client, db_session, monkeypatch) -> None:
             source_id=source_id,
             plugin_name="x",
             external_id="tweet-1",
-            published_at=datetime(2026, 3, 12, 12, 30, tzinfo=timezone.utc),
+            published_at=datetime(2026, 3, 12, 12, 30, tzinfo=UTC),
             author_handle="macrodesk",
             channel_name="Whale Desk Prime",
             title=None,

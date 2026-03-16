@@ -1,4 +1,5 @@
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from typing import ParamSpec, TypeVar, cast
 
 from src.apps.news.query_services import NewsQueryService
 from src.apps.news.results import NewsEnabledPollResult, NewsSourcePollResult
@@ -7,6 +8,9 @@ from src.core.db.uow import AsyncUnitOfWork
 from src.core.http.operation_store import OperationStore, run_tracked_operation
 from src.runtime.orchestration.broker import broker
 from src.runtime.orchestration.locks import async_redis_task_lock
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 NEWS_SOURCE_POLL_LOCK_TIMEOUT_SECONDS = 120
 NEWS_ENABLED_POLL_LOCK_TIMEOUT_SECONDS = 300
@@ -45,7 +49,11 @@ def _serialize_enabled_poll_result(result: NewsEnabledPollResult | Mapping[str, 
     }
 
 
-@broker.task
+def _task[**P, R](func: Callable[P, R]) -> Callable[P, R]:
+    return cast(Callable[P, R], broker.task(func))
+
+
+@_task
 async def poll_news_source_job(
     source_id: int,
     limit: int = 50,
@@ -70,7 +78,7 @@ async def poll_news_source_job(
     )
 
 
-@broker.task
+@_task
 async def poll_enabled_news_sources_job(limit_per_source: int = 50) -> dict[str, object]:
     async with async_redis_task_lock(
         "iris:tasklock:news_enabled_poll",

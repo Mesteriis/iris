@@ -1,5 +1,7 @@
 from collections import defaultdict
 from collections.abc import Sequence
+from datetime import datetime
+from math import sqrt
 
 from src.apps.anomalies.constants import ANOMALY_TYPE_LIQUIDATION_CASCADE
 from src.apps.anomalies.schemas import AnomalyDetectionContext, DetectorFinding, MarketStructurePoint
@@ -18,7 +20,7 @@ def _stddev(values: Sequence[float]) -> float:
         return 0.0
     mean = _average(values)
     variance = sum((value - mean) ** 2 for value in values) / len(values)
-    return variance ** 0.5
+    return sqrt(variance)
 
 
 def _scale(value: float, floor: float, ceiling: float) -> float:
@@ -28,7 +30,7 @@ def _scale(value: float, floor: float, ceiling: float) -> float:
 
 
 def _aggregate_liquidation_series(venue_snapshots: dict[str, list[MarketStructurePoint]]) -> list[dict[str, float]]:
-    grouped: dict[object, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    grouped: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for snapshots in venue_snapshots.values():
         for point in snapshots:
             grouped[point.timestamp]["longs"].append(float(point.liquidations_long or 0.0))

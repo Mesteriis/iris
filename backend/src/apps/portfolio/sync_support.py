@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Coin
 from src.apps.market_data.repositories import CoinMetricsRepository, CoinRepository
+from src.apps.portfolio.clients import ExchangePlugin
 from src.apps.portfolio.models import ExchangeAccount, PortfolioBalance, PortfolioPosition, PortfolioState
 from src.apps.portfolio.read_models import PortfolioStateReadModel
 from src.apps.portfolio.repositories import ExchangeAccountRepository, PortfolioRepository
@@ -17,6 +18,19 @@ from src.apps.portfolio.results import (
 )
 from src.apps.portfolio.support import DEFAULT_PORTFOLIO_TIMEFRAME, calculate_stops
 from src.core.settings import get_settings
+
+
+def _float_value(value: object) -> float:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    return 0.0
 
 
 class PortfolioStateCoordinator:
@@ -72,7 +86,7 @@ class PortfolioSyncCoordinator:
         self,
         *,
         emit_events: bool,
-        plugin_factory: Callable[[ExchangeAccount], object],
+        plugin_factory: Callable[[ExchangeAccount], ExchangePlugin],
     ) -> PortfolioSyncResult:
         accounts = await self._accounts.list_enabled()
         items: list[PortfolioSyncItem] = []
@@ -211,8 +225,8 @@ class PortfolioSyncCoordinator:
         if not symbol:
             return None
 
-        balance_value = float(balance_row.get("balance", 0.0) or 0.0)
-        value_usd = float(balance_row.get("value_usd", 0.0) or 0.0)
+        balance_value = _float_value(balance_row.get("balance", 0.0))
+        value_usd = _float_value(balance_row.get("value_usd", 0.0))
         coin = await self.ensure_coin_for_balance(symbol=symbol, exchange_name=account.exchange_name)
         row = await self._portfolio.get_balance_row(account_id=int(account.id), symbol=symbol)
         previous_value = float(row.value_usd) if row is not None else 0.0

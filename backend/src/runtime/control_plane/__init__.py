@@ -8,21 +8,21 @@ from src.runtime.control_plane.dispatcher import (
     TopologyRouteEvaluator,
 )
 from src.runtime.control_plane.worker import (
-    RedisRouteDeliveryPublisher,
     TOPOLOGY_DISPATCHER_GROUP,
+    RedisRouteDeliveryPublisher,
     TopologyDispatchService,
     build_delivery_stream_name,
     create_topology_dispatcher_consumer,
 )
 
 __all__ = [
+    "TOPOLOGY_DISPATCHER_GROUP",
     "DispatchReport",
     "InMemoryDispatchTracker",
     "InMemoryRouteThrottle",
     "RedisRouteDeliveryPublisher",
     "RouteDecision",
     "RouteDeliveryPublisher",
-    "TOPOLOGY_DISPATCHER_GROUP",
     "TopologyDispatchService",
     "TopologyDispatcher",
     "TopologyRouteEvaluator",

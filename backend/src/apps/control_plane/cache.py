@@ -1,7 +1,8 @@
 import json
+from collections.abc import Sequence
 from datetime import datetime
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 
 from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy import select
@@ -29,11 +30,12 @@ settings = get_settings()
 TOPOLOGY_CACHE_KEY = "iris:control_plane:topology:snapshot"
 TOPOLOGY_CACHE_VERSION_KEY = "iris:control_plane:topology:version"
 TOPOLOGY_CACHE_TTL_SECONDS = 300
+type CoinIdentityRow = tuple[int, str, str | None]
 
 
 @lru_cache(maxsize=1)
 def get_async_topology_cache_client() -> AsyncRedis:
-    return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+    return cast(AsyncRedis, AsyncRedis.from_url(settings.redis_url, decode_responses=True))
 
 
 class TopologySnapshotLoader:
@@ -48,11 +50,11 @@ class TopologySnapshotLoader:
                 await session.execute(
                     select(Coin.id, Coin.symbol, Coin.source).where(Coin.deleted_at.is_(None))
                 )
-            ).all()
+            ).tuples().all()
         return self._build_snapshot(version=version, routes=routes, coin_rows=coin_rows)
 
     async def _load_version(self, session: AsyncSession) -> TopologyConfigVersion:
-        version = (
+        return (
             await session.execute(
                 select(TopologyConfigVersion)
                 .where(TopologyConfigVersion.status == "published")
@@ -60,7 +62,6 @@ class TopologySnapshotLoader:
                 .limit(1)
             )
         ).scalar_one()
-        return version
 
     async def _load_routes(self, session: AsyncSession) -> list[EventRoute]:
         return list(
@@ -78,14 +79,14 @@ class TopologySnapshotLoader:
         *,
         version: TopologyConfigVersion,
         routes: list[EventRoute],
-        coin_rows: list[object],
+        coin_rows: Sequence[CoinIdentityRow],
     ) -> TopologySnapshot:
         event_snapshots: dict[str, EventDefinitionSnapshot] = {}
         consumer_snapshots: dict[str, EventConsumerSnapshot] = {}
         routes_by_event_type: dict[str, list[EventRouteSnapshot]] = {}
         for route in routes:
-            assert route.event_definition is not None
-            assert route.consumer is not None
+            if route.event_definition is None or route.consumer is None:
+                raise ValueError(f"Event route {route.route_key!r} is missing required related records.")
             event_type = route.event_definition.event_type
             consumer_key = route.consumer.consumer_key
             event_snapshots[event_type] = EventDefinitionSnapshot(
@@ -123,8 +124,11 @@ class TopologySnapshotLoader:
             events=event_snapshots,
             consumers=consumer_snapshots,
             routes_by_event_type={key: tuple(value) for key, value in routes_by_event_type.items()},
-            coin_symbol_by_id={int(row.id): str(row.symbol) for row in coin_rows},
-            coin_exchange_by_id={int(row.id): str(row.source) for row in coin_rows},
+            coin_symbol_by_id={int(coin_id): str(symbol) for coin_id, symbol, _source in coin_rows},
+            coin_exchange_by_id={
+                int(coin_id): str(source or "")
+                for coin_id, _symbol, source in coin_rows
+            },
         )
 
 

@@ -235,7 +235,7 @@ class TelegramUserNewsPlugin(NewsSourcePlugin):
     )
 
     @staticmethod
-    def _load_telethon():
+    def _load_telethon() -> tuple[type[Any], type[Any], Any]:
         try:
             from telethon import TelegramClient, types
             from telethon.sessions import StringSession
@@ -313,7 +313,7 @@ class TelegramUserNewsPlugin(NewsSourcePlugin):
             next_cursor["after_id"] = max(int(item.external_id) for item in items)
         return NewsFetchResult(items=items, next_cursor=next_cursor)
 
-    async def _resolve_entity(self, client, types):
+    async def _resolve_entity(self, client: Any, types: Any) -> Any:
         channel = self.settings.get("channel")
         if channel not in (None, ""):
             return await client.get_entity(str(channel))

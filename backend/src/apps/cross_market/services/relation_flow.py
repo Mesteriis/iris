@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from src.apps.cross_market.engines import evaluate_relation_candidate
 from src.apps.cross_market.services.results import CrossMarketRelationUpdateResult
@@ -16,6 +16,14 @@ from src.apps.market_data.domain import utc_now
 
 if TYPE_CHECKING:
     from src.apps.cross_market.services.cross_market_service import CrossMarketService
+
+
+def _int_value(value: object) -> int:
+    return int(cast(int | str | bytes | bytearray, value))
+
+
+def _float_value(value: object) -> float:
+    return float(cast(int | float | str, value))
 
 
 async def update_coin_relations(
@@ -133,14 +141,14 @@ async def update_coin_relations(
         )
 
     await service._relations.upsert_many(rows)
-    best = max(rows, key=lambda item: float(item["confidence"]))
+    best = max(rows, key=lambda item: _float_value(item["confidence"]))
     result = CrossMarketRelationUpdateResult(
         status="ok",
         updated=len(rows),
         published=sum(1 for effect in side_effects if effect.publish_event),
         follower_coin_id=int(follower_coin_id),
-        leader_coin_id=int(best["leader_coin_id"]),
-        confidence=float(best["confidence"]),
+        leader_coin_id=_int_value(best["leader_coin_id"]),
+        confidence=_float_value(best["confidence"]),
     )
     service._log_info(
         "service.update_coin_relations.result",

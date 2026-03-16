@@ -1,7 +1,9 @@
+from src.apps.market_data.models import Coin
 from src.apps.portfolio.action_support import PortfolioActionCoordinator, apply_portfolio_rebalance
 from src.apps.portfolio.cache import cache_portfolio_balances_async, cache_portfolio_state_async
 from src.apps.portfolio.clients import create_exchange_plugin
-from src.apps.portfolio.models import ExchangeAccount, PortfolioPosition
+from src.apps.portfolio.models import ExchangeAccount, PortfolioPosition, PortfolioState
+from src.apps.portfolio.read_models import PortfolioStateReadModel
 from src.apps.portfolio.repositories import ExchangeAccountRepository, PortfolioRepository
 from src.apps.portfolio.results import (
     BalanceSyncOutcome,
@@ -16,6 +18,7 @@ from src.apps.portfolio.serializers import (
     portfolio_state_cache_payload,
 )
 from src.apps.portfolio.sync_support import PortfolioStateCoordinator, PortfolioSyncCoordinator
+from src.apps.signals.models import MarketDecision
 from src.core.db.persistence import PersistenceComponent
 from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
@@ -81,7 +84,7 @@ class PortfolioService(PersistenceComponent):
         *,
         coin_id: int,
         timeframe: int,
-        decision: object | None = None,
+        decision: MarketDecision | None = None,
         emit_events: bool = True,
     ) -> PortfolioActionEvaluationResult:
         self._log_debug(
@@ -130,10 +133,10 @@ class PortfolioService(PersistenceComponent):
         )
         return result
 
-    async def _ensure_portfolio_state(self):
+    async def _ensure_portfolio_state(self) -> PortfolioState:
         return await self._state.ensure_portfolio_state()
 
-    async def _refresh_portfolio_state(self):
+    async def _refresh_portfolio_state(self) -> PortfolioStateReadModel:
         return await self._state.refresh_portfolio_state()
 
     async def _ensure_coin_for_balance(
@@ -141,14 +144,14 @@ class PortfolioService(PersistenceComponent):
         *,
         symbol: str,
         exchange_name: str,
-    ):
+    ) -> Coin:
         return await self._sync.ensure_coin_for_balance(symbol=symbol, exchange_name=exchange_name)
 
     async def _sync_balance_position(
         self,
         *,
         account: ExchangeAccount,
-        coin: object,
+        coin: Coin,
         value_usd: float,
         balance: float,
     ) -> None:
@@ -162,7 +165,7 @@ class PortfolioService(PersistenceComponent):
     @staticmethod
     def _apply_auto_watch(
         *,
-        coin: object,
+        coin: Coin,
         value_usd: float,
     ) -> bool:
         return PortfolioSyncCoordinator.apply_auto_watch(coin=coin, value_usd=value_usd)

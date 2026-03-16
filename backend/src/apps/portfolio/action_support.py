@@ -1,9 +1,13 @@
+from datetime import datetime
+from typing import Protocol
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.repositories import CoinRepository
 from src.apps.portfolio.engines import build_rebalance_plan
 from src.apps.portfolio.models import PortfolioAction, PortfolioPosition
+from src.apps.portfolio.read_models import PortfolioStateReadModel
 from src.apps.portfolio.repositories import PortfolioRepository
 from src.apps.portfolio.results import PortfolioActionEvaluationResult, PortfolioPendingEvent
 from src.apps.portfolio.support import (
@@ -13,7 +17,12 @@ from src.apps.portfolio.support import (
     calculate_stops,
     clamp_portfolio_value,
 )
+from src.apps.signals.models import MarketDecision
 from src.core.settings import get_settings
+
+
+class _PortfolioStateSupport(Protocol):
+    async def refresh_portfolio_state(self) -> PortfolioStateReadModel: ...
 
 
 def apply_portfolio_rebalance(
@@ -52,7 +61,7 @@ def _portfolio_action_event(
     *,
     coin_id: int,
     timeframe: int,
-    timestamp,
+    timestamp: datetime,
     action_id: int,
     decision_id: int,
     size: float,
@@ -78,7 +87,7 @@ class PortfolioActionCoordinator:
         *,
         session: AsyncSession,
         portfolio: PortfolioRepository,
-        state_support,
+        state_support: _PortfolioStateSupport,
     ) -> None:
         self._session = session
         self._portfolio = portfolio
@@ -90,7 +99,7 @@ class PortfolioActionCoordinator:
         *,
         coin_id: int,
         timeframe: int,
-        decision: object | None,
+        decision: MarketDecision | None,
         emit_events: bool,
     ) -> PortfolioActionEvaluationResult:
         settings = get_settings()

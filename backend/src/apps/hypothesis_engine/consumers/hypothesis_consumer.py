@@ -1,3 +1,7 @@
+from collections.abc import Callable
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.apps.hypothesis_engine.constants import SUPPORTED_HYPOTHESIS_SOURCE_EVENTS
 from src.apps.hypothesis_engine.services import HypothesisService, HypothesisSideEffectDispatcher
 from src.core.db.session import AsyncSessionLocal
@@ -6,7 +10,7 @@ from src.runtime.streams.types import IrisEvent
 
 
 class HypothesisConsumer:
-    def __init__(self, *, session_factory=AsyncSessionLocal) -> None:
+    def __init__(self, *, session_factory: Callable[[], AsyncSession] = AsyncSessionLocal) -> None:
         self._session_factory = session_factory
 
     async def handle_event(self, event: IrisEvent) -> None:

@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import HTTPException, status
 
 from src.core.errors import ResourceNotFoundError
@@ -8,7 +10,7 @@ _ERROR_DESCRIPTIONS: dict[int, str] = {
 }
 
 
-def notification_error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
+def notification_error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
     return {
         int(status_code): {
             "model": ApiError,

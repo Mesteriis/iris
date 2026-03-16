@@ -1,7 +1,7 @@
 from collections import defaultdict
-from collections.abc import Sequence
-from datetime import timedelta
-from typing import Any
+from collections.abc import Mapping, Sequence
+from datetime import datetime, timedelta
+from typing import Any, Protocol, cast
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,7 +62,40 @@ from src.core.db.persistence import AsyncQueryService
 PREFERRED_TIMEFRAMES = (1440, 240, 60, 15)
 
 
-def _canonical_decision(items: Sequence[object]) -> str | None:
+class _DecisionItemLike(Protocol):
+    @property
+    def timeframe(self) -> int: ...
+
+    @property
+    def decision(self) -> str: ...
+
+
+class _SignalProjectionRowLike(Protocol):
+    id: int
+    coin_id: int
+    symbol: str
+    name: str
+    sector: str | None
+    timeframe: int
+    signal_type: str
+    confidence: float
+    priority_score: float | None
+    context_score: float | None
+    regime_alignment: float | None
+    candle_timestamp: datetime
+    created_at: datetime
+    signal_market_regime: str | None
+    market_regime_details: Any
+    market_regime: str | None
+    cycle_phase: str | None
+    cycle_confidence: float | None
+
+
+def _row_mapping(row: Any) -> Mapping[str, Any]:
+    return cast(Mapping[str, Any], row._mapping)
+
+
+def _canonical_decision(items: Sequence[_DecisionItemLike]) -> str | None:
     items_by_timeframe = {int(item.timeframe): str(item.decision) for item in items}
     for current_timeframe in PREFERRED_TIMEFRAMES:
         if current_timeframe in items_by_timeframe:
@@ -72,8 +105,8 @@ def _canonical_decision(items: Sequence[object]) -> str | None:
 
 async def _cluster_membership_map_async(
     session: AsyncSession,
-    rows: Sequence[object],
-) -> dict[tuple[int, int, object], list[str]]:
+    rows: Sequence[_SignalProjectionRowLike],
+) -> dict[tuple[int, int, datetime], list[str]]:
     if not rows:
         return {}
     coin_ids = sorted({int(row.coin_id) for row in rows})
@@ -89,7 +122,7 @@ async def _cluster_membership_map_async(
             )
         )
     ).all()
-    membership: dict[tuple[int, int, object], list[str]] = defaultdict(list)
+    membership: dict[tuple[int, int, datetime], list[str]] = defaultdict(list)
     for row in cluster_rows:
         membership[(int(row.coin_id), int(row.timeframe), row.candle_timestamp)].append(str(row.signal_type))
     return membership
@@ -97,7 +130,7 @@ async def _cluster_membership_map_async(
 
 async def _serialize_signal_rows_async(
     session: AsyncSession,
-    rows: Sequence[object],
+    rows: Sequence[_SignalProjectionRowLike],
 ) -> tuple[SignalReadModel, ...]:
     membership = await _cluster_membership_map_async(session, rows)
     return tuple(
@@ -254,7 +287,7 @@ class SignalQueryService(AsyncQueryService):
         if timeframe is not None:
             stmt = stmt.where(latest.c.timeframe == timeframe)
         rows = (await self.session.execute(stmt)).all()
-        items = tuple(investment_decision_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(investment_decision_read_model_from_mapping(_row_mapping(row)) for row in rows)
         self._log_debug("query.list_decisions.result", mode="read", count=len(items))
         return items
 
@@ -283,7 +316,7 @@ class SignalQueryService(AsyncQueryService):
                 .limit(max(limit, 1))
             )
         ).all()
-        items = tuple(investment_decision_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(investment_decision_read_model_from_mapping(_row_mapping(row)) for row in rows)
         self._log_debug("query.list_top_decisions.result", mode="read", count=len(items))
         return items
 
@@ -311,7 +344,7 @@ class SignalQueryService(AsyncQueryService):
         if result is None:
             self._log_debug("query.get_decision_by_id.result", mode="read", decision_id=decision_id, found=False)
             return None
-        item = investment_decision_read_model_from_mapping(result._mapping)
+        item = investment_decision_read_model_from_mapping(_row_mapping(result))
         self._log_debug("query.get_decision_by_id.result", mode="read", decision_id=decision_id, found=True)
         return item
 
@@ -337,7 +370,7 @@ class SignalQueryService(AsyncQueryService):
                 .order_by(latest.c.timeframe.asc())
             )
         ).all()
-        items = tuple(coin_decision_item_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(coin_decision_item_read_model_from_mapping(_row_mapping(row)) for row in rows)
         item = CoinDecisionReadModel(
             coin_id=int(coin.id),
             symbol=str(coin.symbol),
@@ -388,7 +421,7 @@ class SignalQueryService(AsyncQueryService):
         if timeframe is not None:
             stmt = stmt.where(latest.c.timeframe == timeframe)
         rows = (await self.session.execute(stmt)).all()
-        items = tuple(market_decision_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(market_decision_read_model_from_mapping(_row_mapping(row)) for row in rows)
         self._log_debug("query.list_market_decisions.result", mode="read", count=len(items))
         return items
 
@@ -417,7 +450,7 @@ class SignalQueryService(AsyncQueryService):
                 .limit(max(limit, 1))
             )
         ).all()
-        items = tuple(market_decision_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(market_decision_read_model_from_mapping(_row_mapping(row)) for row in rows)
         self._log_debug("query.list_top_market_decisions.result", mode="read", count=len(items))
         return items
 
@@ -563,7 +596,7 @@ class SignalQueryService(AsyncQueryService):
         if timeframe is not None:
             stmt = stmt.where(latest.c.timeframe == timeframe)
         rows = (await self.session.execute(stmt)).all()
-        items = tuple(final_signal_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(final_signal_read_model_from_mapping(_row_mapping(row)) for row in rows)
         self._log_debug("query.list_final_signals.result", mode="read", count=len(items))
         return items
 
@@ -598,7 +631,7 @@ class SignalQueryService(AsyncQueryService):
                 .limit(max(limit, 1))
             )
         ).all()
-        items = tuple(final_signal_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(final_signal_read_model_from_mapping(_row_mapping(row)) for row in rows)
         self._log_debug("query.list_top_final_signals.result", mode="read", count=len(items))
         return items
 
@@ -631,7 +664,7 @@ class SignalQueryService(AsyncQueryService):
                 .order_by(latest.c.timeframe.asc())
             )
         ).all()
-        items = tuple(coin_final_signal_item_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(coin_final_signal_item_read_model_from_mapping(_row_mapping(row)) for row in rows)
         item = CoinFinalSignalReadModel(
             coin_id=int(coin.id),
             symbol=str(coin.symbol),

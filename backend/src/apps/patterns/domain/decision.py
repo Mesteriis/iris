@@ -1,5 +1,6 @@
-from dataclasses import dataclass
 from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Protocol
 
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics
@@ -31,6 +32,14 @@ class DecisionFactors:
     cycle_alignment: float
     historical_pattern_success: float
     strategy_alignment: float
+
+
+class _SectorNarrativeLike(Protocol):
+    @property
+    def top_sector(self) -> str | None: ...
+
+    @property
+    def capital_wave(self) -> str | None: ...
 
 
 def calculate_decision_score(
@@ -78,7 +87,7 @@ def _sector_strength_factor(
     coin: Coin,
     metrics: CoinMetrics | None,
     sector_metric: SectorMetric | None,
-    narrative: SectorNarrative | None,
+    narrative: _SectorNarrativeLike | None,
 ) -> float:
     if sector_metric is None:
         return 1.0
@@ -91,9 +100,7 @@ def _sector_strength_factor(
     if narrative is not None:
         if narrative.capital_wave == "btc" and coin.symbol != "BTCUSD":
             factor -= 0.05
-        elif narrative.capital_wave == "large_caps" and market_cap >= 10_000_000_000:
-            factor += 0.05
-        elif (
+        elif (narrative.capital_wave == "large_caps" and market_cap >= 10_000_000_000) or (
             narrative.capital_wave == "sector_leaders"
             and coin.sector is not None
             and narrative.top_sector == coin.sector.name
@@ -148,7 +155,7 @@ def _decision_reason(
     signals: Sequence[Signal],
     regime: str | None,
     sector_metric: SectorMetric | None,
-    narrative: SectorNarrative | None,
+    narrative: _SectorNarrativeLike | None,
     cycle: MarketCycle | None,
     historical_pattern_success: float,
     strategy_alignment_value: float,
@@ -178,10 +185,10 @@ def _decision_reason(
 
 __all__ = [
     "DECISION_TYPES",
-    "DecisionFactors",
     "MATERIAL_CONFIDENCE_DELTA",
     "MATERIAL_SCORE_DELTA",
     "RECENT_DECISION_LOOKBACK_DAYS",
+    "DecisionFactors",
     "_clamp",
     "_cycle_alignment",
     "_decision_confidence",

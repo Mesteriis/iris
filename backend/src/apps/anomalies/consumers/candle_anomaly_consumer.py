@@ -1,3 +1,7 @@
+from collections.abc import Callable
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.apps.anomalies.services import AnomalyService
 from src.core.db.session import AsyncSessionLocal
 from src.core.db.uow import AsyncUnitOfWork
@@ -5,7 +9,7 @@ from src.runtime.streams.types import IrisEvent
 
 
 class CandleAnomalyConsumer:
-    def __init__(self, *, session_factory=AsyncSessionLocal) -> None:
+    def __init__(self, *, session_factory: Callable[[], AsyncSession] = AsyncSessionLocal) -> None:
         self._session_factory = session_factory
 
     async def handle_event(self, event: IrisEvent) -> None:

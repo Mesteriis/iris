@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, TypeGuard
 
 from src.core.i18n.contracts import MessageDescriptor
 from src.core.i18n.descriptors import (
@@ -27,10 +27,14 @@ def build_descriptor_bundle_content(
         "kind": CONTENT_KIND_DESCRIPTOR_BUNDLE,
     }
     for name, value in fields.items():
-        if _is_descriptor_sequence(value):
+        if value is None or isinstance(value, MessageDescriptor):
+            payload[str(name)] = dump_message_descriptor(value)
+        elif _is_descriptor_sequence(value):
             payload[str(name)] = dump_message_descriptors(value)
         else:
-            payload[str(name)] = dump_message_descriptor(value)
+            raise ContentPayloadValidationError(
+                f"Descriptor bundle field '{name}' must contain a message descriptor or list of descriptors."
+            )
     return validate_content_payload(payload)
 
 
@@ -93,7 +97,8 @@ def content_descriptor(payload: object, field: str) -> MessageDescriptor | None:
 def content_descriptors(payload: object, field: str) -> tuple[MessageDescriptor, ...]:
     if not isinstance(payload, Mapping):
         return ()
-    return load_message_descriptors(payload.get(field))
+    descriptors: tuple[MessageDescriptor, ...] = load_message_descriptors(payload.get(field))
+    return descriptors
 
 
 def content_text(payload: object, field: str) -> str | None:
@@ -168,7 +173,7 @@ def _validate_generated_text_payload(payload: Mapping[str, object]) -> dict[str,
     return normalized
 
 
-def _is_descriptor_sequence(value: object) -> bool:
+def _is_descriptor_sequence(value: object) -> TypeGuard[Sequence[MessageDescriptor]]:
     if not isinstance(value, Sequence) or isinstance(value, str | bytes | bytearray):
         return False
     return all(isinstance(item, MessageDescriptor) for item in value)

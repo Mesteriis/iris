@@ -2,7 +2,6 @@ from dataclasses import dataclass
 
 from src.apps.patterns.domain.detectors import build_pattern_detectors
 
-
 SUPPORTED_PATTERN_FEATURES = [
     "pattern_detection",
     "pattern_clusters",
@@ -46,4 +45,4 @@ PATTERN_CATALOG: list[PatternCatalogEntry] = [
 ]
 
 
-__all__ = ["PATTERN_CATALOG", "PatternCatalogEntry", "SUPPORTED_PATTERN_FEATURES"]
+__all__ = ["PATTERN_CATALOG", "SUPPORTED_PATTERN_FEATURES", "PatternCatalogEntry"]

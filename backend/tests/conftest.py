@@ -1,11 +1,91 @@
+import atexit
 import json
 import os
 import sys
 from collections.abc import AsyncIterator, Iterator
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
 import pytest
+from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
+
+
+def _env_flag(name: str, *, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+_TESTCONTAINERS_ENABLED = _env_flag("IRIS_TEST_USE_TESTCONTAINERS", default=True)
+_TEST_POSTGRES_CONTAINER: PostgresContainer | None = None
+_TEST_REDIS_CONTAINER: RedisContainer | None = None
+
+
+def _redis_connection_url(container: RedisContainer) -> str:
+    password_segment = ""
+    if container.password:
+        password_segment = f":{container.password}@"
+    return (
+        f"redis://{password_segment}{container.get_container_host_ip()}:"
+        f"{container.get_exposed_port(container.port)}/0"
+    )
+
+
+def _stop_test_services() -> None:
+    global _TEST_POSTGRES_CONTAINER, _TEST_REDIS_CONTAINER
+    if _TEST_REDIS_CONTAINER is not None:
+        with suppress(Exception):
+            _TEST_REDIS_CONTAINER.stop()
+        _TEST_REDIS_CONTAINER = None
+    if _TEST_POSTGRES_CONTAINER is not None:
+        with suppress(Exception):
+            _TEST_POSTGRES_CONTAINER.stop()
+        _TEST_POSTGRES_CONTAINER = None
+
+
+def _start_test_services() -> None:
+    global _TEST_POSTGRES_CONTAINER, _TEST_REDIS_CONTAINER
+    if not _TESTCONTAINERS_ENABLED:
+        return
+    if _TEST_POSTGRES_CONTAINER is not None and _TEST_REDIS_CONTAINER is not None:
+        return
+
+    postgres = PostgresContainer(
+        image=os.getenv("IRIS_TEST_POSTGRES_IMAGE", "postgres:16-alpine"),
+        username=os.getenv("IRIS_TEST_POSTGRES_USER", "iris"),
+        password=os.getenv("IRIS_TEST_POSTGRES_PASSWORD", "iris"),
+        dbname=os.getenv("IRIS_TEST_POSTGRES_DB", "iris_test"),
+        driver="psycopg",
+    )
+    redis = RedisContainer(
+        image=os.getenv("IRIS_TEST_REDIS_IMAGE", "redis:7-alpine"),
+        password=os.getenv("IRIS_TEST_REDIS_PASSWORD") or None,
+    )
+
+    try:
+        postgres.start()
+        redis.start()
+    except Exception as exc:
+        with suppress(Exception):
+            redis.stop()
+        with suppress(Exception):
+            postgres.stop()
+        raise RuntimeError(
+            "Backend tests require Docker because Postgres and Redis are started with testcontainers."
+        ) from exc
+
+    _TEST_POSTGRES_CONTAINER = postgres
+    _TEST_REDIS_CONTAINER = redis
+    os.environ["DATABASE_URL"] = postgres.get_connection_url()
+    os.environ["REDIS_URL"] = _redis_connection_url(redis)
+
+
+_start_test_services()
+atexit.register(_stop_test_services)
+os.environ.setdefault("EVENT_STREAM_NAME", "iris_events_test")
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 _ORIGINAL_SYS_PATH = list(sys.path)
@@ -20,9 +100,6 @@ from alembic.config import Config
 sys.path = _ORIGINAL_SYS_PATH
 from redis import Redis
 from sqlalchemy import delete, func, select
-
-os.environ.setdefault("EVENT_STREAM_NAME", "iris_events_test")
-
 from src.core.settings import get_settings
 
 get_settings.cache_clear()

@@ -1,7 +1,7 @@
 import logging
 import queue
 import threading
-from typing import Any
+from typing import Any, cast
 
 from redis import Redis
 from redis.exceptions import RedisError
@@ -11,6 +11,8 @@ from src.runtime.streams.types import build_event_fields
 
 LOGGER = logging.getLogger(__name__)
 _QUEUE_WAIT_SECONDS = 0.25
+type _RedisStreamScalar = bytes | bytearray | memoryview[int] | str | int | float
+type _RedisStreamFields = dict[_RedisStreamScalar, _RedisStreamScalar]
 
 
 # NOTE:
@@ -21,7 +23,7 @@ class RedisEventPublisher:
     def __init__(self, redis_url: str, *, stream_name: str) -> None:
         self._redis = Redis.from_url(redis_url, decode_responses=True)
         self._stream_name = stream_name
-        self._queue: queue.SimpleQueue[dict[str, str] | None] = queue.SimpleQueue()
+        self._queue: queue.SimpleQueue[_RedisStreamFields | None] = queue.SimpleQueue()
         self._drain_lock = threading.Lock()
         self._pending = 0
         self._pending_event = threading.Event()
@@ -34,7 +36,7 @@ class RedisEventPublisher:
         self._thread.start()
 
     def publish(self, event_type: str, payload: dict[str, Any]) -> None:
-        fields = build_event_fields(event_type, payload)
+        fields = cast(_RedisStreamFields, dict(build_event_fields(event_type, payload)))
         with self._drain_lock:
             self._pending += 1
             self._pending_event.clear()

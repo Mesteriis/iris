@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import ParamSpec, TypeVar, cast
+
 from src.apps.patterns.task_services import (
     PatternBootstrapService,
     PatternDiscoveryService,
@@ -10,6 +13,9 @@ from src.core.db.uow import AsyncUnitOfWork
 from src.runtime.orchestration.broker import analytics_broker
 from src.runtime.orchestration.locks import async_redis_task_lock
 
+P = ParamSpec("P")
+R = TypeVar("R")
+
 PATTERN_BOOTSTRAP_LOCK_TIMEOUT_SECONDS = 7200
 PATTERN_STATISTICS_LOCK_TIMEOUT_SECONDS = 7200
 MARKET_STRUCTURE_LOCK_TIMEOUT_SECONDS = 7200
@@ -17,7 +23,17 @@ PATTERN_DISCOVERY_LOCK_TIMEOUT_SECONDS = 14400
 STRATEGY_DISCOVERY_LOCK_TIMEOUT_SECONDS = 14400
 
 
-@analytics_broker.task
+def _analytics_task[**P, R](func: Callable[P, R]) -> Callable[P, R]:
+    return cast(Callable[P, R], analytics_broker.task(func))
+
+
+async def _maybe_commit(uow: object) -> None:
+    commit = getattr(uow, "commit", None)
+    if callable(commit):
+        await commit()
+
+
+@_analytics_task
 async def patterns_bootstrap_scan(symbol: str | None = None, force: bool = False) -> dict[str, object]:
     lock_suffix = symbol.upper() if symbol is not None else "all"
     async with async_redis_task_lock(
@@ -29,8 +45,10 @@ async def patterns_bootstrap_scan(symbol: str | None = None, force: bool = False
 
         async with AsyncUnitOfWork() as uow:
             result = await PatternBootstrapService(uow).bootstrap_scan(symbol=symbol, force=force)
-            await uow.commit()
-            return result
+            payload = result
+            if payload.get("status") != "error":
+                await _maybe_commit(uow)
+            return payload
 
 
 async def _run_pattern_evaluation() -> dict[str, object]:
@@ -43,21 +61,21 @@ async def _run_pattern_evaluation() -> dict[str, object]:
 
         async with AsyncUnitOfWork() as uow:
             result = await PatternEvaluationService(uow).run()
-            await uow.commit()
+            await _maybe_commit(uow)
             return result
 
 
-@analytics_broker.task
+@_analytics_task
 async def pattern_evaluation_job() -> dict[str, object]:
     return await _run_pattern_evaluation()
 
 
-@analytics_broker.task
+@_analytics_task
 async def update_pattern_statistics() -> dict[str, object]:
     return await _run_pattern_evaluation()
 
 
-@analytics_broker.task
+@_analytics_task
 async def signal_context_enrichment(
     coin_id: int,
     timeframe: int,
@@ -69,11 +87,11 @@ async def signal_context_enrichment(
             timeframe=int(timeframe),
             candle_timestamp=candle_timestamp,
         )
-        await uow.commit()
+        await _maybe_commit(uow)
         return result
 
 
-@analytics_broker.task
+@_analytics_task
 async def refresh_market_structure() -> dict[str, object]:
     async with async_redis_task_lock(
         "iris:tasklock:market_structure_refresh",
@@ -84,11 +102,11 @@ async def refresh_market_structure() -> dict[str, object]:
 
         async with AsyncUnitOfWork() as uow:
             result = await PatternMarketStructureService(uow).refresh()
-            await uow.commit()
+            await _maybe_commit(uow)
             return result
 
 
-@analytics_broker.task
+@_analytics_task
 async def run_pattern_discovery() -> dict[str, object]:
     async with async_redis_task_lock(
         "iris:tasklock:pattern_discovery_refresh",
@@ -99,11 +117,11 @@ async def run_pattern_discovery() -> dict[str, object]:
 
         async with AsyncUnitOfWork() as uow:
             result = await PatternDiscoveryService(uow).refresh()
-            await uow.commit()
+            await _maybe_commit(uow)
             return result
 
 
-@analytics_broker.task
+@_analytics_task
 async def strategy_discovery_job() -> dict[str, object]:
     async with async_redis_task_lock(
         "iris:tasklock:strategy_discovery_refresh",
@@ -114,5 +132,5 @@ async def strategy_discovery_job() -> dict[str, object]:
 
         async with AsyncUnitOfWork() as uow:
             result = await PatternStrategyService(uow).refresh()
-            await uow.commit()
+            await _maybe_commit(uow)
             return result

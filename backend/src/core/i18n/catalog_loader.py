@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 from yaml.nodes import MappingNode
@@ -17,25 +17,34 @@ class _UniqueKeyLoader(yaml.SafeLoader):
 
 
 def _construct_unique_mapping(loader: _UniqueKeyLoader, node: MappingNode, deep: bool = False) -> dict[Any, Any]:
+    yaml_loader = cast(Any, loader)
     mapping: dict[Any, Any] = {}
     for key_node, value_node in node.value:
-        key = loader.construct_object(key_node, deep=deep)
+        key = yaml_loader.construct_object(key_node, deep=deep)
         if key in mapping:
             raise TranslationCatalogError(f"Translation catalog contains a duplicate key: {key!r}.")
-        mapping[key] = loader.construct_object(value_node, deep=deep)
+        mapping[key] = yaml_loader.construct_object(value_node, deep=deep)
     return mapping
 
 
-_UniqueKeyLoader.add_constructor(  # type: ignore[arg-type]
+_UniqueKeyLoader.add_constructor(
     yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
     _construct_unique_mapping,
 )
 
 
+def _load_yaml_payload(raw: str) -> object:
+    loader = _UniqueKeyLoader(raw)
+    try:
+        return loader.get_single_data()
+    finally:
+        cast(Any, loader).dispose()
+
+
 def load_catalog(locale: str, *, directory: Path | None = None) -> TranslationCatalog:
     catalog_path = (directory or _catalog_directory()) / f"{locale}.yaml"
     try:
-        payload = yaml.load(catalog_path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
+        payload = _load_yaml_payload(catalog_path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise TranslationCatalogError(f"Translation catalog '{catalog_path}' was not found.") from exc
     except yaml.YAMLError as exc:

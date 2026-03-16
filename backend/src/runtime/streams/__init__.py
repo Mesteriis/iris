@@ -1,7 +1,7 @@
 __all__ = [
-    "AnalysisMessage",
     "EVENT_STREAM_NAME",
     "EVENT_WORKER_GROUPS",
+    "AnalysisMessage",
     "EventConsumer",
     "EventConsumerConfig",
     "IrisEvent",

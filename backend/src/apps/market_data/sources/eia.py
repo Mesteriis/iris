@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING, ClassVar
 
@@ -23,6 +21,19 @@ EIA_SERIES_IDS: dict[str, str] = {
     "NATGASUSD": "NG.RNGWHHD.D",
     "WTIUSD": "PET.RWTC.D",
 }
+
+
+def _float_or_none(value: object) -> float | None:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
 
 
 class EiaEnergyMarketSource(BaseMarketSource):
@@ -97,8 +108,10 @@ class EiaEnergyMarketSource(BaseMarketSource):
                 continue
             try:
                 timestamp = ensure_utc(datetime.fromisoformat(f"{period_raw}T00:00:00"))
-                value = float(value_raw)
+                value = _float_or_none(value_raw)
             except ValueError:
+                continue
+            if value is None:
                 continue
             bars.append(
                 MarketBar(

@@ -1,8 +1,22 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
+from src.apps.notifications.models import AINotification
 from src.core.db.persistence import freeze_json_value
+
+
+@runtime_checkable
+class _SupportsInt(Protocol):
+    def __int__(self) -> int: ...
+
+
+def _required_int(value: object, *, field_name: str) -> int:
+    if isinstance(value, bool | int | str | bytes | bytearray):
+        return int(value)
+    if isinstance(value, _SupportsInt):
+        return int(value)
+    raise TypeError(f"{field_name} must be int-compatible, got {type(value).__name__}")
 
 
 @dataclass(slots=True, frozen=True)
@@ -38,13 +52,13 @@ class NotificationCoinContextReadModel:
     sector_code: str | None
 
 
-def notification_read_model_from_orm(notification) -> NotificationReadModel:
+def notification_read_model_from_orm(notification: AINotification) -> NotificationReadModel:
     return NotificationReadModel(
-        id=int(notification.id),
-        coin_id=int(notification.coin_id),
+        id=_required_int(notification.id, field_name="id"),
+        coin_id=_required_int(notification.coin_id, field_name="coin_id"),
         symbol=str(notification.symbol) if notification.symbol is not None else None,
         sector=str(notification.sector) if notification.sector is not None else None,
-        timeframe=int(notification.timeframe),
+        timeframe=_required_int(notification.timeframe, field_name="timeframe"),
         severity=str(notification.severity),
         urgency=str(notification.urgency),
         content_kind=str(notification.content_kind),
@@ -54,7 +68,7 @@ def notification_read_model_from_orm(notification) -> NotificationReadModel:
         provider=str(notification.provider),
         model=str(notification.model),
         prompt_name=str(notification.prompt_name),
-        prompt_version=int(notification.prompt_version),
+        prompt_version=_required_int(notification.prompt_version, field_name="prompt_version"),
         source_event_type=str(notification.source_event_type),
         source_event_id=str(notification.source_event_id),
         source_stream_id=str(notification.source_stream_id) if notification.source_stream_id is not None else None,

@@ -40,9 +40,10 @@ class NewsService:
         self._items = NewsItemRepository(uow.session)
 
     def _publish_after_commit(self, event_type: str, payload: dict[str, object]) -> None:
-        self._uow.add_after_commit_action(
-            lambda event_type=event_type, payload=dict(payload): publish_event(event_type, payload)
-        )
+        def _publish() -> None:
+            publish_event(event_type, dict(payload))
+
+        self._uow.add_after_commit_action(_publish)
 
     async def create_source(self, payload: NewsSourceCreate) -> NewsSourceRead:
         plugin_name = payload.plugin_name.strip().lower()
@@ -152,22 +153,22 @@ class NewsService:
         existing_ids = await self._items.list_existing_external_ids(source_id=source_id, external_ids=external_ids)
 
         created_items: list[NewsItem] = []
-        for item in result.items:
-            if item.external_id in existing_ids:
+        for fetched_item in result.items:
+            if fetched_item.external_id in existing_ids:
                 continue
             created_items.append(
                 NewsItem(
                     source_id=int(source.id),
                     plugin_name=source.plugin_name,
-                    external_id=item.external_id,
-                    published_at=item.published_at,
-                    author_handle=item.author_handle,
-                    channel_name=item.channel_name,
-                    title=item.title,
-                    content_text=item.content_text,
-                    url=item.url,
-                    symbol_hints=_extract_symbol_hints(item.content_text),
-                    payload_json=item.payload_json,
+                    external_id=fetched_item.external_id,
+                    published_at=fetched_item.published_at,
+                    author_handle=fetched_item.author_handle,
+                    channel_name=fetched_item.channel_name,
+                    title=fetched_item.title,
+                    content_text=fetched_item.content_text,
+                    url=fetched_item.url,
+                    symbol_hints=_extract_symbol_hints(fetched_item.content_text),
+                    payload_json=fetched_item.payload_json,
                     normalization_status="pending",
                     normalized_payload_json={},
                 )
@@ -177,21 +178,21 @@ class NewsService:
         source.cursor_json = dict(result.next_cursor)
         source.last_polled_at = utc_now()
         source.last_error = None
-        for item in created_items:
+        for created_item in created_items:
             self._publish_after_commit(
                 NEWS_EVENT_ITEM_INGESTED,
                 {
                     "coin_id": 0,
                     "timeframe": 0,
-                    "timestamp": item.published_at,
-                    "item_id": int(item.id),
-                    "source_id": int(item.source_id),
-                    "plugin_name": item.plugin_name,
-                    "external_id": item.external_id,
-                    "author_handle": item.author_handle,
-                    "channel_name": item.channel_name,
-                    "url": item.url,
-                    "symbol_hints": item.symbol_hints,
+                    "timestamp": created_item.published_at,
+                    "item_id": int(created_item.id),
+                    "source_id": int(created_item.source_id),
+                    "plugin_name": created_item.plugin_name,
+                    "external_id": created_item.external_id,
+                    "author_handle": created_item.author_handle,
+                    "channel_name": created_item.channel_name,
+                    "url": created_item.url,
+                    "symbol_hints": created_item.symbol_hints,
                 },
             )
 

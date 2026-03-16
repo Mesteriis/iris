@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 import pytest
 from redis.exceptions import LockError
-
 from src.runtime.orchestration import dispatcher, locks
 
 

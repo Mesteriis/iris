@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends
 
@@ -8,7 +8,12 @@ from src.apps.briefs.language import resolve_effective_language
 from src.apps.briefs.query_services import BriefQueryService
 from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 from src.core.http.deps import get_operation_store, get_trace_context
-from src.core.http.operation_store import OperationDispatchResult, OperationStore, dispatch_background_operation
+from src.core.http.operation_store import (
+    OperationDispatchResult,
+    OperationStore,
+    TaskiqJob,
+    dispatch_background_operation,
+)
 from src.core.http.tracing import TraceContext
 
 
@@ -26,6 +31,7 @@ class BriefJobDispatcher:
         requested_provider: str | None = None,
     ) -> OperationDispatchResult:
         from src.apps.briefs.tasks import generate_brief_job
+        job = cast(TaskiqJob, generate_brief_job)
 
         normalized_symbol = str(symbol).strip().upper() if symbol is not None and str(symbol).strip() else None
         effective_language = resolve_effective_language({})
@@ -35,7 +41,7 @@ class BriefJobDispatcher:
             operation_type="brief.generate",
             trace_context=self.trace_context,
             deduplication_key=f"kind:{brief_kind.value}:scope:{scope_key}",
-            dispatch=lambda operation_id: generate_brief_job.kiq(
+            dispatch=lambda operation_id: job.kiq(
                 brief_kind=brief_kind.value,
                 symbol=normalized_symbol,
                 force=force,

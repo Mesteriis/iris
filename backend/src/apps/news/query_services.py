@@ -2,8 +2,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.apps.news.plugins import list_registered_news_plugins
 from src.apps.news.models import NewsItem, NewsSource
+from src.apps.news.plugins import list_registered_news_plugins
 from src.apps.news.read_models import (
     NewsItemReadModel,
     NewsPluginReadModel,

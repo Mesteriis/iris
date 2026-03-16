@@ -1,10 +1,13 @@
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, cast
 
 from src.apps.anomalies.consumers import CandleAnomalyConsumer, SectorAnomalyConsumer
 from src.apps.control_plane.metrics import ControlPlaneMetricsStore
 from src.apps.cross_market.services import CrossMarketService
 from src.apps.hypothesis_engine.consumers import HypothesisConsumer
+from src.apps.indicators.results import IndicatorEventResult
 from src.apps.indicators.services import AnalysisSchedulerService, FeatureSnapshotService, IndicatorAnalyticsService
 from src.apps.news.consumers import NewsCorrelationConsumer, NewsNormalizationConsumer
 from src.apps.notifications.consumers import NotificationConsumer
@@ -12,7 +15,8 @@ from src.apps.patterns.cache import cache_regime_snapshot_async, read_cached_reg
 from src.apps.patterns.runtime_results import PatternRegimeRefreshResult
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
 from src.apps.signals.services import SignalFusionService, SignalFusionSideEffectDispatcher, SignalHistoryService
-from src.core.db.uow import AsyncUnitOfWork
+from src.apps.signals.services.results import SignalFusionBatchResult, SignalFusionResult
+from src.core.db.uow import AsyncUnitOfWork, BaseAsyncUnitOfWork
 from src.core.settings import get_settings
 from src.runtime.control_plane.worker import build_delivery_stream_name
 from src.runtime.streams.consumer import EventConsumer, EventConsumerConfig, default_consumer_name
@@ -51,8 +55,11 @@ _REGIME_INTERESTED_EVENT_TYPES = frozenset({"indicator_updated"})
 # Indicator, cross-market, pattern, regime, decision-context, signal-fusion and signal-history
 # persistence now run through async services/repositories under a shared UoW.
 
+if TYPE_CHECKING:
+    from src.apps.patterns.task_services import PatternRealtimeService, PatternSignalContextService
 
-async def _process_indicator_event(event: IrisEvent):
+
+async def _process_indicator_event(event: IrisEvent) -> IndicatorEventResult:
     async with AsyncUnitOfWork() as uow:
         result = await IndicatorAnalyticsService(uow).process_event(
             coin_id=event.coin_id,
@@ -68,7 +75,7 @@ async def _capture_feature_snapshot_async(
     *,
     coin_id: int,
     timeframe: int,
-    timestamp: object,
+    timestamp: datetime,
     price_current: float | None,
     rsi_14: float | None,
     macd: float | None,
@@ -85,13 +92,13 @@ async def _capture_feature_snapshot_async(
         await uow.commit()
 
 
-def _pattern_signal_context_service_factory(uow):
+def _pattern_signal_context_service_factory(uow: BaseAsyncUnitOfWork) -> "PatternSignalContextService":
     from src.apps.patterns.task_services import PatternSignalContextService
 
     return PatternSignalContextService(uow)
 
 
-def _pattern_realtime_service_factory(uow):
+def _pattern_realtime_service_factory(uow: BaseAsyncUnitOfWork) -> "PatternRealtimeService":
     from src.apps.patterns.task_services import PatternRealtimeService
 
     return PatternRealtimeService(uow)
@@ -284,10 +291,18 @@ async def _handle_decision_event(event: IrisEvent) -> None:
             timeframe=event.timeframe,
             candle_timestamp=event.timestamp,
         )
-    decision_result = dict(flow_result.get("decision", {}))
+    raw_decision = flow_result.get("decision", {})
+    decision_result = dict(cast(Mapping[str, Any], raw_decision)) if isinstance(raw_decision, Mapping) else {}
     snapshot_payload = flow_result.get("_feature_snapshot")
-    if snapshot_payload is not None:
-        await _capture_feature_snapshot_async(**snapshot_payload)
+    if isinstance(snapshot_payload, Mapping):
+        await _capture_feature_snapshot_async(
+            coin_id=int(snapshot_payload["coin_id"]),
+            timeframe=int(snapshot_payload["timeframe"]),
+            timestamp=cast(datetime, snapshot_payload["timestamp"]),
+            price_current=cast(float | None, snapshot_payload.get("price_current")),
+            rsi_14=cast(float | None, snapshot_payload.get("rsi_14")),
+            macd=cast(float | None, snapshot_payload.get("macd")),
+        )
     async with AsyncUnitOfWork() as uow:
         await SignalHistoryService(uow).refresh_recent_history(
             coin_id=event.coin_id,
@@ -310,6 +325,7 @@ async def _handle_decision_event(event: IrisEvent) -> None:
 async def _handle_fusion_event(event: IrisEvent) -> None:
     async with AsyncUnitOfWork() as uow:
         service = SignalFusionService(uow)
+        result: SignalFusionResult | SignalFusionBatchResult
         if event.event_type == "news_symbol_correlation_updated":
             result = await service.evaluate_news_fusion_event(
                 coin_id=event.coin_id,

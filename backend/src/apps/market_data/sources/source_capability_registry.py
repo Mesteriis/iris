@@ -5,16 +5,21 @@ import csv
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from io import StringIO
 from itertools import product
 from threading import Lock
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
-from src.apps.market_data.sources.alphavantage import ALPHA_VANTAGE_FOREX_PAIRS, ALPHA_VANTAGE_SPECIAL_SERIES
+from src.apps.market_data.sources.alphavantage import (
+    ALPHA_VANTAGE_FOREX_PAIRS,
+    ALPHA_VANTAGE_SPECIAL_SERIES,
+    AlphaVantageSeriesSpec,
+)
 from src.apps.market_data.sources.eia import EIA_SERIES_IDS
 from src.apps.market_data.sources.fred import FRED_SERIES_IDS
 from src.apps.market_data.sources.polygon import POLYGON_SYMBOLS
@@ -26,6 +31,9 @@ from src.runtime.orchestration.locks import get_async_lock_redis
 
 LOGGER = logging.getLogger(__name__)
 REDIS_KEY = "iris:market_data:source_capability_registry:v1"
+HttpQueryScalar = str | int | float | bool | None
+HttpQueryValue = HttpQueryScalar | Sequence[HttpQueryScalar]
+HttpQueryParams = Mapping[str, HttpQueryValue]
 USD_QUOTES = ("USD", "USDT", "USDC", "BUSD", "FDUSD", "TUSD", "USDP", "USDS", "PYUSD")
 FIAT_OR_STABLE_TOKENS = {
     "AED",
@@ -130,6 +138,17 @@ EIA_REVERSE_ALIASES = {provider_symbol: canonical_symbol for canonical_symbol, p
 FRED_REVERSE_ALIASES = {provider_symbol: canonical_symbol for canonical_symbol, provider_symbol in FRED_SERIES_IDS.items()}
 
 
+class _CapabilitySettings(Protocol):
+    polygon_api_key: str
+    twelve_data_api_key: str
+    alpha_vantage_api_key: str
+    fred_api_key: str
+    eia_api_key: str
+
+
+type _Discoverer = Callable[[httpx.AsyncClient, _CapabilitySettings], Awaitable[SourceCapabilitySnapshot]]
+
+
 def _serialize_timestamp(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
 
@@ -158,7 +177,7 @@ def _sanitize_request_url(value: httpx.URL | None) -> str | None:
 def _classify_discovery_error(exc: Exception) -> tuple[str, dict[str, object]]:
     if isinstance(exc, httpx.HTTPStatusError):
         status_code = int(exc.response.status_code)
-        context = {
+        context: dict[str, object] = {
             "status_code": status_code,
             "url": _sanitize_request_url(exc.request.url),
         }
@@ -351,7 +370,7 @@ def _error_snapshot(source_name: str, *, discovery_mode: str, error: str) -> Sou
     )
 
 
-async def _request_json(client: httpx.AsyncClient, url: str, *, params: dict[str, object] | None = None) -> dict[str, Any]:
+async def _request_json(client: httpx.AsyncClient, url: str, *, params: HttpQueryParams | None = None) -> dict[str, Any]:
     response = await client.get(url, params=params)
     response.raise_for_status()
     payload = response.json()
@@ -360,13 +379,13 @@ async def _request_json(client: httpx.AsyncClient, url: str, *, params: dict[str
     return payload
 
 
-async def _request_text(client: httpx.AsyncClient, url: str, *, params: dict[str, object] | None = None) -> str:
+async def _request_text(client: httpx.AsyncClient, url: str, *, params: HttpQueryParams | None = None) -> str:
     response = await client.get(url, params=params)
     response.raise_for_status()
     return response.text
 
 
-async def _discover_binance(client: httpx.AsyncClient, _settings) -> SourceCapabilitySnapshot:
+async def _discover_binance(client: httpx.AsyncClient, _settings: _CapabilitySettings) -> SourceCapabilitySnapshot:
     payload = await _request_json(client, "https://api.binance.com/api/v3/exchangeInfo")
     provider_symbols: list[str] = []
     canonical_to_provider: dict[str, str] = {}
@@ -406,7 +425,7 @@ async def _discover_binance(client: httpx.AsyncClient, _settings) -> SourceCapab
     )
 
 
-async def _discover_kucoin(client: httpx.AsyncClient, _settings) -> SourceCapabilitySnapshot:
+async def _discover_kucoin(client: httpx.AsyncClient, _settings: _CapabilitySettings) -> SourceCapabilitySnapshot:
     payload = await _request_json(client, "https://api.kucoin.com/api/v2/symbols")
     provider_symbols: list[str] = []
     canonical_to_provider: dict[str, str] = {}
@@ -444,7 +463,7 @@ async def _discover_kucoin(client: httpx.AsyncClient, _settings) -> SourceCapabi
     )
 
 
-async def _discover_coinbase(client: httpx.AsyncClient, _settings) -> SourceCapabilitySnapshot:
+async def _discover_coinbase(client: httpx.AsyncClient, _settings: _CapabilitySettings) -> SourceCapabilitySnapshot:
     response = await client.get("https://api.exchange.coinbase.com/products")
     response.raise_for_status()
     payload = response.json()
@@ -488,7 +507,7 @@ async def _discover_coinbase(client: httpx.AsyncClient, _settings) -> SourceCapa
     )
 
 
-async def _discover_kraken(client: httpx.AsyncClient, _settings) -> SourceCapabilitySnapshot:
+async def _discover_kraken(client: httpx.AsyncClient, _settings: _CapabilitySettings) -> SourceCapabilitySnapshot:
     payload = await _request_json(client, "https://api.kraken.com/0/public/AssetPairs")
     result = payload.get("result")
     if not isinstance(result, dict):
@@ -530,7 +549,7 @@ async def _discover_kraken(client: httpx.AsyncClient, _settings) -> SourceCapabi
     )
 
 
-async def _discover_moex(client: httpx.AsyncClient, _settings) -> SourceCapabilitySnapshot:
+async def _discover_moex(client: httpx.AsyncClient, _settings: _CapabilitySettings) -> SourceCapabilitySnapshot:
     payload = await _request_json(
         client,
         "https://iss.moex.com/iss/engines/stock/markets/index/securities.json",
@@ -563,7 +582,7 @@ async def _discover_moex(client: httpx.AsyncClient, _settings) -> SourceCapabili
 
 async def _fetch_polygon_market_tickers(client: httpx.AsyncClient, api_key: str, market: str) -> list[dict[str, Any]]:
     url = "https://api.polygon.io/v3/reference/tickers"
-    params: dict[str, object] | None = {"market": market, "active": "true", "limit": 1000, "apiKey": api_key}
+    params: dict[str, HttpQueryValue] | None = {"market": market, "active": "true", "limit": 1000, "apiKey": api_key}
     items: list[dict[str, Any]] = []
     while url:
         response = await client.get(url, params=params)
@@ -582,7 +601,7 @@ async def _fetch_polygon_market_tickers(client: httpx.AsyncClient, api_key: str,
     return items
 
 
-async def _discover_polygon(client: httpx.AsyncClient, settings) -> SourceCapabilitySnapshot:
+async def _discover_polygon(client: httpx.AsyncClient, settings: _CapabilitySettings) -> SourceCapabilitySnapshot:
     api_key = settings.polygon_api_key.strip()
     if not api_key:
         return _skip_snapshot("polygon", discovery_mode="live_listing", reason="POLYGON_API_KEY is not configured.")
@@ -619,7 +638,7 @@ async def _discover_polygon(client: httpx.AsyncClient, settings) -> SourceCapabi
     )
 
 
-async def _discover_twelvedata(client: httpx.AsyncClient, settings) -> SourceCapabilitySnapshot:
+async def _discover_twelvedata(client: httpx.AsyncClient, settings: _CapabilitySettings) -> SourceCapabilitySnapshot:
     api_key = settings.twelve_data_api_key.strip()
     if not api_key:
         return _skip_snapshot("twelvedata", discovery_mode="live_listing", reason="TWELVE_DATA_API_KEY is not configured.")
@@ -661,7 +680,7 @@ async def _discover_twelvedata(client: httpx.AsyncClient, settings) -> SourceCap
     )
 
 
-async def _discover_alphavantage(client: httpx.AsyncClient, settings) -> SourceCapabilitySnapshot:
+async def _discover_alphavantage(client: httpx.AsyncClient, settings: _CapabilitySettings) -> SourceCapabilitySnapshot:
     api_key = settings.alpha_vantage_api_key.strip()
     if not api_key:
         return _skip_snapshot("alphavantage", discovery_mode="derived_currency_universe", reason="ALPHA_VANTAGE_API_KEY is not configured.")
@@ -688,7 +707,7 @@ async def _discover_alphavantage(client: httpx.AsyncClient, settings) -> SourceC
         provider_symbols.append(provider_symbol)
         _upsert_mapping(canonical_to_provider, provider_to_canonical, canonical_symbol, provider_symbol)
 
-    async def _validate_special(canonical_symbol: str, spec: dict[str, object]) -> tuple[str, str | None]:
+    async def _validate_special(canonical_symbol: str, spec: AlphaVantageSeriesSpec) -> tuple[str, str | None]:
         params = {"function": str(spec["function"]), "apikey": api_key}
         if spec.get("interval") is not None:
             params["interval"] = str(spec["interval"])
@@ -699,14 +718,14 @@ async def _discover_alphavantage(client: httpx.AsyncClient, settings) -> SourceC
             return canonical_symbol, str(spec["provider_symbol"]).strip().upper()
         return canonical_symbol, None
 
-    special_results = await asyncio.gather(
+    special_results: list[tuple[str, str | None]] = await asyncio.gather(
         *(_validate_special(canonical_symbol, spec) for canonical_symbol, spec in ALPHA_VANTAGE_SPECIAL_SERIES.items())
     )
-    for canonical_symbol, provider_symbol in special_results:
-        if provider_symbol is None:
+    for canonical_symbol, special_provider_symbol in special_results:
+        if special_provider_symbol is None:
             continue
-        provider_symbols.append(provider_symbol)
-        _upsert_mapping(canonical_to_provider, provider_to_canonical, canonical_symbol, provider_symbol)
+        provider_symbols.append(special_provider_symbol)
+        _upsert_mapping(canonical_to_provider, provider_to_canonical, canonical_symbol, special_provider_symbol)
     return _build_snapshot(
         source_name="alphavantage",
         discovery_mode="derived_currency_universe",
@@ -717,7 +736,7 @@ async def _discover_alphavantage(client: httpx.AsyncClient, settings) -> SourceC
     )
 
 
-async def _discover_eia(client: httpx.AsyncClient, settings) -> SourceCapabilitySnapshot:
+async def _discover_eia(client: httpx.AsyncClient, settings: _CapabilitySettings) -> SourceCapabilitySnapshot:
     api_key = settings.eia_api_key.strip()
     if not api_key:
         return _skip_snapshot("eia", discovery_mode="validated_aliases", reason="EIA_API_KEY is not configured.")
@@ -753,7 +772,7 @@ async def _discover_eia(client: httpx.AsyncClient, settings) -> SourceCapability
     )
 
 
-async def _discover_fred(client: httpx.AsyncClient, settings) -> SourceCapabilitySnapshot:
+async def _discover_fred(client: httpx.AsyncClient, settings: _CapabilitySettings) -> SourceCapabilitySnapshot:
     api_key = settings.fred_api_key.strip()
     if not api_key:
         return _skip_snapshot("fred", discovery_mode="validated_aliases", reason="FRED_API_KEY is not configured.")
@@ -794,7 +813,7 @@ async def _discover_fred(client: httpx.AsyncClient, settings) -> SourceCapabilit
     )
 
 
-async def _discover_yahoo(client: httpx.AsyncClient, _settings) -> SourceCapabilitySnapshot:
+async def _discover_yahoo(client: httpx.AsyncClient, _settings: _CapabilitySettings) -> SourceCapabilitySnapshot:
     response = await client.get(
         "https://query1.finance.yahoo.com/v7/finance/quote",
         params={"symbols": ",".join(sorted(YAHOO_SYMBOLS.values()))},
@@ -835,7 +854,7 @@ async def _discover_yahoo(client: httpx.AsyncClient, _settings) -> SourceCapabil
     )
 
 
-async def _discover_stooq(client: httpx.AsyncClient, _settings) -> SourceCapabilitySnapshot:
+async def _discover_stooq(client: httpx.AsyncClient, _settings: _CapabilitySettings) -> SourceCapabilitySnapshot:
     provider_symbols: list[str] = []
     canonical_to_provider: dict[str, str] = {}
     provider_to_canonical: dict[str, str] = {}
@@ -867,7 +886,7 @@ async def _discover_stooq(client: httpx.AsyncClient, _settings) -> SourceCapabil
     )
 
 
-DISCOVERERS = (
+DISCOVERERS: tuple[_Discoverer, ...] = (
     _discover_binance,
     _discover_kucoin,
     _discover_coinbase,
@@ -885,7 +904,7 @@ DISCOVERERS = (
 
 class MarketSourceCapabilityRegistry:
     def __init__(self) -> None:
-        self.settings = get_settings()
+        self.settings: _CapabilitySettings = get_settings()
         self._lock = asyncio.Lock()
         self._start_lock = asyncio.Lock()
         self._started = False
@@ -920,7 +939,8 @@ class MarketSourceCapabilityRegistry:
     async def refresh_once(self) -> dict[str, object]:
         if not self._started:
             await self.start()
-        assert self._client is not None
+        if self._client is None:
+            raise RuntimeError("Source capability registry HTTP client was not initialized.")
         async with self._lock:
             previous_snapshots = dict(self._snapshots)
         snapshots = await asyncio.gather(
@@ -991,10 +1011,11 @@ class MarketSourceCapabilityRegistry:
             return fallback
         return canonical_symbol.strip().upper() in snapshot.canonical_to_provider
 
-    async def _discover_with_guard(self, discoverer) -> SourceCapabilitySnapshot:
+    async def _discover_with_guard(self, discoverer: _Discoverer) -> SourceCapabilitySnapshot:
         source_name = discoverer.__name__.removeprefix("_discover_")
         try:
-            assert self._client is not None
+            if self._client is None:
+                raise RuntimeError("Source capability registry HTTP client was not initialized.")
             return await discoverer(self._client, self.settings)
         except Exception as exc:  # pragma: no cover - runtime shield
             error_message, context = _classify_discovery_error(exc)

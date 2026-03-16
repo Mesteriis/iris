@@ -8,6 +8,19 @@ if TYPE_CHECKING:
     from src.apps.cross_market.services.cross_market_service import CrossMarketService
 
 
+def _float_value(value: object, *, default: float = 0.0) -> float:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
+
+
 async def detect_market_leader(
     *,
     service: CrossMarketService,
@@ -32,7 +45,7 @@ async def detect_market_leader(
     engine_result = evaluate_market_leader(
         CrossMarketLeaderDetectionInput(
             activity_bucket=str(payload.get("activity_bucket") or context.activity_bucket or ""),
-            price_change_24h=float(payload.get("price_change_24h") or context.price_change_24h or 0.0),
+            price_change_24h=_float_value(payload.get("price_change_24h"), default=float(context.price_change_24h or 0.0)),
             volume_change_24h=float(context.volume_change_24h or 0.0),
             market_regime=str(payload.get("market_regime") or context.market_regime or ""),
         )

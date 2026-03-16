@@ -1,11 +1,11 @@
 from datetime import datetime
-from typing import Any, Generic, Literal, TypeAlias, TypeVar
+from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
 ItemT = TypeVar("ItemT")
-ConsistencyClass: TypeAlias = Literal["strong", "snapshot", "eventual", "derived", "cached"]
-FreshnessClass: TypeAlias = Literal["real_time", "near_real_time", "delayed", "historical", "unknown"]
+type ConsistencyClass = Literal["strong", "snapshot", "eventual", "derived", "cached"]
+type FreshnessClass = Literal["real_time", "near_real_time", "delayed", "historical", "unknown"]
 
 
 class HttpContract(BaseModel):
@@ -38,7 +38,7 @@ class AnalyticalReadContract(HttpContract):
     staleness_ms: int | None = None
 
 
-class PageEnvelope(HttpContract, Generic[ItemT]):
+class PageEnvelope[ItemT](HttpContract):
     items: list[ItemT]
     limit: int
     page: int | None = None
@@ -66,7 +66,7 @@ class AcceptedResponse(HttpContract):
     correlation_id: str | None = None
 
 
-class CreatedResponse(HttpContract, Generic[ItemT]):
+class CreatedResponse[ItemT](HttpContract):
     status: Literal["created"] = "created"
     item: ItemT
 

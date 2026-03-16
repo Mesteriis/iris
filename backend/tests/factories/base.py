@@ -1,5 +1,5 @@
 import random
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 from faker import Faker
 
@@ -12,4 +12,4 @@ fake.seed_instance(SEED)
 
 
 def json_utc(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")

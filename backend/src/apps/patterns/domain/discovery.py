@@ -1,4 +1,4 @@
-from hashlib import sha1
+from hashlib import sha256
 
 DISCOVERY_WINDOW_BARS = 24
 DISCOVERY_STEP = 4
@@ -15,7 +15,7 @@ def _window_signature(closes: list[float]) -> str:
     ]
     volatility_bucket = round((max(closes) - min(closes)) / max(closes[-1], 1e-9), 3)
     signature = "|".join(f"{value:.4f}" for value in compressed[:8]) + f"|{volatility_bucket:.3f}"
-    return sha1(signature.encode("ascii")).hexdigest()
+    return sha256(signature.encode("ascii")).hexdigest()
 
 
 __all__ = ["DISCOVERY_HORIZON", "DISCOVERY_STEP", "DISCOVERY_WINDOW_BARS", "_window_signature"]

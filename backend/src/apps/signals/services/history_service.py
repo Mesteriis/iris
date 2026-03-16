@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.signals.engines import evaluate_signal_history_batch
 from src.apps.signals.engines.contracts import SignalHistoryCandleInput, SignalHistorySignalInput
@@ -174,9 +176,7 @@ def _group_signals(signals: list[Signal]) -> dict[tuple[int, int], list[Signal]]
     return grouped
 
 
-def _evaluation_horizon(timeframe: int):
-    from datetime import timedelta
-
+def _evaluation_horizon(timeframe: int) -> timedelta:
     return timedelta(hours=72, minutes=timeframe)
 
 

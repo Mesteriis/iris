@@ -1,7 +1,14 @@
 import pytest
-
 import src.apps.indicators.domain as indicator_domain
-from src.apps.indicators.domain import adx_series, atr_series, bollinger_bands, ema_series, macd_series, rsi_series, sma_series
+from src.apps.indicators.domain import (
+    adx_series,
+    atr_series,
+    bollinger_bands,
+    ema_series,
+    macd_series,
+    rsi_series,
+    sma_series,
+)
 
 
 def test_indicator_math_moving_averages_and_macd() -> None:

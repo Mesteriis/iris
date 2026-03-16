@@ -1,9 +1,9 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
-
 from src.apps.signals.services import SignalFusionService
 from src.core.db.uow import SessionUnitOfWork
+
 from tests.fusion_support import create_test_coin, insert_signals, replace_pattern_statistics, upsert_coin_metrics
 
 
@@ -20,8 +20,8 @@ async def test_signal_fusion_respects_regime_adjustment(async_db_session, db_ses
     eth_coin = create_test_coin(db_session, symbol="ETHUSD_EVT", name="Ethereum Event Test")
     btc_coin_id = int(btc_coin.id)
     eth_coin_id = int(eth_coin.id)
-    btc_timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=timezone.utc)
-    eth_timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=timezone.utc)
+    btc_timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=UTC)
+    eth_timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=UTC)
 
     upsert_coin_metrics(db_session, coin_id=btc_coin_id, regime="high_volatility")
     upsert_coin_metrics(db_session, coin_id=eth_coin_id, regime="sideways_range")

@@ -1,3 +1,5 @@
+from typing import Any
+
 from src.apps.hypothesis_engine.constants import (
     AI_EVENT_WEIGHTS_UPDATED,
     WEIGHT_DECAY,
@@ -27,7 +29,7 @@ class WeightUpdateService:
             return WeightUpdateResult(updated=False)
         return await self.apply_to_evaluation(evaluation)
 
-    async def apply_to_evaluation(self, evaluation) -> WeightUpdateResult:
+    async def apply_to_evaluation(self, evaluation: Any) -> WeightUpdateResult:
         if evaluation.hypothesis is None:
             return WeightUpdateResult(updated=False)
         hypothesis = evaluation.hypothesis

@@ -1,7 +1,7 @@
 import asyncio
-from contextlib import asynccontextmanager
-from threading import Lock
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
+from threading import Lock
 
 from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import LockError
@@ -41,12 +41,9 @@ async def async_redis_task_lock(
     try:
         yield acquired
     finally:
-        if not acquired:
-            return
-        try:
-            await lock.release()
-        except LockError:
-            pass
+        if acquired:
+            with suppress(LockError):
+                await lock.release()
 
 
 async def close_async_task_lock_client() -> None:

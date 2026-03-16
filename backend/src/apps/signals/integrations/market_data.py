@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from src.apps.market_data.candles import CandlePoint
 from src.apps.market_data.repositories import CandleRepository
 from src.core.db.uow import BaseAsyncUnitOfWork
@@ -12,14 +14,16 @@ class SignalHistoryMarketDataAdapter:
         *,
         coin_id: int,
         timeframe: int,
-        window_start: object,
-        window_end: object,
+        window_start: datetime,
+        window_end: datetime,
     ) -> list[CandlePoint]:
-        return await self._candles.fetch_points_between(
+        return list(
+            await self._candles.fetch_points_between(
             coin_id=coin_id,
             timeframe=timeframe,
             window_start=window_start,
             window_end=window_end,
+        )
         )
 
 

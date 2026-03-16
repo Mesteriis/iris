@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, ClassVar
@@ -12,6 +10,7 @@ from src.apps.market_data.sources.base import (
     MarketBar,
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
+    http_query_params,
 )
 
 if TYPE_CHECKING:
@@ -97,13 +96,13 @@ class YahooMarketSource(BaseMarketSource):
         normalized_interval = normalize_interval(interval)
         raw_interval = YAHOO_INTERVALS[normalized_interval]
         url = f"{self.base_url}/{symbol}"
-        params = {
-            "period1": int(ensure_utc(start).timestamp()),
-            "period2": int((ensure_utc(end) + interval_delta(normalized_interval)).timestamp()),
-            "interval": raw_interval,
-            "includePrePost": "false",
-            "events": "div,splits",
-        }
+        params = http_query_params(
+            period1=int(ensure_utc(start).timestamp()),
+            period2=int((ensure_utc(end) + interval_delta(normalized_interval)).timestamp()),
+            interval=raw_interval,
+            includePrePost="false",
+            events="div,splits",
+        )
 
         try:
             response = await self.request(

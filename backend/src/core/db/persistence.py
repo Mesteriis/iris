@@ -111,9 +111,9 @@ class AsyncQueryService(PersistenceComponent):
 
 
 __all__ = [
+    "PERSISTENCE_LOGGER",
     "AsyncQueryService",
     "AsyncRepository",
-    "PERSISTENCE_LOGGER",
     "PersistenceComponent",
     "freeze_json_value",
     "sanitize_log_value",

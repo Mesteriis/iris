@@ -780,7 +780,7 @@ def upgrade() -> None:
         for row in bind.execute(sa.select(event_consumers_table.c.id, event_consumers_table.c.consumer_key))
     }
 
-    route_rows = [
+    route_rows: list[dict[str, object]] = [
         {
             "route_key": _route_key(str(route["event_type"]), str(route["consumer_key"])),
             "event_definition_id": event_definition_id_by_type[str(route["event_type"])],
@@ -819,7 +819,11 @@ def upgrade() -> None:
             "display_name": str(consumer["display_name"]),
             "domain": str(consumer["domain"]),
             "delivery_stream": str(consumer["delivery_stream"]),
-            "compatible_event_types": list(consumer["compatible_event_types_json"]),
+            "compatible_event_types": (
+                [str(item) for item in consumer["compatible_event_types_json"]]
+                if isinstance(consumer["compatible_event_types_json"], list)
+                else []
+            ),
         }
         for consumer in EVENT_CONSUMERS
     ]

@@ -1,5 +1,8 @@
 from collections import defaultdict
 from collections.abc import Sequence
+from datetime import datetime
+from math import sqrt
+from typing import TypedDict
 
 from src.apps.anomalies.constants import ANOMALY_TYPE_CROSS_EXCHANGE_DISLOCATION
 from src.apps.anomalies.schemas import AnomalyDetectionContext, DetectorFinding, MarketStructurePoint
@@ -29,7 +32,7 @@ def _stddev(values: Sequence[float]) -> float:
         return 0.0
     mean = _average(values)
     variance = sum((value - mean) ** 2 for value in values) / len(values)
-    return variance ** 0.5
+    return sqrt(variance)
 
 
 def _scale(value: float, floor: float, ceiling: float) -> float:
@@ -42,13 +45,20 @@ def _price(point: MarketStructurePoint) -> float | None:
     return point.reference_price if point.reference_price not in (None, 0.0) else None
 
 
-def _aggregate_spreads(venue_snapshots: dict[str, list[MarketStructurePoint]]) -> list[dict[str, object]]:
-    grouped: dict[object, list[MarketStructurePoint]] = defaultdict(list)
+class _SpreadRow(TypedDict):
+    timestamp: datetime
+    spread_pct: float
+    basis_dispersion: float
+    venues: list[str]
+
+
+def _aggregate_spreads(venue_snapshots: dict[str, list[MarketStructurePoint]]) -> list[_SpreadRow]:
+    grouped: dict[datetime, list[MarketStructurePoint]] = defaultdict(list)
     for snapshots in venue_snapshots.values():
         for point in snapshots:
             grouped[point.timestamp].append(point)
 
-    rows: list[dict[str, object]] = []
+    rows: list[_SpreadRow] = []
     for timestamp in sorted(grouped):
         points = grouped[timestamp]
         prices = [(point.venue, _price(point)) for point in points]

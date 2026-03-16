@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from math import floor, sqrt
 
 from src.apps.cross_market.models import SectorMetric
@@ -50,7 +51,7 @@ def _round_confidence(value: float) -> float:
     return _clamp(floor(max(value, 0.0) * 20.0) / 20.0, 0.0, 0.99)
 
 
-def _candle_index_map(candles: list[CandlePoint]) -> dict[object, int]:
+def _candle_index_map(candles: list[CandlePoint]) -> dict[datetime, int]:
     return {candle.timestamp: index for index, candle in enumerate(candles)}
 
 
@@ -119,9 +120,9 @@ def _signal_outcome(
     *,
     signals: list[Signal],
     candles: list[CandlePoint],
-    index_map: dict[object, int],
+    index_map: dict[datetime, int],
     timeframe: int,
-    candle_timestamp: object,
+    candle_timestamp: datetime,
 ) -> tuple[float, float, bool] | None:
     open_timestamp = candle_timestamp - timeframe_delta(timeframe)
     candle_index = index_map.get(open_timestamp)

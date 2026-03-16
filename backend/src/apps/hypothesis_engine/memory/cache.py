@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, cast
 
 from redis.asyncio import Redis as AsyncRedis
 
@@ -9,7 +9,7 @@ from src.core.settings import get_settings
 
 def get_async_ai_cache_client() -> AsyncRedis:
     settings = get_settings()
-    return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+    return cast(AsyncRedis, AsyncRedis.from_url(settings.redis_url, decode_responses=True))
 
 
 def prompt_cache_key(name: str) -> str:

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends
 
@@ -8,7 +8,12 @@ from src.apps.explanations.language import resolve_effective_language
 from src.apps.explanations.query_services import ExplanationQueryService
 from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 from src.core.http.deps import get_operation_store, get_trace_context
-from src.core.http.operation_store import OperationDispatchResult, OperationStore, dispatch_background_operation
+from src.core.http.operation_store import (
+    OperationDispatchResult,
+    OperationStore,
+    TaskiqJob,
+    dispatch_background_operation,
+)
 from src.core.http.tracing import TraceContext
 
 
@@ -26,6 +31,7 @@ class ExplanationJobDispatcher:
         force: bool = False,
     ) -> OperationDispatchResult:
         from src.apps.explanations.tasks import generate_explanation_job
+        job = cast(TaskiqJob, generate_explanation_job)
 
         effective_language = resolve_effective_language({})
         return await dispatch_background_operation(
@@ -33,7 +39,7 @@ class ExplanationJobDispatcher:
             operation_type="explain.generate",
             trace_context=self.trace_context,
             deduplication_key=f"kind:{explain_kind.value}:subject:{int(subject_id)}",
-            dispatch=lambda operation_id: generate_explanation_job.kiq(
+            dispatch=lambda operation_id: job.kiq(
                 explain_kind=explain_kind.value,
                 subject_id=int(subject_id),
                 requested_provider=requested_provider,

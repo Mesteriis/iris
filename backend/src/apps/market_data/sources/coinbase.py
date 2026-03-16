@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING, ClassVar
 
@@ -11,6 +9,7 @@ from src.apps.market_data.sources.base import (
     MarketBar,
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
+    http_query_params,
 )
 
 if TYPE_CHECKING:
@@ -54,11 +53,11 @@ class CoinbaseMarketSource(BaseMarketSource):
             raise UnsupportedMarketSourceQuery(f"{self.name} does not support {interval}.")
 
         url = f"{self.base_url}/{symbol}/candles"
-        params = {
-            "granularity": granularity,
-            "start": ensure_utc(start).isoformat().replace("+00:00", "Z"),
-            "end": ensure_utc(end).isoformat().replace("+00:00", "Z"),
-        }
+        params = http_query_params(
+            granularity=granularity,
+            start=ensure_utc(start).isoformat().replace("+00:00", "Z"),
+            end=ensure_utc(end).isoformat().replace("+00:00", "Z"),
+        )
 
         try:
             response = await self.request(url, params=params)

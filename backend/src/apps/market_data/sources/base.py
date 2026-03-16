@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from datetime import datetime
 from time import perf_counter
@@ -10,6 +8,8 @@ import httpx
 from src.apps.market_data.domain import ensure_utc, interval_delta, normalize_interval
 from src.apps.market_data.sources.proxy_registry import get_free_proxy_registry
 from src.apps.market_data.sources.rate_limits import (
+    HttpQueryParams,
+    HttpQueryValue,
     get_rate_limit_manager,
     get_rate_limit_policy,
     rate_limited_get,
@@ -48,6 +48,10 @@ class MarketBar:
     close: float
     volume: float | None
     source: str
+
+
+def http_query_params(**params: HttpQueryValue) -> dict[str, HttpQueryValue]:
+    return params
 
 
 class BaseMarketSource:
@@ -148,7 +152,7 @@ class BaseMarketSource:
         self,
         url: str,
         *,
-        params: dict[str, object] | None = None,
+        params: HttpQueryParams | None = None,
         headers: dict[str, str] | None = None,
         rate_limit_statuses: set[int] | None = None,
         fallback_retry_after_seconds: int | None = None,
@@ -240,7 +244,7 @@ class BaseMarketSource:
         self,
         url: str,
         *,
-        params: dict[str, object] | None,
+        params: HttpQueryParams | None,
         headers: dict[str, str],
         rate_limit_statuses: set[int] | None,
         fallback_retry_after_seconds: int | None,
@@ -262,7 +266,7 @@ class BaseMarketSource:
         proxy_url: str,
         url: str,
         *,
-        params: dict[str, object] | None,
+        params: HttpQueryParams | None,
         headers: dict[str, str],
         rate_limit_statuses: set[int] | None,
         fallback_retry_after_seconds: int | None,

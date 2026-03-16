@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import HTTPException, status
 
 from src.core.errors import ResourceNotFoundError, ValidationFailedError
@@ -22,7 +24,7 @@ _ERROR_DESCRIPTIONS: dict[int, str] = {
 }
 
 
-def pattern_error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
+def pattern_error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
     return {
         int(status_code): {
             "model": ApiError,
@@ -32,17 +34,53 @@ def pattern_error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
     }
 
 
-def pattern_coin_not_found_error(*, locale: str) -> HTTPException:
-    return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="coin", locale=locale))
+def pattern_coin_not_found_error(*, locale: str, symbol: str | None = None) -> HTTPException:
+    if symbol is None:
+        return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="coin", locale=locale))
+    return _pattern_not_found_http_error(
+        message=f"Coin '{symbol.strip().upper()}' was not found.",
+        resource="coin",
+        locale=locale,
+    )
+
+
+def _pattern_not_found_http_error(*, message: str, resource: str, locale: str) -> HTTPException:
+    platform_error = ResourceNotFoundError(resource=resource, locale=locale)
+    payload = ApiErrorFactory.build_from_platform_error(platform_error, locale=locale).model_copy(
+        update={"message": message}
+    )
+    return HTTPException(
+        status_code=platform_error.http_status,
+        detail=payload.model_dump(mode="json"),
+    )
+
+
+def _pattern_validation_http_error(*, message: str, locale: str) -> HTTPException:
+    platform_error = ValidationFailedError(locale=locale)
+    payload = ApiErrorFactory.build_from_platform_error(platform_error, locale=locale).model_copy(
+        update={"message": message}
+    )
+    return HTTPException(
+        status_code=platform_error.http_status,
+        detail=payload.model_dump(mode="json"),
+    )
 
 
 def pattern_error_to_http(exc: Exception, *, locale: str) -> HTTPException | None:
     if isinstance(exc, PatternFeatureNotFoundError):
-        return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="pattern feature", locale=locale))
+        return _pattern_not_found_http_error(
+            message=str(exc),
+            resource="pattern feature",
+            locale=locale,
+        )
     if isinstance(exc, PatternNotFoundError):
-        return ApiErrorFactory.from_platform_error(ResourceNotFoundError(resource="pattern", locale=locale))
+        return _pattern_not_found_http_error(
+            message=str(exc),
+            resource="pattern",
+            locale=locale,
+        )
     if isinstance(exc, ValueError):
-        return ApiErrorFactory.from_platform_error(ValidationFailedError(locale=locale))
+        return _pattern_validation_http_error(message=str(exc), locale=locale)
     return None
 
 

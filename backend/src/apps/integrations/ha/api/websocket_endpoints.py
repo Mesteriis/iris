@@ -5,6 +5,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, WebSocketExceptio
 from pydantic import ValidationError
 
 from src.apps.integrations.ha.api.deps import HABridgeServiceDep, HAWebSocketHubDep, StartedHABridgeRuntimeDep
+from src.apps.integrations.ha.bridge.websocket_hub import HASubscriptionState
 from src.apps.integrations.ha.errors import HACommandDispatchError
 from src.apps.integrations.ha.schemas import (
     HACommandExecuteMessage,
@@ -43,39 +44,44 @@ async def websocket_bridge(
             payload = await websocket.receive_json()
             message_type = str(payload.get("type") or "")
             if message_type == "subscribe":
-                message = HASubscribeMessage.model_validate(payload)
-                preview = _merge_subscription(session.subscription, message)
+                subscribe_message = HASubscribeMessage.model_validate(payload)
+                preview = _merge_subscription(session.subscription, subscribe_message)
                 await hub.send_initial_sync(websocket, preview)
-                session = await hub.update_subscription(session.session_id, message, primed=True)
+                session = await hub.update_subscription(session.session_id, subscribe_message, primed=True)
                 continue
             if message_type == "unsubscribe":
-                message = HAUnsubscribeMessage.model_validate(payload)
+                unsubscribe_message = HAUnsubscribeMessage.model_validate(payload)
                 session = await hub.remove_subscription(
                     session.session_id,
                     HASubscribeMessage(
                         type="subscribe",
-                        entities=message.entities,
-                        collections=message.collections,
-                        operations=message.operations,
-                        catalog=message.catalog,
-                        dashboard=message.dashboard,
+                        entities=unsubscribe_message.entities,
+                        collections=unsubscribe_message.collections,
+                        operations=unsubscribe_message.operations,
+                        catalog=unsubscribe_message.catalog,
+                        dashboard=unsubscribe_message.dashboard,
                     )
                 )
                 continue
             if message_type == "ping":
-                message = HAPingMessage.model_validate(payload)
-                await websocket.send_json({"type": "pong", "timestamp": message.timestamp})
+                ping_message = HAPingMessage.model_validate(payload)
+                await websocket.send_json({"type": "pong", "timestamp": ping_message.timestamp})
                 continue
             if message_type == "command_execute":
-                message = HACommandExecuteMessage.model_validate(payload)
+                command_message = HACommandExecuteMessage.model_validate(payload)
                 try:
-                    dispatch = await service.execute_command(command=message.command, payload=message.payload)
+                    dispatch = await service.execute_command(
+                        command=command_message.command,
+                        payload=command_message.payload,
+                    )
                 except HACommandDispatchError as exc:
-                    await websocket.send_json(service.command_dispatch_error_ack(request_id=message.request_id, error=exc))
+                    await websocket.send_json(
+                        service.command_dispatch_error_ack(request_id=command_message.request_id, error=exc)
+                    )
                     continue
                 await websocket.send_json(
                     service.command_accepted_ack(
-                        request_id=message.request_id,
+                        request_id=command_message.request_id,
                         operation_id=dispatch.operation_id,
                     )
                 )
@@ -117,7 +123,7 @@ async def _forward_session_messages(websocket: WebSocket, hub: HAWebSocketHubDep
             return
 
 
-def _merge_subscription(current, payload: HASubscribeMessage):
+def _merge_subscription(current: HASubscriptionState, payload: HASubscribeMessage) -> HASubscriptionState:
     merged = type(current)(
         entities=set(current.entities),
         collections=set(current.collections),

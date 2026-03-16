@@ -9,6 +9,7 @@ from src.apps.patterns.api.errors import (
     pattern_error_to_http,
 )
 from src.apps.patterns.api.presenters import pattern_feature_read, pattern_read
+from src.apps.patterns.read_models import PatternFeatureReadModel, PatternReadModel
 from src.core.http.command_executor import execute_command
 from src.core.http.deps import RequestLocaleDep
 
@@ -25,9 +26,9 @@ async def patch_pattern_feature(
     feature_slug: str,
     payload: PatternFeatureUpdate,
     commands: PatternAdminDep,
-    request_locale: RequestLocaleDep,
+    request_locale: RequestLocaleDep = "en",
 ) -> PatternFeatureRead:
-    async def action() -> PatternFeatureRead:
+    async def action() -> PatternFeatureReadModel:
         row = await commands.service.update_pattern_feature(feature_slug, enabled=payload.enabled)
         if row is None:
             raise PatternFeatureNotFoundError(feature_slug)
@@ -51,9 +52,9 @@ async def patch_pattern(
     slug: str,
     payload: PatternUpdate,
     commands: PatternAdminDep,
-    request_locale: RequestLocaleDep,
+    request_locale: RequestLocaleDep = "en",
 ) -> PatternRead:
-    async def action() -> PatternRead:
+    async def action() -> PatternReadModel:
         row = await commands.service.update_pattern(
             slug,
             enabled=payload.enabled,

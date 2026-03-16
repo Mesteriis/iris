@@ -12,14 +12,14 @@ class AIPayloadValidationError(ValueError):
         self.status = status
 
 
-class PydanticOutputValidator:
+class PydanticOutputValidator[ModelT: BaseModel]:
     def __init__(
         self,
         *,
         contract_name: str,
         schema_contract: dict[str, Any] | str,
-        model: type[BaseModel],
-        semantic_validator: Callable[[BaseModel, str | None, str], None] | None = None,
+        model: type[ModelT],
+        semantic_validator: Callable[[ModelT, str | None, str], None] | None = None,
     ) -> None:
         self.contract_name = contract_name
         self.schema_contract = schema_contract

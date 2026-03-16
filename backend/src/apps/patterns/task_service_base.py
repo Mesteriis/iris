@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
@@ -28,15 +28,29 @@ _BULK_UPSERT_BATCH_SIZE = 2000
 def _float_or_zero(value: object | None) -> float:
     if value is None:
         return 0.0
-    return float(value)
+    if isinstance(value, int | float | str):
+        return float(value)
+    return float(cast(Any, value))
+
+
+def _int_value(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int | str):
+        return int(value)
+    return int(cast(Any, value))
+
+
+def _rowcount(result: object) -> int:
+    return int(cast(Any, result).rowcount or 0)
 
 
 def _dedupe_signal_upsert_rows(rows: Sequence[dict[str, object]]) -> list[dict[str, object]]:
     deduped: dict[tuple[int, int, object, str], dict[str, object]] = {}
     for row in rows:
         key = (
-            int(row["coin_id"]),
-            int(row["timeframe"]),
+            _int_value(row["coin_id"]),
+            _int_value(row["timeframe"]),
             row["candle_timestamp"],
             str(row["signal_type"]),
         )
@@ -244,7 +258,7 @@ class PatternTaskBase(PersistenceComponent):
                 },
             )
             result = await self.session.execute(stmt)
-            created += int(result.rowcount or 0)
+            created += _rowcount(result)
         await self._uow.flush()
         return created
 
@@ -334,12 +348,12 @@ class PatternTaskBase(PersistenceComponent):
                     },
                 )
                 result = await self.session.execute(stmt)
-                created += int(result.rowcount or 0)
+                created += _rowcount(result)
         await self._uow.flush()
         return created
 
     async def _load_enabled_strategies(self) -> list[Strategy]:
-        return (
+        return list(
             (
                 await self.session.execute(
                     select(Strategy)

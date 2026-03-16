@@ -12,6 +12,7 @@ from src.apps.market_structure.api.errors import (
     market_structure_ingest_result_to_http,
 )
 from src.apps.market_structure.api.presenters import market_structure_ingest_result_read
+from src.apps.market_structure.services.results import MarketStructureIngestResult
 from src.core.http.command_executor import execute_command
 from src.core.http.deps import RequestLocaleDep
 
@@ -32,7 +33,7 @@ async def ingest_market_structure_snapshots(
     commands: MarketStructureCommandDep,
     request_locale: RequestLocaleDep,
 ) -> MarketStructureIngestResultRead:
-    async def action():
+    async def action() -> MarketStructureIngestResult:
         result = await commands.service.ingest_manual_snapshots(
             source_id=source_id,
             payload=payload,
@@ -65,7 +66,7 @@ async def ingest_market_structure_native_webhook_payload(
     commands: MarketStructureCommandDep,
     request_locale: RequestLocaleDep,
 ) -> MarketStructureIngestResultRead:
-    async def action():
+    async def action() -> MarketStructureIngestResult:
         result = await commands.service.ingest_native_webhook_payload(
             source_id=source_id,
             payload=dict(payload.root),

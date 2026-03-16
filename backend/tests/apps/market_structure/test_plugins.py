@@ -1,7 +1,6 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
-
 from src.apps.market_structure.exceptions import InvalidMarketStructureSourceConfigurationError
 from src.apps.market_structure.models import MarketStructureSource
 from src.apps.market_structure.plugins import (
@@ -135,7 +134,7 @@ async def test_binance_and_bybit_plugins_parse_market_snapshots(monkeypatch) -> 
     ).snapshots[0]
 
     assert binance_snapshot.venue == "binance_usdm"
-    assert binance_snapshot.timestamp > datetime(2025, 1, 1, tzinfo=timezone.utc)
+    assert binance_snapshot.timestamp > datetime(2025, 1, 1, tzinfo=UTC)
     assert binance_snapshot.funding_rate == pytest.approx(0.00095)
     assert binance_snapshot.open_interest == pytest.approx(18234.1)
     assert binance_snapshot.basis is not None and binance_snapshot.basis > 0

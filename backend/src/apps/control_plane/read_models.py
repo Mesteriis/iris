@@ -273,7 +273,7 @@ class AIPromptOperatorReadModel:
     updated_at: datetime | None
 
 
-def event_definition_read_model_from_orm(row) -> EventDefinitionReadModel:
+def event_definition_read_model_from_orm(row: Any) -> EventDefinitionReadModel:
     return EventDefinitionReadModel(
         id=int(row.id),
         event_type=str(row.event_type),
@@ -286,7 +286,7 @@ def event_definition_read_model_from_orm(row) -> EventDefinitionReadModel:
     )
 
 
-def event_consumer_read_model_from_orm(row) -> EventConsumerReadModel:
+def event_consumer_read_model_from_orm(row: Any) -> EventConsumerReadModel:
     return EventConsumerReadModel(
         id=int(row.id),
         consumer_key=str(row.consumer_key),
@@ -304,7 +304,7 @@ def event_consumer_read_model_from_orm(row) -> EventConsumerReadModel:
     )
 
 
-def route_read_model_from_orm(route) -> EventRouteReadModel:
+def route_read_model_from_orm(route: Any) -> EventRouteReadModel:
     return EventRouteReadModel(
         id=int(route.id),
         route_key=str(route.route_key),
@@ -325,7 +325,7 @@ def route_read_model_from_orm(route) -> EventRouteReadModel:
     )
 
 
-def topology_draft_read_model_from_orm(draft) -> TopologyDraftReadModel:
+def topology_draft_read_model_from_orm(draft: Any) -> TopologyDraftReadModel:
     return TopologyDraftReadModel(
         id=int(draft.id),
         name=str(draft.name),
@@ -342,7 +342,7 @@ def topology_draft_read_model_from_orm(draft) -> TopologyDraftReadModel:
     )
 
 
-def topology_draft_change_read_model_from_orm(change) -> TopologyDraftChangeReadModel:
+def topology_draft_change_read_model_from_orm(change: Any) -> TopologyDraftChangeReadModel:
     return TopologyDraftChangeReadModel(
         id=int(change.id),
         draft_id=int(change.draft_id),
@@ -354,7 +354,7 @@ def topology_draft_change_read_model_from_orm(change) -> TopologyDraftChangeRead
     )
 
 
-def event_route_audit_log_read_model_from_orm(row) -> EventRouteAuditLogReadModel:
+def event_route_audit_log_read_model_from_orm(row: Any) -> EventRouteAuditLogReadModel:
     return EventRouteAuditLogReadModel(
         id=int(row.id),
         route_key_snapshot=str(row.route_key_snapshot),

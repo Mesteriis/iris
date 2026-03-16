@@ -2,12 +2,11 @@ from datetime import datetime
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
-
 from src.apps.indicators.models import CoinMetrics
-from src.apps.patterns.models import PatternRegistry
-from src.apps.patterns.models import PatternStatistic
-from src.apps.signals.models import Signal
 from src.apps.market_data.schemas import CoinCreate
+from src.apps.patterns.models import PatternRegistry, PatternStatistic
+from src.apps.signals.models import Signal
+
 from tests.factories.market_data import persist_coin
 
 
@@ -109,7 +108,7 @@ def replace_pattern_statistics(
         registry_row.enabled = True
         registry_row.lifecycle_state = "ACTIVE"
     for slug, market_regime, success_rate, total_signals in rows:
-        successful_signals = int(round(success_rate * total_signals))
+        successful_signals = round(success_rate * total_signals)
         db.add(
             PatternStatistic(
                 pattern_slug=slug,

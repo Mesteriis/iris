@@ -1,5 +1,7 @@
 from collections import defaultdict
 from collections.abc import Sequence
+from datetime import datetime
+from math import sqrt
 
 from src.apps.anomalies.constants import ANOMALY_TYPE_FUNDING_OPEN_INTEREST_ANOMALY
 from src.apps.anomalies.schemas import AnomalyDetectionContext, DetectorFinding, MarketStructurePoint
@@ -18,7 +20,7 @@ def _stddev(values: Sequence[float]) -> float:
         return 0.0
     mean = _average(values)
     variance = sum((value - mean) ** 2 for value in values) / len(values)
-    return variance ** 0.5
+    return sqrt(variance)
 
 
 def _scale(value: float, floor: float, ceiling: float) -> float:
@@ -28,7 +30,7 @@ def _scale(value: float, floor: float, ceiling: float) -> float:
 
 
 def _aggregate_series(venue_snapshots: dict[str, list[MarketStructurePoint]]) -> list[dict[str, float]]:
-    grouped: dict[object, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    grouped: dict[datetime, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for snapshots in venue_snapshots.values():
         for point in snapshots:
             if point.funding_rate is not None:
@@ -95,10 +97,10 @@ class FundingOpenInterestDetector:
         basis_component = _scale(basis_z, 1.0, 4.0)
         move_component = _scale(oi_adjusted_move, 0.01, 0.08)
         derivatives_component = (
-            (funding_component * 0.32)
-            + (oi_component * 0.33)
-            + (basis_component * 0.20)
-            + (move_component * 0.15)
+            (funding_component * 0.38)
+            + (oi_component * 0.30)
+            + (basis_component * 0.12)
+            + (move_component * 0.20)
         )
         if max(funding_component, oi_component, basis_component) < 0.35 or derivatives_component < 0.45:
             return None

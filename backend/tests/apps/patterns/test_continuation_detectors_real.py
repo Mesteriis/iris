@@ -18,6 +18,7 @@ from src.apps.patterns.domain.detectors.continuation import (
     VolatilityContractionBreakDetector,
     build_continuation_detectors,
 )
+
 from tests.factories.market_data import build_candle_points
 
 

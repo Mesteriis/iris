@@ -1,12 +1,13 @@
-from datetime import datetime, timezone
 import importlib.util
+from datetime import UTC, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
 from src.apps.system.api.deps import SystemStatusFacade
 from src.apps.system.api.router import build_router as build_system_router
-from tests.apps.conftest import AliveProcess, SourceStatusRead
 from src.core.http.launch_modes import DeploymentProfile, LaunchMode
+
+from tests.apps.conftest import AliveProcess, SourceStatusRead
 
 
 @pytest.mark.asyncio
@@ -98,7 +99,7 @@ async def test_source_status_rows_uses_carousel_and_rate_limits(monkeypatch) -> 
     async def fake_snapshot(_name: str):
         return SimpleNamespace(
             cooldown_seconds=2.49,
-            next_available_at=datetime(2026, 3, 12, 9, 30, tzinfo=timezone.utc),
+            next_available_at=datetime(2026, 3, 12, 9, 30, tzinfo=UTC),
             policy=SimpleNamespace(
                 official_limit=True,
                 requests_per_window=120,
@@ -133,7 +134,7 @@ async def test_source_status_rows_uses_carousel_and_rate_limits(monkeypatch) -> 
             official_limit=True,
             rate_limited=True,
             cooldown_seconds=2.5,
-            next_available_at=datetime(2026, 3, 12, 9, 30, tzinfo=timezone.utc),
+            next_available_at=datetime(2026, 3, 12, 9, 30, tzinfo=UTC),
             requests_per_window=120,
             window_seconds=60,
             min_interval_seconds=0.25,

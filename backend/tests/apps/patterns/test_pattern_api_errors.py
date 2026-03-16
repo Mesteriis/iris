@@ -13,5 +13,5 @@ def test_pattern_api_errors_are_localized_from_registry() -> None:
 
     assert pattern_error is not None
     assert pattern_error.detail["message_key"] == "error.resource.not_found"
-    assert pattern_error.detail["message"] == "The requested pattern was not found."
+    assert pattern_error.detail["message"] == "Pattern 'breakout' was not found."
     assert pattern_error.detail["message_params"] == {"resource": "pattern"}

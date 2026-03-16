@@ -74,7 +74,11 @@ class FrontendReadFacade:
             status=await self.system.get_status(worker_processes=worker_processes),
         )
 
-    async def get_dashboard_snapshot(self, *, worker_processes: list[object]) -> FrontendDashboardSnapshotPayload:
+    async def get_dashboard_snapshot(
+        self,
+        *,
+        worker_processes: list[object],
+    ) -> FrontendDashboardSnapshotPayload:
         return FrontendDashboardSnapshotPayload(
             coins=await self.market_data.list_coins(),
             metrics=await self.indicators.list_coin_metrics(),

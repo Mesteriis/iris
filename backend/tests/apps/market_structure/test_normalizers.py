@@ -1,7 +1,6 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
-
 from src.apps.market_structure.exceptions import InvalidMarketStructureWebhookPayloadError
 from src.apps.market_structure.normalizers import create_market_structure_webhook_normalizer
 
@@ -11,7 +10,7 @@ def test_liqscope_webhook_normalizer_maps_native_payload() -> None:
 
     result = normalizer.normalize_payload(
         {
-            "timestamp": datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc).isoformat(),
+            "timestamp": datetime(2026, 3, 12, 12, 0, tzinfo=UTC).isoformat(),
             "price": 3150.0,
             "open_interest": 21000.0,
             "liquidations": {"long": 3300.0, "short": 120.0},
@@ -32,7 +31,7 @@ def test_liquidation_webhook_normalizer_maps_nested_metrics() -> None:
 
     result = normalizer.normalize_payload(
         {
-            "event_time": datetime(2026, 3, 12, 12, 1, tzinfo=timezone.utc).isoformat(),
+            "event_time": datetime(2026, 3, 12, 12, 1, tzinfo=UTC).isoformat(),
             "metrics": {
                 "last_price": 3151.0,
                 "open_interest": 20800.0,
@@ -54,7 +53,7 @@ def test_derivatives_webhook_normalizer_maps_derivatives_fields() -> None:
 
     result = normalizer.normalize_payload(
         {
-            "timestamp": datetime(2026, 3, 12, 12, 2, tzinfo=timezone.utc).isoformat(),
+            "timestamp": datetime(2026, 3, 12, 12, 2, tzinfo=UTC).isoformat(),
             "mark_price": 3152.0,
             "index_price": 3148.0,
             "funding_rate": 0.0008,
@@ -80,7 +79,7 @@ def test_coinglass_webhook_normalizer_maps_collector_payload() -> None:
         {
             "data": [
                 {
-                    "time": datetime(2026, 3, 12, 12, 4, tzinfo=timezone.utc).isoformat(),
+                    "time": datetime(2026, 3, 12, 12, 4, tzinfo=UTC).isoformat(),
                     "price": 3154.0,
                     "oi": 20700.0,
                     "funding": 0.0007,
@@ -107,7 +106,7 @@ def test_hyblock_webhook_normalizer_maps_event_payload() -> None:
         {
             "events": [
                 {
-                    "ts": datetime(2026, 3, 12, 12, 5, tzinfo=timezone.utc).isoformat(),
+                    "ts": datetime(2026, 3, 12, 12, 5, tzinfo=UTC).isoformat(),
                     "market": {
                         "last_price": 3155.0,
                         "mark_price": 3155.4,
@@ -132,7 +131,7 @@ def test_coinalyze_webhook_normalizer_maps_derivatives_snapshot() -> None:
 
     result = normalizer.normalize_payload(
         {
-            "updateTime": datetime(2026, 3, 12, 12, 6, tzinfo=timezone.utc).isoformat(),
+            "updateTime": datetime(2026, 3, 12, 12, 6, tzinfo=UTC).isoformat(),
             "price": {"last": 3156.0, "mark": 3156.2, "index": 3152.1},
             "openInterest": 20620.0,
             "fundingRate": 0.00074,

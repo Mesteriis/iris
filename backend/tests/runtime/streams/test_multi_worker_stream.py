@@ -1,11 +1,11 @@
 import multiprocessing
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from redis import Redis
-
 from src.core.settings import get_settings
 from src.runtime.streams.publisher import flush_publisher, publish_event
+
 from tests.worker_helpers import crashing_worker_loop, recording_worker_loop
 
 
@@ -69,7 +69,7 @@ async def test_multi_worker_ack_and_retry(redis_client: Redis, wait_until):
     try:
         await wait_until(lambda: worker_a.is_alive() and worker_b.is_alive(), timeout=5.0, interval=0.1)
 
-        base_timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=timezone.utc)
+        base_timestamp = datetime(2026, 3, 11, 13, 45, tzinfo=UTC)
         for offset in range(1, 19):
             publish_event(
                 "candle_closed",

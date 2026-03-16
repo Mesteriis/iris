@@ -3,7 +3,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.models import Coin
-from src.apps.portfolio.models import ExchangeAccount, PortfolioAction, PortfolioBalance, PortfolioPosition, PortfolioState
+from src.apps.portfolio.models import (
+    ExchangeAccount,
+    PortfolioAction,
+    PortfolioBalance,
+    PortfolioPosition,
+    PortfolioState,
+)
 from src.apps.signals.models import MarketDecision
 from src.core.db.persistence import AsyncRepository
 

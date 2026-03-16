@@ -52,6 +52,7 @@ def _points_from_closes(closes: list[float]) -> list[CandlePoint]:
 async def test_cross_market_helper_math_and_alignment_branches(async_db_session, db_session, monkeypatch) -> None:
     assert pearson([1.0, 1.0, 1.0], [2.0, 2.0, 2.0]) == 0.0
     assert pearson([1.0, 2.0], [1.0, 2.0, 3.0]) == 0.0
+    assert pearson([0.01] * 80, [-0.01] * 80) == -1.0
 
     leader_returns = [0.009 if index % 5 else -0.002 for index in range(80)]
     leader_closes = generate_close_series(start_price=100.0, returns=leader_returns)
@@ -64,6 +65,10 @@ async def test_cross_market_helper_math_and_alignment_branches(async_db_session,
     assert correlation > 0.4
     assert lag_hours >= 1
     assert sample_size >= 48
+
+    monotonic_up = _points_from_closes(generate_close_series(start_price=100.0, returns=[0.01] * 80))
+    monotonic_down = _points_from_closes(generate_close_series(start_price=60.0, returns=[-0.01] * 80))
+    assert best_lagged_correlation(monotonic_up, monotonic_down, timeframe=60)[0] == 0.0
 
     follower = create_cross_market_coin(
         db_session,

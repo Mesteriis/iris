@@ -46,10 +46,15 @@ class MarketStructureWebhookPayloadNormalizer(ABC):
                 return [item for item in value if isinstance(item, dict)]
         return [payload]
 
+    def _mapping_section(self, value: object) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            return {}
+        return {str(key): item for key, item in value.items()}
+
     def _merge_item_sections(self, item: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-        metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
-        market = item.get("market") if isinstance(item.get("market"), dict) else {}
-        liquidations = item.get("liquidations") if isinstance(item.get("liquidations"), dict) else {}
+        metrics = self._mapping_section(item.get("metrics"))
+        market = self._mapping_section(item.get("market"))
+        liquidations = self._mapping_section(item.get("liquidations"))
         return metrics, market, liquidations
 
     def _first_present(self, mappings: tuple[dict[str, Any], ...], *keys: str) -> Any:
@@ -259,8 +264,8 @@ class CoinalyzeWebhookNormalizer(MarketStructureWebhookPayloadNormalizer):
 
     def _build_snapshot(self, item: dict[str, Any]) -> MarketStructureSnapshotCreate:
         metrics, market, liquidations = self._merge_item_sections(item)
-        price = item.get("price") if isinstance(item.get("price"), dict) else {}
-        liquidation = item.get("liquidation") if isinstance(item.get("liquidation"), dict) else {}
+        price = self._mapping_section(item.get("price"))
+        liquidation = self._mapping_section(item.get("liquidation"))
         timestamp = self._first_present((item, metrics), "updateTime", "timestamp", "ts", "event_time")
         values = {
             "last_price": self._first_present((price, market, metrics, item), "last", "last_price", "price"),

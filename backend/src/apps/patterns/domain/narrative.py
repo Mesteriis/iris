@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
-from src.apps.market_data.models import Coin
 from src.apps.indicators.models import CoinMetrics
+from src.apps.market_data.models import Coin
 
 ROTATION_STATES = [
     "btc_dominance_rising",

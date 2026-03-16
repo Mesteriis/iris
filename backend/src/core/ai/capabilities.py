@@ -1,5 +1,5 @@
 from src.core.ai.contracts import AICapability, AICapabilityPolicy, AIContextFormat
-from src.core.ai.provider_registry import build_provider_registry
+from src.core.ai.provider_registry import AIProviderRegistry, build_provider_registry
 from src.core.ai.settings import build_capability_overrides
 from src.core.http.launch_modes import DeploymentProfile, LaunchMode, resolve_deployment_profile, resolve_launch_mode
 from src.core.settings import Settings, get_settings
@@ -80,7 +80,8 @@ def ai_capability_is_available(capability: AICapability, settings: Settings | No
     policy = get_capability_policy(capability, settings=effective_settings)
     if not policy.enabled:
         return False
-    return build_provider_registry(effective_settings).has_real_provider_for(capability)
+    registry: AIProviderRegistry = build_provider_registry(effective_settings)
+    return registry.has_real_provider_for(capability)
 
 
 def ai_operator_surfaces_enabled(profile: DeploymentProfile) -> bool:
@@ -134,8 +135,8 @@ __all__ = [
     "brief_generation_runtime_enabled",
     "current_deployment_profile",
     "current_launch_mode",
-    "get_capability_policy",
     "explain_generation_runtime_enabled",
+    "get_capability_policy",
     "hypothesis_evaluation_surfaces_enabled",
     "hypothesis_generation_runtime_enabled",
     "hypothesis_stream_surfaces_enabled",

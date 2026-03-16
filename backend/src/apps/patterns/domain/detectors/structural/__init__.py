@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 
+from src.apps.market_data.candles import CandlePoint
 from src.apps.patterns.domain.base import PatternDetection, PatternDetector
 from src.apps.patterns.domain.utils import (
     average,
@@ -14,7 +15,6 @@ from src.apps.patterns.domain.utils import (
     window_range,
     within_tolerance,
 )
-from src.apps.market_data.candles import CandlePoint
 
 
 class _StructuralDetector(PatternDetector):

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from src.apps.anomalies.constants import (
@@ -23,7 +23,7 @@ def _policy_engine() -> AnomalyPolicyEngine:
 
 
 def test_policy_engine_requires_confirmation_before_create() -> None:
-    now = datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
 
     decision = _policy_engine().evaluate(
         anomaly_type=ANOMALY_TYPE_CORRELATION_BREAKDOWN,
@@ -40,7 +40,7 @@ def test_policy_engine_requires_confirmation_before_create() -> None:
 
 
 def test_policy_engine_transitions_from_active_to_cooling_and_resolved() -> None:
-    now = datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
     engine = _policy_engine()
 
     cooling = engine.evaluate(
@@ -69,7 +69,7 @@ def test_policy_engine_transitions_from_active_to_cooling_and_resolved() -> None
 
 
 def test_policy_engine_respects_cooldown_and_recreates_after_expiry() -> None:
-    now = datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
     engine = _policy_engine()
 
     refresh = engine.evaluate(

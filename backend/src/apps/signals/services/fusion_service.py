@@ -251,11 +251,13 @@ class SignalFusionService(PersistenceComponent):
         timeframe: int,
         directional_bias: float,
     ) -> float:
-        return await cross_market_alignment_weight(
+        return float(
+            await cross_market_alignment_weight(
             signals=self._signals,
             coin_id=coin_id,
             timeframe=timeframe,
             directional_bias=directional_bias,
+        )
         )
 
 

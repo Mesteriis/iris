@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING, ClassVar
 
@@ -11,6 +9,7 @@ from src.apps.market_data.sources.base import (
     MarketBar,
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
+    http_query_params,
 )
 
 if TYPE_CHECKING:
@@ -55,12 +54,12 @@ class KucoinMarketSource(BaseMarketSource):
 
         normalized_interval = normalize_interval(interval)
         kucoin_interval = KUCOIN_INTERVALS[normalized_interval]
-        params = {
-            "symbol": symbol,
-            "type": kucoin_interval,
-            "startAt": int(ensure_utc(start).timestamp()),
-            "endAt": int(ensure_utc(end).timestamp()),
-        }
+        params = http_query_params(
+            symbol=symbol,
+            type=kucoin_interval,
+            startAt=int(ensure_utc(start).timestamp()),
+            endAt=int(ensure_utc(end).timestamp()),
+        )
 
         try:
             response = await self.request(self.base_url, params=params)

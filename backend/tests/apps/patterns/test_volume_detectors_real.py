@@ -15,6 +15,7 @@ from src.apps.patterns.domain.detectors.volume import (
     VolumeTrendConfirmationDetector,
     build_volume_detectors,
 )
+
 from tests.factories.market_data import build_candle_points
 
 

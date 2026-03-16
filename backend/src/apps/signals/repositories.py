@@ -87,9 +87,9 @@ class SignalHistoryRepository(AsyncRepository):
                 "evaluated_at": stmt.excluded.evaluated_at,
             },
         )
-        result = await self.session.execute(stmt)
+        await self.session.execute(stmt)
         await self.session.flush()
-        count = int(result.rowcount or 0)
+        count = len(rows)
         self._log_debug("repo.upsert_signal_history_rows.result", mode="write", count=count, bulk=True)
         return count
 

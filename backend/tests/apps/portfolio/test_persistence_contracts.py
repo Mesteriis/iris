@@ -2,14 +2,14 @@ import importlib.util
 from dataclasses import FrozenInstanceError
 
 import pytest
-from sqlalchemy import select
-
 import src.apps.portfolio.services as portfolio_services_module
+from sqlalchemy import select
 from src.apps.portfolio.models import PortfolioAction, PortfolioBalance, PortfolioPosition, PortfolioState
 from src.apps.portfolio.query_services import PortfolioQueryService
 from src.apps.portfolio.services import PortfolioService
 from src.core.db.persistence import PERSISTENCE_LOGGER
 from src.core.db.uow import SessionUnitOfWork
+
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_exchange_account, create_market_decision
 

@@ -1,8 +1,37 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
+from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AIPrompt
 from src.core.db.persistence import freeze_json_value
+
+
+@runtime_checkable
+class _SupportsInt(Protocol):
+    def __int__(self) -> int: ...
+
+
+@runtime_checkable
+class _SupportsFloat(Protocol):
+    def __float__(self) -> float: ...
+
+
+def _required_int(value: object, *, field_name: str) -> int:
+    if isinstance(value, bool | int | str | bytes | bytearray):
+        return int(value)
+    if isinstance(value, _SupportsInt):
+        return int(value)
+    raise TypeError(f"{field_name} must be int-compatible, got {type(value).__name__}")
+
+
+def _required_float(value: object, *, field_name: str) -> float:
+    if isinstance(value, bool | int | float | str | bytes | bytearray):
+        return float(value)
+    if isinstance(value, _SupportsFloat):
+        return float(value)
+    if isinstance(value, _SupportsInt):
+        return float(int(value))
+    raise TypeError(f"{field_name} must be float-compatible, got {type(value).__name__}")
 
 
 @dataclass(slots=True, frozen=True)
@@ -63,12 +92,12 @@ class CandleReadModel:
     close: float
 
 
-def prompt_read_model_from_orm(prompt) -> PromptReadModel:
+def prompt_read_model_from_orm(prompt: AIPrompt) -> PromptReadModel:
     return PromptReadModel(
-        id=int(prompt.id),
+        id=_required_int(prompt.id, field_name="id"),
         name=str(prompt.name),
         task=str(prompt.task),
-        version=int(prompt.version),
+        version=_required_int(prompt.version, field_name="version"),
         veil_lifted=bool(prompt.veil_lifted),
         is_active=bool(prompt.is_active),
         template=str(prompt.template),
@@ -77,22 +106,22 @@ def prompt_read_model_from_orm(prompt) -> PromptReadModel:
     )
 
 
-def hypothesis_read_model_from_orm(hypothesis) -> HypothesisReadModel:
+def hypothesis_read_model_from_orm(hypothesis: AIHypothesis) -> HypothesisReadModel:
     return HypothesisReadModel(
-        id=int(hypothesis.id),
-        coin_id=int(hypothesis.coin_id),
-        timeframe=int(hypothesis.timeframe),
+        id=_required_int(hypothesis.id, field_name="id"),
+        coin_id=_required_int(hypothesis.coin_id, field_name="coin_id"),
+        timeframe=_required_int(hypothesis.timeframe, field_name="timeframe"),
         status=str(hypothesis.status),
         hypothesis_type=str(hypothesis.hypothesis_type),
         statement_json=freeze_json_value(dict(hypothesis.statement_json or {})),
-        confidence=float(hypothesis.confidence),
-        horizon_min=int(hypothesis.horizon_min),
+        confidence=_required_float(hypothesis.confidence, field_name="confidence"),
+        horizon_min=_required_int(hypothesis.horizon_min, field_name="horizon_min"),
         eval_due_at=hypothesis.eval_due_at,
         context_json=freeze_json_value(dict(hypothesis.context_json or {})),
         provider=str(hypothesis.provider),
         model=str(hypothesis.model),
         prompt_name=str(hypothesis.prompt_name),
-        prompt_version=int(hypothesis.prompt_version),
+        prompt_version=_required_int(hypothesis.prompt_version, field_name="prompt_version"),
         source_event_type=str(hypothesis.source_event_type),
         source_stream_id=str(hypothesis.source_stream_id) if hypothesis.source_stream_id is not None else None,
         created_at=hypothesis.created_at,
@@ -100,12 +129,12 @@ def hypothesis_read_model_from_orm(hypothesis) -> HypothesisReadModel:
     )
 
 
-def hypothesis_eval_read_model_from_orm(evaluation) -> HypothesisEvalReadModel:
+def hypothesis_eval_read_model_from_orm(evaluation: AIHypothesisEval) -> HypothesisEvalReadModel:
     return HypothesisEvalReadModel(
-        id=int(evaluation.id),
-        hypothesis_id=int(evaluation.hypothesis_id),
+        id=_required_int(evaluation.id, field_name="id"),
+        hypothesis_id=_required_int(evaluation.hypothesis_id, field_name="hypothesis_id"),
         success=bool(evaluation.success),
-        score=float(evaluation.score),
+        score=_required_float(evaluation.score, field_name="score"),
         details_json=freeze_json_value(dict(evaluation.details_json or {})),
         evaluated_at=evaluation.evaluated_at,
     )

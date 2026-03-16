@@ -3,13 +3,14 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
+from typing import cast
 from weakref import WeakKeyDictionary
 
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 
-from src.core.settings import get_settings
 from src.apps.market_data.domain import ensure_utc
+from src.core.settings import get_settings
 
 PREDICTION_CACHE_PREFIX = "iris:prediction"
 PREDICTION_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
@@ -34,30 +35,30 @@ class PredictionCacheEntry:
     status: str
 
 
+class _AsyncPredictionCacheClientFactory:
+    def __call__(self) -> AsyncRedis:
+        settings = get_settings()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return cast(AsyncRedis, AsyncRedis.from_url(settings.redis_url, decode_responses=True))
+        client = _ASYNC_PREDICTION_CACHE_CLIENTS.get(loop)
+        if client is None:
+            client = cast(AsyncRedis, AsyncRedis.from_url(settings.redis_url, decode_responses=True))
+            _ASYNC_PREDICTION_CACHE_CLIENTS[loop] = client
+        return client
+
+    def cache_clear(self) -> None:
+        _ASYNC_PREDICTION_CACHE_CLIENTS.clear()
+
+
 @lru_cache(maxsize=1)
 def get_prediction_cache_client() -> Redis:
     settings = get_settings()
     return Redis.from_url(settings.redis_url, decode_responses=True)
 
 
-def get_async_prediction_cache_client() -> AsyncRedis:
-    settings = get_settings()
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
-    client = _ASYNC_PREDICTION_CACHE_CLIENTS.get(loop)
-    if client is None:
-        client = AsyncRedis.from_url(settings.redis_url, decode_responses=True)
-        _ASYNC_PREDICTION_CACHE_CLIENTS[loop] = client
-    return client
-
-
-def _clear_async_prediction_cache_clients() -> None:
-    _ASYNC_PREDICTION_CACHE_CLIENTS.clear()
-
-
-setattr(get_async_prediction_cache_client, "cache_clear", _clear_async_prediction_cache_clients)
+get_async_prediction_cache_client = _AsyncPredictionCacheClientFactory()
 
 
 def prediction_cache_key(prediction_id: int) -> str:
@@ -200,13 +201,13 @@ async def cache_prediction_snapshot_async(
 
 def read_cached_prediction(prediction_id: int) -> PredictionCacheEntry | None:
     raw = get_prediction_cache_client().get(prediction_cache_key(prediction_id))
-    if raw is None:
+    if not isinstance(raw, str):
         return None
     return _parse_prediction_payload(raw, fallback_prediction_id=prediction_id)
 
 
 async def read_cached_prediction_async(prediction_id: int) -> PredictionCacheEntry | None:
     raw = await get_async_prediction_cache_client().get(prediction_cache_key(prediction_id))
-    if raw is None:
+    if not isinstance(raw, str):
         return None
     return _parse_prediction_payload(raw, fallback_prediction_id=prediction_id)

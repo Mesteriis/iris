@@ -1,9 +1,9 @@
 from collections.abc import Sequence
 
+from src.apps.indicators.domain import macd_series, rsi_series
+from src.apps.market_data.candles import CandlePoint
 from src.apps.patterns.domain.base import PatternDetection, PatternDetector
 from src.apps.patterns.domain.utils import clamp, closes, find_pivots, pct_change, signal_timestamp, volume_ratio
-from src.apps.market_data.candles import CandlePoint
-from src.apps.indicators.domain import macd_series, rsi_series
 
 
 class _MomentumDetector(PatternDetector):
@@ -126,11 +126,12 @@ class MomentumExhaustionDetector(_MomentumDetector):
         current_rsi = rsi_values[-1]
         previous_hist = histogram[-4:-1]
         current_hist = histogram[-1]
-        if current_rsi is None or current_hist is None or any(item is None for item in previous_hist):
+        previous_hist_values = [item for item in previous_hist if item is not None]
+        if current_rsi is None or current_hist is None or len(previous_hist_values) != len(previous_hist):
             return []
-        if current_rsi > 75 and current_hist < max(float(item) for item in previous_hist):
+        if current_rsi > 75 and current_hist < max(previous_hist_values):
             return self._emit(candles, 0.7 + max(volume_ratio(candles[-20:]) - 1, 0) * 0.04)
-        if current_rsi < 25 and current_hist > min(float(item) for item in previous_hist):
+        if current_rsi < 25 and current_hist > min(previous_hist_values):
             return self._emit(candles, 0.7 + max(volume_ratio(candles[-20:]) - 1, 0) * 0.04)
         return []
 
@@ -222,10 +223,11 @@ class MacdHistogramImpulseDetector(_MomentumDetector):
             return []
         _, _, histogram = macd_series(prices)
         recent = histogram[-5:]
-        if len(recent) < 5 or any(item is None for item in recent):
+        recent_values = [item for item in recent if item is not None]
+        if len(recent_values) != 5:
             return []
-        current = float(recent[-1])
-        previous = [float(item) for item in recent[:-1]]
+        current = recent_values[-1]
+        previous = recent_values[:-1]
         if self.direction == "bull":
             if not (current > 0 and current > max(previous)):
                 return []

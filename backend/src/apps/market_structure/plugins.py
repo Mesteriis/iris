@@ -1,7 +1,7 @@
 import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -131,19 +131,44 @@ def create_market_structure_plugin(source: MarketStructureSource) -> MarketStruc
 def _float_or_none(value: object) -> float | None:
     if value in (None, "", "None"):
         return None
-    try:
+    if isinstance(value, bool):
         return float(value)
-    except (TypeError, ValueError):
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _timestamp_millis_value(value: object) -> float | None:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _computed_basis(mark_price: float | None, index_price: float | None) -> float | None:
+    if mark_price is None or index_price is None or index_price == 0.0:
         return None
+    return (mark_price - index_price) / index_price
 
 
 def _timestamp_from_millis(value: object) -> datetime:
     if value in (None, ""):
         return utc_now()
-    try:
-        return ensure_utc(datetime.fromtimestamp(float(value) / 1000.0, tz=timezone.utc))
-    except (TypeError, ValueError):
+    millis = _timestamp_millis_value(value)
+    if millis is None:
         return utc_now()
+    return ensure_utc(datetime.fromtimestamp(millis / 1000.0, tz=UTC))
 
 
 class BinanceUsdMarketStructurePlugin(MarketStructureSourcePlugin):
@@ -183,11 +208,7 @@ class BinanceUsdMarketStructurePlugin(MarketStructureSourcePlugin):
         )
         mark_price = _float_or_none(premium_payload.get("markPrice"))
         index_price = _float_or_none(premium_payload.get("indexPrice"))
-        basis = (
-            ((mark_price - index_price) / index_price)
-            if mark_price is not None and index_price not in (None, 0.0)
-            else None
-        )
+        basis = _computed_basis(mark_price, index_price)
         snapshot = FetchedMarketStructureSnapshot(
             venue=venue,
             timestamp=timestamp,
@@ -245,8 +266,8 @@ class BybitDerivativesMarketStructurePlugin(MarketStructureSourcePlugin):
         mark_price = _float_or_none(row.get("markPrice"))
         index_price = _float_or_none(row.get("indexPrice"))
         basis = _float_or_none(row.get("basis"))
-        if basis is None and mark_price is not None and index_price not in (None, 0.0):
-            basis = (mark_price - index_price) / index_price
+        if basis is None:
+            basis = _computed_basis(mark_price, index_price)
         snapshot = FetchedMarketStructureSnapshot(
             venue=venue,
             timestamp=timestamp,

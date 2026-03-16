@@ -11,8 +11,8 @@ from src.core.db.uow import AsyncUnitOfWork, BaseAsyncUnitOfWork, SessionUnitOfW
 __all__ = [
     "AsyncSessionLocal",
     "AsyncUnitOfWork",
-    "BaseAsyncUnitOfWork",
     "Base",
+    "BaseAsyncUnitOfWork",
     "SessionUnitOfWork",
     "async_engine",
     "async_session_scope",

@@ -1,5 +1,8 @@
 import json
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, cast
 
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -34,10 +37,10 @@ from src.core.settings import get_settings
 
 def _stream_client() -> Redis:
     settings = get_settings()
-    return Redis.from_url(settings.redis_url, decode_responses=True)
+    return cast(Redis, Redis.from_url(settings.redis_url, decode_responses=True))
 
 
-def _metric_projection():
+def _metric_projection() -> tuple[Any, ...]:
     return (
         Coin.id.label("coin_id"),
         Coin.symbol,
@@ -52,6 +55,20 @@ def _metric_projection():
         CoinMetrics.updated_at,
         CoinMetrics.last_analysis_at,
     )
+
+
+def _row_mapping(row: Any) -> Mapping[str, object]:
+    return cast(Mapping[str, object], row._mapping)
+
+
+@dataclass(slots=True, frozen=True)
+class _MarketLeaderCoinData:
+    symbol: str
+    name: str
+    sector: str | None
+    regime: str | None
+    price_change_24h: float | None
+    volume_change_24h: float | None
 
 
 class IndicatorQueryService(AsyncQueryService):
@@ -104,7 +121,7 @@ class IndicatorQueryService(AsyncQueryService):
                 .order_by(Coin.sort_order.asc(), Coin.symbol.asc())
             )
         ).all()
-        items = tuple(coin_metrics_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(coin_metrics_read_model_from_mapping(_row_mapping(row)) for row in rows)
         self._log_debug("query.list_indicator_coin_metrics.result", mode="read", count=len(items))
         return items
 
@@ -158,7 +175,7 @@ class IndicatorQueryService(AsyncQueryService):
         if not rows:
             self._log_debug("query.get_indicator_coin_metrics.result", mode="read", symbol=normalized_symbol, found=False)
             return None
-        item = coin_metrics_read_model_from_mapping(rows[0]._mapping)
+        item = coin_metrics_read_model_from_mapping(_row_mapping(rows[0]))
         self._log_debug("query.get_indicator_coin_metrics.result", mode="read", symbol=normalized_symbol, found=True)
         return item
 
@@ -198,7 +215,7 @@ class IndicatorQueryService(AsyncQueryService):
         if timeframe is not None:
             stmt = stmt.where(Signal.timeframe == timeframe)
         rows = (await self.session.execute(stmt)).all()
-        items = tuple(signal_summary_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(signal_summary_read_model_from_mapping(_row_mapping(row)) for row in rows)
         self._log_debug("query.list_indicator_signals.result", mode="read", count=len(items))
         return items
 
@@ -306,26 +323,26 @@ class IndicatorQueryService(AsyncQueryService):
             )
         ).all()
         coin_map = {
-            int(row.id): {
-                "symbol": str(row.symbol),
-                "name": str(row.name),
-                "sector": str(row.sector_code) if row.sector_code is not None else None,
-                "regime": str(row.market_regime) if row.market_regime is not None else None,
-                "price_change_24h": float(row.price_change_24h) if row.price_change_24h is not None else None,
-                "volume_change_24h": float(row.volume_change_24h) if row.volume_change_24h is not None else None,
-            }
+            int(row.id): _MarketLeaderCoinData(
+                symbol=str(row.symbol),
+                name=str(row.name),
+                sector=str(row.sector_code) if row.sector_code is not None else None,
+                regime=str(row.market_regime) if row.market_regime is not None else None,
+                price_change_24h=float(row.price_change_24h) if row.price_change_24h is not None else None,
+                volume_change_24h=float(row.volume_change_24h) if row.volume_change_24h is not None else None,
+            )
             for row in rows
         }
         items = tuple(
             MarketLeaderReadModel(
                 leader_coin_id=coin_id,
-                symbol=coin_map[coin_id]["symbol"],
-                name=coin_map[coin_id]["name"],
-                sector=coin_map[coin_id]["sector"],
-                regime=coin_map[coin_id]["regime"],
+                symbol=coin_map[coin_id].symbol,
+                name=coin_map[coin_id].name,
+                sector=coin_map[coin_id].sector,
+                regime=coin_map[coin_id].regime,
                 confidence=confidence,
-                price_change_24h=coin_map[coin_id]["price_change_24h"],
-                volume_change_24h=coin_map[coin_id]["volume_change_24h"],
+                price_change_24h=coin_map[coin_id].price_change_24h,
+                volume_change_24h=coin_map[coin_id].volume_change_24h,
                 timestamp=timestamp,
             )
             for coin_id, confidence, timestamp in leaders
@@ -417,10 +434,14 @@ class IndicatorQueryService(AsyncQueryService):
             )
         ).all()
         item = MarketRadarReadModel(
-            hot_coins=tuple(market_radar_coin_read_model_from_mapping(row._mapping) for row in hot_rows),
-            emerging_coins=tuple(market_radar_coin_read_model_from_mapping(row._mapping) for row in emerging_rows),
+            hot_coins=tuple(market_radar_coin_read_model_from_mapping(_row_mapping(row)) for row in hot_rows),
+            emerging_coins=tuple(
+                market_radar_coin_read_model_from_mapping(_row_mapping(row)) for row in emerging_rows
+            ),
             regime_changes=await self.list_recent_regime_changes(limit=max(limit, 1)),
-            volatility_spikes=tuple(market_radar_coin_read_model_from_mapping(row._mapping) for row in volatility_rows),
+            volatility_spikes=tuple(
+                market_radar_coin_read_model_from_mapping(_row_mapping(row)) for row in volatility_rows
+            ),
         )
         self._log_debug(
             "query.get_indicator_market_radar.result",
@@ -483,8 +504,8 @@ class IndicatorQueryService(AsyncQueryService):
         ).all()
         item = MarketFlowReadModel(
             leaders=await self.list_recent_market_leaders(limit=max(limit, 1)),
-            relations=tuple(coin_relation_read_model_from_mapping(row._mapping) for row in relation_rows),
-            sectors=tuple(sector_momentum_read_model_from_mapping(row._mapping) for row in sector_rows),
+            relations=tuple(coin_relation_read_model_from_mapping(_row_mapping(row)) for row in relation_rows),
+            sectors=tuple(sector_momentum_read_model_from_mapping(_row_mapping(row)) for row in sector_rows),
             rotations=await self.list_recent_sector_rotations(limit=max(limit, 1)),
         )
         self._log_debug(

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -124,4 +126,4 @@ class AIWeight(Base):
     )
 
 
-__all__ = ["AIPrompt", "AIHypothesis", "AIHypothesisEval", "AIWeight"]
+__all__ = ["AIHypothesis", "AIHypothesisEval", "AIPrompt", "AIWeight"]

@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.orm import aliased
 
@@ -5,7 +7,7 @@ from src.apps.market_data.models import Coin
 from src.apps.predictions.models import MarketPrediction, PredictionResult
 
 
-def prediction_select():
+def prediction_select() -> Any:
     leader_coin = aliased(Coin)
     target_coin = aliased(Coin)
     return (

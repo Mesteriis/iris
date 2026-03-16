@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
+from typing import Protocol
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.models import CoinMetrics
@@ -19,13 +21,61 @@ from src.apps.patterns.domain.context import (
     _regime_alignment as context_regime_alignment,
 )
 from src.apps.patterns.domain.semantics import is_cluster_signal, is_pattern_signal, pattern_bias, slug_from_signal_type
+from src.apps.patterns.domain.success import PatternSuccessSnapshot
 from src.apps.patterns.models import MarketCycle
 from src.apps.signals.models import Signal
+from src.core.db.uow import BaseAsyncUnitOfWork
+
+
+def _int_value(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        return int(value)
+    return 0
+
+
+class _PatternContextSupport(Protocol):
+    @property
+    def session(self) -> AsyncSession: ...
+
+    _uow: BaseAsyncUnitOfWork
+
+    async def _enrich_signal_context(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        candle_timestamp: object | None = None,
+    ) -> dict[str, object]: ...
+
+    async def _signal_regime(self, *, metrics: CoinMetrics | None, timeframe: int) -> str | None: ...
+
+    async def _pattern_success_cache(
+        self,
+        *,
+        timeframe: int,
+        slugs: set[str],
+        regimes: set[str] | None = None,
+    ) -> dict[tuple[str, str], PatternSuccessSnapshot]: ...
+
+    async def _pattern_success_snapshot(
+        self,
+        *,
+        slug: str,
+        timeframe: int,
+        market_regime: str | None,
+        snapshot_cache: dict[tuple[str, str], PatternSuccessSnapshot] | None = None,
+    ) -> PatternSuccessSnapshot | None: ...
 
 
 class PatternContextMixin:
     async def _enrich_signal_context(
-        self,
+        self: _PatternContextSupport,
         *,
         coin_id: int,
         timeframe: int,
@@ -118,7 +168,7 @@ class PatternContextMixin:
         return {"status": "ok", "coin_id": coin_id, "timeframe": timeframe, "signals": len(signals)}
 
     async def _refresh_recent_signal_contexts(
-        self,
+        self: _PatternContextSupport,
         *,
         lookback_days: int = 30,
     ) -> dict[str, object]:
@@ -138,7 +188,7 @@ class PatternContextMixin:
                 timeframe=int(row.timeframe),
                 candle_timestamp=row.candle_timestamp,
             )
-            updated += int(result.get("signals", 0))
+            updated += _int_value(result.get("signals", 0))
         return {"status": "ok", "signals": updated, "groups": len(rows)}
 
 

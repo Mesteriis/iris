@@ -27,7 +27,8 @@ async def run_signal_explanation_job(
     if not await service.signal_exists(int(signal_id)):
         raise signal_not_found_error(locale=request_locale)
     bundle = await service.build_signal_context(int(signal_id))
-    assert bundle is not None
+    if bundle is None:
+        raise signal_not_found_error(locale=request_locale)
     dispatch_result = await dispatcher.dispatch_generation(
         explain_kind=ExplainKind.SIGNAL,
         subject_id=int(signal_id),
@@ -62,7 +63,8 @@ async def run_decision_explanation_job(
     if not await service.decision_exists(int(decision_id)):
         raise decision_not_found_error(locale=request_locale)
     bundle = await service.build_decision_context(int(decision_id))
-    assert bundle is not None
+    if bundle is None:
+        raise decision_not_found_error(locale=request_locale)
     dispatch_result = await dispatcher.dispatch_generation(
         explain_kind=ExplainKind.DECISION,
         subject_id=int(decision_id),

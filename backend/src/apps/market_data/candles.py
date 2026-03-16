@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from src.apps.market_data.domain import ensure_utc, normalize_interval
 
@@ -47,7 +47,7 @@ def align_timeframe_timestamp(value: datetime, timeframe: int) -> datetime:
     current = ensure_utc(value)
     seconds = int(timeframe_delta(timeframe).total_seconds())
     aligned = int(current.timestamp()) // seconds * seconds
-    return datetime.fromtimestamp(aligned, tz=timezone.utc)
+    return datetime.fromtimestamp(aligned, tz=UTC)
 
 
 def candle_close_timestamp(value: datetime, timeframe: int) -> datetime:
@@ -57,9 +57,9 @@ def candle_close_timestamp(value: datetime, timeframe: int) -> datetime:
 __all__ = [
     "AGGREGATE_VIEW_BY_TIMEFRAME",
     "BASE_TIMEFRAME_MINUTES",
-    "CandlePoint",
     "INTERVAL_TO_TIMEFRAME",
     "TIMEFRAME_INTERVALS",
+    "CandlePoint",
     "align_timeframe_timestamp",
     "candle_close_timestamp",
     "interval_to_timeframe",

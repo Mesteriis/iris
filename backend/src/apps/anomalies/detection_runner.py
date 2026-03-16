@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 
 from src.apps.anomalies.constants import (
     ANOMALY_EVENT_TYPE,
@@ -9,12 +9,17 @@ from src.apps.anomalies.constants import (
 )
 from src.apps.anomalies.contracts import AnomalyDetectionContext, AnomalyDraft, DetectorFinding
 from src.apps.anomalies.engines import build_anomaly_payload
+from src.apps.anomalies.models import MarketAnomaly
 from src.apps.anomalies.policies import AnomalyPolicyEngine
 from src.apps.anomalies.repos import AnomalyRepo
 from src.apps.anomalies.results import AnomalyDetectionBatchResult
 from src.apps.anomalies.scoring import AnomalyScorer
 from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.publisher import publish_event
+
+
+class _AnomalyDetector(Protocol):
+    def detect(self, context: AnomalyDetectionContext) -> DetectorFinding | None: ...
 
 
 class AnomalyDetectionRunner:
@@ -35,11 +40,11 @@ class AnomalyDetectionRunner:
         self,
         context: AnomalyDetectionContext,
         *,
-        detectors: tuple[object, ...],
+        detectors: tuple[_AnomalyDetector, ...],
         source_pipeline: str,
         extra_payload: dict[str, Any] | None = None,
     ) -> AnomalyDetectionBatchResult:
-        created_anomalies: list[tuple[object, AnomalyDraft]] = []
+        created_anomalies: list[tuple[MarketAnomaly, AnomalyDraft]] = []
         for detector in detectors:
             finding = detector.detect(context)
             if finding is None:
@@ -155,9 +160,11 @@ class AnomalyDetectionRunner:
 
     def _schedule_publication(self, *, anomaly_id: int, draft: AnomalyDraft) -> dict[str, Any]:
         payload = draft.to_event_payload(anomaly_id)
-        self._uow.add_after_commit_action(
-            lambda payload=dict(payload): publish_event(ANOMALY_EVENT_TYPE, payload)
-        )
+
+        def _publish_anomaly_event() -> None:
+            publish_event(ANOMALY_EVENT_TYPE, dict(payload))
+
+        self._uow.add_after_commit_action(_publish_anomaly_event)
         return payload
 
 

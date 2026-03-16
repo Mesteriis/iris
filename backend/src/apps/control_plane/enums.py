@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import Enum, StrEnum
 
 
-class EventRouteStatus(str, Enum):
+class EventRouteStatus(StrEnum):
     ACTIVE = "active"
     MUTED = "muted"
     PAUSED = "paused"
@@ -10,7 +10,7 @@ class EventRouteStatus(str, Enum):
     DISABLED = "disabled"
 
 
-class EventRouteScope(str, Enum):
+class EventRouteScope(StrEnum):
     GLOBAL = "global"
     DOMAIN = "domain"
     SYMBOL = "symbol"
@@ -19,29 +19,29 @@ class EventRouteScope(str, Enum):
     ENVIRONMENT = "environment"
 
 
-class TopologyDraftStatus(str, Enum):
+class TopologyDraftStatus(StrEnum):
     DRAFT = "draft"
     APPLIED = "applied"
     DISCARDED = "discarded"
 
 
-class TopologyVersionStatus(str, Enum):
+class TopologyVersionStatus(StrEnum):
     PUBLISHED = "published"
 
 
-class TopologyAccessMode(str, Enum):
+class TopologyAccessMode(StrEnum):
     OBSERVE = "observe"
     CONTROL = "control"
 
 
-class TopologyDraftChangeType(str, Enum):
+class TopologyDraftChangeType(StrEnum):
     ROUTE_CREATED = "route_created"
     ROUTE_UPDATED = "route_updated"
     ROUTE_DELETED = "route_deleted"
     ROUTE_STATUS_CHANGED = "route_status_changed"
 
 
-class EventAuditAction(str, Enum):
+class EventAuditAction(StrEnum):
     BOOTSTRAPPED = "bootstrapped"
     CREATED = "created"
     UPDATED = "updated"

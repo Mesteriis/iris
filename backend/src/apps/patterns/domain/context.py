@@ -1,9 +1,9 @@
-from src.apps.indicators.models import CoinMetrics
-from src.apps.patterns.models import MarketCycle
 from src.apps.cross_market.models import SectorMetric
+from src.apps.indicators.models import CoinMetrics
 from src.apps.market_data.domain import ensure_utc
 from src.apps.patterns.cache import read_cached_regime
 from src.apps.patterns.domain.regime import read_regime_details
+from src.apps.patterns.models import MarketCycle
 
 
 def calculate_priority_score(

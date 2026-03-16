@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException, Response
-
 from src.apps.signals.api.backtest_endpoints import read_coin_backtests
 from src.apps.signals.api.decision_endpoints import read_coin_decision
 from src.apps.signals.api.final_signal_endpoints import read_coin_final_signal
@@ -11,6 +10,7 @@ from src.apps.signals.api.market_decision_endpoints import read_coin_market_deci
 from src.apps.signals.api.router import build_router as build_signals_router
 from src.apps.signals.query_services import SignalQueryService
 from src.core.http.launch_modes import DeploymentProfile, LaunchMode
+
 from tests.factories.base import json_utc
 
 
@@ -256,7 +256,7 @@ async def test_signal_and_strategy_endpoints(api_app_client, seeded_api_state) -
 async def test_signal_view_branches(monkeypatch) -> None:
     async def missing_payload(self, *_args, **_kwargs):
         del self
-        return None
+        return
 
     service = SignalQueryService(object())
 

@@ -1,9 +1,10 @@
-from datetime import datetime, timezone
+from __future__ import annotations
+
+from datetime import UTC, datetime, timezone
 
 import httpx
 import pytest
 from redis.exceptions import RedisError, WatchError
-
 from src.apps.market_data.sources import rate_limits
 from src.apps.market_data.sources.base import RateLimitedMarketSourceError
 
@@ -147,7 +148,7 @@ async def test_rate_limit_policy_and_retry_after_parsing() -> None:
 async def test_rate_limit_manager_cooldown_snapshot_and_singleton(monkeypatch) -> None:
     redis = FakeRedis()
     manager = rate_limits.RedisRateLimitManager()
-    fixed_now = datetime(2026, 3, 12, 9, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 3, 12, 9, 0, tzinfo=UTC)
 
     monkeypatch.setattr(rate_limits, "get_async_lock_redis", lambda: __import__("asyncio").sleep(0, result=redis))
     monkeypatch.setattr(rate_limits, "utc_now", lambda: fixed_now)
@@ -291,7 +292,7 @@ async def test_rate_limit_manager_reserve_quota_paths(monkeypatch) -> None:
 @pytest.mark.asyncio
 async def test_rate_limit_manager_reserve_interval_paths(monkeypatch) -> None:
     manager = rate_limits.RedisRateLimitManager()
-    fixed_now = datetime(2026, 3, 12, 9, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 3, 12, 9, 0, tzinfo=UTC)
     monkeypatch.setattr(rate_limits, "utc_now", lambda: fixed_now)
 
     redis = FakeRedis()

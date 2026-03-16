@@ -3,13 +3,14 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
+from typing import cast
 from weakref import WeakKeyDictionary
 
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 
-from src.core.settings import get_settings
 from src.apps.market_data.domain import ensure_utc
+from src.core.settings import get_settings
 
 DECISION_CACHE_PREFIX = "iris:decision"
 DECISION_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7
@@ -30,30 +31,30 @@ class DecisionCacheEntry:
     created_at: datetime | None
 
 
+class _AsyncDecisionCacheClientFactory:
+    def __call__(self) -> AsyncRedis:
+        settings = get_settings()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return cast(AsyncRedis, AsyncRedis.from_url(settings.redis_url, decode_responses=True))
+        client = _ASYNC_DECISION_CACHE_CLIENTS.get(loop)
+        if client is None:
+            client = cast(AsyncRedis, AsyncRedis.from_url(settings.redis_url, decode_responses=True))
+            _ASYNC_DECISION_CACHE_CLIENTS[loop] = client
+        return client
+
+    def cache_clear(self) -> None:
+        _ASYNC_DECISION_CACHE_CLIENTS.clear()
+
+
 @lru_cache(maxsize=1)
 def get_decision_cache_client() -> Redis:
     settings = get_settings()
     return Redis.from_url(settings.redis_url, decode_responses=True)
 
 
-def get_async_decision_cache_client() -> AsyncRedis:
-    settings = get_settings()
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
-    client = _ASYNC_DECISION_CACHE_CLIENTS.get(loop)
-    if client is None:
-        client = AsyncRedis.from_url(settings.redis_url, decode_responses=True)
-        _ASYNC_DECISION_CACHE_CLIENTS[loop] = client
-    return client
-
-
-def _clear_async_decision_cache_clients() -> None:
-    _ASYNC_DECISION_CACHE_CLIENTS.clear()
-
-
-setattr(get_async_decision_cache_client, "cache_clear", _clear_async_decision_cache_clients)
+get_async_decision_cache_client = _AsyncDecisionCacheClientFactory()
 
 
 def decision_cache_key(coin_id: int, timeframe: int) -> str:
@@ -177,13 +178,13 @@ async def cache_market_decision_snapshot_async(
 
 def read_cached_market_decision(*, coin_id: int, timeframe: int) -> DecisionCacheEntry | None:
     raw = get_decision_cache_client().get(decision_cache_key(coin_id, timeframe))
-    if raw is None:
+    if not isinstance(raw, str):
         return None
     return _parse_decision_payload(raw, fallback_coin_id=coin_id, fallback_timeframe=timeframe)
 
 
 async def read_cached_market_decision_async(*, coin_id: int, timeframe: int) -> DecisionCacheEntry | None:
     raw = await get_async_decision_cache_client().get(decision_cache_key(coin_id, timeframe))
-    if raw is None:
+    if not isinstance(raw, str):
         return None
     return _parse_decision_payload(raw, fallback_coin_id=coin_id, fallback_timeframe=timeframe)

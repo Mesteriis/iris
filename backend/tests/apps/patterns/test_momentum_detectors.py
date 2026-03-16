@@ -1,7 +1,6 @@
-from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
-
 import importlib
+from datetime import UTC, datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from src.apps.market_data.candles import CandlePoint
 
@@ -9,7 +8,7 @@ momentum = importlib.import_module("src.apps.patterns.domain.detectors.momentum"
 
 
 def _candles(count: int, *, start_price: float = 100.0) -> list[CandlePoint]:
-    base = datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc)
+    base = datetime(2026, 3, 12, 12, 0, tzinfo=UTC)
     candles: list[CandlePoint] = []
     price = start_price
     for index in range(count):

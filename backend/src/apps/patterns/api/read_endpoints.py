@@ -67,11 +67,11 @@ async def read_coin_patterns(
 async def read_coin_regime(
     symbol: str,
     service: PatternQueryDep,
-    request_locale: RequestLocaleDep,
+    request_locale: RequestLocaleDep = "en",
 ) -> CoinRegimeRead:
     payload = await service.get_coin_regime_read_by_symbol(symbol)
     if payload is None:
-        raise pattern_coin_not_found_error(locale=request_locale)
+        raise pattern_coin_not_found_error(locale=request_locale, symbol=symbol)
     return coin_regime_read(payload)
 
 

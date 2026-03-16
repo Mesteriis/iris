@@ -35,8 +35,9 @@ class MarketStructurePoint:
     def basis_value(self) -> float | None:
         if self.basis is not None:
             return self.basis
-        if self.mark_price is not None and self.index_price not in (None, 0.0):
-            return (self.mark_price - self.index_price) / self.index_price
+        index_price = self.index_price
+        if self.mark_price is not None and index_price is not None and index_price != 0.0:
+            return (self.mark_price - index_price) / index_price
         return None
 
     @property

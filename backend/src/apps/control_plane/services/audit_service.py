@@ -1,5 +1,5 @@
 from src.apps.control_plane.contracts import AuditActor
-from src.apps.control_plane.models import EventRouteAuditLog
+from src.apps.control_plane.models import EventRoute, EventRouteAuditLog
 from src.apps.control_plane.read_models import (
     EventRouteAuditLogReadModel,
     event_route_audit_log_read_model_from_orm,
@@ -14,7 +14,7 @@ class AuditLogService:
     async def log_route_change(
         self,
         *,
-        route,
+        route: EventRoute | None,
         route_key: str,
         action: str,
         actor: AuditActor,

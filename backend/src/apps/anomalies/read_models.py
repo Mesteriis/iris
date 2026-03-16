@@ -1,8 +1,38 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
+from src.apps.anomalies.models import MarketAnomaly
 from src.core.db.persistence import freeze_json_value, thaw_json_value
+
+
+@runtime_checkable
+class _SupportsInt(Protocol):
+    def __int__(self) -> int: ...
+
+
+@runtime_checkable
+class _SupportsFloat(Protocol):
+    def __float__(self) -> float: ...
+
+
+def _required_int(value: object, *, field_name: str) -> int:
+    if isinstance(value, bool | int | str | bytes | bytearray):
+        return int(value)
+    if isinstance(value, _SupportsInt):
+        return int(value)
+    raise TypeError(f"{field_name} must be int-compatible, got {type(value).__name__}")
+
+
+def _required_float(value: object, *, field_name: str) -> float:
+    if isinstance(value, bool | int | float | str | bytes | bytearray):
+        return float(value)
+    if isinstance(value, _SupportsFloat):
+        return float(value)
+    if isinstance(value, _SupportsInt):
+        return float(int(value))
+    raise TypeError(f"{field_name} must be float-compatible, got {type(value).__name__}")
 
 
 @dataclass(slots=True, frozen=True)
@@ -30,16 +60,16 @@ class AnomalyReadModel:
     updated_at: datetime
 
 
-def anomaly_read_model_from_orm(anomaly) -> AnomalyReadModel:
+def anomaly_read_model_from_orm(anomaly: MarketAnomaly) -> AnomalyReadModel:
     return AnomalyReadModel(
-        id=int(anomaly.id),
-        coin_id=int(anomaly.coin_id),
+        id=_required_int(anomaly.id, field_name="id"),
+        coin_id=_required_int(anomaly.coin_id, field_name="coin_id"),
         symbol=str(anomaly.symbol),
-        timeframe=int(anomaly.timeframe),
+        timeframe=_required_int(anomaly.timeframe, field_name="timeframe"),
         anomaly_type=str(anomaly.anomaly_type),
         severity=str(anomaly.severity),
-        confidence=float(anomaly.confidence),
-        score=float(anomaly.score),
+        confidence=_required_float(anomaly.confidence, field_name="confidence"),
+        score=_required_float(anomaly.score, field_name="score"),
         status=str(anomaly.status),
         detected_at=anomaly.detected_at,
         window_start=anomaly.window_start,

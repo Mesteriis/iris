@@ -1,9 +1,8 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
+from src.apps.cross_market.models import Sector
 from src.apps.portfolio.models import ExchangeAccount
 from src.apps.signals.models import MarketDecision
-from src.apps.cross_market.models import Sector
 
 
 def create_market_decision(

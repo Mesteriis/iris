@@ -1,5 +1,7 @@
+import itertools
 import statistics
 from collections.abc import Sequence
+from math import sqrt
 
 from src.apps.anomalies.constants import ANOMALY_TYPE_PRICE_VOLUME_DIVERGENCE
 from src.apps.anomalies.schemas import AnomalyDetectionContext, DetectorFinding
@@ -19,7 +21,7 @@ def _stddev(values: Sequence[float]) -> float:
         return 0.0
     mean = _average(values)
     variance = sum((value - mean) ** 2 for value in values) / len(values)
-    return variance ** 0.5
+    return sqrt(variance)
 
 
 def _scale(value: float, floor: float, ceiling: float) -> float:
@@ -30,7 +32,7 @@ def _scale(value: float, floor: float, ceiling: float) -> float:
 
 def _returns(candles: Sequence[CandlePoint]) -> list[float]:
     result: list[float] = []
-    for previous, current in zip(candles, candles[1:], strict=False):
+    for previous, current in itertools.pairwise(candles):
         previous_close = float(previous.close)
         result.append((float(current.close) - previous_close) / previous_close if previous_close else 0.0)
     return result

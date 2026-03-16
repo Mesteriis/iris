@@ -1,7 +1,9 @@
 from collections.abc import Sequence
 from datetime import timedelta
+from typing import Protocol
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.apps.cross_market.models import SectorMetric
@@ -44,17 +46,80 @@ from src.apps.patterns.domain.risk import (
 from src.apps.patterns.domain.semantics import is_pattern_signal, pattern_bias, slug_from_signal_type
 from src.apps.patterns.domain.success import GLOBAL_MARKET_REGIME, normalize_market_regime
 from src.apps.patterns.models import MarketCycle, PatternStatistic
+from src.apps.patterns.query_services import PatternQueryService
+from src.apps.patterns.read_models import SectorNarrativeReadModel
 from src.apps.signals.models import FinalSignal, InvestmentDecision, RiskMetric, Signal, Strategy
+from src.core.db.uow import BaseAsyncUnitOfWork
 from src.runtime.streams.messages import publish_investment_decision_message, publish_investment_signal_message
 
 
-class PatternDecisionSignalsMixin:
+def _float_metric(payload: dict[str, object], key: str) -> float:
+    value = payload.get(key)
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+class _PatternDecisionSupport(Protocol):
+    @property
+    def session(self) -> AsyncSession: ...
+
+    _uow: BaseAsyncUnitOfWork
+    _queries: PatternQueryService
+
+    async def _load_enabled_strategies(self) -> list[Strategy]: ...
+
+    async def _strategy_alignment(
+        self,
+        *,
+        strategies: Sequence[Strategy],
+        tokens: set[str],
+        token_confidence: dict[str, float],
+        regime: str | None,
+        sector: str | None,
+        cycle: str | None,
+    ) -> tuple[float, list[str]]: ...
+
     async def _evaluate_investment_decision(
         self,
         *,
         coin_id: int,
         timeframe: int,
-        narratives_by_timeframe: dict[int, object] | None = None,
+        narratives_by_timeframe: dict[int, SectorNarrativeReadModel] | None = None,
+        strategies: Sequence[Strategy] | None = None,
+        emit_event: bool = True,
+    ) -> dict[str, object]: ...
+
+    async def _update_risk_metrics(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+    ) -> tuple[dict[str, object], RiskMetric | None]: ...
+
+    async def _evaluate_final_signal(
+        self,
+        *,
+        coin_id: int,
+        timeframe: int,
+        emit_event: bool = True,
+    ) -> dict[str, object]: ...
+
+
+class PatternDecisionSignalsMixin:
+    async def _evaluate_investment_decision(
+        self: _PatternDecisionSupport,
+        *,
+        coin_id: int,
+        timeframe: int,
+        narratives_by_timeframe: dict[int, SectorNarrativeReadModel] | None = None,
         strategies: Sequence[Strategy] | None = None,
         emit_event: bool = True,
     ) -> dict[str, object]:
@@ -151,7 +216,7 @@ class PatternDecisionSignalsMixin:
             (
                 await self.session.execute(
                     select(PatternStatistic).where(
-                        PatternStatistic.pattern_slug.in_(sorted(pattern_slugs)) if pattern_slugs else False,
+                        PatternStatistic.pattern_slug.in_(sorted(pattern_slugs)),
                         PatternStatistic.timeframe == timeframe,
                         PatternStatistic.market_regime.in_([GLOBAL_MARKET_REGIME, normalize_market_regime(regime)]),
                     )
@@ -235,7 +300,7 @@ class PatternDecisionSignalsMixin:
                 "score": score,
             }
 
-        row = InvestmentDecision(
+        decision_row = InvestmentDecision(
             coin_id=coin_id,
             timeframe=timeframe,
             decision=decision,
@@ -243,7 +308,7 @@ class PatternDecisionSignalsMixin:
             score=score,
             reason=reason,
         )
-        self.session.add(row)
+        self.session.add(decision_row)
         await self._uow.flush()
         if emit_event:
             publish_investment_decision_message(
@@ -256,7 +321,7 @@ class PatternDecisionSignalsMixin:
             )
         return {
             "status": "ok",
-            "id": row.id,
+            "id": decision_row.id,
             "coin_id": coin_id,
             "timeframe": timeframe,
             "decision": decision,
@@ -265,7 +330,7 @@ class PatternDecisionSignalsMixin:
         }
 
     async def _refresh_investment_decisions(
-        self,
+        self: _PatternDecisionSupport,
         *,
         lookback_days: int = RECENT_DECISION_LOOKBACK_DAYS,
         emit_events: bool = False,
@@ -300,7 +365,7 @@ class PatternDecisionSignalsMixin:
         }
 
     async def _update_risk_metrics(
-        self,
+        self: _PatternDecisionSupport,
         *,
         coin_id: int,
         timeframe: int,
@@ -359,7 +424,7 @@ class PatternDecisionSignalsMixin:
         }, row
 
     async def _evaluate_final_signal(
-        self,
+        self: _PatternDecisionSupport,
         *,
         coin_id: int,
         timeframe: int,
@@ -378,27 +443,30 @@ class PatternDecisionSignalsMixin:
             return {"status": "skipped", "reason": "decision_not_found", "coin_id": coin_id, "timeframe": timeframe}
 
         metrics_payload, _ = await self._update_risk_metrics(coin_id=coin_id, timeframe=timeframe)
+        liquidity_score = _float_metric(metrics_payload, "liquidity_score")
+        slippage_risk = _float_metric(metrics_payload, "slippage_risk")
+        volatility_risk = _float_metric(metrics_payload, "volatility_risk")
         risk_adjusted_score = calculate_risk_adjusted_score(
             decision_score=float(latest_decision.score),
-            liquidity_score=float(metrics_payload["liquidity_score"]),
-            slippage_risk=float(metrics_payload["slippage_risk"]),
-            volatility_risk=float(metrics_payload["volatility_risk"]),
+            liquidity_score=liquidity_score,
+            slippage_risk=slippage_risk,
+            volatility_risk=volatility_risk,
         )
         decision = _risk_adjusted_decision(str(latest_decision.decision), risk_adjusted_score)
         confidence = _risk_confidence(
             base_confidence=float(latest_decision.confidence),
-            liquidity_score=float(metrics_payload["liquidity_score"]),
-            slippage_risk=float(metrics_payload["slippage_risk"]),
-            volatility_risk=float(metrics_payload["volatility_risk"]),
+            liquidity_score=liquidity_score,
+            slippage_risk=slippage_risk,
+            volatility_risk=volatility_risk,
         )
         reason = _final_signal_reason(
             decision=decision,
             base_decision=str(latest_decision.decision),
             decision_score=float(latest_decision.score),
             risk_adjusted_score=risk_adjusted_score,
-            liquidity_score=float(metrics_payload["liquidity_score"]),
-            slippage_risk=float(metrics_payload["slippage_risk"]),
-            volatility_risk=float(metrics_payload["volatility_risk"]),
+            liquidity_score=liquidity_score,
+            slippage_risk=slippage_risk,
+            volatility_risk=volatility_risk,
         )
 
         latest_signal = await self.session.scalar(
@@ -423,7 +491,7 @@ class PatternDecisionSignalsMixin:
                 "risk_adjusted_score": risk_adjusted_score,
             }
 
-        row = FinalSignal(
+        final_signal_row = FinalSignal(
             coin_id=coin_id,
             timeframe=timeframe,
             decision=decision,
@@ -431,7 +499,7 @@ class PatternDecisionSignalsMixin:
             risk_adjusted_score=risk_adjusted_score,
             reason=reason,
         )
-        self.session.add(row)
+        self.session.add(final_signal_row)
         await self._uow.flush()
         if emit_event:
             publish_investment_signal_message(
@@ -444,7 +512,7 @@ class PatternDecisionSignalsMixin:
             )
         return {
             "status": "ok",
-            "id": row.id,
+            "id": final_signal_row.id,
             "coin_id": coin_id,
             "timeframe": timeframe,
             "decision": decision,
@@ -453,7 +521,7 @@ class PatternDecisionSignalsMixin:
         }
 
     async def _refresh_final_signals(
-        self,
+        self: _PatternDecisionSupport,
         *,
         lookback_days: int = RECENT_FINAL_SIGNAL_LOOKBACK_DAYS,
         emit_events: bool = False,

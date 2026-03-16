@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from src.apps.market_data.domain import ensure_utc, utc_now
@@ -23,6 +23,7 @@ from src.apps.market_structure.constants import (
     MARKET_STRUCTURE_SOURCE_STATUS_QUARANTINED,
 )
 from src.apps.market_structure.contracts import MarketStructureSourceHealthRead
+from src.apps.market_structure.models import MarketStructureSource
 from src.apps.market_structure.plugins import get_market_structure_plugin
 from src.core.settings import get_settings
 
@@ -39,7 +40,7 @@ def merge_market_structure_mapping(base: dict[str, Any], patch: dict[str, Any] |
     return merged
 
 
-def market_structure_source_status(source) -> str:
+def market_structure_source_status(source: MarketStructureSource) -> str:
     if source.quarantined_at is not None:
         return MARKET_STRUCTURE_SOURCE_STATUS_QUARANTINED
     if not source.enabled:
@@ -53,19 +54,19 @@ def market_structure_credential_fields_present(credentials: dict[str, Any]) -> l
     return sorted(key for key, value in credentials.items() if value not in (None, "", [], {}, ()))
 
 
-def isoformat_or_none(value) -> str | None:
+def isoformat_or_none(value: datetime | None) -> str | None:
     return ensure_utc(value).isoformat() if value is not None else None
 
 
-def market_structure_is_quarantined(source) -> bool:
+def market_structure_is_quarantined(source: MarketStructureSource) -> bool:
     return source.quarantined_at is not None
 
 
-def market_structure_backoff_until(source):
+def market_structure_backoff_until(source: MarketStructureSource) -> datetime | None:
     return ensure_utc(source.backoff_until) if source.backoff_until is not None else None
 
 
-def market_structure_backoff_active(source, *, now) -> bool:
+def market_structure_backoff_active(source: MarketStructureSource, *, now: datetime) -> bool:
     backoff_until = market_structure_backoff_until(source)
     return backoff_until is not None and backoff_until > ensure_utc(now)
 
@@ -84,7 +85,8 @@ def market_structure_backoff_seconds_for_failure_count(consecutive_failures: int
     )
     if consecutive_failures <= 0 or base_seconds <= 0:
         return 0
-    return min(base_seconds * (2 ** max(consecutive_failures - 1, 0)), max_seconds)
+    backoff_seconds = base_seconds * (2 ** max(consecutive_failures - 1, 0))
+    return min(int(backoff_seconds), max_seconds)
 
 
 def market_structure_quarantine_after_failures() -> int:
@@ -96,12 +98,12 @@ def market_structure_quarantine_after_failures() -> int:
     )
 
 
-def market_structure_source_provider(source) -> str:
+def market_structure_source_provider(source: MarketStructureSource) -> str:
     settings = dict(source.settings_json or {})
     return str(settings.get("provider") or settings.get("venue") or MARKET_STRUCTURE_PLUGIN_MANUAL_PUSH).strip().lower()
 
 
-def market_structure_source_ingest_mode(source) -> str:
+def market_structure_source_ingest_mode(source: MarketStructureSource) -> str:
     settings = dict(source.settings_json or {})
     explicit = str(settings.get("ingest_mode") or "").strip().lower()
     if explicit:
@@ -112,7 +114,7 @@ def market_structure_source_ingest_mode(source) -> str:
     return "manual"
 
 
-def market_structure_stale_after_seconds(source) -> int | None:
+def market_structure_stale_after_seconds(source: MarketStructureSource) -> int | None:
     settings = get_settings()
     timeframe_minutes = max(int((source.settings_json or {}).get("timeframe") or 15), 1)
     timeframe_seconds = timeframe_minutes * 60
@@ -125,7 +127,11 @@ def market_structure_stale_after_seconds(source) -> int | None:
     return max(timeframe_seconds * 12, 3600)
 
 
-def build_market_structure_source_health(source, *, now=None) -> MarketStructureSourceHealthRead:
+def build_market_structure_source_health(
+    source: MarketStructureSource,
+    *,
+    now: datetime | None = None,
+) -> MarketStructureSourceHealthRead:
     current_time = ensure_utc(now or utc_now())
     last_activity_at = source.last_polled_at
     last_success_at = source.last_success_at
@@ -198,12 +204,17 @@ def build_market_structure_source_health(source, *, now=None) -> MarketStructure
     )
 
 
-def clear_market_structure_failure_state(source) -> None:
+def clear_market_structure_failure_state(source: MarketStructureSource) -> None:
     source.consecutive_failures = 0
     source.backoff_until = None
 
 
-def mark_market_structure_poll_failure(source, *, error_message: str, now) -> None:
+def mark_market_structure_poll_failure(
+    source: MarketStructureSource,
+    *,
+    error_message: str,
+    now: datetime,
+) -> None:
     failure_count = int(source.consecutive_failures or 0) + 1
     source.last_error = str(error_message)[:255]
     source.consecutive_failures = failure_count
@@ -225,7 +236,12 @@ def mark_market_structure_poll_failure(source, *, error_message: str, now) -> No
         source.backoff_until = None
 
 
-def mark_market_structure_source_success(source, *, now, latest_snapshot_at) -> None:
+def mark_market_structure_source_success(
+    source: MarketStructureSource,
+    *,
+    now: datetime,
+    latest_snapshot_at: datetime | None,
+) -> None:
     source.last_success_at = ensure_utc(now)
     if latest_snapshot_at is not None:
         source.last_snapshot_at = latest_snapshot_at
@@ -233,7 +249,7 @@ def mark_market_structure_source_success(source, *, now, latest_snapshot_at) -> 
     clear_market_structure_failure_state(source)
 
 
-def sync_market_structure_source_health_fields(source, *, now) -> bool:
+def sync_market_structure_source_health_fields(source: MarketStructureSource, *, now: datetime) -> bool:
     health = build_market_structure_source_health(source, now=now)
     changed = source.health_status != health.status
     source.health_status = health.status
@@ -261,10 +277,10 @@ def next_market_structure_alert_kind(previous_health_status: str | None, current
 
 
 def apply_market_structure_alert_transition(
-    source,
+    source: MarketStructureSource,
     *,
     previous_health_status: str | None,
-    now,
+    now: datetime,
 ) -> str | None:
     alert_kind = next_market_structure_alert_kind(
         previous_health_status,
@@ -277,7 +293,11 @@ def apply_market_structure_alert_transition(
     return alert_kind
 
 
-def market_structure_source_health_event_payload(source, *, now) -> dict[str, object]:
+def market_structure_source_health_event_payload(
+    source: MarketStructureSource,
+    *,
+    now: datetime,
+) -> dict[str, object]:
     health = build_market_structure_source_health(source, now=now)
     return {
         "timestamp": ensure_utc(now),
@@ -308,7 +328,12 @@ def market_structure_source_health_event_payload(source, *, now) -> dict[str, ob
     }
 
 
-def market_structure_source_alert_event_payload(source, *, alert_kind: str, now) -> dict[str, object]:
+def market_structure_source_alert_event_payload(
+    source: MarketStructureSource,
+    *,
+    alert_kind: str,
+    now: datetime,
+) -> dict[str, object]:
     health = build_market_structure_source_health(source, now=now)
     rule = {
         MARKET_STRUCTURE_ALERT_KIND_ERROR: "poll_failure_detected",

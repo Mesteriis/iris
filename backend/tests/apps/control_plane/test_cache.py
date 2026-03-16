@@ -1,7 +1,6 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
-
 from src.apps.control_plane.cache import TopologyCacheManager, TopologySnapshotCodec
 from src.apps.control_plane.contracts import EventConsumerSnapshot, EventDefinitionSnapshot, TopologySnapshot
 from src.runtime.streams.types import IrisEvent
@@ -26,7 +25,7 @@ class FakeAsyncCache:
 def _snapshot(version_number: int) -> TopologySnapshot:
     return TopologySnapshot(
         version_number=version_number,
-        created_at=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+        created_at=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
         events={"signal_created": EventDefinitionSnapshot(event_type="signal_created", domain="signals")},
         consumers={
             "hypothesis_workers": EventConsumerSnapshot(
@@ -93,7 +92,7 @@ async def test_topology_cache_manager_refreshes_on_control_event() -> None:
             event_type="control.cache_invalidated",
             coin_id=0,
             timeframe=0,
-            timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
             payload={},
         )
     )

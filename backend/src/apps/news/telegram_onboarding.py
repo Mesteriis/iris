@@ -72,7 +72,7 @@ class TelegramSessionOnboardingService:
         return [row for row in rows if payload.include_users or row.entity_type != "user"]
 
     @staticmethod
-    def _load_telethon():
+    def _load_telethon() -> tuple[type[Any], type[Any], type[BaseException], Any]:
         try:
             from telethon import TelegramClient
             from telethon import types as tg_types
@@ -85,7 +85,7 @@ class TelegramSessionOnboardingService:
         return TelegramClient, StringSession, SessionPasswordNeededError, tg_types
 
     @staticmethod
-    def _serialize_dialog(dialog, tg_types) -> TelegramDialogRead:
+    def _serialize_dialog(dialog: Any, tg_types: Any) -> TelegramDialogRead:
         entity = dialog.entity
         username = str(getattr(entity, "username", "")) or None
         title = str(

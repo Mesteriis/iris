@@ -1,6 +1,9 @@
+from collections.abc import Sequence
+
 from src.apps.hypothesis_engine.contracts import (
     HypothesisCreationResult,
     HypothesisEvaluationBatchResult,
+    HypothesisPendingEvent,
     PromptMutationResult,
     WeightUpdateResult,
 )
@@ -24,7 +27,7 @@ class HypothesisSideEffectDispatcher:
     async def apply_weight_update(self, result: WeightUpdateResult) -> None:
         await self._apply_events(result.pending_events)
 
-    async def _apply_events(self, pending_events) -> None:
+    async def _apply_events(self, pending_events: Sequence[HypothesisPendingEvent]) -> None:
         for event in pending_events:
             publish_event(event.event_type, dict(event.payload))
 

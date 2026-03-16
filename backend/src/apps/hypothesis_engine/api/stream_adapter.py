@@ -1,4 +1,5 @@
 import json
+from typing import Any
 from uuid import uuid4
 
 from fastapi import Request
@@ -23,7 +24,7 @@ class HypothesisEventStreamAdapter:
                 raise
 
     @staticmethod
-    def _event_payload(message) -> dict[str, object]:
+    def _event_payload(message: Any) -> dict[str, object]:
         return {
             "coin_id": int(message.coin_id),
             "timeframe": int(message.timeframe),
@@ -31,7 +32,7 @@ class HypothesisEventStreamAdapter:
             **dict(message.payload),
         }
 
-    async def iter_events(self, *, request: Request, cursor: str | None, once: bool):
+    async def iter_events(self, *, request: Request, cursor: str | None, once: bool) -> Any:
         client = AsyncRedis.from_url(self._redis_url, decode_responses=True)
         consumer_name = f"frontend-ai-{uuid4().hex[:8]}"
         try:

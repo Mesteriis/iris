@@ -1,4 +1,6 @@
 from collections.abc import Mapping
+from datetime import datetime
+from typing import Any, cast
 
 from src.apps.market_data.query_services import MarketDataQueryService
 from src.apps.market_data.results import MarketDataHistorySyncResult
@@ -6,7 +8,7 @@ from src.apps.market_data.services import MarketDataHistorySyncService
 from src.apps.market_data.sources.source_capability_registry import get_market_source_capability_registry
 from src.apps.patterns.tasks import patterns_bootstrap_scan
 from src.core.db.uow import AsyncUnitOfWork, BaseAsyncUnitOfWork
-from src.core.http.operation_store import OperationStore, run_tracked_operation
+from src.core.http.operation_store import OperationStore, TaskiqJob, run_tracked_operation
 from src.runtime.orchestration.broker import broker
 from src.runtime.orchestration.locks import async_redis_task_lock
 
@@ -16,12 +18,12 @@ COIN_HISTORY_LOCK_TIMEOUT_SECONDS = 1800
 SOURCE_CAPABILITY_REFRESH_LOCK_TIMEOUT_SECONDS = 3500
 
 
-async def get_next_history_backfill_due_at():
+async def get_next_history_backfill_due_at() -> datetime | None:
     async with AsyncUnitOfWork() as uow:
         return await MarketDataQueryService(uow.session).get_next_pending_backfill_due_at()
 
 
-def _with_coin_history_lock(symbol: str):
+def _with_coin_history_lock(symbol: str) -> Any:
     return async_redis_task_lock(
         f"iris:tasklock:history_coin:{symbol.upper()}",
         timeout=COIN_HISTORY_LOCK_TIMEOUT_SECONDS,
@@ -29,13 +31,27 @@ def _with_coin_history_lock(symbol: str):
 
 
 async def _enqueue_patterns_bootstrap(*, symbol: str, force: bool = False) -> dict[str, object]:
-    await patterns_bootstrap_scan.kiq(symbol=symbol, force=force)
+    job = cast(TaskiqJob, patterns_bootstrap_scan)
+    await job.kiq(symbol=symbol, force=force)
     return {
         "status": "queued",
         "queue": "analytics",
         "symbol": symbol.upper(),
         "force": force,
     }
+
+
+def _created_count(item: Mapping[str, object]) -> int:
+    value = item.get("created")
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        return int(value)
+    return 0
 
 
 def _serialize_history_sync_result(
@@ -58,7 +74,7 @@ def _serialize_history_sync_result(
 
 async def _sync_coin_backfill_item(
     uow: BaseAsyncUnitOfWork,
-    coin,
+    coin: Any,
     *,
     force: bool = False,
 ) -> dict[str, object]:
@@ -81,7 +97,7 @@ async def _sync_coin_backfill_item(
 
 async def _sync_coin_latest_item(
     uow: BaseAsyncUnitOfWork,
-    coin,
+    coin: Any,
     *,
     force: bool = False,
 ) -> dict[str, object]:
@@ -124,7 +140,7 @@ async def _run_history_backfill(*, symbol: str | None = None) -> dict[str, objec
                 "status": "ok",
                 "mode": "backfill",
                 "coins": len(coin_symbols),
-                "history_points_created": sum(int(item["created"]) for item in items),
+                "history_points_created": sum(_created_count(item) for item in items),
                 "items": items,
             }
 
@@ -154,7 +170,7 @@ async def _run_latest_history_sync() -> dict[str, object]:
                 "status": "ok",
                 "mode": "latest",
                 "coins": len(coin_symbols),
-                "history_points_created": sum(int(item["created"]) for item in items),
+                "history_points_created": sum(_created_count(item) for item in items),
                 "items": items,
             }
 

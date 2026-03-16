@@ -31,9 +31,10 @@ class MarketStructureSideEffectDispatcher:
         self._publish_after_commit(MARKET_STRUCTURE_EVENT_SNAPSHOT_INGESTED, payload)
 
     def _publish_after_commit(self, event_name: str, payload: Mapping[str, object]) -> None:
-        self._uow.add_after_commit_action(
-            lambda event_name=event_name, event_payload=dict(payload): publish_event(event_name, event_payload)
-        )
+        def _publish() -> None:
+            publish_event(event_name, dict(payload))
+
+        self._uow.add_after_commit_action(_publish)
 
 
 __all__ = ["MarketStructureSideEffectDispatcher"]

@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import ParamSpec, TypeVar, cast
+
 from src.apps.portfolio.serializers import portfolio_sync_result_payload
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
 from src.core.db.uow import AsyncUnitOfWork
@@ -5,10 +8,17 @@ from src.core.http.operation_store import OperationStore, run_tracked_operation
 from src.runtime.orchestration.broker import broker
 from src.runtime.orchestration.locks import async_redis_task_lock
 
+P = ParamSpec("P")
+R = TypeVar("R")
+
 PORTFOLIO_SYNC_LOCK_TIMEOUT_SECONDS = 240
 
 
-@broker.task
+def _task[**P, R](func: Callable[P, R]) -> Callable[P, R]:
+    return cast(Callable[P, R], broker.task(func))
+
+
+@_task
 async def portfolio_sync_job(operation_id: str | None = None) -> dict[str, object]:
     async def _action() -> dict[str, object]:
         async with async_redis_task_lock("iris:tasklock:portfolio_sync", timeout=PORTFOLIO_SYNC_LOCK_TIMEOUT_SECONDS) as acquired:

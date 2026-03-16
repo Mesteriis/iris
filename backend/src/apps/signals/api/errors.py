@@ -1,10 +1,12 @@
+from typing import Any
+
 from fastapi import HTTPException, status
 
 from src.core.errors import ResourceNotFoundError
 from src.core.http.errors import ApiError, ApiErrorFactory
 
 
-def signal_error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
+def signal_error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
     descriptions = {
         status.HTTP_404_NOT_FOUND: "Requested signal resource was not found.",
     }

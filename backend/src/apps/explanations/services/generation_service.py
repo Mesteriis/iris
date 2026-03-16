@@ -252,4 +252,4 @@ def _describe_decision_explanation(context: dict[str, Any]) -> tuple[MessageDesc
     )
 
 
-__all__ = ["ExplanationGenerationService", "TEMPLATE_DEGRADED_STRATEGY", "render_deterministic_explanation"]
+__all__ = ["TEMPLATE_DEGRADED_STRATEGY", "ExplanationGenerationService", "render_deterministic_explanation"]

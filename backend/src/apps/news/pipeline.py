@@ -105,9 +105,10 @@ class NewsNormalizationService:
         self._market = NewsMarketDataRepository(uow.session)
 
     def _publish_after_commit(self, event_type: str, payload: dict[str, object]) -> None:
-        self._uow.add_after_commit_action(
-            lambda event_type=event_type, payload=dict(payload): publish_event(event_type, payload)
-        )
+        def _publish() -> None:
+            publish_event(event_type, dict(payload))
+
+        self._uow.add_after_commit_action(_publish)
 
     async def normalize_item(self, *, item_id: int) -> dict[str, object]:
         item = await self._items.get_for_update(item_id)
@@ -208,9 +209,10 @@ class NewsCorrelationService:
         self._links = NewsItemLinkRepository(uow.session)
 
     def _publish_after_commit(self, event_type: str, payload: dict[str, object]) -> None:
-        self._uow.add_after_commit_action(
-            lambda event_type=event_type, payload=dict(payload): publish_event(event_type, payload)
-        )
+        def _publish() -> None:
+            publish_event(event_type, dict(payload))
+
+        self._uow.add_after_commit_action(_publish)
 
     async def correlate_item(self, *, item_id: int) -> dict[str, object]:
         item = await self._items.get_for_update(item_id)

@@ -39,7 +39,7 @@ class ExplanationContextBundle:
     refs_json: dict[str, Any]
 
 
-def explanation_read_model_from_orm(item) -> ExplanationReadModel:
+def explanation_read_model_from_orm(item: Any) -> ExplanationReadModel:
     return ExplanationReadModel(
         id=int(item.id),
         explain_kind=ExplainKind(str(item.explain_kind)),

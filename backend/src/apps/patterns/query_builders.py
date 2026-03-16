@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import and_, case, select
 
 from src.apps.cross_market.models import Sector
@@ -7,7 +9,7 @@ from src.apps.patterns.models import MarketCycle
 from src.apps.signals.models import Signal
 
 
-def signal_select():
+def signal_select() -> Any:
     return (
         select(
             Signal.id,
@@ -43,7 +45,7 @@ def signal_select():
     )
 
 
-def pattern_signal_ordering():
+def pattern_signal_ordering() -> Any:
     signal_kind_order = case(
         (Signal.signal_type.like("pattern_hierarchy_%"), 2),
         (Signal.signal_type.like("pattern_cluster_%"), 1),

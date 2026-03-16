@@ -8,6 +8,7 @@ from src.apps.hypothesis_engine.exceptions import (
 )
 from src.apps.hypothesis_engine.models import AIPrompt
 from src.apps.hypothesis_engine.query_services import HypothesisQueryService
+from src.apps.hypothesis_engine.read_models import PromptReadModel
 from src.apps.hypothesis_engine.repositories import HypothesisRepository
 from src.apps.hypothesis_engine.schemas import AIPromptCreate, AIPromptUpdate
 from src.core.ai.prompt_policy import get_prompt_task_policy, prompt_style_profile
@@ -56,8 +57,8 @@ class PromptService:
                 vars_json=vars_json,
             )
         )
-        item = await self._queries.get_prompt_read_by_id(int(prompt.id))
-        record = self._prompt_record(item if item is not None else prompt)
+        prompt_item = await self._queries.get_prompt_read_by_id(int(prompt.id))
+        record = self._prompt_record(prompt_item if prompt_item is not None else prompt)
         return PromptMutationResult(
             prompt=record,
             cache_invalidations=(PromptCacheInvalidation(name=record.name),),
@@ -84,8 +85,8 @@ class PromptService:
                 await self._deactivate_other_versions(prompt)
         await self._uow.flush()
         await self._repo.refresh(prompt)
-        item = await self._queries.get_prompt_read_by_id(int(prompt.id))
-        record = self._prompt_record(item if item is not None else prompt)
+        prompt_item = await self._queries.get_prompt_read_by_id(int(prompt.id))
+        record = self._prompt_record(prompt_item if prompt_item is not None else prompt)
         return PromptMutationResult(
             prompt=record,
             cache_invalidations=(PromptCacheInvalidation(name=record.name),),
@@ -100,8 +101,8 @@ class PromptService:
         await self._deactivate_other_versions(prompt)
         await self._uow.flush()
         await self._repo.refresh(prompt)
-        item = await self._queries.get_prompt_read_by_id(int(prompt.id))
-        record = self._prompt_record(item if item is not None else prompt)
+        prompt_item = await self._queries.get_prompt_read_by_id(int(prompt.id))
+        record = self._prompt_record(prompt_item if prompt_item is not None else prompt)
         return PromptMutationResult(
             prompt=record,
             cache_invalidations=(PromptCacheInvalidation(name=record.name),),
@@ -115,8 +116,8 @@ class PromptService:
             item.veil_lifted = True
         await self._uow.flush()
         await self._repo.refresh(prompt)
-        item = await self._queries.get_prompt_read_by_id(int(prompt.id))
-        record = self._prompt_record(item if item is not None else prompt)
+        prompt_item = await self._queries.get_prompt_read_by_id(int(prompt.id))
+        record = self._prompt_record(prompt_item if prompt_item is not None else prompt)
         return PromptMutationResult(prompt=record)
 
     async def lower_prompt_veil(self, prompt_id: int) -> PromptMutationResult:
@@ -127,8 +128,8 @@ class PromptService:
             item.veil_lifted = False
         await self._uow.flush()
         await self._repo.refresh(prompt)
-        item = await self._queries.get_prompt_read_by_id(int(prompt.id))
-        record = self._prompt_record(item if item is not None else prompt)
+        prompt_item = await self._queries.get_prompt_read_by_id(int(prompt.id))
+        record = self._prompt_record(prompt_item if prompt_item is not None else prompt)
         return PromptMutationResult(prompt=record)
 
     async def _deactivate_other_versions(self, prompt: AIPrompt) -> None:
@@ -160,7 +161,7 @@ class PromptService:
             f"Prompt family '{name}' is veiled. Lift the veil before creating, updating or activating prompt versions."
         )
 
-    def _prompt_record(self, source) -> PromptRecord:
+    def _prompt_record(self, source: AIPrompt | PromptReadModel) -> PromptRecord:
         return PromptRecord(
             id=int(source.id),
             name=str(source.name),

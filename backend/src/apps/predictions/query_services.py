@@ -1,3 +1,6 @@
+from collections.abc import Mapping
+from typing import Any, cast
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.market_data.models import Coin
@@ -12,7 +15,7 @@ class PredictionQueryService(AsyncQueryService):
         super().__init__(session, domain="predictions", service_name="PredictionQueryService")
 
     @staticmethod
-    def _base_stmt():
+    def _base_stmt() -> Any:
         return _prediction_select()
 
     async def list_predictions(
@@ -36,7 +39,7 @@ class PredictionQueryService(AsyncQueryService):
         if status is not None:
             stmt = stmt.where(MarketPrediction.status == status)
         rows = (await self.session.execute(stmt)).all()
-        items = tuple(prediction_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(prediction_read_model_from_mapping(cast(Mapping[str, Any], row._mapping)) for row in rows)
         self._log_debug("query.list_predictions.result", mode="read", count=len(items))
         return items
 
@@ -53,7 +56,7 @@ class PredictionQueryService(AsyncQueryService):
         if row is None:
             self._log_debug("query.get_prediction_read_by_id.result", mode="read", found=False)
             return None
-        item = prediction_read_model_from_mapping(row._mapping)
+        item = prediction_read_model_from_mapping(cast(Mapping[str, Any], row._mapping))
         self._log_debug("query.get_prediction_read_by_id.result", mode="read", found=True)
         return item
 

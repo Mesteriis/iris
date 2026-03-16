@@ -1,7 +1,6 @@
 from types import SimpleNamespace
 
 from redis.exceptions import RedisError
-
 from src.runtime.streams import publisher
 
 

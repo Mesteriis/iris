@@ -1,8 +1,10 @@
+import inspect
 import json
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any, Protocol, cast
 
 from redis.asyncio import Redis as AsyncRedis
 
@@ -46,7 +48,13 @@ _DEFAULT_EVENT_MESSAGE_KEYS: dict[str, str] = {
 }
 
 def get_async_operation_client() -> AsyncRedis:
-    return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+    return cast(AsyncRedis, AsyncRedis.from_url(settings.redis_url, decode_responses=True))
+
+
+async def _resolve_redis_result[T](result: Awaitable[T] | T) -> T:
+    if inspect.isawaitable(result):
+        return await cast(Awaitable[T], result)
+    return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +63,10 @@ class OperationDispatchResult:
     deduplicated: bool = False
     message_key: str | None = None
     message_params: dict[str, object] | None = None
+
+
+class TaskiqJob(Protocol):
+    async def kiq(self, *args: Any, **kwargs: Any) -> object: ...
 
 
 class OperationStore:
@@ -292,7 +304,7 @@ class OperationStore:
         )
 
     async def list_events(self, operation_id: str) -> tuple[OperationEventResponse, ...]:
-        raw_events = await self._client.lrange(self._events_key(operation_id), 0, -1)
+        raw_events = await _resolve_redis_result(self._client.lrange(self._events_key(operation_id), 0, -1))
         return tuple(
             OperationEventResponse.model_validate(json.loads(raw_event))
             for raw_event in raw_events
@@ -445,7 +457,7 @@ async def dispatch_background_operation(
     *,
     store: OperationStore,
     operation_type: str,
-    dispatch: Callable[[str], Awaitable[None]],
+    dispatch: Callable[[str], Awaitable[object]],
     trace_context: TraceContext | None = None,
     requested_by: str | None = None,
     deduplication_key: str | None = None,
@@ -575,6 +587,7 @@ def _normalize_message_params(value: object) -> dict[str, object]:
 __all__ = [
     "OperationDispatchResult",
     "OperationStore",
+    "TaskiqJob",
     "dispatch_background_operation",
     "get_async_operation_client",
     "run_tracked_operation",

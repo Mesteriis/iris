@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 from src.apps.market_data.models import Coin
 from src.apps.market_data.schemas import CandleConfig
@@ -62,7 +62,7 @@ def test_market_data_support_config_and_event_helpers(monkeypatch) -> None:
     publish_candle_events(
         coin_id=1,
         timeframe=15,
-        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
         created_count=3,
         source="manual",
     )

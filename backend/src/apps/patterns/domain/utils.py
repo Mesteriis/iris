@@ -1,10 +1,18 @@
-from dataclasses import dataclass
-from datetime import timedelta
-from statistics import mean
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from statistics import mean
 
+from src.apps.indicators.domain import (
+    adx_series,
+    atr_series,
+    bollinger_bands,
+    ema_series,
+    macd_series,
+    rsi_series,
+    sma_series,
+)
 from src.apps.market_data.candles import CandlePoint, candle_close_timestamp
-from src.apps.indicators.domain import adx_series, atr_series, bollinger_bands, ema_series, macd_series, rsi_series, sma_series
 
 
 @dataclass(slots=True, frozen=True)
@@ -53,7 +61,7 @@ def infer_timeframe(candles: Sequence[CandlePoint]) -> int:
     return minutes if minutes > 0 else 15
 
 
-def signal_timestamp(candles: Sequence[CandlePoint]) -> object:
+def signal_timestamp(candles: Sequence[CandlePoint]) -> datetime:
     return candle_close_timestamp(candles[-1].timestamp, infer_timeframe(candles))
 
 

@@ -1,4 +1,5 @@
 import sys
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -38,7 +39,7 @@ def run_migrations() -> None:
 
 def create_app() -> FastAPI:
     @asynccontextmanager
-    async def deferred_lifespan(app: FastAPI):
+    async def deferred_lifespan(app: FastAPI) -> AsyncIterator[None]:
         from src.core.bootstrap.lifespan import lifespan
 
         async with lifespan(app):

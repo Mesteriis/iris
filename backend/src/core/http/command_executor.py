@@ -11,7 +11,7 @@ ResultT = TypeVar("ResultT")
 ResponseT = TypeVar("ResponseT")
 
 
-async def execute_command(
+async def execute_command[ResultT, ResponseT](
     *,
     action: Callable[[], Awaitable[ResultT]],
     uow: BaseAsyncUnitOfWork,

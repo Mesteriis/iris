@@ -31,7 +31,7 @@ def resolve_locale(
         effective_locale = policy.default_locale
         source = "default"
 
-    fallback_chain = (effective_locale,)
+    fallback_chain: tuple[str, ...] = (effective_locale,)
     if policy.fallback_locale != effective_locale:
         fallback_chain = (effective_locale, policy.fallback_locale)
 

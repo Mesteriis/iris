@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from hashlib import sha1
+from hashlib import sha256
 from typing import Any
 
 from src.apps.market_data.domain import ensure_utc, utc_now
@@ -61,7 +61,7 @@ class IrisEvent:
 
     @property
     def idempotency_key(self) -> str:
-        payload_hash = sha1(
+        payload_hash = sha256(
             json.dumps(self.payload, ensure_ascii=True, sort_keys=True).encode("ascii", errors="ignore")
         ).hexdigest()
         return f"{self.event_type}:{self.coin_id}:{self.timeframe}:{ensure_utc(self.timestamp).isoformat()}:{payload_hash}"

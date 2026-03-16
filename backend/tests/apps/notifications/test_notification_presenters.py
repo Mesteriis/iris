@@ -1,6 +1,3 @@
-# ruff: noqa: RUF001
-
-
 from datetime import UTC, datetime
 from types import SimpleNamespace
 

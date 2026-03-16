@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import csv
 from datetime import datetime
 from io import StringIO
@@ -25,6 +23,19 @@ STOOQ_SYMBOLS: dict[str, str] = {
     "GSPC": "^spx",
     "XAGUSD": "xagusd",
 }
+
+
+def _float_or_none(value: object) -> float | None:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
 
 
 class StooqMarketSource(BaseMarketSource):
@@ -91,14 +102,21 @@ class StooqMarketSource(BaseMarketSource):
             try:
                 timestamp = ensure_utc(datetime.fromisoformat(str(date_raw)))
                 volume_raw = row.get("Volume")
+                open_value = _float_or_none(open_raw)
+                high_value = _float_or_none(high_raw)
+                low_value = _float_or_none(low_raw)
+                close_value = _float_or_none(close_raw)
+                volume_value = _float_or_none(volume_raw)
+                if open_value is None or high_value is None or low_value is None or close_value is None:
+                    continue
                 bars.append(
                     MarketBar(
                         timestamp=timestamp,
-                        open=float(open_raw),
-                        high=float(high_raw),
-                        low=float(low_raw),
-                        close=float(close_raw),
-                        volume=float(volume_raw) if volume_raw not in {None, ""} else None,
+                        open=open_value,
+                        high=high_value,
+                        low=low_value,
+                        close=close_value,
+                        volume=volume_value,
                         source=self.name,
                     )
                 )

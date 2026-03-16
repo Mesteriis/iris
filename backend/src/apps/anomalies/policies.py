@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Protocol
 
 from src.apps.anomalies.constants import (
     ANOMALY_STATUS_COOLING,
@@ -17,6 +18,11 @@ class AnomalyPolicyDecision:
     status: str | None = None
     cooldown_until: datetime | None = None
     reason: str | None = None
+
+
+class _LatestAnomaly(Protocol):
+    status: str
+    cooldown_until: datetime | None
 
 
 class AnomalyPolicyEngine:
@@ -41,7 +47,7 @@ class AnomalyPolicyEngine:
         score: float,
         detected_at: datetime,
         market_regime: str | None,
-        latest_anomaly,
+        latest_anomaly: _LatestAnomaly | None,
         confirmation_hits: int,
         confirmation_target: int,
     ) -> AnomalyPolicyDecision:

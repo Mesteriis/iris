@@ -4,6 +4,7 @@ from datetime import datetime
 from src.apps.cross_market.support import relation_timeframe
 from src.apps.market_data.domain import utc_now
 from src.apps.predictions.services import PredictionSideEffectDispatcher
+from src.apps.predictions.services.results import PredictionCreationBatch
 
 
 @dataclass(slots=True, frozen=True)
@@ -36,7 +37,7 @@ class CrossMarketLeaderSideEffect:
     confidence: float
     market_regime: str
     emit_event: bool
-    prediction_batch: object
+    prediction_batch: PredictionCreationBatch
 
 
 class CrossMarketSideEffectDispatcher:

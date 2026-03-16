@@ -23,6 +23,10 @@ from src.apps.signals.repositories import SignalFusionRepository
 from src.core.db.uow import BaseAsyncUnitOfWork
 
 
+def _coerce_datetime(value: object | None) -> datetime | None:
+    return value if isinstance(value, datetime) else None
+
+
 @dataclass(slots=True, frozen=True)
 class SignalFusionPreparation:
     fusion_input: SignalFusionInput
@@ -48,7 +52,9 @@ class SignalFusionInputBuilder:
         metrics = await self._signals.get_coin_metrics(coin_id=coin_id)
         regime = _signal_regime(metrics, timeframe)
         reference_timestamp = ensure_utc(
-            news_reference_timestamp or trigger_timestamp or max(signal.candle_timestamp for signal in recent_signals)
+            _coerce_datetime(news_reference_timestamp)
+            or _coerce_datetime(trigger_timestamp)
+            or max(signal.candle_timestamp for signal in recent_signals)
         )
         success_rates = await self._pattern_success_rates(
             signals=recent_signals,

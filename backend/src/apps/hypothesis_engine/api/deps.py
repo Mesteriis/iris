@@ -1,8 +1,5 @@
-# ruff: noqa: B008
-
-
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends
 
@@ -11,7 +8,12 @@ from src.apps.hypothesis_engine.query_services import HypothesisQueryService
 from src.apps.hypothesis_engine.services import PromptService, PromptSideEffectDispatcher
 from src.core.db.uow import BaseAsyncUnitOfWork, get_uow
 from src.core.http.deps import get_operation_store, get_trace_context
-from src.core.http.operation_store import OperationDispatchResult, OperationStore, dispatch_background_operation
+from src.core.http.operation_store import (
+    OperationDispatchResult,
+    OperationStore,
+    TaskiqJob,
+    dispatch_background_operation,
+)
 from src.core.http.tracing import TraceContext
 from src.core.settings import Settings, get_settings
 
@@ -30,13 +32,14 @@ class HypothesisJobDispatcher:
 
     async def dispatch_evaluation(self) -> OperationDispatchResult:
         from src.apps.hypothesis_engine.tasks.hypothesis_tasks import evaluate_hypotheses_job
+        job = cast(TaskiqJob, evaluate_hypotheses_job)
 
         return await dispatch_background_operation(
             store=self.operation_store,
             operation_type="hypothesis.evaluate",
             trace_context=self.trace_context,
             deduplication_key="singleton",
-            dispatch=lambda operation_id: evaluate_hypotheses_job.kiq(operation_id=operation_id),
+            dispatch=lambda operation_id: job.kiq(operation_id=operation_id),
         )
 
 

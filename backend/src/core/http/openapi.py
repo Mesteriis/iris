@@ -1,5 +1,5 @@
-from difflib import unified_diff
 import json
+from difflib import unified_diff
 from pathlib import Path
 from typing import Any
 

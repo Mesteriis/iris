@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import HTTPException, status
 
 from src.apps.news.exceptions import (
@@ -22,7 +24,7 @@ _ERROR_DESCRIPTIONS: dict[int, str] = {
 }
 
 
-def news_error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
+def news_error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
     return {
         int(status_code): {
             "model": ApiError,

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+from src.apps.market_data.models import Coin
 from src.apps.market_data.schemas import CandleConfig
 
 
@@ -40,7 +41,7 @@ class PriceHistoryReadModel:
     volume: float | None
 
 
-def candle_config_read_model_from_payload(payload) -> CandleConfigReadModel:
+def candle_config_read_model_from_payload(payload: object) -> CandleConfigReadModel:
     config = CandleConfig.model_validate(payload)
     return CandleConfigReadModel(
         interval=str(config.interval),
@@ -48,7 +49,7 @@ def candle_config_read_model_from_payload(payload) -> CandleConfigReadModel:
     )
 
 
-def coin_read_model_from_orm(coin) -> CoinReadModel:
+def coin_read_model_from_orm(coin: Coin) -> CoinReadModel:
     candles = tuple(candle_config_read_model_from_payload(item) for item in coin.candles_config or ())
     return CoinReadModel(
         id=int(coin.id),

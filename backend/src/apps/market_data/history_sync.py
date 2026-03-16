@@ -14,6 +14,7 @@ from src.apps.market_data.repositories import (
     CoinRepository,
     TimescaleContinuousAggregateRepository,
 )
+from src.apps.market_data.sources.base import MarketBar
 from src.core.db.session import async_engine
 from src.core.db.uow import BaseAsyncUnitOfWork
 
@@ -138,7 +139,7 @@ async def _upsert_base_candles_async(
     *,
     coin_id: int,
     interval: str,
-    bars,
+    bars: Sequence[MarketBar],
     source: str = "history",
 ) -> datetime | None:
     db = uow.session
@@ -169,24 +170,28 @@ async def _upsert_base_candles_async(
     latest_incoming = max(market_data_domain.ensure_utc(bar.timestamp) for bar in bars)
     if timeframe == market_data_candles.BASE_TIMEFRAME_MINUTES:
         for aggregate_timeframe in market_data_candles.AGGREGATE_VIEW_BY_TIMEFRAME:
-            uow.add_after_commit_action(
-                lambda aggregate_timeframe=aggregate_timeframe,
-                earliest_incoming=earliest_incoming,
-                latest_incoming=latest_incoming: _refresh_continuous_aggregate_range_async(
+            def _refresh_aggregate(aggregate_timeframe: int = aggregate_timeframe) -> object:
+                return _refresh_continuous_aggregate_range_async(
                     timeframe=aggregate_timeframe,
                     window_start=earliest_incoming,
                     window_end=latest_incoming,
                 )
+
+            uow.add_after_commit_action(
+                _refresh_aggregate
             )
     if latest_existing is None or latest_incoming > latest_existing:
-        uow.add_after_commit_action(
-            lambda coin_id=int(coin.id), timeframe=timeframe, timestamp=latest_incoming, created_count=created_count, source=source: market_data_support.publish_candle_events(
-                coin_id=coin_id,
+        def _publish_candle_events() -> None:
+            market_data_support.publish_candle_events(
+                coin_id=int(coin.id),
                 timeframe=timeframe,
-                timestamp=timestamp,
+                timestamp=latest_incoming,
                 created_count=created_count,
                 source=source,
             )
+
+        uow.add_after_commit_action(
+            _publish_candle_events
         )
         return latest_incoming
     return None

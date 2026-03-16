@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 INTERVAL_TO_DELTA: dict[str, timedelta] = {
     "15m": timedelta(minutes=15),
@@ -9,13 +9,13 @@ INTERVAL_TO_DELTA: dict[str, timedelta] = {
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def ensure_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def normalize_interval(interval: str) -> str:
@@ -33,7 +33,7 @@ def align_timestamp(value: datetime, interval: str) -> datetime:
     dt = ensure_utc(value)
     seconds = int(interval_delta(interval).total_seconds())
     aligned = int(dt.timestamp()) // seconds * seconds
-    return datetime.fromtimestamp(aligned, tz=timezone.utc)
+    return datetime.fromtimestamp(aligned, tz=UTC)
 
 
 def latest_completed_timestamp(interval: str, reference: datetime | None = None) -> datetime:

@@ -1,3 +1,4 @@
+import contextlib
 import json
 import os
 import queue
@@ -6,13 +7,13 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from redis import Redis
 from redis.exceptions import RedisError, ResponseError
 
-from src.core.settings import get_settings
 from src.apps.market_data.domain import utc_now
+from src.core.settings import get_settings
 
 if TYPE_CHECKING:
     from src.apps.market_data.models import Coin
@@ -25,6 +26,8 @@ MESSAGE_RECEIVER_GROUPS = {
 }
 READ_BLOCK_MILLISECONDS = 1000
 PUBLISH_QUEUE_WAIT_SECONDS = 0.25
+type StreamFieldValue = str | int | float
+type StreamFields = dict[str | int | float, StreamFieldValue]
 
 
 # NOTE:
@@ -46,7 +49,7 @@ class RedisMessageBus:
         self._stream_name = stream_name
         self._consumer_name = f"{socket.gethostname()}-{os.getpid()}"
         self._stop_event = threading.Event()
-        self._publish_queue: queue.SimpleQueue[dict[str, str] | None] = queue.SimpleQueue()
+        self._publish_queue: queue.SimpleQueue[StreamFields | None] = queue.SimpleQueue()
         self._threads: dict[str, threading.Thread] = {}
         self._receivers: dict[str, tuple[str, str]] = {}
         self._lock = threading.Lock()
@@ -109,8 +112,8 @@ class RedisMessageBus:
 
             if not entries:
                 continue
-
-            for _, messages in entries:
+            parsed_entries = cast(list[tuple[str, list[tuple[str, dict[str, str]]]]], entries)
+            for _, messages in parsed_entries:
                 for message_id, fields in messages:
                     try:
                         message = self._deserialize_message(fields)
@@ -143,7 +146,13 @@ class RedisMessageBus:
             if fields is None:
                 break
             try:
-                self._redis.xadd(self._stream_name, fields=fields)
+                self._redis.xadd(
+                    self._stream_name,
+                    fields=cast(
+                        dict[bytes | bytearray | memoryview | str | int | float, bytes | bytearray | memoryview | str | int | float],
+                        fields,
+                    ),
+                )
             except RedisError as exc:  # pragma: no cover
                 print(
                     f"[message-bus][publisher] publish failed for {fields.get('topic', 'unknown')}: {exc}",
@@ -168,7 +177,7 @@ class RedisMessageBus:
             thread.start()
 
     def publish(self, message: AnalysisMessage) -> None:
-        fields = {
+        fields: StreamFields = {
             "topic": message.topic,
             "text": message.text,
             "coin_symbol": message.coin_symbol,
@@ -191,14 +200,12 @@ class RedisMessageBus:
             thread.join(timeout=(READ_BLOCK_MILLISECONDS / 1000) + 1)
 
         for group_name, consumer_name in receivers:
-            try:
+            with contextlib.suppress(RedisError):
                 self._redis.xgroup_delconsumer(
                     name=self._stream_name,
                     groupname=group_name,
                     consumername=consumer_name,
                 )
-            except RedisError:
-                pass
 
         self._redis.close()
 

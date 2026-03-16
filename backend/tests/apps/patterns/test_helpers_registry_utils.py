@@ -1,10 +1,13 @@
 from types import SimpleNamespace
 
 from sqlalchemy import select
-
 from src.apps.patterns import cache
 from src.apps.patterns.domain.context import _regime_alignment, _signal_regime, _volatility_alignment
-from src.apps.patterns.domain.lifecycle import PatternLifecycleState, lifecycle_allows_detection, resolve_lifecycle_state
+from src.apps.patterns.domain.lifecycle import (
+    PatternLifecycleState,
+    lifecycle_allows_detection,
+    resolve_lifecycle_state,
+)
 from src.apps.patterns.domain.utils import (
     average,
     clamp,
@@ -23,6 +26,7 @@ from src.apps.patterns.domain.utils import (
     within_tolerance,
 )
 from src.apps.patterns.models import PatternFeature, PatternRegistry
+
 from tests.factories.market_data import build_candle_points
 from tests.patterns_support import seed_pattern_catalog_metadata
 

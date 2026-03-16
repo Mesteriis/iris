@@ -1,5 +1,8 @@
 import multiprocessing
 import signal
+from multiprocessing.context import SpawnProcess
+from multiprocessing.synchronize import Event
+from types import FrameType
 
 from src.runtime.control_plane.worker import create_topology_dispatcher_consumer
 from src.runtime.streams.types import get_event_worker_groups
@@ -14,10 +17,10 @@ def run_worker_loop(group_name: str) -> None:
         worker.close()
 
 
-def _run_group_with_stop(group_name: str, stop_flag) -> None:
+def _run_group_with_stop(group_name: str, stop_flag: Event) -> None:
     worker = create_worker(group_name)
 
-    def _stop_handler(signum, frame):  # pragma: no cover
+    def _stop_handler(signum: int, frame: FrameType | None) -> None:  # pragma: no cover
         del signum, frame
         worker.stop()
 
@@ -30,10 +33,10 @@ def _run_group_with_stop(group_name: str, stop_flag) -> None:
         worker.close()
 
 
-def _run_topology_dispatcher_with_stop(stop_flag) -> None:
+def _run_topology_dispatcher_with_stop(stop_flag: Event) -> None:
     worker = create_topology_dispatcher_consumer()
 
-    def _stop_handler(signum, frame):  # pragma: no cover
+    def _stop_handler(signum: int, frame: FrameType | None) -> None:  # pragma: no cover
         del signum, frame
         worker.stop()
 
@@ -46,10 +49,10 @@ def _run_topology_dispatcher_with_stop(stop_flag) -> None:
         worker.close()
 
 
-def spawn_event_worker_processes() -> tuple[multiprocessing.synchronize.Event, list[multiprocessing.Process]]:
+def spawn_event_worker_processes() -> tuple[Event, list[SpawnProcess]]:
     ctx = multiprocessing.get_context("spawn")
     stop_event = ctx.Event()
-    processes: list[multiprocessing.Process] = []
+    processes: list[SpawnProcess] = []
     dispatcher_process = ctx.Process(
         target=_run_topology_dispatcher_with_stop,
         args=(stop_event,),
@@ -71,8 +74,8 @@ def spawn_event_worker_processes() -> tuple[multiprocessing.synchronize.Event, l
 
 
 def stop_event_worker_processes(
-    stop_event,
-    processes: list[multiprocessing.Process],
+    stop_event: Event,
+    processes: list[SpawnProcess],
 ) -> None:
     stop_event.set()
     for process in processes:

@@ -1,9 +1,18 @@
+from collections.abc import Mapping
+from typing import Any, cast
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.patterns.domain.regime import read_regime_details
 from src.apps.portfolio.cache import cache_portfolio_state_async, read_cached_portfolio_state_async
 from src.apps.portfolio.models import PortfolioAction, PortfolioPosition, PortfolioState
+from src.apps.portfolio.query_builders import (
+    portfolio_actions_select as _portfolio_actions_select,
+)
+from src.apps.portfolio.query_builders import (
+    portfolio_positions_select as _portfolio_positions_select,
+)
 from src.apps.portfolio.read_models import (
     PortfolioActionReadModel,
     PortfolioPositionReadModel,
@@ -11,10 +20,6 @@ from src.apps.portfolio.read_models import (
     portfolio_action_read_model_from_mapping,
     portfolio_position_read_model_from_mapping,
     portfolio_state_read_model_from_mapping,
-)
-from src.apps.portfolio.query_builders import (
-    portfolio_actions_select as _portfolio_actions_select,
-    portfolio_positions_select as _portfolio_positions_select,
 )
 from src.core.db.persistence import AsyncQueryService
 from src.core.settings import get_settings
@@ -76,7 +81,10 @@ class PortfolioQueryService(AsyncQueryService):
                 .limit(max(limit, 1))
             )
         ).all()
-        items = tuple(portfolio_action_read_model_from_mapping(row._mapping) for row in rows)
+        items = tuple(
+            portfolio_action_read_model_from_mapping(cast(Mapping[str, Any], row._mapping))
+            for row in rows
+        )
         self._log_debug("query.list_portfolio_actions.result", mode="read", count=len(items))
         return items
 

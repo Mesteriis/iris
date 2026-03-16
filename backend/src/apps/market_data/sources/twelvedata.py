@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING, ClassVar
 
@@ -11,6 +9,7 @@ from src.apps.market_data.sources.base import (
     MarketBar,
     TemporaryMarketSourceError,
     UnsupportedMarketSourceQuery,
+    http_query_params,
 )
 from src.core.settings import get_settings
 
@@ -66,6 +65,7 @@ class TwelveDataMarketSource(BaseMarketSource):
             return resolved
 
         candidates = TWELVE_DATA_SYMBOL_CANDIDATES.get(coin.symbol)
+        fallback: str | None
         if candidates:
             fallback = candidates[0]
         else:
@@ -98,16 +98,16 @@ class TwelveDataMarketSource(BaseMarketSource):
         start: datetime,
         end: datetime,
     ) -> list[MarketBar]:
-        params = {
-            "symbol": symbol,
-            "interval": TWELVE_DATA_INTERVALS[normalize_interval(interval)],
-            "start_date": ensure_utc(start).strftime("%Y-%m-%d %H:%M:%S"),
-            "end_date": ensure_utc(end).strftime("%Y-%m-%d %H:%M:%S"),
-            "timezone": "UTC",
-            "order": "ASC",
-            "format": "JSON",
-            "outputsize": min(self._limit_for_range(interval, start, end), self.bars_per_request(interval)),
-        }
+        params = http_query_params(
+            symbol=symbol,
+            interval=TWELVE_DATA_INTERVALS[normalize_interval(interval)],
+            start_date=ensure_utc(start).strftime("%Y-%m-%d %H:%M:%S"),
+            end_date=ensure_utc(end).strftime("%Y-%m-%d %H:%M:%S"),
+            timezone="UTC",
+            order="ASC",
+            format="JSON",
+            outputsize=min(self._limit_for_range(interval, start, end), self.bars_per_request(interval)),
+        )
 
         try:
             response = await self.request(self.base_url, params=params)

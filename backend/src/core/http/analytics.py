@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.core.http.contracts import ConsistencyClass, FreshnessClass
 
@@ -11,7 +11,7 @@ def analytical_metadata(
     freshness_class: FreshnessClass,
     generated_at: datetime | None = None,
 ) -> dict[str, object]:
-    next_generated_at = generated_at or datetime.now(timezone.utc)
+    next_generated_at = generated_at or datetime.now(UTC)
     latest_source_timestamp = latest_timestamp(source_updated_at)
     return {
         "generated_at": next_generated_at,
@@ -24,7 +24,9 @@ def analytical_metadata(
 def latest_timestamp(values: object | Iterable[object] | None) -> datetime | None:
     if values is None:
         return None
-    if isinstance(values, (str, datetime)):
+    if isinstance(values, str | datetime):
+        return _coerce_datetime(values)
+    if not isinstance(values, Iterable):
         return _coerce_datetime(values)
 
     latest: datetime | None = None
@@ -42,15 +44,15 @@ def _coerce_datetime(value: object) -> datetime | None:
         return None
     if isinstance(value, datetime):
         if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
     if isinstance(value, str):
         normalized = value.strip()
         if not normalized:
             return None
         if normalized.endswith("Z"):
             normalized = f"{normalized[:-1]}+00:00"
-        return datetime.fromisoformat(normalized).astimezone(timezone.utc)
+        return datetime.fromisoformat(normalized).astimezone(UTC)
     return None
 
 

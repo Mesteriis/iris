@@ -1,4 +1,5 @@
 import src.apps.patterns.domain.detectors.continuation as continuation_mod
+
 from tests.factories.market_data import build_candle_points
 
 

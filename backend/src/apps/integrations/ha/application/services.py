@@ -2,10 +2,11 @@ import asyncio
 import copy
 import hashlib
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from secrets import token_hex
-from typing import Any
+from typing import Any, Literal, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -37,6 +38,7 @@ from src.apps.integrations.ha.schemas import (
     HAHealthRead,
     HAInstanceRead,
     HAOperationRead,
+    HAOperationStatus,
     HAOperationUpdateMessage,
     HAResyncRequiredMessage,
     HAStatePatchMessage,
@@ -52,7 +54,12 @@ from src.core.db.session import AsyncSessionLocal
 from src.core.errors import PlatformError
 from src.core.http.errors import ApiErrorFactory
 from src.core.http.operation_localization import localize_operation_event, localize_operation_status
-from src.core.http.operation_store import OperationDispatchResult, OperationStore, dispatch_background_operation
+from src.core.http.operation_store import (
+    OperationDispatchResult,
+    OperationStore,
+    TaskiqJob,
+    dispatch_background_operation,
+)
 from src.core.http.operations import OperationStatus
 from src.core.i18n import build_locale_policy, get_translation_service
 from src.core.settings import Settings, get_settings
@@ -728,8 +735,8 @@ class HABridgeService:
 
     def catalog_version(self, catalog: HACatalogRead | None = None) -> str:
         payload = (catalog or self.catalog()).model_dump(mode="json", exclude={"catalog_version"})
-        digest = hashlib.sha1(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
-        return f"sha1:{digest[:12]}"
+        digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        return f"sha256:{digest[:12]}"
 
     def _catalog_entities(self) -> list[HAEntityDefinitionRead]:
         availability = HAAvailabilityRead(modes=["full", "local", "ha_addon"])
@@ -939,24 +946,26 @@ class HABridgeService:
     async def _dispatch_portfolio_sync(self, payload: dict[str, Any]) -> HACommandDispatch:
         self._ensure_empty_payload(command="portfolio.sync", payload=payload)
         from src.apps.portfolio.tasks import portfolio_sync_job
+        job = cast(TaskiqJob, portfolio_sync_job)
 
         dispatch_result = await dispatch_background_operation(
             store=self._operation_store_factory(),
             operation_type="portfolio.sync",
             deduplication_key="singleton",
-            dispatch=lambda operation_id: portfolio_sync_job.kiq(operation_id=operation_id),
+            dispatch=lambda operation_id: job.kiq(operation_id=operation_id),
         )
         return self._command_dispatch_result(command="portfolio.sync", dispatch_result=dispatch_result)
 
     async def _dispatch_market_refresh(self, payload: dict[str, Any]) -> HACommandDispatch:
         self._ensure_empty_payload(command="market.refresh", payload=payload)
         from src.apps.market_structure.tasks import refresh_market_structure_source_health_job
+        job = cast(TaskiqJob, refresh_market_structure_source_health_job)
 
         dispatch_result = await dispatch_background_operation(
             store=self._operation_store_factory(),
             operation_type="market.refresh",
             deduplication_key="singleton",
-            dispatch=lambda operation_id: refresh_market_structure_source_health_job.kiq(operation_id=operation_id),
+            dispatch=lambda operation_id: job.kiq(operation_id=operation_id),
         )
         return self._command_dispatch_result(command="market.refresh", dispatch_result=dispatch_result)
 
@@ -1008,7 +1017,7 @@ class HABridgeService:
         *,
         command: str,
         operation_type: str,
-        action,
+        action: Callable[[RuntimeSnapshot], Awaitable[tuple[list[dict[str, Any]], dict[str, Any]]]],
     ) -> HACommandDispatch:
         store = self._operation_store_factory()
         operation = await store.create_operation(operation_type=operation_type)
@@ -1575,7 +1584,7 @@ class HABridgeService:
         collection_key: str,
         path: str,
         value: Any,
-        op: str = "upsert",
+        op: Literal["upsert", "remove", "replace"] = "upsert",
     ) -> dict[str, Any]:
         version = self._projection_clock.advance()
         return HACollectionPatchMessage(
@@ -1604,8 +1613,8 @@ class HABridgeService:
         return f"{root}{version}/ha{suffix}"
 
 
-def _operation_status(status: OperationStatus) -> str:
-    mapping = {
+def _operation_status(status: OperationStatus) -> HAOperationStatus:
+    mapping: dict[OperationStatus, HAOperationStatus] = {
         OperationStatus.ACCEPTED: "accepted",
         OperationStatus.QUEUED: "queued",
         OperationStatus.RUNNING: "in_progress",

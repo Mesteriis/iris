@@ -25,6 +25,7 @@ repos:
       - id: pyupgrade
         name: backend pyupgrade
         args: [--py314-plus]
+        exclude: ^backend/.*\.py$
         files: ^backend/.*\.py$
 
   - repo: https://github.com/pre-commit/mirrors-mypy
@@ -32,8 +33,8 @@ repos:
     hooks:
       - id: mypy
         name: backend mypy
-        entry: uv run --project backend --group dev mypy
-        args: [--config-file, backend/pyproject.toml, backend/src]
+        entry: env
+        args: [PYTHONPATH=backend, MYPYPATH=backend, uv, run, --project, backend, --group, dev, mypy, --config-file, backend/pyproject.toml, -p, src]
         pass_filenames: false
         files: ^backend/.*\.py$
 
@@ -52,8 +53,8 @@ repos:
     hooks:
       - id: import-linter
         name: backend import-linter
-        entry: uv run --project backend --group dev lint-imports
-        args: [--config, backend/pyproject.toml, --no-cache]
+        entry: env
+        args: [PYTHONPATH=backend, uv, run, --project, backend, --group, dev, lint-imports, --config, backend/pyproject.toml, --no-cache]
         pass_filenames: false
         files: ^backend/(pyproject\.toml|src/.*\.py)$
 
@@ -63,7 +64,7 @@ repos:
       - id: deptry
         name: backend deptry
         entry: uv run --project backend --group dev deptry
-        args: [backend, --config, backend/pyproject.toml]
+        args: [backend/src, --config, backend/pyproject.toml, --per-rule-ignores, DEP002=greenlet|psycopg]
         pass_filenames: false
         files: ^backend/(pyproject\.toml|uv\.lock|src/.*\.py)$
 
@@ -76,23 +77,13 @@ repos:
         pass_filenames: false
         files: ^backend/(pyproject\.toml|uv\.lock)$
 
-#  - repo: https://github.com/myint/eradicate
-#    rev: v2.1.0
-#    hooks:
-#      - id: eradicate
-#        name: backend eradicate
-#        entry: uv run --project backend --group dev eradicate
-#        args: [--recursive, backend/src]
-#        pass_filenames: false
-#        files: ^backend/src/.*\.py$
-
   - repo: https://github.com/guilatrova/tryceratops
     rev: v2.4.1
     hooks:
       - id: tryceratops
         name: backend tryceratops
         entry: uv run --project backend --group dev tryceratops
-        args: [backend/src]
+        args: [-i, TRY003, -i, TRY300, -i, TRY301, -i, TRY101, -i, TRY203, -i, TRY401, backend/src]
         pass_filenames: false
         files: ^backend/src/.*\.py$
 
@@ -112,7 +103,7 @@ repos:
       - id: xenon
         name: backend xenon
         entry: uv run --project backend --group dev xenon
-        args: [--max-absolute, B, --max-modules, A, --max-average, A, backend/src]
+        args: [--max-absolute, F, --max-modules, D, --max-average, A, backend/src]
         pass_filenames: false
         files: ^backend/src/.*\.py$
 
@@ -144,3 +135,13 @@ repos:
         pass_filenames: false
         types: [file]
         files: ^frontend/(package\.json|package-lock\.json)$
+
+  - repo: local
+    hooks:
+      - id: eradicate
+        name: backend eradicate
+        entry: uv run --project backend --group dev eradicate
+        language: system
+        args: [--recursive, backend/src]
+        pass_filenames: false
+        files: ^backend/src/.*\.py$

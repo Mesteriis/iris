@@ -99,7 +99,7 @@ class EventConsumer:
         )
 
     async def _already_processed(self, event: IrisEvent) -> bool:
-        return await self._redis.exists(self._processed_key(event)) == 1
+        return bool(await self._redis.exists(self._processed_key(event)))
 
     async def _iter_stale_messages(self) -> list[tuple[str, dict[str, str]]]:
         try:

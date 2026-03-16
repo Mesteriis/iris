@@ -1,5 +1,5 @@
-from dataclasses import FrozenInstanceError
 import importlib.util
+from dataclasses import FrozenInstanceError
 from datetime import timedelta
 
 import pytest

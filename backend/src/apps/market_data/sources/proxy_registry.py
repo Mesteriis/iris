@@ -32,6 +32,49 @@ def _parse_timestamp(value: str | None) -> datetime | None:
         return None
 
 
+def _coerce_int(value: object, *, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _coerce_float(value: object, *, default: float = 0.0) -> float:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _coerce_optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
 @dataclass(slots=True)
 class ProxyRecord:
     proxy_url: str
@@ -90,11 +133,11 @@ class ProxyRecord:
             last_failure_at=_parse_timestamp(str(payload.get("last_failure_at") or "")),
             cooldown_until=_parse_timestamp(str(payload.get("cooldown_until") or "")),
             last_error=str(payload.get("last_error")) if payload.get("last_error") not in {None, ""} else None,
-            success_count=max(int(payload.get("success_count") or 0), 0),
-            failure_count=max(int(payload.get("failure_count") or 0), 0),
-            consecutive_failures=max(int(payload.get("consecutive_failures") or 0), 0),
-            average_latency_ms=float(payload["average_latency_ms"]) if payload.get("average_latency_ms") is not None else None,
-            rating=max(float(payload.get("rating") or 0.0), 0.0),
+            success_count=max(_coerce_int(payload.get("success_count"), default=0), 0),
+            failure_count=max(_coerce_int(payload.get("failure_count"), default=0), 0),
+            consecutive_failures=max(_coerce_int(payload.get("consecutive_failures"), default=0), 0),
+            average_latency_ms=_coerce_optional_float(payload.get("average_latency_ms")),
+            rating=max(_coerce_float(payload.get("rating"), default=0.0), 0.0),
         )
 
 
@@ -266,7 +309,7 @@ class FreeProxyRegistry:
         results = await asyncio.gather(*tasks, return_exceptions=True)
         candidates: set[tuple[str, str]] = set()
         for source_url, result in zip(self.settings.free_proxy_pool_source_urls, results, strict=False):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 LOGGER.warning("Failed to import proxy list from %s: %s", source_url, result)
                 continue
             for proxy_url in result:
@@ -292,7 +335,7 @@ class FreeProxyRegistry:
                 normalized.update(self._parse_proxy_payload(item))
             return normalized
         if isinstance(payload, dict):
-            normalized: set[str] = set()
+            normalized = set()
             if "proxy" in payload:
                 candidate = self._normalize_proxy_url(str(payload["proxy"]))
                 if candidate is not None:

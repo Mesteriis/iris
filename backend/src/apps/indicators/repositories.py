@@ -1,9 +1,10 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol, cast
 
-from sqlalchemy import func, select, text
+from sqlalchemy import Interval, column, delete, func, select, table
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -11,8 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from src.apps.cross_market.models import SectorMetric
 from src.apps.indicators.analytics import INDICATOR_VERSION, SIGNAL_TYPES, TimeframeSnapshot
 from src.apps.indicators.models import CoinMetrics, FeatureSnapshot, IndicatorCache
-from src.apps.market_data.domain import ensure_utc, utc_now
-from src.apps.market_data.models import Candle, Coin
 from src.apps.market_data.candles import (
     AGGREGATE_VIEW_BY_TIMEFRAME,
     BASE_TIMEFRAME_MINUTES,
@@ -21,57 +20,83 @@ from src.apps.market_data.candles import (
     timeframe_bucket_interval,
     timeframe_delta,
 )
+from src.apps.market_data.domain import ensure_utc, utc_now
+from src.apps.market_data.models import Candle, Coin
 from src.apps.patterns.models import MarketCycle, PatternFeature
 from src.apps.signals.models import Signal
 from src.core.db.persistence import AsyncRepository
 
 
+class _CandleRowLike(Protocol):
+    open: object
+    high: object
+    low: object
+    close: object
+    volume: object | None
+
+
+@dataclass(slots=True)
+class _ResampledBucket:
+    timestamp: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float | None
+
+
+def _float_value(value: object) -> float:
+    if isinstance(value, int | float | str):
+        return float(value)
+    return float(cast(Any, value))
+
+
 def _rows_to_candle_points(rows: Sequence[object], *, timestamp_field: str = "timestamp") -> list[CandlePoint]:
     return [
         CandlePoint(
-            timestamp=ensure_utc(getattr(row, timestamp_field)),
-            open=float(row.open),
-            high=float(row.high),
-            low=float(row.low),
-            close=float(row.close),
-            volume=float(row.volume) if row.volume is not None else None,
+            timestamp=ensure_utc(cast(datetime, getattr(row, timestamp_field))),
+            open=_float_value(cast(_CandleRowLike, row).open),
+            high=_float_value(cast(_CandleRowLike, row).high),
+            low=_float_value(cast(_CandleRowLike, row).low),
+            close=_float_value(cast(_CandleRowLike, row).close),
+            volume=_float_value(cast(_CandleRowLike, row).volume)
+            if cast(_CandleRowLike, row).volume is not None
+            else None,
         )
         for row in rows
     ]
 
 
 def _resample_candle_points(points: Sequence[CandlePoint], *, target_timeframe: int) -> list[CandlePoint]:
-    grouped: dict[datetime, dict[str, float | datetime | None]] = {}
+    grouped: dict[datetime, _ResampledBucket] = {}
     for point in sorted(points, key=lambda value: value.timestamp):
         bucket = align_timeframe_timestamp(point.timestamp, target_timeframe)
         current = grouped.get(bucket)
         if current is None:
-            grouped[bucket] = {
-                "timestamp": bucket,
-                "open": point.open,
-                "high": point.high,
-                "low": point.low,
-                "close": point.close,
-                "volume": point.volume,
-            }
-            continue
-        current["high"] = max(float(current["high"]), point.high)
-        current["low"] = min(float(current["low"]), point.low)
-        current["close"] = point.close
-        if point.volume is not None:
-            current["volume"] = (
-                point.volume if current["volume"] is None else float(current["volume"]) + point.volume
+            grouped[bucket] = _ResampledBucket(
+                timestamp=bucket,
+                open=point.open,
+                high=point.high,
+                low=point.low,
+                close=point.close,
+                volume=point.volume,
             )
+            continue
+        current.high = max(current.high, point.high)
+        current.low = min(current.low, point.low)
+        current.close = point.close
+        if point.volume is not None:
+            current.volume = point.volume if current.volume is None else current.volume + point.volume
     return [
         CandlePoint(
-            timestamp=ensure_utc(bucket),
-            open=float(values["open"]),
-            high=float(values["high"]),
-            low=float(values["low"]),
-            close=float(values["close"]),
-            volume=float(values["volume"]) if values["volume"] is not None else None,
+            timestamp=ensure_utc(values.timestamp),
+            open=values.open,
+            high=values.high,
+            low=values.low,
+            close=values.close,
+            volume=values.volume,
         )
-        for bucket, values in grouped.items()
+        for values in grouped.values()
     ]
 
 
@@ -90,6 +115,19 @@ def _should_fallback_aggregate_error(error: SQLAlchemyError) -> bool:
             "candles_4h",
             "candles_1d",
         )
+    )
+
+
+def _aggregate_view_table(view_name: str) -> Any:
+    return table(
+        view_name,
+        column("coin_id"),
+        column("bucket"),
+        column("open"),
+        column("high"),
+        column("low"),
+        column("close"),
+        column("volume"),
     )
 
 
@@ -146,14 +184,14 @@ class IndicatorCandleRepository(AsyncRepository):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, domain="indicators", repository_name="IndicatorCandleRepository")
 
-    async def _execute_aggregate_all(self, statement, params: dict[str, object]) -> list[Any]:
+    async def _execute_aggregate_all(self, statement: Any, params: dict[str, object]) -> list[Any]:
         bind = self.session.bind
         if isinstance(bind, AsyncEngine):
             async with bind.connect() as connection:
                 return list((await connection.execute(statement, params)).all())
         return list((await self.session.execute(statement, params)).all())
 
-    async def _execute_aggregate_first(self, statement, params: dict[str, object]) -> Any | None:
+    async def _execute_aggregate_first(self, statement: Any, params: dict[str, object]) -> Any | None:
         bind = self.session.bind
         if isinstance(bind, AsyncEngine):
             async with bind.connect() as connection:
@@ -267,10 +305,11 @@ class IndicatorCandleRepository(AsyncRepository):
         )
         if timeframe not in AGGREGATE_VIEW_BY_TIMEFRAME:
             return False
+        aggregate_view = _aggregate_view_table(AGGREGATE_VIEW_BY_TIMEFRAME[timeframe])
         try:
             row = await self._execute_aggregate_first(
-                text(f"SELECT 1 FROM {AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]} WHERE coin_id = :coin_id LIMIT 1"),
-                {"coin_id": coin_id},
+                select(aggregate_view.c.coin_id).where(aggregate_view.c.coin_id == coin_id).limit(1),
+                {},
             )
         except SQLAlchemyError as error:
             if not _should_fallback_aggregate_error(error):
@@ -320,23 +359,33 @@ class IndicatorCandleRepository(AsyncRepository):
 
     async def _fetch_view_points(self, *, coin_id: int, timeframe: int, limit: int | None) -> list[CandlePoint]:
         view_name = AGGREGATE_VIEW_BY_TIMEFRAME[timeframe]
-        limit_sql = "LIMIT :limit" if limit is not None else ""
+        aggregate_view = _aggregate_view_table(view_name)
+        base_query = (
+            select(
+                aggregate_view.c.bucket,
+                aggregate_view.c.open,
+                aggregate_view.c.high,
+                aggregate_view.c.low,
+                aggregate_view.c.close,
+                aggregate_view.c.volume,
+            )
+            .where(aggregate_view.c.coin_id == coin_id)
+            .order_by(aggregate_view.c.bucket.desc())
+        )
+        if limit is not None:
+            base_query = base_query.limit(limit)
+        ordered_rows = base_query.subquery()
         try:
             rows = await self._execute_aggregate_all(
-                text(
-                    f"""
-                    SELECT bucket, open, high, low, close, volume
-                    FROM (
-                        SELECT bucket, open, high, low, close, volume
-                        FROM {view_name}
-                        WHERE coin_id = :coin_id
-                        ORDER BY bucket DESC
-                        {limit_sql}
-                    ) AS rows
-                    ORDER BY bucket ASC
-                    """
-                ),
-                {"coin_id": coin_id, **({"limit": limit} if limit is not None else {})},
+                select(
+                    ordered_rows.c.bucket,
+                    ordered_rows.c.open,
+                    ordered_rows.c.high,
+                    ordered_rows.c.low,
+                    ordered_rows.c.close,
+                    ordered_rows.c.volume,
+                ).order_by(ordered_rows.c.bucket.asc()),
+                {},
             )
         except SQLAlchemyError as error:
             if not _should_fallback_aggregate_error(error):
@@ -361,36 +410,37 @@ class IndicatorCandleRepository(AsyncRepository):
         target_timeframe: int,
         limit: int | None,
     ) -> list[CandlePoint]:
-        limit_sql = "LIMIT :limit" if limit is not None else ""
+        bucket = func.time_bucket(sql_cast(timeframe_bucket_interval(target_timeframe), Interval()), Candle.timestamp)
+        base_query = (
+            select(
+                bucket.label("bucket"),
+                func.first(Candle.open, Candle.timestamp).label("open"),
+                func.max(Candle.high).label("high"),
+                func.min(Candle.low).label("low"),
+                func.last(Candle.close, Candle.timestamp).label("close"),
+                func.sum(Candle.volume).label("volume"),
+            )
+            .where(
+                Candle.coin_id == coin_id,
+                Candle.timeframe == source_timeframe,
+            )
+            .group_by(bucket)
+            .order_by(bucket.desc())
+        )
+        if limit is not None:
+            base_query = base_query.limit(limit)
+        ordered_rows = base_query.subquery()
         try:
             rows = await self._execute_aggregate_all(
-                text(
-                    f"""
-                    SELECT bucket, open, high, low, close, volume
-                    FROM (
-                        SELECT
-                            time_bucket(CAST(:bucket_interval AS INTERVAL), timestamp) AS bucket,
-                            first(open, timestamp) AS open,
-                            max(high) AS high,
-                            min(low) AS low,
-                            last(close, timestamp) AS close,
-                            sum(volume) AS volume
-                        FROM candles
-                        WHERE coin_id = :coin_id
-                          AND timeframe = :source_timeframe
-                        GROUP BY bucket
-                        ORDER BY bucket DESC
-                        {limit_sql}
-                    ) AS rows
-                    ORDER BY bucket ASC
-                    """
-                ),
-                {
-                    "coin_id": coin_id,
-                    "source_timeframe": source_timeframe,
-                    "bucket_interval": timeframe_bucket_interval(target_timeframe),
-                    **({"limit": limit} if limit is not None else {}),
-                },
+                select(
+                    ordered_rows.c.bucket,
+                    ordered_rows.c.open,
+                    ordered_rows.c.high,
+                    ordered_rows.c.low,
+                    ordered_rows.c.close,
+                    ordered_rows.c.volume,
+                ).order_by(ordered_rows.c.bucket.asc()),
+                {},
             )
             return _rows_to_candle_points(rows, timestamp_field="bucket")
         except SQLAlchemyError as error:
@@ -426,9 +476,9 @@ class IndicatorMetricsRepository(AsyncRepository):
 
     async def delete_by_coin_id(self, coin_id: int) -> int:
         self._log_info("repo.delete_indicator_metrics_row", mode="write", coin_id=coin_id, bulk=True)
-        result = await self.session.execute(CoinMetrics.__table__.delete().where(CoinMetrics.coin_id == coin_id))
+        result = await self.session.execute(delete(CoinMetrics).where(CoinMetrics.coin_id == coin_id))
         await self.session.flush()
-        return int(result.rowcount or 0)
+        return int(cast(Any, result).rowcount or 0)
 
     async def get_by_coin_id(self, coin_id: int) -> CoinMetrics | None:
         self._log_debug("repo.get_indicator_metrics_by_coin_id", mode="read", coin_id=coin_id)

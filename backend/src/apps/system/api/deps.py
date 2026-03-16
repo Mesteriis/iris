@@ -11,6 +11,11 @@ from src.core.http.operation_store import OperationStore
 from src.core.http.operations import OperationEventResponse, OperationResultResponse, OperationStatusResponse
 
 
+def _worker_process_is_alive(process: object) -> bool:
+    is_alive = getattr(process, "is_alive", None)
+    return bool(is_alive()) if callable(is_alive) else False
+
+
 @dataclass(slots=True, frozen=True)
 class SystemStatusFacade:
     async def list_source_status_rows(self) -> list[SourceStatusRead]:
@@ -44,7 +49,7 @@ class SystemStatusFacade:
             service="iris",
             status="ok",
             taskiq_mode="process_workers",
-            taskiq_running=bool(worker_processes) and all(process.is_alive() for process in worker_processes),
+            taskiq_running=bool(worker_processes) and all(_worker_process_is_alive(process) for process in worker_processes),
             sources=await self.list_source_status_rows(),
         )
 
@@ -81,10 +86,10 @@ SystemOperationFacadeDep = Annotated[SystemOperationFacade, Depends(get_system_o
 
 
 __all__ = [
-    "SystemOperationFacadeDep",
     "SystemOperationFacade",
-    "SystemStatusFacadeDep",
+    "SystemOperationFacadeDep",
     "SystemStatusFacade",
+    "SystemStatusFacadeDep",
     "get_system_operation_facade",
     "get_system_status_facade",
 ]

@@ -11,10 +11,11 @@ from src.apps.news.contracts import (
 )
 from src.apps.news.exceptions import InvalidNewsSourceConfigurationError
 from src.apps.news.polling import NewsService
+from src.core.db.uow import BaseAsyncUnitOfWork
 
 
 class TelegramSourceProvisioningService:
-    def __init__(self, uow) -> None:
+    def __init__(self, uow: BaseAsyncUnitOfWork) -> None:
         self._news = NewsService(uow)
 
     async def create_source_from_dialog(self, payload: TelegramSourceFromDialogCreate) -> NewsSourceRead:

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from src.apps.cross_market.models import CoinRelation
 from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.predictions.engines import PredictionWindowInput, evaluate_prediction_window
 from src.apps.predictions.integrations.market_data import PredictionMarketDataAdapter
@@ -136,8 +137,8 @@ class PredictionService(PersistenceComponent):
             if outcome is None:
                 continue
             prediction.status = outcome.status
-            result = prediction.result
-            if result is None:
+            prediction_result = prediction.result
+            if prediction_result is None:
                 prediction.result = PredictionResult(
                     prediction_id=int(prediction.id),
                     actual_move=outcome.actual_move,
@@ -146,10 +147,10 @@ class PredictionService(PersistenceComponent):
                     evaluated_at=now,
                 )
             else:
-                result.actual_move = outcome.actual_move
-                result.success = outcome.success
-                result.profit = outcome.profit
-                result.evaluated_at = now
+                prediction_result.actual_move = outcome.actual_move
+                prediction_result.success = outcome.success
+                prediction_result.profit = outcome.profit
+                prediction_result.evaluated_at = now
             relation = await self._apply_relation_feedback(prediction, success=outcome.success)
             cache_snapshots.append(PredictionCacheSnapshot.from_prediction(prediction))
             if outcome.status == "confirmed":
@@ -182,7 +183,7 @@ class PredictionService(PersistenceComponent):
                     )
                 )
 
-        result = PredictionEvaluationBatch(
+        batch = PredictionEvaluationBatch(
             status="ok",
             evaluated=len(rows),
             confirmed=confirmed,
@@ -199,7 +200,7 @@ class PredictionService(PersistenceComponent):
             failed=failed,
             expired=expired,
         )
-        return result
+        return batch
 
     async def _evaluate_prediction_window(
         self,
@@ -228,7 +229,7 @@ class PredictionService(PersistenceComponent):
         prediction: MarketPrediction,
         *,
         success: bool,
-    ) -> object | None:
+    ) -> CoinRelation | None:
         relation = await self._relations.get_for_update(
             leader_coin_id=int(prediction.leader_coin_id),
             target_coin_id=int(prediction.target_coin_id),

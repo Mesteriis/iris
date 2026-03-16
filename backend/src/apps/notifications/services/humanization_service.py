@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal, Protocol, cast, runtime_checkable
 
 from src.apps.hypothesis_engine.prompts import LoadedPrompt
 from src.apps.notifications.constants import (
@@ -24,6 +24,19 @@ from src.core.i18n import (
     resolve_requested_language,
 )
 from src.core.settings import Settings, get_settings
+
+type NotificationSeverity = Literal["info", "warning", "critical"]
+type NotificationUrgency = Literal["low", "medium", "high"]
+
+
+@runtime_checkable
+class _SupportsInt(Protocol):
+    def __int__(self) -> int: ...
+
+
+@runtime_checkable
+class _SupportsFloat(Protocol):
+    def __float__(self) -> float: ...
 
 
 class NotificationHumanizationService:
@@ -82,8 +95,8 @@ class NotificationHumanizationService:
         return NotificationHumanizationResult(
             title=title,
             message=message,
-            severity=str(payload.get("severity") or "info"),
-            urgency=str(payload.get("urgency") or "medium"),
+            severity=_coerce_notification_severity(payload.get("severity")),
+            urgency=_coerce_notification_urgency(payload.get("urgency")),
             metadata=metadata,
             title_descriptor=title_descriptor,
             message_descriptor=message_descriptor,
@@ -146,7 +159,7 @@ def render_template_notification(context: dict[str, Any], *, effective_language:
     }
 
 
-def _classify_event(*, event_type: str, payload: dict[str, Any]) -> tuple[str, str]:
+def _classify_event(*, event_type: str, payload: dict[str, Any]) -> tuple[NotificationSeverity, NotificationUrgency]:
     if event_type == "anomaly_detected":
         anomaly_type = str(payload.get("anomaly_type") or "").lower()
         if "liquidation" in anomaly_type or "cascade" in anomaly_type:
@@ -234,19 +247,43 @@ def _describe_event_text(context: dict[str, Any]) -> tuple[MessageDescriptor, Me
 def _format_score(value: object) -> str:
     if value is None:
         return "n/a"
-    return f"{float(value):.2f}"
+    return f"{_required_float(value, field_name='score'):.2f}"
 
 
 def _format_usd(value: object) -> str:
     if value is None:
         return "n/a"
-    return f"${float(value):.2f}"
+    return f"${_required_float(value, field_name='value_usd'):.2f}"
 
 
 def _format_balance(value: object) -> str:
     if value is None:
         return "n/a"
-    return f"{float(value):.6g}"
+    return f"{_required_float(value, field_name='balance'):.6g}"
+
+
+def _coerce_notification_severity(value: object) -> NotificationSeverity:
+    normalized = str(value or "info")
+    if normalized in NOTIFICATION_SEVERITY_VALUES:
+        return cast(NotificationSeverity, normalized)
+    return "info"
+
+
+def _coerce_notification_urgency(value: object) -> NotificationUrgency:
+    normalized = str(value or "medium")
+    if normalized in NOTIFICATION_URGENCY_VALUES:
+        return cast(NotificationUrgency, normalized)
+    return "medium"
+
+
+def _required_float(value: object, *, field_name: str) -> float:
+    if isinstance(value, bool | int | float | str | bytes | bytearray):
+        return float(value)
+    if isinstance(value, _SupportsFloat):
+        return float(value)
+    if isinstance(value, _SupportsInt):
+        return float(int(value))
+    raise TypeError(f"{field_name} must be float-compatible, got {type(value).__name__}")
 
 
 __all__ = [

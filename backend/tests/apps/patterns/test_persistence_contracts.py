@@ -1,15 +1,15 @@
-from dataclasses import FrozenInstanceError
-from datetime import datetime, timezone
 import importlib
 import importlib.util
+from dataclasses import FrozenInstanceError
+from datetime import UTC, datetime, timezone
 
 import pytest
-
 from src.apps.patterns.models import PatternFeature, PatternRegistry, PatternStatistic
 from src.apps.patterns.query_services import PatternQueryService
 from src.apps.patterns.services import PatternAdminService
 from src.core.db.persistence import PERSISTENCE_LOGGER
 from src.core.db.uow import SessionUnitOfWork
+
 from tests.patterns_support import seed_pattern_api_state
 
 
@@ -40,8 +40,8 @@ async def _seed_pattern_metadata(async_db_session) -> None:
                 avg_drawdown=-0.05,
                 temperature=0.32,
                 enabled=True,
-                last_evaluated_at=datetime(2026, 3, 12, 10, 0, tzinfo=timezone.utc),
-                updated_at=datetime(2026, 3, 12, 10, 5, tzinfo=timezone.utc),
+                last_evaluated_at=datetime(2026, 3, 12, 10, 0, tzinfo=UTC),
+                updated_at=datetime(2026, 3, 12, 10, 5, tzinfo=UTC),
             )
         )
     await async_db_session.commit()

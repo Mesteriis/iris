@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, SmallInteger, String, desc, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, SmallInteger, String, desc, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.db.session import Base
@@ -12,7 +14,14 @@ if TYPE_CHECKING:
     from src.apps.patterns.models import MarketCycle
     from src.apps.portfolio.models import PortfolioAction, PortfolioBalance, PortfolioPosition
     from src.apps.predictions.models import MarketPrediction, PredictionResult
-    from src.apps.signals.models import FinalSignal, InvestmentDecision, MarketDecision, RiskMetric, Signal, SignalHistory
+    from src.apps.signals.models import (
+        FinalSignal,
+        InvestmentDecision,
+        MarketDecision,
+        RiskMetric,
+        Signal,
+        SignalHistory,
+    )
 
 
 class Coin(Base):
@@ -162,4 +171,4 @@ class Candle(Base):
     coin: Mapped[Coin] = relationship("Coin", back_populates="candles")
 
 
-__all__ = ["Coin", "Candle"]
+__all__ = ["Candle", "Coin"]

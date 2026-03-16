@@ -34,10 +34,13 @@ def resolve_signal_success_rate(
         if is_cluster_signal(signal.signal_type) or is_hierarchy_signal(signal.signal_type):
             return 0.58
         return 0.55
-    if regime is not None and (slug, regime) in success_rates:
-        return _clamp(float(success_rates[(slug, regime)]), 0.35, 0.95)
-    if (slug, "all") in success_rates:
-        return _clamp(float(success_rates[(slug, "all")]), 0.35, 0.95)
+    if regime is not None:
+        rate = success_rates.get((slug, regime))
+        if rate is not None:
+            return _clamp(rate, 0.35, 0.95)
+    default_rate = success_rates.get((slug, "all"))
+    if default_rate is not None:
+        return _clamp(default_rate, 0.35, 0.95)
     return 0.55
 
 

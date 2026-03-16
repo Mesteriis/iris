@@ -1,13 +1,12 @@
-from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from __future__ import annotations
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, JSON, String, Text, desc, func
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, ForeignKey, Index, String, Text, desc, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.db.session import Base
-
-if TYPE_CHECKING:
-    from src.apps.news.models import NewsItem, NewsItemLink
 
 
 class NewsSource(Base):

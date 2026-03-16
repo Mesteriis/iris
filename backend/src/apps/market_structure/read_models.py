@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from src.apps.anomalies.models import MarketStructureSnapshot
 from src.apps.market_structure.constants import (
     MARKET_STRUCTURE_INGEST_TOKEN_HEADER,
     MARKET_STRUCTURE_INGEST_TOKEN_QUERY_PARAMETER,
@@ -30,12 +31,14 @@ from src.apps.market_structure.engines.health_engine import (
 from src.apps.market_structure.engines.health_engine import (
     market_structure_stale_after_seconds as engine_market_structure_stale_after_seconds,
 )
+from src.apps.market_structure.models import MarketStructureSource
 from src.apps.market_structure.normalizers import get_market_structure_webhook_normalizer_class
+from src.apps.market_structure.plugins import MarketStructurePluginDescriptor
 from src.core.db.persistence import freeze_json_value
 from src.core.http.router_policy import api_path
 
 
-def market_structure_source_status_from_orm(source) -> str:
+def market_structure_source_status_from_orm(source: MarketStructureSource) -> str:
     return engine_market_structure_source_status(source)
 
 
@@ -43,15 +46,15 @@ def market_structure_credential_fields_present(credentials: dict[str, Any]) -> t
     return tuple(engine_market_structure_credential_fields_present(credentials))
 
 
-def market_structure_source_provider_from_orm(source) -> str:
+def market_structure_source_provider_from_orm(source: MarketStructureSource) -> str:
     return engine_market_structure_source_provider(source)
 
 
-def market_structure_source_ingest_mode_from_orm(source) -> str:
+def market_structure_source_ingest_mode_from_orm(source: MarketStructureSource) -> str:
     return engine_market_structure_source_ingest_mode(source)
 
 
-def market_structure_stale_after_seconds_from_orm(source) -> int | None:
+def market_structure_stale_after_seconds_from_orm(source: MarketStructureSource) -> int | None:
     return engine_market_structure_stale_after_seconds(source)
 
 
@@ -158,7 +161,9 @@ class MarketStructureWebhookRegistrationReadModel:
     notes: tuple[str, ...]
 
 
-def market_structure_plugin_read_model_from_descriptor(descriptor) -> MarketStructurePluginReadModel:
+def market_structure_plugin_read_model_from_descriptor(
+    descriptor: MarketStructurePluginDescriptor,
+) -> MarketStructurePluginReadModel:
     return MarketStructurePluginReadModel(
         name=str(descriptor.name),
         display_name=str(descriptor.display_name),
@@ -174,7 +179,11 @@ def market_structure_plugin_read_model_from_descriptor(descriptor) -> MarketStru
     )
 
 
-def build_market_structure_source_health_read_model(source, *, now=None) -> MarketStructureSourceHealthReadModel:
+def build_market_structure_source_health_read_model(
+    source: MarketStructureSource,
+    *,
+    now: datetime | None = None,
+) -> MarketStructureSourceHealthReadModel:
     health = build_market_structure_source_health(source, now=now)
     return MarketStructureSourceHealthReadModel(
         status=health.status,
@@ -199,7 +208,11 @@ def build_market_structure_source_health_read_model(source, *, now=None) -> Mark
     )
 
 
-def market_structure_source_read_model_from_orm(source, *, now=None) -> MarketStructureSourceReadModel:
+def market_structure_source_read_model_from_orm(
+    source: MarketStructureSource,
+    *,
+    now: datetime | None = None,
+) -> MarketStructureSourceReadModel:
     credentials = dict(source.credentials_json or {})
     return MarketStructureSourceReadModel(
         id=int(source.id),
@@ -229,7 +242,7 @@ def market_structure_source_read_model_from_orm(source, *, now=None) -> MarketSt
     )
 
 
-def market_structure_snapshot_read_model_from_orm(snapshot) -> MarketStructureSnapshotReadModel:
+def market_structure_snapshot_read_model_from_orm(snapshot: MarketStructureSnapshot) -> MarketStructureSnapshotReadModel:
     return MarketStructureSnapshotReadModel(
         id=int(snapshot.id),
         coin_id=int(snapshot.coin_id),
@@ -268,7 +281,7 @@ def market_structure_sample_webhook_payload() -> Any:
 
 
 def market_structure_webhook_registration_read_model_from_orm(
-    source,
+    source: MarketStructureSource,
     *,
     include_token: bool,
 ) -> MarketStructureWebhookRegistrationReadModel:

@@ -1,6 +1,3 @@
-# ruff: noqa: B008
-
-
 from dataclasses import dataclass
 from typing import Annotated
 

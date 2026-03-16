@@ -8,7 +8,7 @@ from src.core.http.contracts import AcceptedResponse, CreatedResponse, PageEnvel
 ItemT = TypeVar("ItemT")
 
 
-def created(item: ItemT) -> CreatedResponse[ItemT]:
+def created[ItemT](item: ItemT) -> CreatedResponse[ItemT]:
     return CreatedResponse(item=item)
 
 
@@ -40,5 +40,5 @@ def no_content() -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-def page_response(page: PageEnvelope[ItemT]) -> PageEnvelope[ItemT]:
+def page_response[ItemT](page: PageEnvelope[ItemT]) -> PageEnvelope[ItemT]:
     return page

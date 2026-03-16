@@ -1,12 +1,12 @@
 from bisect import bisect_left
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from collections.abc import Sequence
+from typing import Protocol
 
-from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.market_data.candles import CandlePoint, candle_close_timestamp, timeframe_delta
+from src.apps.market_data.domain import ensure_utc, utc_now
 from src.apps.patterns.domain.semantics import pattern_bias, slug_from_signal_type
-from src.apps.signals.models import Signal
 
 SIGNAL_HISTORY_LOOKBACK_DAYS = 365
 SIGNAL_HISTORY_RECENT_LIMIT = 512
@@ -36,7 +36,23 @@ class SignalOutcome:
     maximum_drawdown: float | None
     result_return: float | None
     result_drawdown: float | None
-    evaluated_at: object | None
+    evaluated_at: datetime | None
+
+
+class _DirectionalSignal(Protocol):
+    @property
+    def signal_type(self) -> str: ...
+
+    @property
+    def confidence(self) -> float: ...
+
+
+class _HistoricalSignal(_DirectionalSignal, Protocol):
+    @property
+    def candle_timestamp(self) -> datetime: ...
+
+    @property
+    def timeframe(self) -> int: ...
 
 
 def _signal_direction(signal_type: str, confidence: float) -> int:
@@ -50,7 +66,7 @@ def _signal_direction(signal_type: str, confidence: float) -> int:
     return 1 if confidence >= 0.5 else -1
 
 
-def _open_timestamp_from_signal(signal: Signal) -> object:
+def _open_timestamp_from_signal(signal: _HistoricalSignal) -> datetime:
     return ensure_utc(signal.candle_timestamp) - timeframe_delta(signal.timeframe)
 
 
@@ -58,7 +74,7 @@ def _close_timestamps(candles: Sequence[CandlePoint], timeframe: int) -> list[da
     return [ensure_utc(candle_close_timestamp(candle.timestamp, timeframe)) for candle in candles]
 
 
-def _candle_index_map(candles: Sequence[CandlePoint]) -> dict[object, int]:
+def _candle_index_map(candles: Sequence[CandlePoint]) -> dict[datetime, int]:
     return {ensure_utc(candle.timestamp): index for index, candle in enumerate(candles)}
 
 
@@ -69,14 +85,18 @@ def _index_at_or_after(close_timestamps: Sequence[datetime], target: datetime) -
     return index
 
 
-def _return_for_index(signal: Signal, entry_close: float, candle: CandlePoint) -> float:
+def _return_for_index(signal: _DirectionalSignal, entry_close: float, candle: CandlePoint) -> float:
     direction = _signal_direction(str(signal.signal_type), float(signal.confidence))
     if direction > 0:
         return (float(candle.close) - entry_close) / max(entry_close, 1e-9)
     return (entry_close - float(candle.close)) / max(entry_close, 1e-9)
 
 
-def _drawdown_for_window(signal: Signal, entry_close: float, future_window: Sequence[CandlePoint]) -> float | None:
+def _drawdown_for_window(
+    signal: _DirectionalSignal,
+    entry_close: float,
+    future_window: Sequence[CandlePoint],
+) -> float | None:
     if not future_window:
         return None
     direction = _signal_direction(str(signal.signal_type), float(signal.confidence))
@@ -86,7 +106,7 @@ def _drawdown_for_window(signal: Signal, entry_close: float, future_window: Sequ
 
 
 def _evaluate_signal(
-    signal: Signal,
+    signal: _HistoricalSignal,
     candles: list[CandlePoint],
     close_timestamps: list[datetime],
     close_index_map: dict[datetime, int],

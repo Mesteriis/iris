@@ -2,19 +2,20 @@ from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql import Select
 
 from src.apps.hypothesis_engine.constants import HYPOTHESIS_STATUS_ACTIVE
 from src.apps.hypothesis_engine.models import AIHypothesis, AIHypothesisEval, AIPrompt
 
 
-def prompt_versions_stmt(*, name: str | None = None):
+def prompt_versions_stmt(*, name: str | None = None) -> Select[tuple[AIPrompt]]:
     stmt = select(AIPrompt).order_by(AIPrompt.name.asc(), AIPrompt.version.desc(), AIPrompt.id.desc())
     if name is not None:
         stmt = stmt.where(AIPrompt.name == name)
     return stmt
 
 
-def active_prompt_stmt(name: str):
+def active_prompt_stmt(name: str) -> Select[tuple[AIPrompt]]:
     return (
         select(AIPrompt)
         .where(AIPrompt.name == name, AIPrompt.is_active.is_(True))
@@ -23,7 +24,7 @@ def active_prompt_stmt(name: str):
     )
 
 
-def hypotheses_stmt(*, limit: int, status: str | None = None, coin_id: int | None = None):
+def hypotheses_stmt(*, limit: int, status: str | None = None, coin_id: int | None = None) -> Select[tuple[AIHypothesis]]:
     stmt = select(AIHypothesis).order_by(AIHypothesis.created_at.desc(), AIHypothesis.id.desc()).limit(max(limit, 1))
     if status is not None:
         stmt = stmt.where(AIHypothesis.status == status)
@@ -32,7 +33,7 @@ def hypotheses_stmt(*, limit: int, status: str | None = None, coin_id: int | Non
     return stmt
 
 
-def due_hypotheses_stmt(now: datetime, *, limit: int):
+def due_hypotheses_stmt(now: datetime, *, limit: int) -> Select[tuple[AIHypothesis]]:
     return (
         select(AIHypothesis)
         .options(selectinload(AIHypothesis.evals))
@@ -42,7 +43,7 @@ def due_hypotheses_stmt(now: datetime, *, limit: int):
     )
 
 
-def hypothesis_evals_stmt(*, limit: int, hypothesis_id: int | None = None):
+def hypothesis_evals_stmt(*, limit: int, hypothesis_id: int | None = None) -> Select[tuple[AIHypothesisEval]]:
     stmt = (
         select(AIHypothesisEval)
         .options(selectinload(AIHypothesisEval.hypothesis))

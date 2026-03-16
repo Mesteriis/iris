@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Protocol
 
 from src.apps.indicators.models import CoinMetrics
 from src.apps.patterns.domain.regime import read_regime_details
 from src.apps.patterns.domain.semantics import pattern_bias, slug_from_signal_type
-from src.apps.signals.models import Signal
 
 FUSION_SIGNAL_LIMIT = 20
 FUSION_CANDLE_GROUPS = 3
@@ -85,6 +85,14 @@ class NewsImpactSnapshot:
     latest_timestamp: datetime
 
 
+class _WeightedSignal(Protocol):
+    @property
+    def signal_type(self) -> str: ...
+
+    @property
+    def confidence(self) -> float: ...
+
+
 def _clamp(value: float, lower: float, upper: float) -> float:
     return max(lower, min(value, upper))
 
@@ -109,7 +117,7 @@ def _signal_archetype(signal_type: str) -> str:
     return "generic"
 
 
-def _regime_weight(signal: Signal, regime: str | None) -> float:
+def _regime_weight(signal: _WeightedSignal, regime: str | None) -> float:
     slug = slug_from_signal_type(signal.signal_type) or signal.signal_type
     bias = pattern_bias(slug, fallback_price_delta=signal.confidence - 0.5)
     archetype = _signal_archetype(signal.signal_type)
@@ -189,10 +197,10 @@ __all__ = [
     "FUSION_CANDLE_GROUPS",
     "FUSION_NEWS_TIMEFRAMES",
     "FUSION_SIGNAL_LIMIT",
-    "FusionSnapshot",
     "MATERIAL_CONFIDENCE_DELTA",
     "NEWS_FUSION_MAX_ITEMS",
     "NEWS_FUSION_SCORE_CAP",
+    "FusionSnapshot",
     "NewsImpactSnapshot",
     "_apply_news_impact",
     "_clamp",

@@ -25,7 +25,10 @@ from src.apps.market_structure.contracts import (
 from src.apps.market_structure.exceptions import InvalidMarketStructureSourceConfigurationError
 from src.apps.market_structure.models import MarketStructureSource
 from src.apps.market_structure.query_services import MarketStructureQueryService
-from src.apps.market_structure.read_models import market_structure_webhook_registration_read_model_from_orm
+from src.apps.market_structure.read_models import (
+    MarketStructureWebhookRegistrationReadModel,
+    market_structure_webhook_registration_read_model_from_orm,
+)
 from src.apps.market_structure.repositories import MarketStructureSourceRepository
 from src.apps.market_structure.services.source_command_service import MarketStructureSourceCommandService
 from src.core.db.persistence import thaw_json_value
@@ -65,7 +68,9 @@ _WEBHOOK_SOURCE_PRESETS: dict[str, tuple[str, str, str]] = {
 }
 
 
-def _webhook_registration_schema_from_read_model(item) -> MarketStructureWebhookRegistrationRead:
+def _webhook_registration_schema_from_read_model(
+    item: MarketStructureWebhookRegistrationReadModel,
+) -> MarketStructureWebhookRegistrationRead:
     return MarketStructureWebhookRegistrationRead.model_validate(
         {
             "source": item.source,
@@ -240,7 +245,7 @@ class MarketStructureSourceProvisioningService:
 
     @staticmethod
     def _resolve_market_symbol(coin_symbol: str, market_symbol: str | None) -> str:
-        if market_symbol not in (None, ""):
+        if isinstance(market_symbol, str) and market_symbol.strip():
             return market_symbol.strip().upper()
         normalized = coin_symbol.strip().upper()
         if normalized.endswith("_EVT"):

@@ -1,11 +1,11 @@
 import pytest
 from sqlalchemy import select
-
 from src.apps.indicators.models import CoinMetrics
 from src.apps.portfolio.models import ExchangeAccount, PortfolioAction, PortfolioBalance, PortfolioPosition
 from src.apps.portfolio.services import PortfolioService, PortfolioSideEffectDispatcher
 from src.apps.portfolio.support import calculate_position_size, calculate_stops
 from src.core.db.uow import SessionUnitOfWork
+
 from tests.fusion_support import create_test_coin, upsert_coin_metrics
 from tests.portfolio_support import create_exchange_account, create_market_decision, create_sector
 

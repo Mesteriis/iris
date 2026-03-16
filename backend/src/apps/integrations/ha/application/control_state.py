@@ -1,3 +1,5 @@
+from typing import Protocol, cast
+
 from redis.asyncio import Redis as AsyncRedis
 
 from src.core.settings import Settings, get_settings
@@ -8,6 +10,12 @@ _DEFAULT_TIMEFRAME_FIELD = "settings.default_timeframe"
 HA_TIMEFRAME_OPTIONS = ("15m", "1h", "4h", "1d")
 
 
+class _AsyncHashClient(Protocol):
+    async def hget(self, name: str, key: str) -> str | None: ...
+
+    async def hset(self, name: str, key: str, value: str) -> int: ...
+
+
 class HAControlStateStore:
     def __init__(
         self,
@@ -16,7 +24,10 @@ class HAControlStateStore:
         settings: Settings | None = None,
     ) -> None:
         effective_settings = settings or get_settings()
-        self._client = client or AsyncRedis.from_url(effective_settings.redis_url, decode_responses=True)
+        self._client: _AsyncHashClient = cast(
+            _AsyncHashClient,
+            client or AsyncRedis.from_url(effective_settings.redis_url, decode_responses=True),
+        )
 
     async def get_notifications_enabled(self, *, default: bool) -> bool:
         raw = await self._client.hget(_CONTROL_STATE_KEY, _NOTIFICATIONS_ENABLED_FIELD)
@@ -42,4 +53,4 @@ class HAControlStateStore:
         return normalized
 
 
-__all__ = ["HAControlStateStore", "HA_TIMEFRAME_OPTIONS"]
+__all__ = ["HA_TIMEFRAME_OPTIONS", "HAControlStateStore"]

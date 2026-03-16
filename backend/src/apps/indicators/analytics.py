@@ -14,8 +14,6 @@ from src.apps.indicators.domain import (
     rsi_series,
     sma_series,
 )
-from src.apps.market_data.domain import ensure_utc
-from src.apps.market_data.models import Coin
 from src.apps.market_data.candles import (
     BASE_TIMEFRAME_MINUTES,
     CandlePoint,
@@ -23,6 +21,8 @@ from src.apps.market_data.candles import (
     interval_to_timeframe,
     timeframe_delta,
 )
+from src.apps.market_data.domain import ensure_utc
+from src.apps.market_data.models import Coin
 from src.apps.market_data.sources.base import RateLimitedMarketSourceError
 from src.apps.market_data.sources.rate_limits import rate_limited_get
 from src.apps.patterns.domain.scheduler import (
@@ -318,7 +318,7 @@ def _compute_trend_score(primary: TimeframeSnapshot, volume_change_24h: float | 
             score += 10
         elif volume_change_24h < -10:
             score -= 10
-    return max(0, min(100, int(round(score))))
+    return max(0, min(100, round(score)))
 
 
 def _activity_fields(
@@ -431,10 +431,10 @@ __all__ = [
     "BASE_TIMEFRAME_MINUTES",
     "COINGECKO_MARKET_CAP_IDS",
     "COINGECKO_MARKET_URL",
-    "CandleAnalyticsEvent",
     "INDICATOR_VERSION",
     "PRICE_HISTORY_LOOKBACK_BARS",
     "SIGNAL_TYPES",
+    "CandleAnalyticsEvent",
     "TimeframeSnapshot",
     "_activity_fields",
     "_calculate_snapshot",

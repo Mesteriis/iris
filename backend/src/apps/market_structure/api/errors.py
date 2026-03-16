@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import HTTPException, status
 
 from src.apps.market_structure.exceptions import (
@@ -29,7 +31,7 @@ _ERROR_DESCRIPTIONS: dict[int, str] = {
 }
 
 
-def market_structure_error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
+def market_structure_error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
     return {
         int(status_code): {
             "model": ApiError,

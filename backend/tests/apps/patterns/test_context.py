@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 from src.apps.patterns.domain.base import PatternDetection
 from src.apps.patterns.domain.detectors.continuation import FlagDetector
@@ -34,7 +34,7 @@ def test_pattern_context_filters_against_wrong_regime() -> None:
         slug="bull_flag",
         signal_type="pattern_bull_flag",
         confidence=0.7,
-        candle_timestamp=datetime(2026, 3, 11, 14, 0, tzinfo=timezone.utc),
+        candle_timestamp=datetime(2026, 3, 11, 14, 0, tzinfo=UTC),
         category="continuation",
     )
     adjusted = apply_pattern_context(
@@ -58,7 +58,7 @@ def test_pattern_context_boosts_aligned_regime() -> None:
         slug="bull_flag",
         signal_type="pattern_bull_flag",
         confidence=0.7,
-        candle_timestamp=datetime(2026, 3, 11, 14, 0, tzinfo=timezone.utc),
+        candle_timestamp=datetime(2026, 3, 11, 14, 0, tzinfo=UTC),
         category="continuation",
     )
     adjusted = apply_pattern_context(

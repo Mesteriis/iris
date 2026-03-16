@@ -3,7 +3,6 @@ import importlib.util
 import pytest
 from src.apps.portfolio.api.router import build_router as build_portfolio_router
 from src.core.http.launch_modes import DeploymentProfile, LaunchMode
-
 from src.core.settings import get_settings
 
 

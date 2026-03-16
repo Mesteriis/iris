@@ -72,9 +72,10 @@ class ControlPlaneSideEffectDispatcher:
         )
 
     def _publish_after_commit(self, event_type: str, payload: Mapping[str, object]) -> None:
-        self._uow.add_after_commit_action(
-            lambda event_type=event_type, payload=dict(payload): publish_control_event(event_type, payload)
-        )
+        def _publish() -> None:
+            publish_control_event(event_type, dict(payload))
+
+        self._uow.add_after_commit_action(_publish)
 
 
 __all__ = ["ControlPlaneSideEffectDispatcher"]

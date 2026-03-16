@@ -1,7 +1,22 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, SmallInteger, String, UniqueConstraint, desc, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    UniqueConstraint,
+    desc,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.db.session import Base
@@ -222,13 +237,13 @@ class StrategyPerformance(Base):
 
 
 __all__ = [
-    "Signal",
-    "SignalHistory",
     "FinalSignal",
     "InvestmentDecision",
     "MarketDecision",
     "RiskMetric",
+    "Signal",
+    "SignalHistory",
     "Strategy",
-    "StrategyRule",
     "StrategyPerformance",
+    "StrategyRule",
 ]
