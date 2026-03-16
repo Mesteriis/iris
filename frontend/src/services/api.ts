@@ -105,6 +105,61 @@ export interface Signal {
   cluster_membership: string[];
 }
 
+export interface DashboardAssetStreamEvent {
+  stream_id: string;
+  source_event_type: string;
+  coin_id: number;
+  symbol: string;
+  timeframe: number;
+  timestamp: string;
+  coin: Coin;
+  metrics: CoinMetrics | null;
+  signal_count: number;
+  signals: Signal[];
+  market_decisions: MarketDecision[];
+  coin_market_decision: CoinMarketDecision | null;
+}
+
+export interface DashboardPortfolioStreamEvent {
+  stream_id: string;
+  source_event_type: string;
+  coin_id: number;
+  timeframe: number;
+  timestamp: string;
+  state: PortfolioState;
+  positions: PortfolioPosition[];
+  actions: PortfolioAction[];
+}
+
+export interface FrontendShellSnapshot {
+  coins: Coin[];
+  status: SystemStatus;
+}
+
+export interface FrontendDashboardSnapshot {
+  coins: Coin[];
+  metrics: CoinMetrics[];
+  signals: Signal[];
+  top_signals: Signal[];
+  market_decisions: MarketDecision[];
+  patterns: PatternDescriptor[];
+  strategies: Strategy[];
+  strategy_performance: StrategyPerformance[];
+  top_backtests: BacktestSummary[];
+  pattern_features: PatternFeature[];
+  discovered_patterns: DiscoveredPattern[];
+  sectors: Sector[];
+  sector_payload: SectorMetricsResponse;
+  market_cycles: MarketCycle[];
+  market_radar: MarketRadar;
+  market_flow: MarketFlow;
+  predictions: Prediction[];
+  portfolio_state: PortfolioState;
+  portfolio_positions: PortfolioPosition[];
+  portfolio_actions: PortfolioAction[];
+  status: SystemStatus;
+}
+
 export interface PatternStatistic {
   timeframe: number;
   market_regime: string;
@@ -720,7 +775,21 @@ const api = axios.create({
   timeout: 10000,
 });
 
+export function buildApiUrl(path: string): string {
+  const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? "/api/v1").replace(/\/+$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${baseUrl}${normalizedPath}`;
+}
+
 export const irisApi = {
+  async getFrontendShellSnapshot(): Promise<FrontendShellSnapshot> {
+    const response = await api.get<FrontendShellSnapshot>("/frontend/shell");
+    return response.data;
+  },
+  async getFrontendDashboardSnapshot(): Promise<FrontendDashboardSnapshot> {
+    const response = await api.get<FrontendDashboardSnapshot>("/frontend/dashboard");
+    return response.data;
+  },
   async listCoins(): Promise<Coin[]> {
     const response = await api.get<Coin[]>("/coins");
     return response.data;

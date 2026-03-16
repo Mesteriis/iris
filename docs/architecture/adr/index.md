@@ -46,6 +46,7 @@ Starting with ADR 0023, files and paths follow one naming rule: `adr/<number>-<d
 | 0026 | [Observed Asset Inventory Is DB-Owned](0026-observed-asset-inventory-is-db-owned.md) | Accepted | 2026-03-16 |
 | 0027 | [Live Market-Source Capability Registry in Redis](0027-live-market-source-capability-registry-in-redis.md) | Accepted | 2026-03-16 |
 | 0028 | [Market Data Source Catalog and Support Tiers](0028-market-data-source-catalog-and-support-tiers.md) | Accepted | 2026-03-16 |
+| 0029 | [Frontend Dashboard Live Stream Over Normalized SSE](0029-frontend-dashboard-live-stream-over-normalized-sse.md) | Accepted | 2026-03-16 |
 
 ## Related Documents
 

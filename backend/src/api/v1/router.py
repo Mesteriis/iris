@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from src.apps.briefs.api.router import build_router as build_briefs_router
 from src.apps.control_plane.api.router import build_router as build_control_plane_router
 from src.apps.explanations.api.router import build_router as build_explanations_router
+from src.apps.frontend.api.router import build_router as build_frontend_router
 from src.apps.hypothesis_engine.api.router import build_router as build_hypothesis_router
 from src.apps.indicators.api.router import build_router as build_indicators_router
 from src.apps.integrations.ha.api.router import build_router as build_ha_router
@@ -27,6 +28,7 @@ def build_router(*, settings: Settings, mode: LaunchMode, profile: DeploymentPro
     router.include_router(build_control_plane_router(mode=mode, profile=profile))
     router.include_router(build_briefs_router(mode=mode, profile=profile, settings=settings))
     router.include_router(build_explanations_router(mode=mode, profile=profile, settings=settings))
+    router.include_router(build_frontend_router(mode=mode, profile=profile))
     router.include_router(build_market_data_router(mode=mode, profile=profile))
     router.include_router(build_market_structure_router(mode=mode, profile=profile))
     router.include_router(build_news_router(mode=mode, profile=profile))

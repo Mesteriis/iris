@@ -28,9 +28,9 @@ export const useShellStore = defineStore("shell", () => {
     loading.value = true;
     error.value = "";
     try {
-      const [nextStatus, nextCoins] = await Promise.all([irisApi.getStatus(), irisApi.listCoins()]);
-      status.value = nextStatus;
-      coins.value = nextCoins;
+      const snapshot = await irisApi.getFrontendShellSnapshot();
+      status.value = snapshot.status;
+      coins.value = snapshot.coins;
       lastUpdatedAt.value = new Date().toISOString();
     } catch (nextError) {
       error.value = nextError instanceof Error ? nextError.message : "Failed to refresh shell runtime state.";

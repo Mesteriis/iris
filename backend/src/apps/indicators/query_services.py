@@ -108,6 +108,60 @@ class IndicatorQueryService(AsyncQueryService):
         self._log_debug("query.list_indicator_coin_metrics.result", mode="read", count=len(items))
         return items
 
+    async def get_coin_metrics(self, *, symbol: str) -> CoinMetricsReadModel | None:
+        normalized_symbol = symbol.strip().upper()
+        self._log_debug("query.get_indicator_coin_metrics", mode="read", symbol=normalized_symbol)
+        rows = (
+            await self.session.execute(
+                select(
+                    CoinMetrics.coin_id,
+                    Coin.symbol,
+                    Coin.name,
+                    CoinMetrics.price_current,
+                    CoinMetrics.price_change_1h,
+                    CoinMetrics.price_change_24h,
+                    CoinMetrics.price_change_7d,
+                    CoinMetrics.ema_20,
+                    CoinMetrics.ema_50,
+                    CoinMetrics.sma_50,
+                    CoinMetrics.sma_200,
+                    CoinMetrics.rsi_14,
+                    CoinMetrics.macd,
+                    CoinMetrics.macd_signal,
+                    CoinMetrics.macd_histogram,
+                    CoinMetrics.atr_14,
+                    CoinMetrics.bb_upper,
+                    CoinMetrics.bb_middle,
+                    CoinMetrics.bb_lower,
+                    CoinMetrics.bb_width,
+                    CoinMetrics.adx_14,
+                    CoinMetrics.volume_24h,
+                    CoinMetrics.volume_change_24h,
+                    CoinMetrics.volatility,
+                    CoinMetrics.market_cap,
+                    CoinMetrics.trend,
+                    CoinMetrics.trend_score,
+                    CoinMetrics.activity_score,
+                    CoinMetrics.activity_bucket,
+                    CoinMetrics.analysis_priority,
+                    CoinMetrics.last_analysis_at,
+                    CoinMetrics.market_regime,
+                    CoinMetrics.market_regime_details,
+                    CoinMetrics.indicator_version,
+                    CoinMetrics.updated_at,
+                )
+                .join(Coin, Coin.id == CoinMetrics.coin_id)
+                .where(Coin.deleted_at.is_(None), Coin.symbol == normalized_symbol)
+                .limit(1)
+            )
+        ).all()
+        if not rows:
+            self._log_debug("query.get_indicator_coin_metrics.result", mode="read", symbol=normalized_symbol, found=False)
+            return None
+        item = coin_metrics_read_model_from_mapping(rows[0]._mapping)
+        self._log_debug("query.get_indicator_coin_metrics.result", mode="read", symbol=normalized_symbol, found=True)
+        return item
+
     async def list_signals(
         self,
         *,

@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -160,6 +160,23 @@ class SignalQueryService(AsyncQueryService):
         items = await _serialize_signal_rows_async(self.session, rows)
         self._log_debug("query.list_signals.result", mode="read", count=len(items))
         return items
+
+    async def count_signals(self, *, symbol: str | None = None, timeframe: int | None = None) -> int:
+        self._log_debug(
+            "query.count_signals",
+            mode="read",
+            symbol=symbol,
+            timeframe=timeframe,
+            loading_profile="count",
+        )
+        stmt = select(func.count()).select_from(Signal).join(Coin, Coin.id == Signal.coin_id).where(Coin.deleted_at.is_(None))
+        if symbol is not None:
+            stmt = stmt.where(Coin.symbol == symbol.upper())
+        if timeframe is not None:
+            stmt = stmt.where(Signal.timeframe == timeframe)
+        value = int((await self.session.execute(stmt)).scalar_one() or 0)
+        self._log_debug("query.count_signals.result", mode="read", count=value)
+        return value
 
     async def list_top_signals(self, *, limit: int = 20) -> tuple[SignalReadModel, ...]:
         self._log_debug(

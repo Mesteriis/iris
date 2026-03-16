@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.apps.market_data.candles import interval_to_timeframe
 from src.apps.market_data.domain import utc_now
 from src.apps.market_data.models import Coin
 from src.apps.market_data.read_models import (
@@ -11,7 +12,6 @@ from src.apps.market_data.read_models import (
     coin_read_model_from_orm,
     price_history_read_model,
 )
-from src.apps.market_data.candles import interval_to_timeframe
 from src.apps.market_data.repositories import CandleRepository, latest_candle_pair_map
 from src.apps.market_data.support import (
     get_base_candle_config,
@@ -48,6 +48,30 @@ class MarketDataQueryService(AsyncQueryService):
             return None
         item = coin_read_model_from_orm(coin)
         self._log_debug("query.get_market_data_coin_read_by_symbol.result", mode="read", found=True)
+        return item
+
+    async def get_coin_read_by_id(
+        self,
+        coin_id: int,
+        *,
+        include_deleted: bool = False,
+    ) -> CoinReadModel | None:
+        normalized_coin_id = int(coin_id)
+        self._log_debug(
+            "query.get_market_data_coin_read_by_id",
+            mode="read",
+            coin_id=normalized_coin_id,
+            include_deleted=include_deleted,
+        )
+        stmt = select(Coin).where(Coin.id == normalized_coin_id)
+        if not include_deleted:
+            stmt = stmt.where(Coin.deleted_at.is_(None))
+        coin = await self.session.scalar(stmt.limit(1))
+        if coin is None:
+            self._log_debug("query.get_market_data_coin_read_by_id.result", mode="read", found=False)
+            return None
+        item = coin_read_model_from_orm(coin)
+        self._log_debug("query.get_market_data_coin_read_by_id.result", mode="read", found=True)
         return item
 
     async def list_coins(

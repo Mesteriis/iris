@@ -43,7 +43,7 @@ const assetRows = computed(() =>
     .map((coin) => {
       const symbol = coin.symbol.toUpperCase();
       const metric = coinStore.metricsBySymbol.get(symbol);
-      const signalCount = coinStore.signalsBySymbol.get(symbol)?.length ?? 0;
+      const signalCount = coinStore.signalCountsBySymbol.get(symbol) ?? 0;
       const signalTypes = signalTypesBySymbol.value.get(symbol) ?? [];
 
       return {

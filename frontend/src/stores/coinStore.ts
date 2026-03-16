@@ -3,6 +3,10 @@ import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 
 import {
+  buildApiUrl,
+  type DashboardAssetStreamEvent,
+  type FrontendDashboardSnapshot,
+  type DashboardPortfolioStreamEvent,
   irisApi,
   type BacktestSummary,
   type CandleInterval,
@@ -75,6 +79,10 @@ export const useCoinStore = defineStore("coins", () => {
   const jobRunSuccess = ref<string>("");
   const runningJobSymbols = ref<Record<string, boolean>>({});
   const lastDashboardRefreshAt = ref<string | null>(null);
+  const liveSignalCounts = ref<Record<string, number>>({});
+  const liveStreamStatus = ref<"idle" | "connecting" | "connected" | "error">("idle");
+  const lastLiveEventAt = ref<string | null>(null);
+  let dashboardEventSource: EventSource | null = null;
 
   const hasHistory = computed(() => history.value.length > 0);
   const enabledCoins = computed(() =>
@@ -93,6 +101,16 @@ export const useCoinStore = defineStore("coins", () => {
       const bucket = grouped.get(symbol) ?? [];
       bucket.push(signal);
       grouped.set(symbol, bucket);
+    }
+    return grouped;
+  });
+  const signalCountsBySymbol = computed(() => {
+    const grouped = new Map<string, number>();
+    for (const [symbol, items] of signalsBySymbol.value.entries()) {
+      grouped.set(symbol, items.length);
+    }
+    for (const [symbol, count] of Object.entries(liveSignalCounts.value)) {
+      grouped.set(symbol, count);
     }
     return grouped;
   });
@@ -116,7 +134,7 @@ export const useCoinStore = defineStore("coins", () => {
     enabledCoins.value
       .map((coin) => {
         const metric = metricsBySymbol.value.get(coin.symbol.toUpperCase());
-        const signalCount = signalsBySymbol.value.get(coin.symbol.toUpperCase())?.length ?? 0;
+        const signalCount = signalCountsBySymbol.value.get(coin.symbol.toUpperCase()) ?? 0;
         const topSignal = topSignalsBySymbol.value.get(coin.symbol.toUpperCase())?.[0] ?? null;
         const job = getCoinJobSnapshot(coin);
 
@@ -371,74 +389,37 @@ export const useCoinStore = defineStore("coins", () => {
     isBootstrapping.value = true;
     dashboardError.value = "";
     try {
-      const [
-        coinRows,
-        metricRows,
-        signalRows,
-        topSignalRows,
-        topMarketDecisionRows,
-        patternRows,
-        strategyRows,
-        strategyPerformanceRows,
-        backtestRows,
-        patternFeatureRows,
-        discoveredPatternRows,
-        sectorRows,
-        sectorPayload,
-        cycleRows,
-        radarPayload,
-        flowPayload,
-        predictionRows,
-        portfolioStatePayload,
-        portfolioPositionRows,
-        portfolioActionRows,
-        systemState,
-      ] = await Promise.all([
-        irisApi.listCoins(),
-        irisApi.listCoinMetrics(),
-        irisApi.listSignals(40),
-        irisApi.listTopSignals(12),
-        irisApi.listTopMarketDecisions(12),
-        irisApi.listPatterns(),
-        irisApi.listStrategies(40, false),
-        irisApi.listStrategyPerformance(12),
-        irisApi.listTopBacktests(10),
-        irisApi.listPatternFeatures(),
-        irisApi.listDiscoveredPatterns(24),
-        irisApi.listSectors(),
-        irisApi.listSectorMetrics(),
-        irisApi.listMarketCycles(),
-        irisApi.getMarketRadar(8),
-        irisApi.getMarketFlow(8, 60),
-        irisApi.listPredictions(24),
-        irisApi.getPortfolioState(),
-        irisApi.listPortfolioPositions(40),
-        irisApi.listPortfolioActions(40),
-        irisApi.getStatus(),
-      ]);
+      const snapshot: FrontendDashboardSnapshot = await irisApi.getFrontendDashboardSnapshot();
 
-      coins.value = coinRows;
-      metrics.value = metricRows;
-      signals.value = signalRows;
-      topSignals.value = topSignalRows;
-      marketDecisions.value = topMarketDecisionRows;
-      patterns.value = patternRows;
-      strategies.value = strategyRows;
-      strategyPerformance.value = strategyPerformanceRows;
-      topBacktests.value = backtestRows;
-      patternFeatures.value = patternFeatureRows;
-      discoveredPatterns.value = discoveredPatternRows;
-      sectors.value = sectorRows;
-      sectorMetrics.value = sectorPayload.items;
-      sectorNarratives.value = sectorPayload.narratives;
-      marketCycles.value = cycleRows;
-      marketRadar.value = radarPayload;
-      marketFlow.value = flowPayload;
-      predictions.value = predictionRows;
-      portfolioState.value = portfolioStatePayload;
-      portfolioPositions.value = portfolioPositionRows;
-      portfolioActions.value = portfolioActionRows;
-      status.value = systemState;
+      coins.value = snapshot.coins;
+      metrics.value = snapshot.metrics;
+      signals.value = snapshot.signals;
+      topSignals.value = snapshot.top_signals;
+      marketDecisions.value = snapshot.market_decisions;
+      patterns.value = snapshot.patterns;
+      strategies.value = snapshot.strategies;
+      strategyPerformance.value = snapshot.strategy_performance;
+      topBacktests.value = snapshot.top_backtests;
+      patternFeatures.value = snapshot.pattern_features;
+      discoveredPatterns.value = snapshot.discovered_patterns;
+      sectors.value = snapshot.sectors;
+      sectorMetrics.value = snapshot.sector_payload.items;
+      sectorNarratives.value = snapshot.sector_payload.narratives;
+      marketCycles.value = snapshot.market_cycles;
+      marketRadar.value = snapshot.market_radar;
+      marketFlow.value = snapshot.market_flow;
+      predictions.value = snapshot.predictions;
+      portfolioState.value = snapshot.portfolio_state;
+      portfolioPositions.value = snapshot.portfolio_positions;
+      portfolioActions.value = snapshot.portfolio_actions;
+      status.value = snapshot.status;
+      liveSignalCounts.value = Object.fromEntries(
+        snapshot.signals.reduce<Map<string, number>>((map, item) => {
+          const symbol = item.symbol.toUpperCase();
+          map.set(symbol, (map.get(symbol) ?? 0) + 1);
+          return map;
+        }, new Map()),
+      );
       lastDashboardRefreshAt.value = new Date().toISOString();
     } catch (err) {
       dashboardError.value = getErrorMessage(err, "Unable to load dashboard.");
@@ -449,10 +430,135 @@ export const useCoinStore = defineStore("coins", () => {
 
   async function bootstrapDashboard() {
     if (coins.value.length > 0 && metrics.value.length > 0 && status.value) {
+      ensureDashboardStreamConnected();
       return;
     }
 
     await refreshDashboard();
+    ensureDashboardStreamConnected();
+  }
+
+  function upsertCoin(nextCoin: Coin) {
+    const symbol = nextCoin.symbol.toUpperCase();
+    const remaining = coins.value.filter((item) => item.symbol.toUpperCase() !== symbol);
+    coins.value = [...remaining, nextCoin].sort(
+      (left, right) => left.sort_order - right.sort_order || left.symbol.localeCompare(right.symbol),
+    );
+  }
+
+  function upsertMetric(nextMetric: CoinMetrics | null) {
+    if (!nextMetric) {
+      return;
+    }
+    const symbol = nextMetric.symbol.toUpperCase();
+    const remaining = metrics.value.filter((item) => item.symbol.toUpperCase() !== symbol);
+    metrics.value = [...remaining, nextMetric].sort((left, right) => left.symbol.localeCompare(right.symbol));
+  }
+
+  function replaceSignalsForSymbol(symbol: string, nextSignals: Signal[], nextCount: number) {
+    const normalizedSymbol = symbol.toUpperCase();
+    signals.value = [
+      ...nextSignals,
+      ...signals.value.filter((item) => item.symbol.toUpperCase() !== normalizedSymbol),
+    ]
+      .sort(
+        (left, right) =>
+          new Date(right.candle_timestamp).getTime() - new Date(left.candle_timestamp).getTime() ||
+          new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+      )
+      .slice(0, 120);
+    liveSignalCounts.value = {
+      ...liveSignalCounts.value,
+      [normalizedSymbol]: nextCount,
+    };
+    const rankedSignals = [...nextSignals]
+      .sort(
+        (left, right) =>
+          right.priority_score - left.priority_score ||
+          new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+      )
+      .slice(0, 3);
+    topSignals.value = [
+      ...rankedSignals,
+      ...topSignals.value.filter((item) => item.symbol.toUpperCase() !== normalizedSymbol),
+    ]
+      .sort(
+        (left, right) =>
+          right.priority_score - left.priority_score ||
+          new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+      )
+      .slice(0, 12);
+  }
+
+  function replaceMarketDecisionsForSymbol(symbol: string, nextItems: MarketDecision[]) {
+    const normalizedSymbol = symbol.toUpperCase();
+    marketDecisions.value = [
+      ...nextItems,
+      ...marketDecisions.value.filter((item) => item.symbol.toUpperCase() !== normalizedSymbol),
+    ]
+      .sort(
+        (left, right) =>
+          right.confidence - left.confidence ||
+          right.signal_count - left.signal_count ||
+          new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+      )
+      .slice(0, 12);
+  }
+
+  function applyAssetStreamEvent(payload: DashboardAssetStreamEvent) {
+    upsertCoin(payload.coin);
+    upsertMetric(payload.metrics);
+    replaceSignalsForSymbol(payload.symbol, payload.signals, payload.signal_count);
+    replaceMarketDecisionsForSymbol(payload.symbol, payload.market_decisions);
+    if (payload.coin_market_decision) {
+      coinMarketDecisions.value = {
+        ...coinMarketDecisions.value,
+        [payload.symbol.toUpperCase()]: payload.coin_market_decision,
+      };
+    }
+    lastDashboardRefreshAt.value = payload.timestamp;
+    lastLiveEventAt.value = payload.timestamp;
+  }
+
+  function applyPortfolioStreamEvent(payload: DashboardPortfolioStreamEvent) {
+    portfolioState.value = payload.state;
+    portfolioPositions.value = payload.positions;
+    portfolioActions.value = payload.actions;
+    lastDashboardRefreshAt.value = payload.timestamp;
+    lastLiveEventAt.value = payload.timestamp;
+  }
+
+  function ensureDashboardStreamConnected() {
+    if (typeof window === "undefined" || dashboardEventSource) {
+      return;
+    }
+
+    liveStreamStatus.value = "connecting";
+    dashboardEventSource = new EventSource(buildApiUrl("/frontend/stream/dashboard"));
+    dashboardEventSource.onopen = () => {
+      liveStreamStatus.value = "connected";
+    };
+    dashboardEventSource.onerror = () => {
+      liveStreamStatus.value = "error";
+    };
+    dashboardEventSource.addEventListener("asset_snapshot_updated", (event) => {
+      const message = event as MessageEvent<string>;
+      const payload = JSON.parse(message.data) as DashboardAssetStreamEvent;
+      applyAssetStreamEvent(payload);
+      liveStreamStatus.value = "connected";
+    });
+    dashboardEventSource.addEventListener("portfolio_snapshot_updated", (event) => {
+      const message = event as MessageEvent<string>;
+      const payload = JSON.parse(message.data) as DashboardPortfolioStreamEvent;
+      applyPortfolioStreamEvent(payload);
+      liveStreamStatus.value = "connected";
+    });
+  }
+
+  function disconnectDashboardStream() {
+    dashboardEventSource?.close();
+    dashboardEventSource = null;
+    liveStreamStatus.value = "idle";
   }
 
   async function loadAssetContext(symbol: string) {
@@ -585,6 +691,7 @@ export const useCoinStore = defineStore("coins", () => {
     createCoinSuccess,
     dashboardError,
     dashboardRows,
+    disconnectDashboardStream,
     disabledPatternsCount,
     enabledCoins,
     enabledCoinsCount,
@@ -604,6 +711,8 @@ export const useCoinStore = defineStore("coins", () => {
     jobStatusCounts,
     jobStatusRows,
     lastDashboardRefreshAt,
+    lastLiveEventAt,
+    liveStreamStatus,
     marketCycles,
     marketFlow,
     marketFlowLeaders,
@@ -639,6 +748,7 @@ export const useCoinStore = defineStore("coins", () => {
     sectorMetrics,
     sectorNarratives,
     sectors,
+    signalCountsBySymbol,
     signals,
     signalsBySymbol,
     sourceStatusCounts,
